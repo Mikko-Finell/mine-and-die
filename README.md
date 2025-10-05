@@ -1,6 +1,6 @@
 # mine-and-die
 
-A browser-based, PvP-enabled, permadeath MMO prototype. Players mine finite gold from neutral deposits, form guild hierarchies with configurable taxation, and enforce economic dominance through violence. The world has no ownership system—only presence and power.
+Experimental browser-based, PvP-enabled permadeath MMO prototype. Players mine finite gold from neutral deposits, organize into guild hierarchies with configurable taxation, and establish control through direct conflict. The world has no formal ownership system—territory only persists while defended.
 
 ---
 
@@ -18,10 +18,11 @@ A browser-based, PvP-enabled, permadeath MMO prototype. Players mine finite gold
   - No respawn; new character creation required.
 
 - **Guilds**
-  - Five-tier hierarchy: King → Noble → Knight → Citizen → Peasant.
+  - Five-tier hierarchy: King → Noble → Knight → Squire → Citizen.
   - Guilds define custom tax percentages.
   - All gold income is automatically taxed upward through the chain of command.
   - Guilds maintain treasuries and can use funds for recruitment or defense.
+  - Peasants are guild-less players operating outside the hierarchy.
 
 - **Economy**
   - No NPC merchants or vendors.
@@ -53,7 +54,7 @@ A browser-based, PvP-enabled, permadeath MMO prototype. Players mine finite gold
 
 - **Client**
   - Stack: HTML5 + vanilla JS + `<canvas>` rendering
-  - Graphics: Simple 2d tilemap
+  - Graphics: Early alpha uses procedurally generated canvas primitives rendered on the client; no sprite sheets are planned for the initial milestone.
   - Networking: WebSocket client for input and state updates
   - Features:
     - Player movement and interpolation
@@ -76,3 +77,5 @@ cd mine-and-die
 go run ./server
 # in another terminal
 npm install && npm run dev
+
+```
