@@ -24,7 +24,7 @@ const (
 	playerHalf            = 14.0
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
-	obstacleCount         = 8
+        obstacleCount         = 6
 	obstacleMinWidth      = 60.0
 	obstacleMaxWidth      = 140.0
 	obstacleMinHeight     = 60.0
