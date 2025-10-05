@@ -60,6 +60,40 @@ func parseFacing(value string) (FacingDirection, bool) {
 	}
 }
 
+func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
+	if fallback == "" {
+		fallback = defaultFacing
+	}
+
+	const epsilon = 1e-6
+
+	if math.Abs(dx) < epsilon {
+		dx = 0
+	}
+	if math.Abs(dy) < epsilon {
+		dy = 0
+	}
+
+	if dx == 0 && dy == 0 {
+		return fallback
+	}
+
+	absX := math.Abs(dx)
+	absY := math.Abs(dy)
+
+	if absY >= absX && dy != 0 {
+		if dy > 0 {
+			return FacingDown
+		}
+		return FacingUp
+	}
+
+	if dx > 0 {
+		return FacingRight
+	}
+	return FacingLeft
+}
+
 type Obstacle struct {
 	ID     string  `json:"id"`
 	X      float64 `json:"x"`
@@ -539,8 +573,11 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool 
 	state.intentX = dx
 	state.intentY = dy
 
-	if face, ok := parseFacing(facing); ok {
-		state.Facing = face
+	state.Facing = deriveFacing(dx, dy, state.Facing)
+	if dx == 0 && dy == 0 {
+		if face, ok := parseFacing(facing); ok {
+			state.Facing = face
+		}
 	}
 
 	state.lastInput = time.Now()
