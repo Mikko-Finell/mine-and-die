@@ -1,9 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func findPlayer(players []Player, id string) *Player {
@@ -380,5 +387,334 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	minSeparation := playerHalf * 2
 	if distance+1e-6 < minSeparation {
 		t.Fatalf("expected players separated by at least %.2f, got %.2f", minSeparation, distance)
+	}
+}
+
+func TestTriggerFireballCreatesProjectile(t *testing.T) {
+	hub := newHub()
+	shooterID := "shooter"
+	now := time.Now()
+
+	hub.players[shooterID] = &playerState{
+		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight},
+		lastHeartbeat: now,
+		cooldowns:     make(map[string]time.Time),
+	}
+
+	if !hub.triggerFireball(shooterID) {
+		t.Fatalf("expected triggerFireball to succeed")
+	}
+
+	if len(hub.effects) != 1 {
+		t.Fatalf("expected 1 effect, got %d", len(hub.effects))
+	}
+
+	eff := hub.effects[0]
+	if eff.Type != effectTypeFireball {
+		t.Fatalf("expected effect type %q, got %q", effectTypeFireball, eff.Type)
+	}
+	if eff.remainingRange != fireballRange {
+		t.Fatalf("expected remaining range %.2f, got %.2f", fireballRange, eff.remainingRange)
+	}
+	if eff.velocityX <= 0 || eff.velocityY != 0 {
+		t.Fatalf("expected projectile to move right, got velocity (%.2f, %.2f)", eff.velocityX, eff.velocityY)
+	}
+}
+
+func TestMultiplePlayersCanTriggerFireballs(t *testing.T) {
+	hub := newHub()
+	now := time.Now()
+
+	firstID := "player-1"
+	secondID := "player-2"
+
+	hub.players[firstID] = &playerState{
+		Player:        Player{ID: firstID, X: 200, Y: 200, Facing: FacingRight},
+		lastHeartbeat: now,
+		cooldowns:     make(map[string]time.Time),
+	}
+	hub.players[secondID] = &playerState{
+		Player:        Player{ID: secondID, X: 260, Y: 200, Facing: FacingLeft},
+		lastHeartbeat: now,
+		cooldowns:     make(map[string]time.Time),
+	}
+
+	if !hub.triggerFireball(firstID) {
+		t.Fatalf("expected first player to trigger fireball")
+	}
+	if !hub.triggerFireball(secondID) {
+		t.Fatalf("expected second player to trigger fireball")
+	}
+
+	if len(hub.effects) != 2 {
+		t.Fatalf("expected two effects, got %d", len(hub.effects))
+	}
+
+	owners := map[string]bool{}
+	for _, eff := range hub.effects {
+		owners[eff.Owner] = true
+	}
+
+	if !owners[firstID] || !owners[secondID] {
+		t.Fatalf("expected fireballs owned by both players, owners: %v", owners)
+	}
+}
+
+func TestFireballBroadcastsToAllSubscribers(t *testing.T) {
+	hub := newHub()
+	stop := make(chan struct{})
+	go hub.RunSimulation(stop)
+	defer close(stop)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/join", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		join := hub.Join()
+		data, err := json.Marshal(join)
+		if err != nil {
+			http.Error(w, "failed to encode", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+	})
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		playerID := r.URL.Query().Get("id")
+		if playerID == "" {
+			http.Error(w, "missing id", http.StatusBadRequest)
+			return
+		}
+
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+
+		sub, players, effects, ok := hub.Subscribe(playerID, conn)
+		if !ok {
+			message := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unknown player")
+			conn.WriteMessage(websocket.CloseMessage, message)
+			conn.Close()
+			return
+		}
+
+		initial := stateMessage{
+			Type:       "state",
+			Players:    players,
+			Obstacles:  hub.obstacles,
+			Effects:    effects,
+			ServerTime: time.Now().UnixMilli(),
+		}
+		data, err := json.Marshal(initial)
+		if err != nil {
+			conn.Close()
+			hub.Disconnect(playerID)
+			return
+		}
+
+		sub.mu.Lock()
+		conn.SetWriteDeadline(time.Now().Add(writeWait))
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			sub.mu.Unlock()
+			hub.Disconnect(playerID)
+			return
+		}
+		sub.mu.Unlock()
+
+		for {
+			_, payload, err := conn.ReadMessage()
+			if err != nil {
+				hub.Disconnect(playerID)
+				return
+			}
+
+			var msg clientMessage
+			if err := json.Unmarshal(payload, &msg); err != nil {
+				continue
+			}
+
+			switch msg.Type {
+			case "input":
+				hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing)
+			case "action":
+				if msg.Action == "" {
+					continue
+				}
+				if !hub.HandleAction(playerID, msg.Action) {
+					continue
+				}
+			case "heartbeat":
+				now := time.Now()
+				rtt, ok := hub.UpdateHeartbeat(playerID, now, msg.SentAt)
+				if !ok {
+					continue
+				}
+
+				ack := heartbeatMessage{
+					Type:       "heartbeat",
+					ServerTime: now.UnixMilli(),
+					ClientTime: msg.SentAt,
+					RTTMillis:  rtt.Milliseconds(),
+				}
+
+				data, err := json.Marshal(ack)
+				if err != nil {
+					continue
+				}
+
+				sub.mu.Lock()
+				conn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+					sub.mu.Unlock()
+					hub.Disconnect(playerID)
+					return
+				}
+				sub.mu.Unlock()
+			}
+		}
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	wsBase := strings.Replace(server.URL, "http", "ws", 1)
+	type testClient struct {
+		id   string
+		conn *websocket.Conn
+	}
+
+	clients := make([]testClient, 0, 3)
+	for i := 0; i < 3; i++ {
+		resp, err := server.Client().Post(server.URL+"/join", "application/json", nil)
+		if err != nil {
+			t.Fatalf("join request failed: %v", err)
+		}
+		var join joinResponse
+		if err := json.NewDecoder(resp.Body).Decode(&join); err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to decode join response: %v", err)
+		}
+		resp.Body.Close()
+
+		wsURL := wsBase + "/ws?id=" + url.QueryEscape(join.ID)
+		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err != nil {
+			t.Fatalf("failed to connect websocket: %v", err)
+		}
+
+		conn.SetReadDeadline(time.Now().Add(time.Second))
+		if _, data, err := conn.ReadMessage(); err != nil {
+			t.Fatalf("failed to read initial state: %v", err)
+		} else {
+			var initial stateMessage
+			if err := json.Unmarshal(data, &initial); err != nil {
+				t.Fatalf("failed to decode initial state: %v", err)
+			}
+			if initial.Type != "state" {
+				t.Fatalf("expected initial message to be state, got %q", initial.Type)
+			}
+		}
+
+		clients = append(clients, testClient{id: join.ID, conn: conn})
+	}
+
+	expectedOwners := make([]string, len(clients))
+	for i, c := range clients {
+		expectedOwners[i] = c.id
+	}
+
+	for _, c := range clients {
+		msg := clientMessage{Type: "action", Action: effectTypeFireball}
+		if err := c.conn.WriteJSON(msg); err != nil {
+			t.Fatalf("failed to send action for %s: %v", c.id, err)
+		}
+	}
+
+	for _, c := range clients {
+		deadline := time.Now().Add(2 * time.Second)
+		remaining := make(map[string]struct{}, len(expectedOwners))
+		for _, id := range expectedOwners {
+			remaining[id] = struct{}{}
+		}
+
+		for len(remaining) > 0 && time.Now().Before(deadline) {
+			c.conn.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
+			_, data, err := c.conn.ReadMessage()
+			if err != nil {
+				t.Fatalf("failed to read state for %s: %v", c.id, err)
+			}
+
+			var msg stateMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				t.Fatalf("failed to decode state for %s: %v", c.id, err)
+			}
+
+			if msg.Type != "state" {
+				continue
+			}
+
+			for _, eff := range msg.Effects {
+				if eff.Type == effectTypeFireball {
+					delete(remaining, eff.Owner)
+				}
+			}
+		}
+
+		if len(remaining) > 0 {
+			t.Fatalf("player %s did not receive fireballs from players: %v", c.id, remaining)
+		}
+	}
+
+	for _, c := range clients {
+		c.conn.Close()
+	}
+}
+
+func TestFireballExpiresOnObstacleCollision(t *testing.T) {
+	hub := newHub()
+	now := time.Now()
+
+	shooterID := "caster"
+	hub.players[shooterID] = &playerState{
+		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight},
+		lastHeartbeat: now,
+		cooldowns:     make(map[string]time.Time),
+	}
+
+	hub.obstacles = []Obstacle{{
+		ID:     "wall",
+		X:      260,
+		Y:      180,
+		Width:  40,
+		Height: 40,
+	}}
+
+	if !hub.triggerFireball(shooterID) {
+		t.Fatalf("expected fireball to be created")
+	}
+
+	step := time.Second / time.Duration(tickRate)
+	dt := 1.0 / float64(tickRate)
+	expired := false
+	current := now
+
+	for i := 0; i < tickRate*2; i++ {
+		current = current.Add(step)
+		hub.advance(current, dt)
+		if len(hub.effects) == 0 {
+			expired = true
+			break
+		}
+	}
+
+	if !expired {
+		t.Fatalf("expected fireball to expire after hitting obstacle")
 	}
 }

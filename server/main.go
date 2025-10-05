@@ -103,6 +103,21 @@ func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
 	return FacingLeft
 }
 
+func facingToVector(facing FacingDirection) (float64, float64) {
+	switch facing {
+	case FacingUp:
+		return 0, -1
+	case FacingDown:
+		return 0, 1
+	case FacingLeft:
+		return -1, 0
+	case FacingRight:
+		return 1, 0
+	default:
+		return 0, 1
+	}
+}
+
 type Obstacle struct {
 	ID     string  `json:"id"`
 	Type   string  `json:"type,omitempty"`
@@ -157,7 +172,11 @@ type Effect struct {
 // ready for serialization to connected clients.
 type effectState struct {
 	Effect
-	expiresAt time.Time
+	expiresAt      time.Time
+	velocityX      float64
+	velocityY      float64
+	remainingRange float64
+	projectile     bool
 }
 
 type heartbeatMessage struct {
@@ -214,8 +233,18 @@ const (
 	meleeAttackReach    = 56.0
 	meleeAttackWidth    = 40.0
 	meleeAttackDamage   = 10.0
-	effectTypeAttack    = "attack"
+
+	effectTypeAttack   = "attack"
+	effectTypeFireball = "fireball"
+
+	fireballCooldown = 650 * time.Millisecond
+	fireballSpeed    = 320.0
+	fireballRange    = 5 * 40.0
+	fireballSize     = 24.0
+	fireballSpawnGap = 6.0
 )
+
+var fireballLifetime = time.Duration(fireballRange / fireballSpeed * float64(time.Second))
 
 func (h *Hub) generateObstacles(count int) []Obstacle {
 	if count <= 0 {
@@ -561,6 +590,73 @@ func resolvePlayerCollisions(players []*playerState, obstacles []Obstacle) {
 	}
 }
 
+func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
+	if len(h.effects) == 0 {
+		return
+	}
+
+	for _, eff := range h.effects {
+		if !eff.projectile || !now.Before(eff.expiresAt) {
+			continue
+		}
+
+		distance := fireballSpeed * dt
+		if distance <= 0 {
+			continue
+		}
+		if distance > eff.remainingRange {
+			distance = eff.remainingRange
+		}
+
+		eff.Effect.X += eff.velocityX * distance
+		eff.Effect.Y += eff.velocityY * distance
+		eff.remainingRange -= distance
+		if eff.Params == nil {
+			eff.Params = make(map[string]float64)
+		}
+		eff.Params["remainingRange"] = eff.remainingRange
+
+		if eff.remainingRange <= 0 {
+			eff.expiresAt = now
+			continue
+		}
+
+		if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldWidth || eff.Effect.Y+eff.Effect.Height > worldHeight {
+			eff.expiresAt = now
+			continue
+		}
+
+		area := Obstacle{X: eff.Effect.X, Y: eff.Effect.Y, Width: eff.Effect.Width, Height: eff.Effect.Height}
+
+		collided := false
+		for _, obs := range h.obstacles {
+			if obstaclesOverlap(area, obs, 0) {
+				collided = true
+				break
+			}
+		}
+
+		if collided {
+			eff.expiresAt = now
+			continue
+		}
+
+		for id, target := range h.players {
+			if id == eff.Owner {
+				continue
+			}
+			if circleRectOverlap(target.X, target.Y, playerHalf, area) {
+				collided = true
+				break
+			}
+		}
+
+		if collided {
+			eff.expiresAt = now
+		}
+	}
+}
+
 func (h *Hub) snapshotLocked(now time.Time) ([]Player, []Effect) {
 	players := make([]Player, 0, len(h.players))
 	for _, player := range h.players {
@@ -753,8 +849,17 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool 
 func (h *Hub) HandleAction(playerID, action string) bool {
 	switch action {
 	case effectTypeAttack:
-		h.triggerMeleeAttack(playerID)
-		return true
+		if h.triggerMeleeAttack(playerID) {
+			go h.broadcastState(nil, nil)
+			return true
+		}
+		return false
+	case effectTypeFireball:
+		if h.triggerFireball(playerID) {
+			go h.broadcastState(nil, nil)
+			return true
+		}
+		return false
 	default:
 		return false
 	}
@@ -834,6 +939,75 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 	return true
 }
 
+func (h *Hub) triggerFireball(playerID string) bool {
+	now := time.Now()
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	state, ok := h.players[playerID]
+	if !ok {
+		return false
+	}
+
+	if state.cooldowns == nil {
+		state.cooldowns = make(map[string]time.Time)
+	}
+
+	if last, ok := state.cooldowns[effectTypeFireball]; ok {
+		if now.Sub(last) < fireballCooldown {
+			return false
+		}
+	}
+
+	state.cooldowns[effectTypeFireball] = now
+
+	facing := state.Facing
+	if facing == "" {
+		facing = defaultFacing
+	}
+
+	dirX, dirY := facingToVector(facing)
+	if dirX == 0 && dirY == 0 {
+		dirX, dirY = 0, 1
+	}
+
+	radius := fireballSize / 2
+	spawnOffset := playerHalf + fireballSpawnGap + radius
+	centerX := state.X + dirX*spawnOffset
+	centerY := state.Y + dirY*spawnOffset
+
+	effect := &effectState{
+		Effect: Effect{
+			ID:       fmt.Sprintf("effect-%d", h.nextEffect.Add(1)),
+			Type:     effectTypeFireball,
+			Owner:    playerID,
+			Start:    now.UnixMilli(),
+			Duration: fireballLifetime.Milliseconds(),
+			X:        centerX - radius,
+			Y:        centerY - radius,
+			Width:    fireballSize,
+			Height:   fireballSize,
+			Params: map[string]float64{
+				"radius": radius,
+				"speed":  fireballSpeed,
+				"range":  fireballRange,
+				"dx":     dirX,
+				"dy":     dirY,
+			},
+		},
+		expiresAt:      now.Add(fireballLifetime),
+		velocityX:      dirX,
+		velocityY:      dirY,
+		remainingRange: fireballRange,
+		projectile:     true,
+	}
+
+	h.pruneEffectsLocked(now)
+	h.effects = append(h.effects, effect)
+	return true
+}
+
 func meleeAttackRectangle(x, y float64, facing FacingDirection) (float64, float64, float64, float64) {
 	reach := meleeAttackReach
 	thickness := meleeAttackWidth
@@ -907,6 +1081,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []Effect, []*subscri
 
 	resolvePlayerCollisions(activeStates, h.obstacles)
 
+	h.advanceEffectsLocked(now, dt)
 	h.pruneEffectsLocked(now)
 	players, effects := h.snapshotLocked(now)
 	h.mu.Unlock()
