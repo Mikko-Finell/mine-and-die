@@ -154,7 +154,7 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 
 	area := Obstacle{X: rectX, Y: rectY, Width: rectW, Height: rectH}
 	for _, obs := range h.obstacles {
-		if obs.Type != "gold-ore" {
+		if obs.Type != obstacleTypeGoldOre {
 			continue
 		}
 		if !obstaclesOverlap(area, obs, 0) {
@@ -316,6 +316,9 @@ func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
 
 		collided := false
 		for _, obs := range h.obstacles {
+			if obs.Type == obstacleTypeLava {
+				continue
+			}
 			if obstaclesOverlap(area, obs, 0) {
 				collided = true
 				break

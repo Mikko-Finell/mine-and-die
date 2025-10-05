@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+const (
+	obstacleTypeGoldOre = "gold-ore"
+	obstacleTypeLava    = "lava"
+)
+
 type Obstacle struct {
 	ID     string  `json:"id"`
 	Type   string  `json:"type,omitempty"`
@@ -18,7 +23,10 @@ type Obstacle struct {
 // generateObstacles scatters blocking rectangles and ore deposits around the map.
 func (h *Hub) generateObstacles(count int) []Obstacle {
 	if count <= 0 {
-		return h.generateGoldOreNodes(goldOreCount, nil, rand.New(rand.NewSource(time.Now().UnixNano())))
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+		obstacles := h.generateGoldOreNodes(goldOreCount, nil, rng)
+		lavaPools := h.generateLavaPools(obstacles)
+		return append(obstacles, lavaPools...)
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -69,7 +77,10 @@ func (h *Hub) generateObstacles(count int) []Obstacle {
 	}
 
 	goldOre := h.generateGoldOreNodes(goldOreCount, obstacles, rng)
-	return append(obstacles, goldOre...)
+	obstacles = append(obstacles, goldOre...)
+
+	lavaPools := h.generateLavaPools(obstacles)
+	return append(obstacles, lavaPools...)
 }
 
 // generateGoldOreNodes places ore obstacles while avoiding overlaps.
@@ -99,7 +110,7 @@ func (h *Hub) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Ran
 
 		candidate := Obstacle{
 			ID:     fmt.Sprintf("gold-ore-%d", len(ores)+1),
-			Type:   "gold-ore",
+			Type:   obstacleTypeGoldOre,
 			X:      x,
 			Y:      y,
 			Width:  width,
@@ -138,6 +149,31 @@ func (h *Hub) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Ran
 	}
 
 	return ores
+}
+
+// generateLavaPools inserts deterministic lava hazards that remain walkable but harmful.
+func (h *Hub) generateLavaPools(existing []Obstacle) []Obstacle {
+	templates := []Obstacle{
+		{ID: "lava-1", Type: obstacleTypeLava, X: 320, Y: 120, Width: 80, Height: 80},
+		{ID: "lava-2", Type: obstacleTypeLava, X: 520, Y: 260, Width: 80, Height: 80},
+		{ID: "lava-3", Type: obstacleTypeLava, X: 200, Y: 360, Width: 80, Height: 80},
+	}
+
+	pools := make([]Obstacle, 0, len(templates))
+	for _, tpl := range templates {
+		overlaps := false
+		for _, obs := range existing {
+			if obstaclesOverlap(tpl, obs, 0) {
+				overlaps = true
+				break
+			}
+		}
+		if overlaps {
+			continue
+		}
+		pools = append(pools, tpl)
+	}
+	return pools
 }
 
 // circleRectOverlap reports whether a circle intersects an obstacle rectangle.

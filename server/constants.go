@@ -10,6 +10,7 @@ const (
 	worldHeight           = 600.0
 	playerHalf            = 14.0
 	playerMaxHealth       = 100.0
+	lavaDamagePerSecond   = 20.0
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
 	obstacleCount         = 6

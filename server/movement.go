@@ -35,6 +35,9 @@ func movePlayerWithObstacles(state *playerState, dt float64, obstacles []Obstacl
 func resolveAxisMoveX(oldX, oldY, proposedX, deltaX float64, obstacles []Obstacle) float64 {
 	newX := proposedX
 	for _, obs := range obstacles {
+		if obs.Type == obstacleTypeLava {
+			continue
+		}
 		minY := obs.Y - playerHalf
 		maxY := obs.Y + obs.Height + playerHalf
 		if oldY < minY || oldY > maxY {
@@ -60,6 +63,9 @@ func resolveAxisMoveX(oldX, oldY, proposedX, deltaX float64, obstacles []Obstacl
 func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacle) float64 {
 	newY := proposedY
 	for _, obs := range obstacles {
+		if obs.Type == obstacleTypeLava {
+			continue
+		}
 		minX := obs.X - playerHalf
 		maxX := obs.X + obs.Width + playerHalf
 		if oldX < minX || oldX > maxX {
@@ -84,6 +90,9 @@ func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacl
 // resolveObstaclePenetration nudges a player out of overlapping obstacles.
 func resolveObstaclePenetration(state *playerState, obstacles []Obstacle) {
 	for _, obs := range obstacles {
+		if obs.Type == obstacleTypeLava {
+			continue
+		}
 		if !circleRectOverlap(state.X, state.Y, playerHalf, obs) {
 			continue
 		}

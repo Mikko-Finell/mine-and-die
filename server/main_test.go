@@ -314,7 +314,7 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 	hub := newHub()
 	hub.obstacles = []Obstacle{{
 		ID:     "gold-node",
-		Type:   "gold-ore",
+		Type:   obstacleTypeGoldOre,
 		X:      180,
 		Y:      200,
 		Width:  40,
@@ -439,6 +439,47 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	maxX := hub.obstacles[0].X - playerHalf
 	if blocker.X > maxX+1e-6 {
 		t.Fatalf("expected player to stop before obstacle at %.2f, got %.2f", maxX, blocker.X)
+	}
+}
+
+func TestLavaDamagesPlayer(t *testing.T) {
+	hub := newHub()
+	now := time.Now()
+
+	hub.obstacles = []Obstacle{{
+		ID:     "lava-test",
+		Type:   obstacleTypeLava,
+		X:      200,
+		Y:      200,
+		Width:  80,
+		Height: 80,
+	}}
+
+	playerID := "walker"
+	hub.players[playerID] = &playerState{
+		Player: Player{
+			ID:        playerID,
+			X:         220,
+			Y:         220,
+			Facing:    defaultFacing,
+			Inventory: NewInventory(),
+			Health:    playerMaxHealth,
+			MaxHealth: playerMaxHealth,
+		},
+		lastHeartbeat: now,
+	}
+
+	dt := 1.0
+	players, _, _ := hub.advance(now, dt)
+
+	damaged := findPlayer(players, playerID)
+	if damaged == nil {
+		t.Fatalf("expected player snapshot")
+	}
+
+	expected := playerMaxHealth - lavaDamagePerSecond*dt
+	if math.Abs(damaged.Health-expected) > 1e-6 {
+		t.Fatalf("expected lava to deal %.1f damage, got health %.1f", lavaDamagePerSecond*dt, damaged.Health)
 	}
 }
 

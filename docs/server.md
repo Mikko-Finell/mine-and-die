@@ -18,7 +18,7 @@ The `Hub` struct tracks:
 - `subscribers` – active WebSocket connections keyed by player ID.
 - `effects` – slice of in-flight ability payloads.
 - `effectBehaviors` – map of effect types to collision handlers (damage, healing, etc.).
-- `obstacles` – immutable slice shared with clients.
+- `obstacles` – immutable slice shared with clients (walls, gold ore, lava hazards).
 - Atomic counters for player/effect IDs.
 
 `newHub()` seeds the obstacle list (walls + gold ore) and prepares maps.
@@ -32,6 +32,7 @@ The `Hub` struct tracks:
 `advance` handles:
 - Movement: `movePlayerWithObstacles` normalizes intent, clamps to bounds, and slides along walls.
 - Separation: `resolvePlayerCollisions` iteratively pushes overlapping players apart.
+- Hazards: `applyEnvironmentalDamageLocked` ticks lava pools that remain walkable but burn players standing inside them.
 - Effects: `advanceEffectsLocked` moves projectiles, expires them on collision, and mirrors remaining range in `Params`.
 - Cleanup: removes players who miss `disconnectAfter` and prunes expired effects.
 
@@ -39,6 +40,7 @@ The `Hub` struct tracks:
 `HandleAction` dispatches to `triggerMeleeAttack` or `triggerFireball`:
 - Melee: spawns a short-lived rectangular effect, records cooldown, immediately checks for overlapping players, and awards one gold coin when the swing overlaps a gold ore obstacle.
 - Fireball: spawns a projectile with velocity/duration; `advanceEffectsLocked` moves and expires it.
+- Lava pools: generated via `generateLavaPools`, they are communicated as obstacles but ignored by movement collision checks so players can wade through them while taking damage (`lavaDamagePerSecond`).
 
 Players now track `Health` and `MaxHealth`. Both helpers share the `Effect` struct (`type`, `owner`, bounding box, `Params`) that is sent to clients for rendering. The hub registers per-effect behaviour in `effectBehaviors`; melee swings and fireballs publish a `healthDelta` parameter that is applied to every overlapping target. Positive values heal (clamped to `MaxHealth`), negative values deal damage (never dropping below zero). Adding new effect types means registering another behaviour keyed by the effect's `Type`.
 

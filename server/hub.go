@@ -222,6 +222,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []Effect, []*subscri
 	}
 
 	resolvePlayerCollisions(activeStates, h.obstacles)
+	h.applyEnvironmentalDamageLocked(activeStates, dt)
 
 	h.advanceEffectsLocked(now, dt)
 	h.pruneEffectsLocked(now)
@@ -229,6 +230,28 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []Effect, []*subscri
 	h.mu.Unlock()
 
 	return players, effects, toClose
+}
+
+// applyEnvironmentalDamageLocked processes hazard areas that deal damage over time.
+func (h *Hub) applyEnvironmentalDamageLocked(states []*playerState, dt float64) {
+	if dt <= 0 || len(states) == 0 {
+		return
+	}
+	damage := lavaDamagePerSecond * dt
+	if damage <= 0 {
+		return
+	}
+	for _, state := range states {
+		for _, obs := range h.obstacles {
+			if obs.Type != obstacleTypeLava {
+				continue
+			}
+			if circleRectOverlap(state.X, state.Y, playerHalf, obs) {
+				state.applyHealthDelta(-damage)
+				break
+			}
+		}
+	}
 }
 
 // RunSimulation drives the fixed-rate tick loop until the stop channel closes.
