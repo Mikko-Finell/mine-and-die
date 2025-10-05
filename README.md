@@ -11,6 +11,18 @@ Mine & Die is an experimental browser-based arena where players race to extract 
 
 Use these documents as the primary reference when extending gameplay, networking, or presentation.
 
+## Server Layout
+The Go module under `server/` is now split by responsibility so contributors can jump straight to the area they need:
+
+- `constants.go` – Shared world and timing constants.
+- `main.go` – HTTP wiring, endpoint registration, and WebSocket loop bootstrap.
+- `hub.go` – Core state container plus join/subscribe/disconnect flows and the simulation ticker.
+- `player.go` – Player-facing types, facing math, and intent bookkeeping.
+- `movement.go` – Movement helpers, collision resolution, and clamp utilities.
+- `obstacles.go` – Procedural world generation and geometry helpers.
+- `effects.go` – Ability cooldowns, projectiles, and effect lifecycle management.
+- `messages.go` – JSON payload contracts for `/join`, `/ws`, and heartbeat acknowledgements.
+
 ## Core Concepts
 - **Gold Mining** – Finite deposits follow a halving schedule. Mining requires player action and exposes you to PvP risk.
 - **Permadeath** – Death deletes the character and drops everything. Create a new avatar to rejoin the fray.
@@ -38,8 +50,9 @@ Use these documents as the primary reference when extending gameplay, networking
 The Go server serves static assets straight from `client/`, so refreshing the browser picks up any changes immediately.
 
 ## Testing
-Run the Go suite from the repository root:
+Run the Go suite from the server module:
 ```bash
+cd server
 go test ./...
 ```
 The tests exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.

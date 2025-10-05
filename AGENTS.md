@@ -9,7 +9,14 @@ Mine & Die is a small realtime prototype:
 
 ## Directory Layout
 - `server/` – Go module containing the hub, simulation loop, HTTP handlers, and regression tests.
-  - `main.go` – Core types (`Hub`, `Player`, `Effect`), movement/collision logic, action handlers, and endpoint wiring.
+  - `constants.go` – Shared world dimensions, tick rate, and heartbeat constants.
+  - `main.go` – HTTP setup, route registration, and WebSocket session loop.
+  - `hub.go` – Hub state, join/subscription lifecycle, simulation ticker, and broadcast plumbing.
+  - `player.go` – Player structs plus facing derivation and intent helpers.
+  - `movement.go` – Movement integration, obstacle resolution, and player collision separation.
+  - `obstacles.go` – Procedural obstacle/ore generation and geometry utilities.
+  - `effects.go` – Ability cooldown tracking, projectile advancement, and effect pruning.
+  - `messages.go` – JSON payload contracts shared across HTTP and WebSocket endpoints.
   - `main_test.go` – Behavioural tests covering joins, intents, effects, and heartbeats.
 - `client/` – Static assets served by the Go process.
   - `main.js` – Builds the shared state store, hooks up diagnostics UI, and kicks off input/render/network flows.
@@ -28,7 +35,7 @@ Mine & Die is a small realtime prototype:
 ## Running & Testing
 - Start the server from `server/` with `go run .`; it serves both APIs and static files on `:8080`.
 - Visit `http://localhost:8080` to load the client.
-- Execute `go test ./...` from the repository root before submitting.
+- Execute `go test ./...` from within `server/` before submitting.
 
 ## Coding Conventions
 - **Go:**
@@ -45,5 +52,5 @@ Mine & Die is a small realtime prototype:
 
 ## Pull Request Expectations
 - Include a brief summary plus testing notes in your PR body.
-- Run automated tests relevant to your change set (`go test ./...` at minimum).
+- Run automated tests relevant to your change set (`cd server && go test ./...` at minimum).
 - Document new features, endpoints, or gameplay rules in the appropriate doc file under `docs/`.
