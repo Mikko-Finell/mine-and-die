@@ -21,7 +21,15 @@
         />
       </section>
       <section id="status"></section>
-      <section id="diagnostics">
+      <button
+        id="diagnostics-toggle"
+        type="button"
+        aria-controls="diagnostics"
+        aria-expanded="false"
+      >
+        Show diagnostics
+      </button>
+      <section id="diagnostics" hidden>
         <h2>Diagnostics</h2>
         <div class="diagnostic-line">
           <span class="label">Connection</span>

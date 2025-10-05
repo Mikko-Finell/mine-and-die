@@ -6,6 +6,8 @@ const statusEl = document.getElementById("status");
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
 const latencyInput = document.getElementById("latency-input");
+const diagnosticsToggle = document.getElementById("diagnostics-toggle");
+const diagnosticsSection = document.getElementById("diagnostics");
 
 const diagnosticsEls = {
   connection: document.getElementById("diag-connection"),
@@ -24,6 +26,8 @@ const store = {
   canvas,
   ctx,
   latencyInput,
+  diagnosticsToggle,
+  diagnosticsSection,
   diagnosticsEls,
   TILE_SIZE: 40,
   GRID_WIDTH: canvas.width / 40,
@@ -57,6 +61,40 @@ const store = {
   messagesSent: 0,
   bytesSent: 0,
 };
+
+function updateDiagnosticsToggle() {
+  if (!store.diagnosticsToggle || !store.diagnosticsSection) {
+    return;
+  }
+  const isVisible = !store.diagnosticsSection.hasAttribute("hidden");
+  store.diagnosticsToggle.textContent = isVisible
+    ? "Hide diagnostics"
+    : "Show diagnostics";
+  store.diagnosticsToggle.setAttribute("aria-expanded", String(isVisible));
+}
+
+function setDiagnosticsVisibility(visible) {
+  if (!store.diagnosticsSection) {
+    return;
+  }
+  if (visible) {
+    store.diagnosticsSection.removeAttribute("hidden");
+  } else {
+    store.diagnosticsSection.setAttribute("hidden", "");
+  }
+  updateDiagnosticsToggle();
+}
+
+function initializeDiagnosticsToggle() {
+  if (!store.diagnosticsToggle || !store.diagnosticsSection) {
+    return;
+  }
+  store.diagnosticsToggle.addEventListener("click", () => {
+    const isVisible = !store.diagnosticsSection.hasAttribute("hidden");
+    setDiagnosticsVisibility(!isVisible);
+  });
+  updateDiagnosticsToggle();
+}
 
 function renderStatus() {
   if (!store.statusEl) return;
@@ -180,7 +218,9 @@ store.setStatusBase = setStatusBase;
 store.setLatency = setLatency;
 store.updateDiagnostics = updateDiagnostics;
 store.setSimulatedLatency = (value) => setSimulatedLatency(store, value);
+store.setDiagnosticsVisibility = setDiagnosticsVisibility;
 
+initializeDiagnosticsToggle();
 attachLatencyInputListener();
 setSimulatedLatency(store, 0);
 updateDiagnostics();
