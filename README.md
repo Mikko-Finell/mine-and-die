@@ -67,15 +67,46 @@ Experimental browser-based, PvP-enabled permadeath MMO prototype. Players mine f
 
 ### Requirements
 - Go ≥ 1.22
-- Node.js (for client bundling)
+- Node.js (optional, for client tooling and future build steps)
 - SQLite (default local persistence)
 
-### Setup
-```bash
-git clone https://github.com/<your-username>/mine-and-die
-cd mine-and-die
-go run ./server
-# in another terminal
-npm install && npm run dev
+## Installation & Local Run Guide
 
-```
+Follow the steps below to get the project running on a Unix-like environment (macOS or Linux). Each step assumes you are comfortable with a terminal but may be new to the Go toolchain.
+
+1. **Install Git (if not already installed).**
+   - macOS: `xcode-select --install`
+   - Debian/Ubuntu: `sudo apt update && sudo apt install git`
+
+2. **Install Go (required to run the game server).**
+   - macOS (Homebrew): `brew install go`
+   - Debian/Ubuntu: `sudo apt install golang`
+   - Alternatively, download an official tarball from [https://go.dev/dl/](https://go.dev/dl/) and follow the instructions provided there.
+   - Verify the installation with `go version`; it should report version 1.22 or newer.
+
+3. **(Optional) Install Node.js and npm.** While the current client is served as static files, future tooling may rely on Node.
+   - macOS (Homebrew): `brew install node`
+   - Debian/Ubuntu: `sudo apt install nodejs npm`
+   - Verify with `node --version` and `npm --version`.
+
+4. **Clone the repository and enter it.**
+   ```bash
+   git clone https://github.com/<your-username>/mine-and-die
+   cd mine-and-die
+   ```
+
+5. **Run the Go server.**
+   ```bash
+   cd server
+   go run .
+   ```
+   The terminal should print `server listening on :8080`. Leave this process running; it serves both the API and the static client from the `client` directory.
+
+6. **Open the client.**
+   - In a web browser on the same machine, navigate to [http://localhost:8080](http://localhost:8080).
+   - You should see the Mine & Die prototype and can start interacting with the local server immediately.
+
+7. **Stopping the server.**
+   - Return to the terminal running `go run .` and press `Ctrl+C` to shut down the server.
+
+If you make changes to the client assets, simply refresh the browser; the Go server serves the updated static files automatically. For more advanced client workflows (such as bundling or hot-module reloading), install Node.js and introduce your preferred tooling inside the `client/` directory.
