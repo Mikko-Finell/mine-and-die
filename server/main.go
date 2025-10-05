@@ -8,7 +8,12 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
+
+const writeWait = 10 * time.Second
 
 type Player struct {
 	ID string  `json:"id"`
@@ -21,28 +26,33 @@ type joinResponse struct {
 	Players []Player `json:"players"`
 }
 
-type moveRequest struct {
-	ID string  `json:"id"`
-	X  float64 `json:"x"`
-	Y  float64 `json:"y"`
-}
-
 type stateMessage struct {
 	Type    string   `json:"type"`
 	Players []Player `json:"players"`
 }
 
+type clientMessage struct {
+	Type string  `json:"type"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+}
+
+type subscriber struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
 type Hub struct {
 	mu          sync.Mutex
 	players     map[string]Player
-	subscribers map[string]chan []byte
+	subscribers map[string]*subscriber
 	nextID      atomic.Uint64
 }
 
 func newHub() *Hub {
 	return &Hub{
 		players:     make(map[string]Player),
-		subscribers: make(map[string]chan []byte),
+		subscribers: make(map[string]*subscriber),
 	}
 }
 
@@ -68,22 +78,23 @@ func (h *Hub) broadcastState(players []Player) {
 	}
 
 	h.mu.Lock()
-	subs := make(map[string]chan []byte, len(h.subscribers))
-	for id, ch := range h.subscribers {
-		subs[id] = ch
+	subs := make(map[string]*subscriber, len(h.subscribers))
+	for id, sub := range h.subscribers {
+		subs[id] = sub
 	}
 	h.mu.Unlock()
 
-	for id, ch := range subs {
-		select {
-		case ch <- data:
-		default:
-			h.mu.Lock()
-			if current, ok := h.subscribers[id]; ok && current == ch {
-				close(current)
-				delete(h.subscribers, id)
+	for id, sub := range subs {
+		sub.mu.Lock()
+		sub.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		err := sub.conn.WriteMessage(websocket.TextMessage, data)
+		sub.mu.Unlock()
+		if err != nil {
+			log.Printf("failed to send update to %s: %v", id, err)
+			players := h.Disconnect(id)
+			if players != nil {
+				go h.broadcastState(players)
 			}
-			h.mu.Unlock()
 		}
 	}
 }
@@ -103,7 +114,7 @@ func (h *Hub) Join() joinResponse {
 	return joinResponse{ID: playerID, Players: players}
 }
 
-func (h *Hub) Subscribe(playerID string) (chan []byte, []Player, bool) {
+func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -111,42 +122,58 @@ func (h *Hub) Subscribe(playerID string) (chan []byte, []Player, bool) {
 		return nil, nil, false
 	}
 
-	ch := make(chan []byte, 16)
-	h.subscribers[playerID] = ch
+	if existing, ok := h.subscribers[playerID]; ok {
+		existing.conn.Close()
+	}
+
+	sub := &subscriber{conn: conn}
+	h.subscribers[playerID] = sub
 	players := h.snapshotLocked()
-	return ch, players, true
+	return sub, players, true
 }
 
-func (h *Hub) UpdatePosition(req moveRequest) []Player {
+func (h *Hub) UpdatePosition(playerID string, x, y float64) []Player {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	player, ok := h.players[req.ID]
+	player, ok := h.players[playerID]
 	if !ok {
 		return nil
 	}
 
-	player.X = req.X
-	player.Y = req.Y
-	h.players[req.ID] = player
+	player.X = x
+	player.Y = y
+	h.players[playerID] = player
 	return h.snapshotLocked()
 }
 
 func (h *Hub) Disconnect(playerID string) []Player {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if ch, ok := h.subscribers[playerID]; ok {
-		close(ch)
+	sub, subOK := h.subscribers[playerID]
+	if subOK {
 		delete(h.subscribers, playerID)
 	}
 
-	if _, ok := h.players[playerID]; !ok {
+	_, playerOK := h.players[playerID]
+	if playerOK {
+		delete(h.players, playerID)
+	}
+
+	var players []Player
+	if playerOK {
+		players = h.snapshotLocked()
+	}
+	h.mu.Unlock()
+
+	if subOK {
+		sub.conn.Close()
+	}
+
+	if !playerOK {
 		return nil
 	}
 
-	delete(h.players, playerID)
-	return h.snapshotLocked()
+	return players
 }
 
 func main() {
@@ -173,85 +200,82 @@ func main() {
 		w.Write(data)
 	})
 
-	http.HandleFunc("/move", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
 
-		var req moveRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid payload", http.StatusBadRequest)
-			return
-		}
-
-		players := hub.UpdatePosition(req)
-		if players == nil {
-			http.Error(w, "unknown player", http.StatusBadRequest)
-			return
-		}
-
-		go hub.broadcastState(players)
-		w.WriteHeader(http.StatusNoContent)
-	})
-
-	http.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		playerID := r.URL.Query().Get("id")
 		if playerID == "" {
 			http.Error(w, "missing id", http.StatusBadRequest)
 			return
 		}
 
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("upgrade failed for %s: %v", playerID, err)
 			return
 		}
 
-		ch, snapshot, ok := hub.Subscribe(playerID)
+		sub, snapshot, ok := hub.Subscribe(playerID, conn)
 		if !ok {
-			http.Error(w, "unknown player", http.StatusBadRequest)
+			message := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unknown player")
+			conn.WriteMessage(websocket.CloseMessage, message)
+			conn.Close()
 			return
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-
-		writeEvent := func(data []byte) error {
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
-				return err
-			}
-			flusher.Flush()
-			return nil
 		}
 
 		initial := stateMessage{Type: "state", Players: snapshot}
-		if data, err := json.Marshal(initial); err == nil {
-			_ = writeEvent(data)
+		data, err := json.Marshal(initial)
+		if err != nil {
+			log.Printf("failed to marshal initial state for %s: %v", playerID, err)
+			players := hub.Disconnect(playerID)
+			if players != nil {
+				go hub.broadcastState(players)
+			}
+			return
 		}
 
-		notify := r.Context().Done()
+		sub.mu.Lock()
+		conn.SetWriteDeadline(time.Now().Add(writeWait))
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			sub.mu.Unlock()
+			players := hub.Disconnect(playerID)
+			if players != nil {
+				go hub.broadcastState(players)
+			}
+			return
+		}
+		sub.mu.Unlock()
 
 		for {
-			select {
-			case data, ok := <-ch:
-				if !ok {
-					return
-				}
-				if err := writeEvent(data); err != nil {
-					players := hub.Disconnect(playerID)
-					if players != nil {
-						go hub.broadcastState(players)
-					}
-					return
-				}
-			case <-notify:
+			_, payload, err := conn.ReadMessage()
+			if err != nil {
 				players := hub.Disconnect(playerID)
 				if players != nil {
 					go hub.broadcastState(players)
 				}
 				return
+			}
+
+			var msg clientMessage
+			if err := json.Unmarshal(payload, &msg); err != nil {
+				log.Printf("discarding malformed message from %s: %v", playerID, err)
+				continue
+			}
+
+			switch msg.Type {
+			case "move":
+				players := hub.UpdatePosition(playerID, msg.X, msg.Y)
+				if players != nil {
+					go hub.broadcastState(players)
+				}
+			default:
+				log.Printf("unknown message type %q from %s", msg.Type, playerID)
 			}
 		}
 	})
