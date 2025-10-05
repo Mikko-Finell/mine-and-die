@@ -178,33 +178,104 @@ function drawGoldOreObstacle(ctx, obstacle) {
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
-  const nuggetColors = ["#facc15", "#fde68a", "#eab308"];
   const rng = createObstacleRng(obstacle);
-  const nuggetCount = Math.max(4, Math.round((width * height) / 350));
+  const veinCount = Math.max(2, Math.round((width + height) / 70));
+  const veinThickness = Math.max(1.2, Math.min(width, height) * 0.05);
+  const nuggetColors = ["#fde047", "#facc15", "#fef08a"];
 
-  for (let i = 0; i < nuggetCount; i++) {
-    const radiusBase = Math.min(width, height) * (0.08 + rng() * 0.12);
-    const radiusX = Math.max(2, radiusBase * (0.9 + rng() * 0.6));
-    const radiusY = Math.max(2, radiusBase * (0.6 + rng() * 0.5));
-    const nuggetX = clampValue(x + radiusX + rng() * (width - radiusX * 2), x, x + width);
-    const nuggetY = clampValue(y + radiusY + rng() * (height - radiusY * 2), y, y + height);
+  for (let veinIndex = 0; veinIndex < veinCount; veinIndex++) {
+    const startX = clampValue(x + rng() * width, x, x + width);
+    const startY = clampValue(y + rng() * height, y, y + height);
+    const segmentCount = 2 + Math.floor(rng() * 2);
+    const segments = [];
 
     ctx.beginPath();
-    ctx.ellipse(
-      nuggetX,
-      nuggetY,
-      radiusX,
-      radiusY,
-      rng() * Math.PI,
-      0,
-      Math.PI * 2
-    );
-    ctx.fillStyle = nuggetColors[i % nuggetColors.length];
-    ctx.fill();
+    ctx.moveTo(startX, startY);
 
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(250, 204, 21, 0.5)";
+    let lastX = startX;
+    let lastY = startY;
+    for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+      const controlX = clampValue(
+        lastX + (rng() - 0.5) * width * 0.6,
+        x,
+        x + width
+      );
+      const controlY = clampValue(
+        lastY + (rng() - 0.5) * height * 0.6,
+        y,
+        y + height
+      );
+      const endX = clampValue(
+        controlX + (rng() - 0.5) * width * 0.4,
+        x,
+        x + width
+      );
+      const endY = clampValue(
+        controlY + (rng() - 0.5) * height * 0.4,
+        y,
+        y + height
+      );
+
+      ctx.quadraticCurveTo(controlX, controlY, endX, endY);
+      segments.push({
+        startX: lastX,
+        startY: lastY,
+        controlX,
+        controlY,
+        endX,
+        endY,
+      });
+      lastX = endX;
+      lastY = endY;
+    }
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(250, 204, 21, 0.75)";
+    ctx.lineWidth = veinThickness;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.stroke();
+    ctx.restore();
+
+    segments.forEach((segment) => {
+      const nuggetAlongSegment = 1 + Math.floor(rng() * 2);
+      for (let nugget = 0; nugget < nuggetAlongSegment; nugget++) {
+        const t = 0.15 + rng() * 0.7;
+        const invT = 1 - t;
+        const pointX =
+          invT * invT * segment.startX +
+          2 * invT * t * segment.controlX +
+          t * t * segment.endX;
+        const pointY =
+          invT * invT * segment.startY +
+          2 * invT * t * segment.controlY +
+          t * t * segment.endY;
+
+        const offsetRadius = Math.min(width, height) * 0.05 * rng();
+        const angle = rng() * Math.PI * 2;
+        const nuggetX = clampValue(
+          pointX + Math.cos(angle) * offsetRadius,
+          x,
+          x + width
+        );
+        const nuggetY = clampValue(
+          pointY + Math.sin(angle) * offsetRadius,
+          y,
+          y + height
+        );
+
+        const radius = Math.max(1.2, Math.min(width, height) * (0.015 + rng() * 0.025));
+        ctx.beginPath();
+        ctx.arc(nuggetX, nuggetY, radius, 0, Math.PI * 2);
+        const color = nuggetColors[(veinIndex + nugget) % nuggetColors.length];
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = "rgba(253, 224, 71, 0.5)";
+        ctx.stroke();
+      }
+    });
   }
 
   ctx.restore();
