@@ -58,37 +58,46 @@ go test ./...
 The tests exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.
 
 ## Roadmap
-### Milestone 1 – Authoritative tick loop & robust networking
-- Introduce a fixed-rate simulation ticker (10–20 Hz) that applies stored player intents, clamps movement, and rebroadcasts authoritative positions from the server.
-- Switch the WebSocket contract to accept input payloads, persisting them per player for consumption in the tick loop.
-- Add heartbeat and disconnect handling plus round-trip diagnostics so inactive clients are cleaned up reliably.
-- Update the web client to publish input changes, lerp toward server positions, and surface connection quality details.
-- Document the authoritative movement flow and heartbeat expectations for contributors.
+### Milestone 1 – Mines & resource extraction
+- **Server**
+  - Model mine nodes (location, remaining ore, respawn timers) and ship their state in authoritative broadcasts.
+  - Resolve mining intents server-side, awarding gold, depleting reserves, and scheduling respawns.
+- **Client**
+  - Render mines on the canvas, allow players to start/stop mining within range, and surface progress feedback.
+- **Systems & Economy**
+  - Wire mining payouts into player inventories and ensure depletion pacing supports contested hotspots.
+- **Documentation**
+  - Capture mining rules, depletion mechanics, and respawn cadence for contributors.
 
-### Milestone 2 – Implement mines and gold extraction
-- Model mine nodes on the server (location, remaining ore, respawn timers) and include their status in state broadcasts.
-- Resolve mining actions server-side, emitting gold into inventories while depleting mine reserves and scheduling respawns.
-- Extend `/join` responses and realtime payloads so clients receive mine metadata for rendering.
-- Render mines on the client canvas, allow players to start/stop mining within range, and display progress feedback.
-- Capture mining rules, depletion mechanics, and respawn cadence in the documentation.
+### Milestone 2 – Combat & permadeath
+- **Server**
+  - Expand the player model with health, damage, equipment, and cooldown tracking, resolving combat in the tick loop.
+  - Handle permadeath cleanup, dropping inventories, removing dead sessions, and broadcasting events.
+- **Client**
+  - Visualize HP, damage feedback, respawn/creation flows, and dropped loot within the HUD.
+- **Systems & Economy**
+  - Define loot tables and drop behaviour that reinforce risk/reward loops.
+- **Documentation**
+  - Document combat rules, permadeath consequences, loot retrieval, and player re-entry expectations.
 
-### Milestone 3 – Server-authoritative combat & permadeath
-- Expand the player model with health, damage, equipment, and cooldown tracking, resolving attacks in the authoritative tick.
-- Handle permadeath cleanup server-side, dropping inventories into the world and removing dead sessions.
-- Broadcast combat events (attack requests, damage notifications, death/drop announcements) over WebSocket.
-- Visualize HP, damage feedback, respawn/creation flows, and dropped loot on the client.
-- Document combat rules, permadeath consequences, and loot retrieval expectations.
+### Milestone 3 – Guild hierarchy & taxation
+- **Server**
+  - Define guild data structures with tiered roles, relationships, and treasury balances backed by persistence-ready storage.
+  - Expose APIs or WebSocket commands for creation, invites, promotions, demotions, and configurable taxes.
+- **Client**
+  - Build UI for guild management, treasury summaries, and tax notifications.
+- **Systems & Economy**
+  - Route mining rewards through the tax pipeline so gold distributes up the hierarchy before reaching players.
+- **Documentation**
+  - Expand contributor docs with guild roles, taxation mechanics, and guidance for guild-less players.
 
-### Milestone 4 – Guild hierarchy with automated taxes
-- Define guild data structures with tiered roles, parent-child relationships, and treasury balances, persisting them as needed.
-- Provide APIs or WebSocket commands for guild creation, invites, promotions, demotions, and tax configuration within the five-tier limit.
-- Route mining rewards through the tax pipeline so gold is distributed up the hierarchy before reaching players.
-- Build client UI for guild management, treasury summaries, and tax notifications.
-- Expand the README with guild roles, taxation mechanics, and the experience for guild-less players.
-
-### Milestone 5 – Persistent economy & item lifecycle
-- Integrate SQLite/Postgres persistence covering players, guilds, mines, and item drops with crash-safe recovery.
-- Implement the halving-schedule gold emission so scarcity increases over time.
-- Add item spawn/despawn systems for NPCs/monsters, integrating drops into combat resolution and world state broadcasts.
-- Support player-to-player trade or guild treasury withdrawals with accompanying client UI.
-- Document persistence setup, the economic halving schedule, and trading expectations, including migration steps.
+### Milestone 4 – Persistent economy & item lifecycle
+- **Server**
+  - Integrate SQLite/Postgres persistence covering players, guilds, mines, and item drops with crash-safe recovery.
+  - Implement halving-schedule gold emission so scarcity increases over time.
+- **Client**
+  - Support player-to-player trade or guild treasury withdrawals with appropriate UI flows.
+- **Systems & Economy**
+  - Add item spawn/despawn systems for NPCs/monsters, integrating drops into combat resolution and world broadcasts.
+- **Documentation**
+  - Document persistence setup, the economic halving schedule, trading expectations, and required migrations.
