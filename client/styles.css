@@ -45,6 +45,28 @@ canvas {
   font-size: 1rem;
 }
 
+#diagnostics-toggle {
+  margin-top: 1.5rem;
+  padding: 0.5rem 1.25rem;
+  background: #1e293b;
+  color: inherit;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.35);
+}
+
+#diagnostics-toggle:hover,
+#diagnostics-toggle:focus-visible {
+  background: #334155;
+  border-color: #475569;
+  outline: none;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
+}
+
 #diagnostics {
   margin-top: 1.5rem;
   max-width: 420px;
