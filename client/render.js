@@ -175,6 +175,10 @@ function drawObstacle(ctx, obstacle) {
     drawGoldOreObstacle(ctx, obstacle);
     return;
   }
+  if (normalizedType === "lava") {
+    drawLavaObstacle(ctx, obstacle);
+    return;
+  }
 
   drawDefaultObstacle(ctx, obstacle);
 }
@@ -304,6 +308,54 @@ function drawGoldOreObstacle(ctx, obstacle) {
       }
     });
   }
+
+  ctx.restore();
+}
+
+// drawLavaObstacle renders a glowing lava pool that still allows traversal.
+function drawLavaObstacle(ctx, obstacle) {
+  const { x, y, width, height } = obstacle;
+  ctx.save();
+
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const innerRadius = Math.min(width, height) * 0.2;
+  const outerRadius = Math.max(width, height) * 0.8;
+  const gradient = ctx.createRadialGradient(
+    centerX,
+    centerY,
+    innerRadius,
+    centerX,
+    centerY,
+    outerRadius
+  );
+  gradient.addColorStop(0, "#fde68a");
+  gradient.addColorStop(0.4, "#fb923c");
+  gradient.addColorStop(0.75, "#ea580c");
+  gradient.addColorStop(1, "#7f1d1d");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, width, height);
+
+  const rng = createObstacleRng(obstacle);
+  const bubbleCount = Math.max(4, Math.round((width + height) / 30));
+  for (let i = 0; i < bubbleCount; i++) {
+    const bubbleX = clampValue(x + rng() * width, x + 6, x + width - 6);
+    const bubbleY = clampValue(y + rng() * height, y + 6, y + height - 6);
+    const bubbleRadius = Math.max(2.5, Math.min(width, height) * (0.04 + rng() * 0.05));
+
+    ctx.beginPath();
+    ctx.arc(bubbleX, bubbleY, bubbleRadius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(254, 215, 170, 0.9)";
+    ctx.fill();
+
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = "rgba(249, 115, 22, 0.7)";
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(127, 29, 29, 0.95)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
   ctx.restore();
 }
