@@ -71,6 +71,12 @@ Experimental browser-based, PvP-enabled permadeath MMO prototype. Players mine f
 - **Diagnostics**: `/diagnostics` returns a JSON payload with the current tick rate, heartbeat interval, and per-player heartbeat/latency observations for monitoring round-trip quality.
 - **World geometry**: The server seeds a handful of rectangular obstacles at startup. Their coordinates are included in `/join` responses and every realtime `state` payload so clients can render matching blockers. Player movement is resolved server-side with obstacle collisions and mutual player separation to prevent overlap.
 
+### Controls
+
+- **Movement**: WASD keys issue normalized intent vectors to the server.
+- **Melee attack**: Tap `Space` to swing a short-range attack in front of your facing.
+- **Fireball**: Press `F` to launch a ranged projectile that travels up to five tiles and vanishes on collision.
+
 ---
 
 ## Roadmap
