@@ -1,4 +1,12 @@
 const HEARTBEAT_INTERVAL = 2000;
+const DEFAULT_FACING = "down";
+const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
+
+function normalizeFacing(facing) {
+  return typeof facing === "string" && VALID_FACINGS.has(facing)
+    ? facing
+    : DEFAULT_FACING;
+}
 
 export function sendMessage(store, payload, { onSent } = {}) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
@@ -41,16 +49,25 @@ export async function joinGame(store) {
     }
     const payload = await response.json();
     store.playerId = payload.id;
-    store.players = Object.fromEntries(payload.players.map((p) => [p.id, p]));
+    store.players = Object.fromEntries(
+      payload.players.map((p) => [p.id, { ...p, facing: normalizeFacing(p.facing) }])
+    );
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     if (!store.players[store.playerId]) {
-      store.players[store.playerId] = { id: store.playerId, x: 80, y: 80 };
+      store.players[store.playerId] = {
+        id: store.playerId,
+        x: 80,
+        y: 80,
+        facing: DEFAULT_FACING,
+      };
     }
     store.displayPlayers = {};
     Object.values(store.players).forEach((p) => {
       store.displayPlayers[p.id] = { x: p.x, y: p.y };
     });
     store.currentIntent = { dx: 0, dy: 0 };
+    store.currentFacing = normalizeFacing(store.players[store.playerId].facing);
+    store.directionOrder = [];
     store.setLatency(null);
     store.setStatusBase(`Connected as ${store.playerId}. Use WASD to move.`);
     connectEvents(store);
@@ -95,17 +112,23 @@ export function connectEvents(store) {
     try {
       const payload = JSON.parse(event.data);
       if (payload.type === "state") {
-        store.players = Object.fromEntries(payload.players.map((p) => [p.id, p]));
+        store.players = Object.fromEntries(
+          payload.players.map((p) => [p.id, { ...p, facing: normalizeFacing(p.facing) }])
+        );
         if (Array.isArray(payload.obstacles)) {
           store.obstacles = payload.obstacles;
         }
         if (store.players[store.playerId]) {
+          store.players[store.playerId].facing = normalizeFacing(
+            store.players[store.playerId].facing
+          );
           if (!store.displayPlayers[store.playerId]) {
             store.displayPlayers[store.playerId] = {
               x: store.players[store.playerId].x,
               y: store.players[store.playerId].y,
             };
           }
+          store.currentFacing = store.players[store.playerId].facing;
         } else {
           store.setStatusBase("Server no longer recognizes this player. Rejoining...");
           handleConnectionLoss(store);
@@ -157,6 +180,7 @@ export function sendCurrentIntent(store) {
     type: "input",
     dx: store.currentIntent.dx,
     dy: store.currentIntent.dy,
+    facing: store.currentFacing,
   };
   sendMessage(store, payload, {
     onSent: () => {
@@ -164,6 +188,9 @@ export function sendCurrentIntent(store) {
       store.updateDiagnostics();
     },
   });
+  if (store.players[store.playerId]) {
+    store.players[store.playerId].facing = store.currentFacing;
+  }
 }
 
 export function startHeartbeat(store) {
@@ -232,6 +259,9 @@ function handleConnectionLoss(store) {
   store.lastMessageSentAt = null;
   store.messagesSent = 0;
   store.bytesSent = 0;
+  store.currentIntent = { dx: 0, dy: 0 };
+  store.currentFacing = DEFAULT_FACING;
+  store.directionOrder = [];
   store.updateDiagnostics();
   if (store.playerId === null) {
     return;

@@ -1,17 +1,52 @@
 import { sendCurrentIntent } from "./network.js";
 
+const DEFAULT_FACING = "down";
+const KEY_TO_FACING = {
+  w: "up",
+  a: "left",
+  s: "down",
+  d: "right",
+};
+const MOVEMENT_KEYS = new Set(Object.keys(KEY_TO_FACING));
+
 export function registerInputHandlers(store) {
   function handleKey(event, isPressed) {
     const key = event.key.toLowerCase();
-    if (["w", "a", "s", "d"].includes(key)) {
-      event.preventDefault();
-      if (isPressed) {
-        store.keys.add(key);
-      } else {
-        store.keys.delete(key);
-      }
-      updateIntentFromKeys();
+    if (!MOVEMENT_KEYS.has(key)) {
+      return;
     }
+
+    event.preventDefault();
+    if (isPressed) {
+      if (!store.keys.has(key)) {
+        store.directionOrder = store.directionOrder.filter((entry) => entry !== key);
+        store.directionOrder.push(key);
+      }
+      store.keys.add(key);
+    } else {
+      store.keys.delete(key);
+      store.directionOrder = store.directionOrder.filter((entry) => entry !== key);
+    }
+
+    updateIntentFromKeys();
+  }
+
+  function updateFacingFromKeys() {
+    if (!store.currentFacing) {
+      store.currentFacing = DEFAULT_FACING;
+    }
+
+    if (store.directionOrder.length === 0) {
+      return false;
+    }
+
+    const lastKey = store.directionOrder[store.directionOrder.length - 1];
+    const nextFacing = KEY_TO_FACING[lastKey] || store.currentFacing;
+    if (nextFacing !== store.currentFacing) {
+      store.currentFacing = nextFacing;
+      return true;
+    }
+    return false;
   }
 
   function updateIntentFromKeys() {
@@ -28,7 +63,8 @@ export function registerInputHandlers(store) {
       dy /= length;
     }
 
-    if (dx === store.currentIntent.dx && dy === store.currentIntent.dy) {
+    const facingChanged = updateFacingFromKeys();
+    if (!facingChanged && dx === store.currentIntent.dx && dy === store.currentIntent.dy) {
       return;
     }
 
