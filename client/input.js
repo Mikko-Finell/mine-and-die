@@ -31,22 +31,27 @@ export function registerInputHandlers(store) {
     updateIntentFromKeys();
   }
 
-  function updateFacingFromKeys() {
-    if (!store.currentFacing) {
-      store.currentFacing = DEFAULT_FACING;
+  function deriveFacing(rawDx, rawDy) {
+    const currentFacing = store.currentFacing || DEFAULT_FACING;
+
+    if (rawDx === 0 && rawDy === 0) {
+      if (store.directionOrder.length > 0) {
+        const lastKey = store.directionOrder[store.directionOrder.length - 1];
+        return KEY_TO_FACING[lastKey] || currentFacing;
+      }
+      return currentFacing;
     }
 
-    if (store.directionOrder.length === 0) {
-      return false;
-    }
+    const absX = Math.abs(rawDx);
+    const absY = Math.abs(rawDy);
 
-    const lastKey = store.directionOrder[store.directionOrder.length - 1];
-    const nextFacing = KEY_TO_FACING[lastKey] || store.currentFacing;
-    if (nextFacing !== store.currentFacing) {
-      store.currentFacing = nextFacing;
-      return true;
+    if (absY >= absX && rawDy !== 0) {
+      return rawDy > 0 ? "down" : "up";
     }
-    return false;
+    if (rawDx !== 0) {
+      return rawDx > 0 ? "right" : "left";
+    }
+    return currentFacing;
   }
 
   function updateIntentFromKeys() {
@@ -57,13 +62,21 @@ export function registerInputHandlers(store) {
     if (store.keys.has("a")) dx -= 1;
     if (store.keys.has("d")) dx += 1;
 
+    const rawDx = dx;
+    const rawDy = dy;
+
     if (dx !== 0 || dy !== 0) {
       const length = Math.hypot(dx, dy) || 1;
       dx /= length;
       dy /= length;
     }
 
-    const facingChanged = updateFacingFromKeys();
+    const nextFacing = deriveFacing(rawDx, rawDy);
+    const facingChanged = nextFacing !== store.currentFacing;
+    if (facingChanged) {
+      store.currentFacing = nextFacing;
+    }
+
     if (!facingChanged && dx === store.currentIntent.dx && dy === store.currentIntent.dy) {
       return;
     }

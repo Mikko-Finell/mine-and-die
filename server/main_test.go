@@ -75,6 +75,68 @@ func TestUpdateIntentNormalizesVector(t *testing.T) {
 	}
 }
 
+func TestDeriveFacingFromMovement(t *testing.T) {
+	tests := []struct {
+		name       string
+		dx, dy     float64
+		fallback   FacingDirection
+		wantFacing FacingDirection
+	}{
+		{name: "upwardsMovement", dx: 0, dy: -1, fallback: FacingRight, wantFacing: FacingUp},
+		{name: "downwardsMovement", dx: 0, dy: 1, fallback: FacingLeft, wantFacing: FacingDown},
+		{name: "leftMovement", dx: -1, dy: 0, fallback: FacingUp, wantFacing: FacingLeft},
+		{name: "rightMovement", dx: 1, dy: 0, fallback: FacingUp, wantFacing: FacingRight},
+		{name: "diagonalPrefersVertical", dx: 1, dy: -1, fallback: FacingDown, wantFacing: FacingUp},
+		{name: "diagonalPrefersVerticalDown", dx: -1, dy: 1, fallback: FacingUp, wantFacing: FacingDown},
+		{name: "zeroFallsBack", dx: 0, dy: 0, fallback: FacingLeft, wantFacing: FacingLeft},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := deriveFacing(tt.dx, tt.dy, tt.fallback); got != tt.wantFacing {
+				t.Fatalf("deriveFacing(%f,%f,%q)=%q, want %q", tt.dx, tt.dy, tt.fallback, got, tt.wantFacing)
+			}
+		})
+	}
+}
+
+func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
+	hub := newHub()
+	playerID := "vector-facing"
+	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing}}
+
+	cases := []struct {
+		name string
+		dx   float64
+		dy   float64
+		want FacingDirection
+	}{
+		{name: "conflictingKeysUp", dx: 0, dy: -1, want: FacingUp},
+		{name: "conflictingKeysDown", dx: 0, dy: 1, want: FacingDown},
+		{name: "conflictingKeysLeft", dx: -1, dy: 0, want: FacingLeft},
+		{name: "conflictingKeysRight", dx: 1, dy: 0, want: FacingRight},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !hub.UpdateIntent(playerID, tc.dx, tc.dy, string(FacingRight)) {
+				t.Fatalf("UpdateIntent failed for player")
+			}
+			state := hub.players[playerID]
+			if state.Facing != tc.want {
+				t.Fatalf("expected facing %q, got %q", tc.want, state.Facing)
+			}
+		})
+	}
+
+	if !hub.UpdateIntent(playerID, 0, 0, string(FacingLeft)) {
+		t.Fatalf("UpdateIntent failed for stationary update")
+	}
+	if got := hub.players[playerID].Facing; got != FacingLeft {
+		t.Fatalf("expected stationary facing update to respect client facing, got %q", got)
+	}
+}
+
 func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	hub := newHub()
 	hub.obstacles = nil
