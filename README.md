@@ -24,7 +24,7 @@ The Go module under `server/` is now split by responsibility so contributors can
 - `messages.go` – JSON payload contracts for `/join`, `/ws`, and heartbeat acknowledgements.
 
 ## Core Concepts
-- **Gold Mining** – Finite deposits follow a halving schedule. Mining requires player action and exposes you to PvP risk.
+- **Gold Mining** – Swinging a melee attack into a gold ore block currently awards a single gold coin; richer economy systems remain aspirational.
 - **Permadeath** – Death deletes the character and drops everything. Create a new avatar to rejoin the fray.
 - **Guild Hierarchy** – Five roles (King → Noble → Knight → Squire → Citizen) with configurable taxes that flow upward.
 - **Player-Driven Economy** – No NPC merchants; scarcity and pricing are dictated by players. Monsters drop items, not gold.

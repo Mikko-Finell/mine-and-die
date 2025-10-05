@@ -7,6 +7,7 @@
   - Intent normalization and facing behaviour.
   - Movement bounds, obstacle collisions, and player separation.
   - Action cooldowns plus melee/fireball effect lifecycles.
+  - Mining rewards when melee swings contact gold ore.
   - Heartbeat bookkeeping and diagnostics snapshots.
 
 ## Manual Checks

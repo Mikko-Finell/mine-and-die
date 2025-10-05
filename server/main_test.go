@@ -264,6 +264,53 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	}
 }
 
+func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
+	hub := newHub()
+	hub.obstacles = []Obstacle{{
+		ID:     "gold-node",
+		Type:   "gold-ore",
+		X:      180,
+		Y:      200,
+		Width:  40,
+		Height: 40,
+	}}
+
+	minerID := "miner"
+	hub.players[minerID] = &playerState{
+		Player: Player{
+			ID:        minerID,
+			X:         200,
+			Y:         186,
+			Facing:    FacingDown,
+			Inventory: NewInventory(),
+		},
+		lastHeartbeat: time.Now(),
+		cooldowns:     make(map[string]time.Time),
+	}
+
+	if !hub.HandleAction(minerID, effectTypeAttack) {
+		t.Fatalf("expected melee attack to trigger")
+	}
+
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	state, ok := hub.players[minerID]
+	if !ok {
+		t.Fatalf("expected miner to remain registered")
+	}
+	if len(state.Inventory.Slots) != 1 {
+		t.Fatalf("expected inventory to contain a single slot, got %d", len(state.Inventory.Slots))
+	}
+	slot := state.Inventory.Slots[0]
+	if slot.Item.Type != ItemTypeGold {
+		t.Fatalf("expected slot to contain gold, got %q", slot.Item.Type)
+	}
+	if slot.Item.Quantity != 1 {
+		t.Fatalf("expected 1 gold coin, got %d", slot.Item.Quantity)
+	}
+}
+
 func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
 	hub := newHub()
 	playerID := "player"
