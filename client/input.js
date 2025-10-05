@@ -9,6 +9,17 @@ const KEY_TO_FACING = {
 };
 const MOVEMENT_KEYS = new Set(Object.keys(KEY_TO_FACING));
 
+// registerInputHandlers keeps the authoritative record of keyboard intent on the
+// client. We maintain two pieces of state:
+//   • `store.keys` tracks which movement keys are currently depressed so we can
+//     compute the desired velocity vector (which is normalized before being
+//     sent to the server).
+//   • `store.directionOrder` remembers the order keys were pressed so we can
+//     surface the last meaningful direction as the avatar's facing when the
+//     player comes to a stop.
+// Every time the derived intent or facing changes we immediately send the
+// updated payload via `sendCurrentIntent`, keeping the server simulation in
+// sync with the player's local input.
 export function registerInputHandlers(store) {
   function handleKey(event, isPressed) {
     const key = event.key.toLowerCase();
@@ -31,6 +42,14 @@ export function registerInputHandlers(store) {
     updateIntentFromKeys();
   }
 
+  // deriveFacing converts the raw (non-normalized) directional input into one
+  // of the four cardinal facing strings. Priority works as follows:
+  //   • When there is movement, whichever axis has the greater absolute value
+  //     wins. This mimics typical top-down movement, ensuring diagonals favor
+  //     vertical motion unless horizontal input is stronger.
+  //   • When movement ceases we fall back to the last pressed key (tracked in
+  //     `store.directionOrder`) so the avatar keeps looking the way the player
+  //     expects while idle.
   function deriveFacing(rawDx, rawDy) {
     const currentFacing = store.currentFacing || DEFAULT_FACING;
 
@@ -54,6 +73,10 @@ export function registerInputHandlers(store) {
     return currentFacing;
   }
 
+  // updateIntentFromKeys reads the current keyboard state, builds a normalized
+  // velocity vector, and decides whether the facing should change. The
+  // resulting intent is cached on the store and only dispatched when something
+  // actually changed to avoid redundant network traffic.
   function updateIntentFromKeys() {
     let dx = 0;
     let dy = 0;
