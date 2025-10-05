@@ -1,6 +1,19 @@
 const statusEl = document.getElementById("status");
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
+const latencyInput = document.getElementById("latency-input");
+
+const diagnosticsEls = {
+  connection: document.getElementById("diag-connection"),
+  players: document.getElementById("diag-players"),
+  stateAge: document.getElementById("diag-state-age"),
+  intent: document.getElementById("diag-intent"),
+  intentAge: document.getElementById("diag-intent-age"),
+  heartbeat: document.getElementById("diag-heartbeat"),
+  latency: document.getElementById("diag-latency"),
+  simLatency: document.getElementById("diag-sim-latency"),
+  messages: document.getElementById("diag-messages"),
+};
 
 const TILE_SIZE = 40;
 const GRID_WIDTH = canvas.width / TILE_SIZE;
@@ -19,6 +32,15 @@ let displayPlayers = {};
 let currentIntent = { dx: 0, dy: 0 };
 let heartbeatTimer = null;
 let latencyMs = null;
+let simulatedLatencyMs = 0;
+let lastStateReceivedAt = null;
+let lastIntentSentAt = null;
+let lastHeartbeatSentAt = null;
+let lastHeartbeatAckAt = null;
+let lastHeartbeatRoundTrip = null;
+let lastMessageSentAt = null;
+let messagesSent = 0;
+let bytesSent = 0;
 
 const keys = new Set();
 let lastTimestamp = performance.now();
@@ -38,11 +60,111 @@ function renderStatus() {
 function setStatusBase(text) {
   statusBaseText = text;
   renderStatus();
+  updateDiagnostics();
 }
 
 function setLatency(value) {
   latencyMs = value;
   renderStatus();
+  updateDiagnostics();
+}
+
+function setSimulatedLatency(value) {
+  simulatedLatencyMs = Math.max(0, Number.isFinite(value) ? value : 0);
+  if (latencyInput) {
+    latencyInput.value = String(simulatedLatencyMs);
+  }
+  updateDiagnostics();
+}
+
+function formatAgo(timestamp) {
+  if (!timestamp) return "—";
+  const delta = Math.max(0, Date.now() - timestamp);
+  if (delta < 1000) {
+    return `${delta} ms ago`;
+  }
+  if (delta < 60_000) {
+    return `${(delta / 1000).toFixed(1)} s ago`;
+  }
+  const minutes = Math.floor(delta / 60_000);
+  return `${minutes} min ago`;
+}
+
+function formatLatency(value) {
+  if (value == null) return "—";
+  return `${Math.round(value)} ms`;
+}
+
+function updateDiagnostics() {
+  if (!diagnosticsEls.connection) {
+    return;
+  }
+  const socketStates = ["connecting", "open", "closing", "closed"];
+  const connectionText = socket
+    ? socketStates[socket.readyState] || "unknown"
+    : "disconnected";
+  diagnosticsEls.connection.textContent = connectionText;
+  diagnosticsEls.players.textContent = String(Object.keys(players).length);
+  diagnosticsEls.stateAge.textContent = formatAgo(lastStateReceivedAt);
+  const intentLabel = currentIntent.dx === 0 && currentIntent.dy === 0
+    ? "idle"
+    : `dx:${currentIntent.dx.toFixed(2)} dy:${currentIntent.dy.toFixed(2)}`;
+  diagnosticsEls.intent.textContent = intentLabel;
+  diagnosticsEls.intentAge.textContent = formatAgo(lastIntentSentAt);
+
+  const heartbeatStatus = heartbeatTimer !== null ? "active" : "idle";
+  const heartbeatParts = [heartbeatStatus];
+  if (lastHeartbeatSentAt) {
+    heartbeatParts.push(`sent ${formatAgo(lastHeartbeatSentAt)}`);
+  }
+  if (lastHeartbeatAckAt) {
+    heartbeatParts.push(`ack ${formatAgo(lastHeartbeatAckAt)}`);
+  }
+  if (lastHeartbeatRoundTrip != null) {
+    heartbeatParts.push(`rtt ${formatLatency(lastHeartbeatRoundTrip)}`);
+  }
+  diagnosticsEls.heartbeat.textContent = heartbeatParts.join(" · ");
+
+  diagnosticsEls.latency.textContent = formatLatency(latencyMs);
+  diagnosticsEls.simLatency.textContent = `${simulatedLatencyMs} ms`;
+
+  if (messagesSent === 0) {
+    diagnosticsEls.messages.textContent = "none";
+  } else {
+    const lastSentText = lastMessageSentAt
+      ? `last ${formatAgo(lastMessageSentAt)}`
+      : "";
+    const base = `${messagesSent} (${bytesSent} bytes)`;
+    diagnosticsEls.messages.textContent = lastSentText
+      ? `${base} · ${lastSentText}`
+      : base;
+  }
+}
+
+function sendMessage(payload, { onSent } = {}) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  const messageText = JSON.stringify(payload);
+  const dispatch = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    if (onSent) {
+      onSent();
+    }
+    socket.send(messageText);
+    messagesSent += 1;
+    bytesSent += messageText.length;
+    lastMessageSentAt = Date.now();
+    updateDiagnostics();
+  };
+
+  if (simulatedLatencyMs > 0) {
+    setTimeout(dispatch, simulatedLatencyMs);
+  } else {
+    dispatch();
+  }
 }
 
 async function joinGame() {
@@ -72,6 +194,7 @@ async function joinGame() {
     setLatency(null);
     setStatusBase(`Connected as ${playerId}. Use WASD to move.`);
     connectEvents();
+    updateDiagnostics();
   } catch (err) {
     setLatency(null);
     setStatusBase(`Unable to join: ${err.message}`);
@@ -107,6 +230,15 @@ function scheduleReconnect() {
 function handleConnectionLoss() {
   closeSocketSilently();
   setLatency(null);
+  lastStateReceivedAt = null;
+  lastIntentSentAt = null;
+  lastHeartbeatSentAt = null;
+  lastHeartbeatAckAt = null;
+  lastHeartbeatRoundTrip = null;
+  lastMessageSentAt = null;
+  messagesSent = 0;
+  bytesSent = 0;
+  updateDiagnostics();
   if (playerId === null) {
     return;
   }
@@ -126,12 +258,22 @@ function connectEvents() {
     playerId
   )}`;
   socket = new WebSocket(wsUrl);
+  messagesSent = 0;
+  bytesSent = 0;
+  lastMessageSentAt = null;
+  lastHeartbeatSentAt = null;
+  lastHeartbeatAckAt = null;
+  lastHeartbeatRoundTrip = null;
+  lastIntentSentAt = null;
+  lastStateReceivedAt = null;
+  updateDiagnostics();
 
   socket.onopen = () => {
     setStatusBase(`Connected as ${playerId}. Use WASD to move.`);
     setLatency(null);
     sendCurrentIntent();
     startHeartbeat();
+    updateDiagnostics();
   };
 
   socket.onmessage = (event) => {
@@ -161,13 +303,20 @@ function connectEvents() {
             delete displayPlayers[id];
           }
         });
+        lastStateReceivedAt = Date.now();
+        updateDiagnostics();
       } else if (payload.type === "heartbeat") {
         if (typeof payload.rtt === "number") {
-          setLatency(Math.max(0, payload.rtt));
+          const roundTrip = Math.max(0, payload.rtt);
+          setLatency(roundTrip);
+          lastHeartbeatRoundTrip = roundTrip;
         } else if (typeof payload.clientTime === "number") {
           const roundTrip = Date.now() - payload.clientTime;
           setLatency(Math.max(0, roundTrip));
+          lastHeartbeatRoundTrip = Math.max(0, roundTrip);
         }
+        lastHeartbeatAckAt = Date.now();
+        updateDiagnostics();
       }
     } catch (err) {
       console.error("Failed to parse event", err);
@@ -277,25 +426,31 @@ function sendCurrentIntent() {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return;
   }
-  socket.send(
-    JSON.stringify({
-      type: "input",
-      dx: currentIntent.dx,
-      dy: currentIntent.dy,
-    })
-  );
+  const payload = {
+    type: "input",
+    dx: currentIntent.dx,
+    dy: currentIntent.dy,
+  };
+  sendMessage(payload, {
+    onSent: () => {
+      lastIntentSentAt = Date.now();
+      updateDiagnostics();
+    },
+  });
 }
 
 function startHeartbeat() {
   stopHeartbeat();
   sendHeartbeat();
   heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+  updateDiagnostics();
 }
 
 function stopHeartbeat() {
   if (heartbeatTimer !== null) {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;
+    updateDiagnostics();
   }
 }
 
@@ -304,12 +459,30 @@ function sendHeartbeat() {
     return;
   }
   const sentAt = Date.now();
-  socket.send(
-    JSON.stringify({
-      type: "heartbeat",
-      sentAt,
-    })
-  );
+  const payload = {
+    type: "heartbeat",
+    sentAt,
+  };
+  sendMessage(payload, {
+    onSent: () => {
+      lastHeartbeatSentAt = Date.now();
+      updateDiagnostics();
+    },
+  });
 }
+
+if (latencyInput) {
+  latencyInput.addEventListener("input", () => {
+    const parsed = Number(latencyInput.value);
+    if (Number.isFinite(parsed)) {
+      setSimulatedLatency(Math.max(0, parsed));
+    } else if (latencyInput.value === "") {
+      setSimulatedLatency(0);
+    }
+  });
+}
+
+setSimulatedLatency(0);
+updateDiagnostics();
 requestAnimationFrame(gameLoop);
 joinGame();

@@ -23,7 +23,69 @@ canvas {
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.6);
 }
 
+.control-row {
+  margin-top: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.control-row input[type="number"] {
+  width: 6rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  background: #020617;
+  color: inherit;
+}
+
 #status {
   margin-top: 1.5rem;
   font-size: 1rem;
+}
+
+#diagnostics {
+  margin-top: 1.5rem;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+  font-family: "Fira Mono", "SFMono-Regular", Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.35);
+}
+
+#diagnostics h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.diagnostic-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.diagnostic-line:last-of-type {
+  border-bottom: none;
+}
+
+.diagnostic-line .label {
+  color: #cbd5f5;
+}
+
+.diagnostic-line .value {
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
 }
