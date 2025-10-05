@@ -17,6 +17,7 @@ const EFFECT_STYLES = {
   },
 };
 
+// startRenderLoop animates interpolation and draws the scene each frame.
 export function startRenderLoop(store) {
   store.lastTimestamp = performance.now();
 
@@ -47,6 +48,7 @@ export function startRenderLoop(store) {
   requestAnimationFrame(gameLoop);
 }
 
+// drawScene paints the background, obstacles, effects, and players.
 function drawScene(store) {
   const { ctx, canvas } = store;
   ctx.fillStyle = "#0f172a";
@@ -102,6 +104,7 @@ function drawScene(store) {
   });
 }
 
+// drawEffects renders translucent rectangles for every active effect.
 function drawEffects(store) {
   const { ctx } = store;
   if (!Array.isArray(store.effects) || store.effects.length === 0) {
@@ -134,6 +137,7 @@ function drawEffects(store) {
   });
 }
 
+// drawObstacle picks the correct renderer for each obstacle type.
 function drawObstacle(ctx, obstacle) {
   if (!obstacle || typeof obstacle !== "object") {
     return;
@@ -148,6 +152,7 @@ function drawObstacle(ctx, obstacle) {
   drawDefaultObstacle(ctx, obstacle);
 }
 
+// drawDefaultObstacle paints a simple stone block.
 function drawDefaultObstacle(ctx, obstacle) {
   const { x, y, width, height } = obstacle;
   ctx.save();
@@ -158,6 +163,7 @@ function drawDefaultObstacle(ctx, obstacle) {
   ctx.restore();
 }
 
+// drawGoldOreObstacle renders a gold ore node with deterministic nuggets.
 function drawGoldOreObstacle(ctx, obstacle) {
   const { x, y, width, height } = obstacle;
   ctx.save();
@@ -204,6 +210,7 @@ function drawGoldOreObstacle(ctx, obstacle) {
   ctx.restore();
 }
 
+// createObstacleRng returns a deterministic RNG per obstacle for visuals.
 function createObstacleRng(obstacle) {
   const seedSource =
     (typeof obstacle.id === "string" && obstacle.id) ||
@@ -226,12 +233,14 @@ function createObstacleRng(obstacle) {
   };
 }
 
+// clampValue bounds a number inside the provided range.
 function clampValue(value, min, max) {
   if (value < min) return min;
   if (value > max) return max;
   return value;
 }
 
+// normalizeObstacleType standardizes obstacle type strings used for styling.
 function normalizeObstacleType(rawType) {
   if (typeof rawType !== "string") {
     return "";
