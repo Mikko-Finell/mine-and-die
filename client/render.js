@@ -6,6 +6,13 @@ const FACING_OFFSETS = {
   right: { x: 1, y: 0 },
 };
 
+const EFFECT_STYLES = {
+  attack: {
+    fill: "rgba(239, 68, 68, 0.25)",
+    stroke: "rgba(239, 68, 68, 0.8)",
+  },
+};
+
 export function startRenderLoop(store) {
   store.lastTimestamp = performance.now();
 
@@ -63,6 +70,8 @@ function drawScene(store) {
     ctx.strokeRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
   });
 
+  drawEffects(store);
+
   Object.entries(store.displayPlayers).forEach(([id, position]) => {
     ctx.fillStyle = id === store.playerId ? "#38bdf8" : "#f97316";
     ctx.fillRect(
@@ -88,6 +97,38 @@ function drawScene(store) {
       position.y + offset.y * indicatorLength
     );
     ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function drawEffects(store) {
+  const { ctx } = store;
+  if (!Array.isArray(store.effects) || store.effects.length === 0) {
+    return;
+  }
+  store.effects.forEach((effect) => {
+    if (!effect || typeof effect !== "object") {
+      return;
+    }
+    const style = EFFECT_STYLES[effect.type];
+    if (!style) {
+      return;
+    }
+    const { x, y, width, height } = effect;
+    if (
+      typeof x !== "number" ||
+      typeof y !== "number" ||
+      typeof width !== "number" ||
+      typeof height !== "number"
+    ) {
+      return;
+    }
+    ctx.save();
+    ctx.fillStyle = style.fill;
+    ctx.strokeStyle = style.stroke;
+    ctx.lineWidth = 2;
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x, y, width, height);
     ctx.restore();
   });
 }

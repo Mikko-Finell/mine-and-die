@@ -60,6 +60,7 @@ const store = {
   lastMessageSentAt: null,
   messagesSent: 0,
   bytesSent: 0,
+  effects: [],
 };
 
 function updateDiagnosticsToggle() {

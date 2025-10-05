@@ -53,6 +53,7 @@ export async function joinGame(store) {
       payload.players.map((p) => [p.id, { ...p, facing: normalizeFacing(p.facing) }])
     );
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
+    store.effects = Array.isArray(payload.effects) ? payload.effects : [];
     if (!store.players[store.playerId]) {
       store.players[store.playerId] = {
         id: store.playerId,
@@ -117,6 +118,11 @@ export function connectEvents(store) {
         );
         if (Array.isArray(payload.obstacles)) {
           store.obstacles = payload.obstacles;
+        }
+        if (Array.isArray(payload.effects)) {
+          store.effects = payload.effects;
+        } else {
+          store.effects = [];
         }
         if (store.players[store.playerId]) {
           store.players[store.playerId].facing = normalizeFacing(
@@ -191,6 +197,20 @@ export function sendCurrentIntent(store) {
   if (store.players[store.playerId]) {
     store.players[store.playerId].facing = store.currentFacing;
   }
+}
+
+export function sendAction(store, action, params = undefined) {
+  if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  if (!action) {
+    return;
+  }
+  const payload = { type: "action", action };
+  if (params && typeof params === "object" && Object.keys(params).length > 0) {
+    payload.params = params;
+  }
+  sendMessage(store, payload);
 }
 
 export function startHeartbeat(store) {

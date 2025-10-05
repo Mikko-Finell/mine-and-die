@@ -20,3 +20,7 @@ This file applies to the entire repository.
 ## Movement & facing overview
 - The client owns keyboard bookkeeping. `client/input.js` tracks a set of pressed keys for velocity and keeps a last-pressed order so we can remember which way the player should face while idle. Every change results in a normalized `{dx, dy}` intent and facing update being sent immediately to the server.
 - The server is authoritative for simulation. `server/main.go` clamps incoming intent vectors, derives a canonical facing when movement is happening, and, once per tick, advances positions against world bounds, obstacles, and other players before broadcasting the latest state to everyone.
+
+## Effect system overview
+- `server/main.go` keeps an extendable list of `Effect` records (type, owner, start/duration, geometry, params) and prunes them each tick. Helpers like `HandleAction`/`triggerMeleeAttack` append new entries, run immediate collision checks, and enforce per-player cooldowns.
+- Active effects are included in `joinResponse`/`stateMessage` payloads so clients can render them without additional round-trips. Client modules (`network.js`, `render.js`) mirror the array and paint translucent debug rectangles for attacks.

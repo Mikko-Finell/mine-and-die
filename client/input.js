@@ -1,4 +1,4 @@
-import { sendCurrentIntent } from "./network.js";
+import { sendAction, sendCurrentIntent } from "./network.js";
 
 const DEFAULT_FACING = "down";
 const KEY_TO_FACING = {
@@ -8,6 +8,7 @@ const KEY_TO_FACING = {
   d: "right",
 };
 const MOVEMENT_KEYS = new Set(Object.keys(KEY_TO_FACING));
+const ATTACK_ACTION = "attack";
 
 // registerInputHandlers keeps the authoritative record of keyboard intent on the
 // client. We maintain two pieces of state:
@@ -22,6 +23,14 @@ const MOVEMENT_KEYS = new Set(Object.keys(KEY_TO_FACING));
 // sync with the player's local input.
 export function registerInputHandlers(store) {
   function handleKey(event, isPressed) {
+    if (event.code === "Space") {
+      event.preventDefault();
+      if (isPressed && !event.repeat) {
+        sendAction(store, ATTACK_ACTION);
+      }
+      return;
+    }
+
     const key = event.key.toLowerCase();
     if (!MOVEMENT_KEYS.has(key)) {
       return;
