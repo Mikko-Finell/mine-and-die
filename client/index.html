@@ -10,7 +10,56 @@
     <main>
       <h1>Mine and Die Prototype</h1>
       <canvas id="game-canvas" width="800" height="600"></canvas>
+      <section class="control-row">
+        <label for="latency-input">Simulated latency (ms)</label>
+        <input
+          type="number"
+          id="latency-input"
+          min="0"
+          step="10"
+          value="0"
+        />
+      </section>
       <section id="status"></section>
+      <section id="diagnostics">
+        <h2>Diagnostics</h2>
+        <div class="diagnostic-line">
+          <span class="label">Connection</span>
+          <span id="diag-connection" class="value">—</span>
+        </div>
+        <div class="diagnostic-line">
+          <span class="label">Players tracked</span>
+          <span id="diag-players" class="value">—</span>
+        </div>
+        <div class="diagnostic-line">
+          <span class="label">Last state update</span>
+          <span id="diag-state-age" class="value">—</span>
+        </div>
+        <div class="diagnostic-line">
+          <span class="label">Input vector</span>
+          <span id="diag-intent" class="value">—</span>
+        </div>
+        <div class="diagnostic-line">
+          <span class="label">Last input send</span>
+          <span id="diag-intent-age" class="value">—</span>
+        </div>
+        <div class="diagnostic-line">
+          <span class="label">Heartbeat</span>
+          <span id="diag-heartbeat" class="value">—</span>
+        </div>
+        <div class="diagnostic-line">
+          <span class="label">Latency (observed)</span>
+          <span id="diag-latency" class="value">—</span>
+        </div>
+        <div class="diagnostic-line">
+          <span class="label">Simulated latency</span>
+          <span id="diag-sim-latency" class="value">—</span>
+        </div>
+        <div class="diagnostic-line">
+          <span class="label">Messages sent</span>
+          <span id="diag-messages" class="value">—</span>
+        </div>
+      </section>
     </main>
     <script src="main.js"></script>
   </body>
