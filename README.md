@@ -69,6 +69,7 @@ Experimental browser-based, PvP-enabled permadeath MMO prototype. Players mine f
   - Clients emit `{ "type": "heartbeat", "sentAt": <unixMillis> }` every ~2 seconds.
   - The server responds with `{ "type": "heartbeat", "serverTime": <unixMillis>, "clientTime": <unixMillis>, "rtt": <ms> }` and removes sockets that miss three consecutive heartbeats (~6 seconds).
 - **Diagnostics**: `/diagnostics` returns a JSON payload with the current tick rate, heartbeat interval, and per-player heartbeat/latency observations for monitoring round-trip quality.
+- **World geometry**: The server seeds a handful of rectangular obstacles at startup. Their coordinates are included in `/join` responses and every realtime `state` payload so clients can render matching blockers. Player movement is resolved server-side with obstacle collisions and mutual player separation to prevent overlap.
 
 ---
 

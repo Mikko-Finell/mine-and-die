@@ -42,6 +42,7 @@ export async function joinGame(store) {
     const payload = await response.json();
     store.playerId = payload.id;
     store.players = Object.fromEntries(payload.players.map((p) => [p.id, p]));
+    store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     if (!store.players[store.playerId]) {
       store.players[store.playerId] = { id: store.playerId, x: 80, y: 80 };
     }
@@ -95,6 +96,9 @@ export function connectEvents(store) {
       const payload = JSON.parse(event.data);
       if (payload.type === "state") {
         store.players = Object.fromEntries(payload.players.map((p) => [p.id, p]));
+        if (Array.isArray(payload.obstacles)) {
+          store.obstacles = payload.obstacles;
+        }
         if (store.players[store.playerId]) {
           if (!store.displayPlayers[store.playerId]) {
             store.displayPlayers[store.playerId] = {

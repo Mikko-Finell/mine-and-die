@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -41,6 +42,10 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 	if _, ok := hub.players[second.ID]; !ok {
 		t.Fatalf("hub players map missing second player")
 	}
+
+	if len(first.Obstacles) != len(hub.obstacles) {
+		t.Fatalf("expected join response to include %d obstacles, got %d", len(hub.obstacles), len(first.Obstacles))
+	}
 }
 
 func TestUpdateIntentNormalizesVector(t *testing.T) {
@@ -67,6 +72,7 @@ func TestUpdateIntentNormalizesVector(t *testing.T) {
 
 func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	hub := newHub()
+	hub.obstacles = nil
 	now := time.Now()
 
 	moverID := "mover"
@@ -110,6 +116,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 
 func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	hub := newHub()
+	hub.obstacles = nil
 	staleID := "stale"
 	hub.players[staleID] = &playerState{
 		Player:        Player{ID: staleID, X: 100, Y: 100},
@@ -176,5 +183,75 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 	}
 	if entry.RTTMillis != 30 {
 		t.Fatalf("expected RTTMillis 30, got %d", entry.RTTMillis)
+	}
+}
+
+func TestPlayerStopsAtObstacle(t *testing.T) {
+	hub := newHub()
+	now := time.Now()
+
+	hub.obstacles = []Obstacle{{
+		ID:     "obstacle-test",
+		X:      160,
+		Y:      40,
+		Width:  80,
+		Height: 160,
+	}}
+
+	playerID := "block"
+	hub.players[playerID] = &playerState{
+		Player:        Player{ID: playerID, X: 100, Y: 120},
+		intentX:       1,
+		intentY:       0,
+		lastHeartbeat: now,
+	}
+
+	players, _ := hub.advance(now, 1)
+	blocker := findPlayer(players, playerID)
+	if blocker == nil {
+		t.Fatalf("expected player in snapshot")
+	}
+
+	maxX := hub.obstacles[0].X - playerHalf
+	if blocker.X > maxX+1e-6 {
+		t.Fatalf("expected player to stop before obstacle at %.2f, got %.2f", maxX, blocker.X)
+	}
+}
+
+func TestPlayersSeparateWhenColliding(t *testing.T) {
+	hub := newHub()
+	hub.obstacles = nil
+	now := time.Now()
+
+	firstID := "first"
+	secondID := "second"
+
+	hub.players[firstID] = &playerState{
+		Player:        Player{ID: firstID, X: 300, Y: 200},
+		intentX:       1,
+		intentY:       0,
+		lastHeartbeat: now,
+	}
+	hub.players[secondID] = &playerState{
+		Player:        Player{ID: secondID, X: 300 + playerHalf/2, Y: 200},
+		intentX:       -1,
+		intentY:       0,
+		lastHeartbeat: now,
+	}
+
+	players, _ := hub.advance(now, 1)
+
+	first := findPlayer(players, firstID)
+	second := findPlayer(players, secondID)
+	if first == nil || second == nil {
+		t.Fatalf("expected both players in snapshot")
+	}
+
+	dx := second.X - first.X
+	dy := second.Y - first.Y
+	distance := math.Hypot(dx, dy)
+	minSeparation := playerHalf * 2
+	if distance+1e-6 < minSeparation {
+		t.Fatalf("expected players separated by at least %.2f, got %.2f", minSeparation, distance)
 	}
 }
