@@ -10,6 +10,8 @@ type Player struct {
 	X         float64         `json:"x"`
 	Y         float64         `json:"y"`
 	Facing    FacingDirection `json:"facing"`
+	Health    float64         `json:"health"`
+	MaxHealth float64         `json:"maxHealth"`
 	Inventory Inventory       `json:"inventory"`
 }
 
@@ -100,4 +102,28 @@ func (s *playerState) snapshot() Player {
 	player := s.Player
 	player.Inventory = s.Inventory.Clone()
 	return player
+}
+
+// applyHealthDelta adjusts the player's health while clamping to [0, MaxHealth].
+// It returns true when the value actually changes.
+func (s *playerState) applyHealthDelta(delta float64) bool {
+	if delta == 0 {
+		return false
+	}
+	max := s.MaxHealth
+	if max <= 0 {
+		max = playerMaxHealth
+	}
+	next := s.Health + delta
+	if next < 0 {
+		next = 0
+	}
+	if next > max {
+		next = max
+	}
+	if math.Abs(next-s.Health) < 1e-6 {
+		return false
+	}
+	s.Health = next
+	return true
 }

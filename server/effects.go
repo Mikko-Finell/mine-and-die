@@ -29,6 +29,16 @@ type effectState struct {
 	projectile     bool
 }
 
+type effectBehavior interface {
+	OnHit(h *Hub, eff *effectState, target *playerState, now time.Time)
+}
+
+type effectBehaviorFunc func(h *Hub, eff *effectState, target *playerState, now time.Time)
+
+func (f effectBehaviorFunc) OnHit(h *Hub, eff *effectState, target *playerState, now time.Time) {
+	f(h, eff, target, now)
+}
+
 const (
 	meleeAttackCooldown = 400 * time.Millisecond
 	meleeAttackDuration = 150 * time.Millisecond
@@ -44,9 +54,34 @@ const (
 	fireballRange    = 5 * 40.0
 	fireballSize     = 24.0
 	fireballSpawnGap = 6.0
+	fireballDamage   = 15.0
 )
 
 var fireballLifetime = time.Duration(fireballRange / fireballSpeed * float64(time.Second))
+
+func newEffectBehaviors() map[string]effectBehavior {
+	return map[string]effectBehavior{
+		effectTypeAttack:   healthDeltaBehavior("healthDelta", 0),
+		effectTypeFireball: healthDeltaBehavior("healthDelta", 0),
+	}
+}
+
+func healthDeltaBehavior(param string, fallback float64) effectBehavior {
+	return effectBehaviorFunc(func(h *Hub, eff *effectState, target *playerState, now time.Time) {
+		delta := fallback
+		if eff != nil && eff.Params != nil {
+			if value, ok := eff.Params[param]; ok {
+				delta = value
+			}
+		}
+		if delta == 0 {
+			return
+		}
+		if target.applyHealthDelta(delta) && delta < 0 && target.Health <= 0 {
+			log.Printf("%s defeated %s with %s", eff.Owner, target.ID, eff.Type)
+		}
+	})
+}
 
 // HandleAction routes an action string to the appropriate ability helper.
 func (h *Hub) HandleAction(playerID, action string) bool {
@@ -106,9 +141,9 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 			Width:    rectW,
 			Height:   rectH,
 			Params: map[string]float64{
-				"damage": meleeAttackDamage,
-				"reach":  meleeAttackReach,
-				"width":  meleeAttackWidth,
+				"healthDelta": -meleeAttackDamage,
+				"reach":       meleeAttackReach,
+				"width":       meleeAttackWidth,
 			},
 		},
 		expiresAt: now.Add(meleeAttackDuration),
@@ -137,6 +172,7 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 		}
 		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
 			hitIDs = append(hitIDs, id)
+			h.applyEffectHitLocked(effect, target, now)
 		}
 	}
 
@@ -200,11 +236,12 @@ func (h *Hub) triggerFireball(playerID string) bool {
 			Width:    fireballSize,
 			Height:   fireballSize,
 			Params: map[string]float64{
-				"radius": radius,
-				"speed":  fireballSpeed,
-				"range":  fireballRange,
-				"dx":     dirX,
-				"dy":     dirY,
+				"radius":      radius,
+				"speed":       fireballSpeed,
+				"range":       fireballRange,
+				"dx":          dirX,
+				"dy":          dirY,
+				"healthDelta": -fireballDamage,
 			},
 		},
 		expiresAt:      now.Add(fireballLifetime),
@@ -290,18 +327,23 @@ func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
 			continue
 		}
 
+		hitTargets := make([]string, 0)
 		for id, target := range h.players {
 			if id == eff.Owner {
 				continue
 			}
 			if circleRectOverlap(target.X, target.Y, playerHalf, area) {
 				collided = true
-				break
+				hitTargets = append(hitTargets, id)
+				h.applyEffectHitLocked(eff, target, now)
 			}
 		}
 
 		if collided {
 			eff.expiresAt = now
+			if len(hitTargets) > 0 {
+				log.Printf("%s %s hit players %v", eff.Owner, eff.Type, hitTargets)
+			}
 		}
 	}
 }
@@ -318,4 +360,15 @@ func (h *Hub) pruneEffectsLocked(now time.Time) {
 		}
 	}
 	h.effects = filtered
+}
+
+func (h *Hub) applyEffectHitLocked(eff *effectState, target *playerState, now time.Time) {
+	if eff == nil || target == nil {
+		return
+	}
+	behavior, ok := h.effectBehaviors[eff.Type]
+	if !ok || behavior == nil {
+		return
+	}
+	behavior.OnHit(h, eff, target, now)
 }

@@ -9,6 +9,7 @@ const (
 	worldWidth            = 800.0
 	worldHeight           = 600.0
 	playerHalf            = 14.0
+	playerMaxHealth       = 100.0
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
 	obstacleCount         = 6
