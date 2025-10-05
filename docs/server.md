@@ -36,7 +36,7 @@ The `Hub` struct tracks:
 
 ### Actions and Cooldowns
 `HandleAction` dispatches to `triggerMeleeAttack` or `triggerFireball`:
-- Melee: spawns a short-lived rectangular effect, records cooldown, and immediately checks for overlapping players.
+- Melee: spawns a short-lived rectangular effect, records cooldown, immediately checks for overlapping players, and awards one gold coin when the swing overlaps a gold ore obstacle.
 - Fireball: spawns a projectile with velocity/duration; `advanceEffectsLocked` moves and expires it.
 
 Both helpers share the `Effect` struct (`type`, `owner`, bounding box, `Params`) that is sent to clients for rendering.

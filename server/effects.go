@@ -118,6 +118,18 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 	h.effects = append(h.effects, effect)
 
 	area := Obstacle{X: rectX, Y: rectY, Width: rectW, Height: rectH}
+	for _, obs := range h.obstacles {
+		if obs.Type != "gold-ore" {
+			continue
+		}
+		if !obstaclesOverlap(area, obs, 0) {
+			continue
+		}
+		if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1}); err != nil {
+			log.Printf("failed to add mined gold for %s: %v", playerID, err)
+		}
+		break
+	}
 	hitIDs := make([]string, 0)
 	for id, target := range h.players {
 		if id == playerID {
