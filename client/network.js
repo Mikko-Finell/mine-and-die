@@ -76,6 +76,9 @@ export async function joinGame(store) {
     store.setStatusBase(`Connected as ${store.playerId}. Use WASD to move.`);
     connectEvents(store);
     store.updateDiagnostics();
+    if (store.renderInventory) {
+      store.renderInventory();
+    }
   } catch (err) {
     store.setLatency(null);
     store.setStatusBase(`Unable to join: ${err.message}`);
@@ -156,6 +159,9 @@ export function connectEvents(store) {
         });
         store.lastStateReceivedAt = Date.now();
         store.updateDiagnostics();
+        if (store.renderInventory) {
+          store.renderInventory();
+        }
       } else if (payload.type === "heartbeat") {
         if (typeof payload.rtt === "number") {
           const roundTrip = Math.max(0, payload.rtt);

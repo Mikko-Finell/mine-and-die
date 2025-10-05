@@ -8,6 +8,8 @@ const ctx = canvas.getContext("2d");
 const latencyInput = document.getElementById("latency-input");
 const diagnosticsToggle = document.getElementById("diagnostics-toggle");
 const diagnosticsSection = document.getElementById("diagnostics");
+const inventoryPanel = document.getElementById("inventory-panel");
+const inventoryGrid = document.getElementById("inventory-grid");
 
 const diagnosticsEls = {
   connection: document.getElementById("diag-connection"),
@@ -21,6 +23,13 @@ const diagnosticsEls = {
   messages: document.getElementById("diag-messages"),
 };
 
+const DEFAULT_INVENTORY_SLOTS = 12;
+
+const ITEM_METADATA = {
+  gold: { name: "Gold Coin", icon: "🪙" },
+  health_potion: { name: "Lesser Healing Potion", icon: "🧪" },
+};
+
 const store = {
   statusEl,
   canvas,
@@ -29,6 +38,8 @@ const store = {
   diagnosticsToggle,
   diagnosticsSection,
   diagnosticsEls,
+  inventoryPanel,
+  inventoryGrid,
   TILE_SIZE: 40,
   GRID_WIDTH: canvas.width / 40,
   GRID_HEIGHT: canvas.height / 40,
@@ -61,6 +72,7 @@ const store = {
   messagesSent: 0,
   bytesSent: 0,
   effects: [],
+  inventorySlotCount: DEFAULT_INVENTORY_SLOTS,
 };
 
 // updateDiagnosticsToggle syncs the toggle label with the current panel state.
@@ -193,6 +205,76 @@ function updateDiagnostics() {
   }
 }
 
+function formatItemName(type) {
+  if (typeof type !== "string" || type.length === 0) {
+    return "Unknown";
+  }
+  const metadata = ITEM_METADATA[type];
+  if (metadata && metadata.name) {
+    return metadata.name;
+  }
+  return type
+    .split("_")
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function renderInventory() {
+  if (!store.inventoryGrid || !store.playerId) {
+    return;
+  }
+  const player = store.players[store.playerId];
+  const slots = Array.isArray(player?.inventory?.slots)
+    ? player.inventory.slots
+    : [];
+  const slotMap = new Map();
+  let maxSlotIndex = store.inventorySlotCount - 1;
+  for (const slot of slots) {
+    if (typeof slot?.slot !== "number" || slot.slot < 0) {
+      continue;
+    }
+    slotMap.set(slot.slot, slot.item);
+    if (slot.slot > maxSlotIndex) {
+      maxSlotIndex = slot.slot;
+    }
+  }
+
+  const slotCount = Math.max(maxSlotIndex + 1, store.inventorySlotCount);
+  store.inventoryGrid.replaceChildren();
+
+  for (let i = 0; i < slotCount; i += 1) {
+    const cell = document.createElement("div");
+    cell.className = "inventory-slot";
+    const item = slotMap.get(i);
+
+    if (item && typeof item.type === "string") {
+      const metadata = ITEM_METADATA[item.type] || {};
+      const iconEl = document.createElement("div");
+      iconEl.className = "inventory-item-icon";
+      iconEl.textContent = metadata.icon || "⬜";
+      cell.appendChild(iconEl);
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "inventory-item-name";
+      nameEl.textContent = formatItemName(item.type);
+      cell.appendChild(nameEl);
+
+      const quantityEl = document.createElement("div");
+      quantityEl.className = "inventory-item-quantity";
+      quantityEl.textContent = `x${Math.max(0, Number(item.quantity) || 0)}`;
+      cell.appendChild(quantityEl);
+    } else {
+      const emptyEl = document.createElement("div");
+      emptyEl.className = "inventory-empty";
+      emptyEl.textContent = "Empty";
+      cell.appendChild(emptyEl);
+    }
+
+    store.inventoryGrid.appendChild(cell);
+  }
+}
+
 // setSimulatedLatency updates the artificial latency slider and value.
 function setSimulatedLatency(storeRef, value) {
   storeRef.simulatedLatencyMs = Math.max(0, Number.isFinite(value) ? value : 0);
@@ -232,11 +314,13 @@ store.setLatency = setLatency;
 store.updateDiagnostics = updateDiagnostics;
 store.setSimulatedLatency = (value) => setSimulatedLatency(store, value);
 store.setDiagnosticsVisibility = setDiagnosticsVisibility;
+store.renderInventory = renderInventory;
 
 initializeDiagnosticsToggle();
 attachLatencyInputListener();
 setSimulatedLatency(store, 0);
 updateDiagnostics();
+renderInventory();
 
 registerInputHandlers(store);
 startRenderLoop(store);
