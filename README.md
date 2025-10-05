@@ -63,6 +63,17 @@ Experimental browser-based, PvP-enabled permadeath MMO prototype. Players mine f
 
 ---
 
+## Realtime Simulation Contract
+
+- **Tick loop**: The Go hub advances the world at ~15 Hz and clamps all player positions within the 800×600 arena before broadcasting the authoritative snapshot on every tick.
+- **Input payloads**: Clients send `{ "type": "input", "dx": <float>, "dy": <float> }` messages whenever directional intent changes. Vectors are normalized server-side and persisted until a new intent arrives.
+- **Heartbeat expectations**:
+  - Clients emit `{ "type": "heartbeat", "sentAt": <unixMillis> }` every ~2 seconds.
+  - The server responds with `{ "type": "heartbeat", "serverTime": <unixMillis>, "clientTime": <unixMillis>, "rtt": <ms> }` and removes sockets that miss three consecutive heartbeats (~6 seconds).
+- **Diagnostics**: `/diagnostics` returns a JSON payload with the current tick rate, heartbeat interval, and per-player heartbeat/latency observations for monitoring round-trip quality.
+
+---
+
 ## Development
 
 ### Requirements

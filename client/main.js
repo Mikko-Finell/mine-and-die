@@ -7,26 +7,42 @@ const GRID_WIDTH = canvas.width / TILE_SIZE;
 const GRID_HEIGHT = canvas.height / TILE_SIZE;
 const PLAYER_SIZE = 28;
 const PLAYER_HALF = PLAYER_SIZE / 2;
-const MOVE_SPEED = 160; // pixels per second
+const HEARTBEAT_INTERVAL = 2000;
+const LERP_RATE = 12;
 
 let playerId = null;
 let players = {};
 let socket = null;
 let reconnectTimeout = null;
-let pendingSync = false;
-let pendingPosition = { x: 80, y: 80 };
-let lastSentPosition = { x: 80, y: 80 };
 let isJoining = false;
+let displayPlayers = {};
+let currentIntent = { dx: 0, dy: 0 };
+let heartbeatTimer = null;
+let latencyMs = null;
 
 const keys = new Set();
 let lastTimestamp = performance.now();
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
+let statusBaseText = "";
+
+function renderStatus() {
+  if (latencyMs != null) {
+    statusEl.textContent = `${statusBaseText} (latency: ${Math.round(
+      latencyMs
+    )} ms)`;
+  } else {
+    statusEl.textContent = statusBaseText;
+  }
 }
 
-function updateStatus(text) {
-  statusEl.textContent = text;
+function setStatusBase(text) {
+  statusBaseText = text;
+  renderStatus();
+}
+
+function setLatency(value) {
+  latencyMs = value;
+  renderStatus();
 }
 
 async function joinGame() {
@@ -36,7 +52,7 @@ async function joinGame() {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
   }
-  updateStatus("Joining game...");
+  setStatusBase("Joining game...");
   try {
     const response = await fetch("/join", { method: "POST" });
     if (!response.ok) {
@@ -48,12 +64,17 @@ async function joinGame() {
     if (!players[playerId]) {
       players[playerId] = { id: playerId, x: 80, y: 80 };
     }
-    pendingPosition = { x: players[playerId].x, y: players[playerId].y };
-    lastSentPosition = { ...pendingPosition };
-    updateStatus(`Connected as ${playerId}. Use WASD to move.`);
+    displayPlayers = {};
+    Object.values(players).forEach((p) => {
+      displayPlayers[p.id] = { x: p.x, y: p.y };
+    });
+    currentIntent = { dx: 0, dy: 0 };
+    setLatency(null);
+    setStatusBase(`Connected as ${playerId}. Use WASD to move.`);
     connectEvents();
   } catch (err) {
-    updateStatus(`Unable to join: ${err.message}`);
+    setLatency(null);
+    setStatusBase(`Unable to join: ${err.message}`);
     setTimeout(joinGame, 1500);
   } finally {
     isJoining = false;
@@ -62,6 +83,7 @@ async function joinGame() {
 
 function closeSocketSilently() {
   if (!socket) return;
+  stopHeartbeat();
   socket.onopen = null;
   socket.onmessage = null;
   socket.onclose = null;
@@ -84,13 +106,14 @@ function scheduleReconnect() {
 
 function handleConnectionLoss() {
   closeSocketSilently();
+  setLatency(null);
   if (playerId === null) {
     return;
   }
-  updateStatus("Connection lost. Rejoining...");
+  setStatusBase("Connection lost. Rejoining...");
   playerId = null;
   players = {};
-  pendingSync = false;
+  displayPlayers = {};
   scheduleReconnect();
 }
 
@@ -105,7 +128,10 @@ function connectEvents() {
   socket = new WebSocket(wsUrl);
 
   socket.onopen = () => {
-    updateStatus(`Connected as ${playerId}. Use WASD to move.`);
+    setStatusBase(`Connected as ${playerId}. Use WASD to move.`);
+    setLatency(null);
+    sendCurrentIntent();
+    startHeartbeat();
   };
 
   socket.onmessage = (event) => {
@@ -114,7 +140,33 @@ function connectEvents() {
       if (payload.type === "state") {
         players = Object.fromEntries(payload.players.map((p) => [p.id, p]));
         if (players[playerId]) {
-          pendingPosition = { x: players[playerId].x, y: players[playerId].y };
+          if (!displayPlayers[playerId]) {
+            displayPlayers[playerId] = {
+              x: players[playerId].x,
+              y: players[playerId].y,
+            };
+          }
+        } else {
+          setStatusBase("Server no longer recognizes this player. Rejoining...");
+          handleConnectionLoss();
+          return;
+        }
+        Object.values(players).forEach((p) => {
+          if (!displayPlayers[p.id]) {
+            displayPlayers[p.id] = { x: p.x, y: p.y };
+          }
+        });
+        Object.keys(displayPlayers).forEach((id) => {
+          if (!players[id]) {
+            delete displayPlayers[id];
+          }
+        });
+      } else if (payload.type === "heartbeat") {
+        if (typeof payload.rtt === "number") {
+          setLatency(Math.max(0, payload.rtt));
+        } else if (typeof payload.clientTime === "number") {
+          const roundTrip = Date.now() - payload.clientTime;
+          setLatency(Math.max(0, roundTrip));
         }
       }
     } catch (err) {
@@ -138,6 +190,7 @@ function handleKey(event, isPressed) {
     } else {
       keys.delete(event.key.toLowerCase());
     }
+    updateIntentFromKeys();
   }
 }
 
@@ -148,37 +201,21 @@ function gameLoop(now) {
   const dt = Math.min((now - lastTimestamp) / 1000, 0.2);
   lastTimestamp = now;
 
-  if (playerId && players[playerId]) {
-    const player = players[playerId];
-    let dx = 0;
-    let dy = 0;
-    if (keys.has("w")) dy -= 1;
-    if (keys.has("s")) dy += 1;
-    if (keys.has("a")) dx -= 1;
-    if (keys.has("d")) dx += 1;
-
-    if (dx !== 0 || dy !== 0) {
-      const length = Math.hypot(dx, dy) || 1;
-      dx /= length;
-      dy /= length;
-      const nextX = clamp(
-        player.x + dx * MOVE_SPEED * dt,
-        PLAYER_HALF,
-        canvas.width - PLAYER_HALF
-      );
-      const nextY = clamp(
-        player.y + dy * MOVE_SPEED * dt,
-        PLAYER_HALF,
-        canvas.height - PLAYER_HALF
-      );
-      if (nextX !== player.x || nextY !== player.y) {
-        player.x = nextX;
-        player.y = nextY;
-        pendingPosition = { x: nextX, y: nextY };
-        pendingSync = true;
-      }
+  const lerpAmount = Math.min(1, dt * LERP_RATE);
+  Object.entries(players).forEach(([id, player]) => {
+    if (!displayPlayers[id]) {
+      displayPlayers[id] = { x: player.x, y: player.y };
     }
-  }
+    const display = displayPlayers[id];
+    display.x += (player.x - display.x) * lerpAmount;
+    display.y += (player.y - display.y) * lerpAmount;
+  });
+
+  Object.keys(displayPlayers).forEach((id) => {
+    if (!players[id]) {
+      delete displayPlayers[id];
+    }
+  });
 
   drawScene();
   requestAnimationFrame(gameLoop);
@@ -203,47 +240,76 @@ function drawScene() {
     ctx.stroke();
   }
 
-  Object.values(players).forEach((player) => {
-    ctx.fillStyle = player.id === playerId ? "#38bdf8" : "#f97316";
+  Object.entries(displayPlayers).forEach(([id, position]) => {
+    ctx.fillStyle = id === playerId ? "#38bdf8" : "#f97316";
     ctx.fillRect(
-      player.x - PLAYER_HALF,
-      player.y - PLAYER_HALF,
+      position.x - PLAYER_HALF,
+      position.y - PLAYER_HALF,
       PLAYER_SIZE,
       PLAYER_SIZE
     );
   });
 }
 
-async function syncPosition() {
-  if (!pendingSync || !playerId) {
-    return;
+function updateIntentFromKeys() {
+  let dx = 0;
+  let dy = 0;
+  if (keys.has("w")) dy -= 1;
+  if (keys.has("s")) dy += 1;
+  if (keys.has("a")) dx -= 1;
+  if (keys.has("d")) dx += 1;
+
+  if (dx !== 0 || dy !== 0) {
+    const length = Math.hypot(dx, dy) || 1;
+    dx /= length;
+    dy /= length;
   }
-  const { x, y } = pendingPosition;
-  if (x === lastSentPosition.x && y === lastSentPosition.y) {
-    pendingSync = false;
+
+  if (dx === currentIntent.dx && dy === currentIntent.dy) {
     return;
   }
 
-  try {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-    socket.send(
-      JSON.stringify({
-        type: "move",
-        x,
-        y,
-      })
-    );
-    lastSentPosition = { x, y };
-  } catch (err) {
-    console.error("Failed to sync position", err);
-    return;
-  }
-
-  pendingSync = false;
+  currentIntent = { dx, dy };
+  sendCurrentIntent();
 }
 
-setInterval(syncPosition, 100);
+function sendCurrentIntent() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  socket.send(
+    JSON.stringify({
+      type: "input",
+      dx: currentIntent.dx,
+      dy: currentIntent.dy,
+    })
+  );
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  sendHeartbeat();
+  heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer !== null) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+function sendHeartbeat() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  const sentAt = Date.now();
+  socket.send(
+    JSON.stringify({
+      type: "heartbeat",
+      sentAt,
+    })
+  );
+}
 requestAnimationFrame(gameLoop);
 joinGame();

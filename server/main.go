@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -13,7 +14,16 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const writeWait = 10 * time.Second
+const (
+	writeWait         = 10 * time.Second
+	tickRate          = 15    // ticks per second (10–20 Hz)
+	moveSpeed         = 160.0 // pixels per second
+	worldWidth        = 800.0
+	worldHeight       = 600.0
+	playerHalf        = 14.0
+	heartbeatInterval = 2 * time.Second
+	disconnectAfter   = 3 * heartbeatInterval
+)
 
 type Player struct {
 	ID string  `json:"id"`
@@ -27,14 +37,23 @@ type joinResponse struct {
 }
 
 type stateMessage struct {
-	Type    string   `json:"type"`
-	Players []Player `json:"players"`
+	Type       string   `json:"type"`
+	Players    []Player `json:"players"`
+	ServerTime int64    `json:"serverTime"`
 }
 
 type clientMessage struct {
-	Type string  `json:"type"`
-	X    float64 `json:"x"`
-	Y    float64 `json:"y"`
+	Type   string  `json:"type"`
+	DX     float64 `json:"dx"`
+	DY     float64 `json:"dy"`
+	SentAt int64   `json:"sentAt"`
+}
+
+type heartbeatMessage struct {
+	Type       string `json:"type"`
+	ServerTime int64  `json:"serverTime"`
+	ClientTime int64  `json:"clientTime"`
+	RTTMillis  int64  `json:"rtt"`
 }
 
 type subscriber struct {
@@ -42,16 +61,31 @@ type subscriber struct {
 	mu   sync.Mutex
 }
 
+type playerState struct {
+	Player
+	intentX       float64
+	intentY       float64
+	lastInput     time.Time
+	lastHeartbeat time.Time
+	lastRTT       time.Duration
+}
+
+type diagnosticsPlayer struct {
+	ID            string `json:"id"`
+	LastHeartbeat int64  `json:"lastHeartbeat"`
+	RTTMillis     int64  `json:"rttMillis"`
+}
+
 type Hub struct {
 	mu          sync.Mutex
-	players     map[string]Player
+	players     map[string]*playerState
 	subscribers map[string]*subscriber
 	nextID      atomic.Uint64
 }
 
 func newHub() *Hub {
 	return &Hub{
-		players:     make(map[string]Player),
+		players:     make(map[string]*playerState),
 		subscribers: make(map[string]*subscriber),
 	}
 }
@@ -59,7 +93,7 @@ func newHub() *Hub {
 func (h *Hub) snapshotLocked() []Player {
 	players := make([]Player, 0, len(h.players))
 	for _, player := range h.players {
-		players = append(players, player)
+		players = append(players, player.Player)
 	}
 	return players
 }
@@ -71,7 +105,8 @@ func (h *Hub) broadcastState(players []Player) {
 		h.mu.Unlock()
 	}
 
-	data, err := json.Marshal(stateMessage{Type: "state", Players: players})
+	msg := stateMessage{Type: "state", Players: players, ServerTime: time.Now().UnixMilli()}
+	data, err := json.Marshal(msg)
 	if err != nil {
 		log.Printf("failed to marshal state message: %v", err)
 		return
@@ -102,7 +137,8 @@ func (h *Hub) broadcastState(players []Player) {
 func (h *Hub) Join() joinResponse {
 	id := h.nextID.Add(1)
 	playerID := fmt.Sprintf("player-%d", id)
-	player := Player{ID: playerID, X: 80, Y: 80}
+	now := time.Now()
+	player := &playerState{Player: Player{ID: playerID, X: 80, Y: 80}, lastHeartbeat: now}
 
 	h.mu.Lock()
 	h.players[playerID] = player
@@ -118,9 +154,12 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if _, ok := h.players[playerID]; !ok {
+	state, ok := h.players[playerID]
+	if !ok {
 		return nil, nil, false
 	}
+
+	state.lastHeartbeat = time.Now()
 
 	if existing, ok := h.subscribers[playerID]; ok {
 		existing.conn.Close()
@@ -130,21 +169,6 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 	h.subscribers[playerID] = sub
 	players := h.snapshotLocked()
 	return sub, players, true
-}
-
-func (h *Hub) UpdatePosition(playerID string, x, y float64) []Player {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	player, ok := h.players[playerID]
-	if !ok {
-		return nil
-	}
-
-	player.X = x
-	player.Y = y
-	h.players[playerID] = player
-	return h.snapshotLocked()
 }
 
 func (h *Hub) Disconnect(playerID string) []Player {
@@ -176,12 +200,164 @@ func (h *Hub) Disconnect(playerID string) []Player {
 	return players
 }
 
+func (h *Hub) UpdateIntent(playerID string, dx, dy float64) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	state, ok := h.players[playerID]
+	if !ok {
+		return false
+	}
+
+	length := math.Hypot(dx, dy)
+	if length > 1 {
+		dx /= length
+		dy /= length
+	}
+
+	state.intentX = dx
+	state.intentY = dy
+	state.lastInput = time.Now()
+	return true
+}
+
+func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent int64) (time.Duration, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	state, ok := h.players[playerID]
+	if !ok {
+		return 0, false
+	}
+
+	state.lastHeartbeat = receivedAt
+
+	var rtt time.Duration
+	if clientSent > 0 {
+		clientTime := time.UnixMilli(clientSent)
+		if clientTime.Before(receivedAt.Add(5 * time.Second)) {
+			rtt = receivedAt.Sub(clientTime)
+			if rtt < 0 {
+				rtt = 0
+			}
+			state.lastRTT = rtt
+		}
+	}
+
+	return state.lastRTT, true
+}
+
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []*subscriber) {
+	h.mu.Lock()
+
+	toClose := make([]*subscriber, 0)
+	for id, state := range h.players {
+		if now.Sub(state.lastHeartbeat) > disconnectAfter {
+			if sub, ok := h.subscribers[id]; ok {
+				toClose = append(toClose, sub)
+				delete(h.subscribers, id)
+			}
+			delete(h.players, id)
+			log.Printf("disconnecting %s due to heartbeat timeout", id)
+			continue
+		}
+
+		if state.intentX != 0 || state.intentY != 0 {
+			dx, dy := state.intentX, state.intentY
+			length := math.Hypot(dx, dy)
+			if length != 0 {
+				dx /= length
+				dy /= length
+			}
+
+			state.X += dx * moveSpeed * dt
+			state.Y += dy * moveSpeed * dt
+
+			state.X = math.Max(playerHalf, math.Min(worldWidth-playerHalf, state.X))
+			state.Y = math.Max(playerHalf, math.Min(worldHeight-playerHalf, state.Y))
+		}
+	}
+
+	players := h.snapshotLocked()
+	h.mu.Unlock()
+
+	return players, toClose
+}
+
+func (h *Hub) RunSimulation(stop <-chan struct{}) {
+	ticker := time.NewTicker(time.Second / tickRate)
+	defer ticker.Stop()
+
+	last := time.Now()
+	for {
+		select {
+		case <-stop:
+			return
+		case now := <-ticker.C:
+			dt := now.Sub(last).Seconds()
+			if dt <= 0 {
+				dt = 1.0 / float64(tickRate)
+			}
+			last = now
+
+			players, toClose := h.advance(now, dt)
+			for _, sub := range toClose {
+				sub.conn.Close()
+			}
+			h.broadcastState(players)
+		}
+	}
+}
+
+func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	players := make([]diagnosticsPlayer, 0, len(h.players))
+	for _, state := range h.players {
+		players = append(players, diagnosticsPlayer{
+			ID:            state.ID,
+			LastHeartbeat: state.lastHeartbeat.UnixMilli(),
+			RTTMillis:     state.lastRTT.Milliseconds(),
+		})
+	}
+	return players
+}
+
 func main() {
 	hub := newHub()
+	stop := make(chan struct{})
+	go hub.RunSimulation(stop)
+	defer close(stop)
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write([]byte("ok"))
+	})
+
+	http.HandleFunc("/diagnostics", func(w http.ResponseWriter, r *http.Request) {
+		payload := struct {
+			Status     string              `json:"status"`
+			ServerTime int64               `json:"serverTime"`
+			Players    []diagnosticsPlayer `json:"players"`
+			TickRate   int                 `json:"tickRate"`
+			Heartbeat  int64               `json:"heartbeatMillis"`
+		}{
+			Status:     "ok",
+			ServerTime: time.Now().UnixMilli(),
+			Players:    hub.DiagnosticsSnapshot(),
+			TickRate:   tickRate,
+			Heartbeat:  heartbeatInterval.Milliseconds(),
+		}
+
+		data, err := json.Marshal(payload)
+		if err != nil {
+			http.Error(w, "failed to encode", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
 	})
 
 	http.HandleFunc("/join", func(w http.ResponseWriter, r *http.Request) {
@@ -229,7 +405,7 @@ func main() {
 			return
 		}
 
-		initial := stateMessage{Type: "state", Players: snapshot}
+		initial := stateMessage{Type: "state", Players: snapshot, ServerTime: time.Now().UnixMilli()}
 		data, err := json.Marshal(initial)
 		if err != nil {
 			log.Printf("failed to marshal initial state for %s: %v", playerID, err)
@@ -269,11 +445,41 @@ func main() {
 			}
 
 			switch msg.Type {
-			case "move":
-				players := hub.UpdatePosition(playerID, msg.X, msg.Y)
-				if players != nil {
-					go hub.broadcastState(players)
+			case "input":
+				if !hub.UpdateIntent(playerID, msg.DX, msg.DY) {
+					log.Printf("input ignored for unknown player %s", playerID)
 				}
+			case "heartbeat":
+				now := time.Now()
+				rtt, ok := hub.UpdateHeartbeat(playerID, now, msg.SentAt)
+				if !ok {
+					continue
+				}
+
+				ack := heartbeatMessage{
+					Type:       "heartbeat",
+					ServerTime: now.UnixMilli(),
+					ClientTime: msg.SentAt,
+					RTTMillis:  rtt.Milliseconds(),
+				}
+
+				data, err := json.Marshal(ack)
+				if err != nil {
+					log.Printf("failed to marshal heartbeat ack for %s: %v", playerID, err)
+					continue
+				}
+
+				sub.mu.Lock()
+				conn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+					sub.mu.Unlock()
+					players := hub.Disconnect(playerID)
+					if players != nil {
+						go hub.broadcastState(players)
+					}
+					return
+				}
+				sub.mu.Unlock()
 			default:
 				log.Printf("unknown message type %q from %s", msg.Type, playerID)
 			}
