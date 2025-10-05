@@ -9,7 +9,13 @@
   <body>
     <main>
       <h1>Mine and Die Prototype</h1>
-      <canvas id="game-canvas" width="800" height="600"></canvas>
+      <div class="play-area">
+        <canvas id="game-canvas" width="800" height="600"></canvas>
+        <aside id="inventory-panel" aria-label="Inventory" class="inventory-panel">
+          <h2>Inventory</h2>
+          <div id="inventory-grid" class="inventory-grid" role="list"></div>
+        </aside>
+      </div>
       <section class="control-row">
         <label for="latency-input">Simulated latency (ms)</label>
         <input
