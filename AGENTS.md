@@ -3,7 +3,7 @@
 This file applies to the entire repository.
 
 ## Repository layout
-- `server/`: Go 1.22 service that exposes `/join`, `/move`, `/events`, `/health` endpoints. Clients receive realtime snapshots via Server-Sent Events and the server acts as the authoritative state hub. Static assets are served from `client/`.
+- `server/`: Go 1.24.3 service that exposes `/join`, `/move`, `/events`, `/health` endpoints. Clients receive realtime snapshots via Server-Sent Events and the server acts as the authoritative state hub. Static assets are served from `client/`.
 - `client/`: Static HTML, CSS, and vanilla JS canvas prototype. Networking uses `fetch` for writes and `EventSource` for state streaming. Keep the code dependency-free and organized by feature (DOM bindings, game loop, networking) inside `main.js`.
 
 ## Design notes
