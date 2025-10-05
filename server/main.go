@@ -24,13 +24,16 @@ const (
 	playerHalf            = 14.0
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
-        obstacleCount         = 6
+	obstacleCount         = 6
 	obstacleMinWidth      = 60.0
 	obstacleMaxWidth      = 140.0
 	obstacleMinHeight     = 60.0
 	obstacleMaxHeight     = 140.0
 	obstacleSpawnMargin   = 100.0
 	playerSpawnSafeRadius = 120.0
+	goldOreCount          = 4
+	goldOreMinSize        = 56.0
+	goldOreMaxSize        = 96.0
 )
 
 type Player struct {
@@ -102,6 +105,7 @@ func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
 
 type Obstacle struct {
 	ID     string  `json:"id"`
+	Type   string  `json:"type,omitempty"`
 	X      float64 `json:"x"`
 	Y      float64 `json:"y"`
 	Width  float64 `json:"width"`
@@ -215,7 +219,7 @@ const (
 
 func (h *Hub) generateObstacles(count int) []Obstacle {
 	if count <= 0 {
-		return nil
+		return h.generateGoldOreNodes(goldOreCount, nil, rand.New(rand.NewSource(time.Now().UnixNano())))
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -265,7 +269,75 @@ func (h *Hub) generateObstacles(count int) []Obstacle {
 		obstacles = append(obstacles, candidate)
 	}
 
-	return obstacles
+	goldOre := h.generateGoldOreNodes(goldOreCount, obstacles, rng)
+	return append(obstacles, goldOre...)
+}
+
+func (h *Hub) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Rand) []Obstacle {
+	if count <= 0 || rng == nil {
+		return nil
+	}
+
+	ores := make([]Obstacle, 0, count)
+	attempts := 0
+	maxAttempts := count * 30
+
+	for len(ores) < count && attempts < maxAttempts {
+		attempts++
+
+		width := goldOreMinSize + rng.Float64()*(goldOreMaxSize-goldOreMinSize)
+		height := goldOreMinSize + rng.Float64()*(goldOreMaxSize-goldOreMinSize)
+
+		maxX := worldWidth - obstacleSpawnMargin - width
+		maxY := worldHeight - obstacleSpawnMargin - height
+		if maxX <= obstacleSpawnMargin || maxY <= obstacleSpawnMargin {
+			break
+		}
+
+		x := obstacleSpawnMargin + rng.Float64()*(maxX-obstacleSpawnMargin)
+		y := obstacleSpawnMargin + rng.Float64()*(maxY-obstacleSpawnMargin)
+
+		candidate := Obstacle{
+			ID:     fmt.Sprintf("gold-ore-%d", len(ores)+1),
+			Type:   "gold-ore",
+			X:      x,
+			Y:      y,
+			Width:  width,
+			Height: height,
+		}
+
+		if circleRectOverlap(80, 80, playerSpawnSafeRadius, candidate) {
+			continue
+		}
+
+		overlaps := false
+
+		for _, obs := range existing {
+			if obstaclesOverlap(candidate, obs, playerHalf) {
+				overlaps = true
+				break
+			}
+		}
+
+		if overlaps {
+			continue
+		}
+
+		for _, ore := range ores {
+			if obstaclesOverlap(candidate, ore, playerHalf) {
+				overlaps = true
+				break
+			}
+		}
+
+		if overlaps {
+			continue
+		}
+
+		ores = append(ores, candidate)
+	}
+
+	return ores
 }
 
 func circleRectOverlap(cx, cy, radius float64, obs Obstacle) bool {
