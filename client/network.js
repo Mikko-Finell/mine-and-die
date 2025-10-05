@@ -2,12 +2,14 @@ const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 
+// normalizeFacing guards against invalid facing values from the network.
 function normalizeFacing(facing) {
   return typeof facing === "string" && VALID_FACINGS.has(facing)
     ? facing
     : DEFAULT_FACING;
 }
 
+// sendMessage serializes payloads, applies simulated latency, and tracks stats.
 export function sendMessage(store, payload, { onSent } = {}) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
     return;
@@ -34,6 +36,7 @@ export function sendMessage(store, payload, { onSent } = {}) {
   }
 }
 
+// joinGame performs the `/join` handshake and seeds the local store.
 export async function joinGame(store) {
   if (store.isJoining) return;
   store.isJoining = true;
@@ -82,6 +85,7 @@ export async function joinGame(store) {
   }
 }
 
+// connectEvents opens the WebSocket and sets up connection handlers.
 export function connectEvents(store) {
   if (!store.playerId) return;
   closeSocketSilently(store);
@@ -178,6 +182,7 @@ export function connectEvents(store) {
   store.socket.onclose = handleSocketDrop;
 }
 
+// sendCurrentIntent pushes the latest movement intent to the server.
 export function sendCurrentIntent(store) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
     return;
@@ -199,6 +204,7 @@ export function sendCurrentIntent(store) {
   }
 }
 
+// sendAction dispatches a one-off action message for abilities.
 export function sendAction(store, action, params = undefined) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
     return;
@@ -213,6 +219,7 @@ export function sendAction(store, action, params = undefined) {
   sendMessage(store, payload);
 }
 
+// startHeartbeat kicks off the repeating heartbeat timer.
 export function startHeartbeat(store) {
   stopHeartbeat(store);
   sendHeartbeat(store);
@@ -220,6 +227,7 @@ export function startHeartbeat(store) {
   store.updateDiagnostics();
 }
 
+// stopHeartbeat clears the heartbeat timer if it exists.
 export function stopHeartbeat(store) {
   if (store.heartbeatTimer !== null) {
     clearInterval(store.heartbeatTimer);
@@ -228,6 +236,7 @@ export function stopHeartbeat(store) {
   }
 }
 
+// sendHeartbeat emits a heartbeat payload and records timing.
 export function sendHeartbeat(store) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
     return;
@@ -245,6 +254,7 @@ export function sendHeartbeat(store) {
   });
 }
 
+// closeSocketSilently tears down handlers and closes without triggering loops.
 function closeSocketSilently(store) {
   if (!store.socket) return;
   stopHeartbeat(store);
@@ -260,6 +270,7 @@ function closeSocketSilently(store) {
   store.socket = null;
 }
 
+// scheduleReconnect queues another join attempt after a delay.
 function scheduleReconnect(store) {
   if (store.reconnectTimeout !== null) return;
   store.reconnectTimeout = setTimeout(() => {
@@ -268,6 +279,7 @@ function scheduleReconnect(store) {
   }, 1000);
 }
 
+// handleConnectionLoss resets state and begins the reconnect process.
 function handleConnectionLoss(store) {
   closeSocketSilently(store);
   store.setLatency(null);

@@ -54,6 +54,7 @@ const (
 	defaultFacing FacingDirection = FacingDown
 )
 
+// parseFacing validates a facing string received from the client.
 func parseFacing(value string) (FacingDirection, bool) {
 	switch FacingDirection(value) {
 	case FacingUp, FacingDown, FacingLeft, FacingRight:
@@ -63,12 +64,8 @@ func parseFacing(value string) (FacingDirection, bool) {
 	}
 }
 
-// deriveFacing mirrors the client's facing resolution rules. The simulation
-// primarily trusts the intent vector that arrives from the client, so we reuse
-// that normalized direction to decide which of the cardinal strings should be
-// broadcast with the state snapshot. When the player is idle we stick with
-// whatever facing we already had (or the provided fallback) so avatars keep
-// looking the same direction between bursts of movement.
+// deriveFacing picks the facing direction that best matches the movement
+// vector, falling back to the last known facing when idle.
 func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
 	if fallback == "" {
 		fallback = defaultFacing
@@ -103,6 +100,7 @@ func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
 	return FacingLeft
 }
 
+// facingToVector returns a unit vector for the given facing.
 func facingToVector(facing FacingDirection) (float64, float64) {
 	switch facing {
 	case FacingUp:
@@ -154,6 +152,8 @@ type clientMessage struct {
 // Effect represents a time-bound gameplay artifact (an attack swing, a buff,
 // an environmental hazard, etc.). It captures the minimum data the simulation
 // needs to reason about the effect while staying extendable via Params.
+// Effect describes a time-limited gameplay artifact (attack swing, projectile,
+// etc.) that clients can render.
 type Effect struct {
 	ID       string             `json:"id"`
 	Type     string             `json:"type"`
@@ -167,9 +167,8 @@ type Effect struct {
 	Params   map[string]float64 `json:"params,omitempty"`
 }
 
-// effectState keeps the runtime bookkeeping for an Effect. Expiration checks
-// are handled with the concrete time fields while the Effect payload remains
-// ready for serialization to connected clients.
+// effectState stores runtime bookkeeping for an effect while keeping the
+// serialized payload ready to share.
 type effectState struct {
 	Effect
 	expiresAt      time.Time
@@ -207,6 +206,7 @@ type diagnosticsPlayer struct {
 	RTTMillis     int64  `json:"rttMillis"`
 }
 
+// Hub owns all live players, subscribers, obstacles, and active effects.
 type Hub struct {
 	mu          sync.Mutex
 	players     map[string]*playerState
@@ -217,6 +217,7 @@ type Hub struct {
 	nextEffect  atomic.Uint64
 }
 
+// newHub creates a hub with empty maps and a freshly generated obstacle set.
 func newHub() *Hub {
 	hub := &Hub{
 		players:     make(map[string]*playerState),
@@ -246,6 +247,7 @@ const (
 
 var fireballLifetime = time.Duration(fireballRange / fireballSpeed * float64(time.Second))
 
+// generateObstacles scatters blocking rectangles and ore deposits around the map.
 func (h *Hub) generateObstacles(count int) []Obstacle {
 	if count <= 0 {
 		return h.generateGoldOreNodes(goldOreCount, nil, rand.New(rand.NewSource(time.Now().UnixNano())))
@@ -302,6 +304,7 @@ func (h *Hub) generateObstacles(count int) []Obstacle {
 	return append(obstacles, goldOre...)
 }
 
+// generateGoldOreNodes places ore obstacles while avoiding overlaps.
 func (h *Hub) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Rand) []Obstacle {
 	if count <= 0 || rng == nil {
 		return nil
@@ -369,6 +372,7 @@ func (h *Hub) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Ran
 	return ores
 }
 
+// circleRectOverlap reports whether a circle intersects an obstacle rectangle.
 func circleRectOverlap(cx, cy, radius float64, obs Obstacle) bool {
 	closestX := clamp(cx, obs.X, obs.X+obs.Width)
 	closestY := clamp(cy, obs.Y, obs.Y+obs.Height)
@@ -377,6 +381,7 @@ func circleRectOverlap(cx, cy, radius float64, obs Obstacle) bool {
 	return dx*dx+dy*dy < radius*radius
 }
 
+// obstaclesOverlap checks for AABB overlap with optional padding.
 func obstaclesOverlap(a, b Obstacle, padding float64) bool {
 	return a.X-padding < b.X+b.Width+padding &&
 		a.X+a.Width+padding > b.X-padding &&
@@ -384,6 +389,7 @@ func obstaclesOverlap(a, b Obstacle, padding float64) bool {
 		a.Y+a.Height+padding > b.Y-padding
 }
 
+// clamp limits value to the range [min, max].
 func clamp(value, min, max float64) float64 {
 	if value < min {
 		return min
@@ -394,11 +400,7 @@ func clamp(value, min, max float64) float64 {
 	return value
 }
 
-// movePlayerWithObstacles advances a player according to their intent while
-// respecting world bounds, obstacles, and keeps movement speed consistent by
-// normalizing diagonal input. Movement is resolved axis-by-axis so we can push
-// right up against walls and slide along them, then any residual overlaps are
-// cleaned up with resolveObstaclePenetration.
+// movePlayerWithObstacles advances a player while clamping speed, bounds, and walls.
 func movePlayerWithObstacles(state *playerState, dt float64, obstacles []Obstacle) {
 	dx := state.intentX
 	dy := state.intentY
@@ -427,6 +429,7 @@ func movePlayerWithObstacles(state *playerState, dt float64, obstacles []Obstacl
 	resolveObstaclePenetration(state, obstacles)
 }
 
+// resolveAxisMoveX applies horizontal movement while stopping at obstacle edges.
 func resolveAxisMoveX(oldX, oldY, proposedX, deltaX float64, obstacles []Obstacle) float64 {
 	newX := proposedX
 	for _, obs := range obstacles {
@@ -451,6 +454,7 @@ func resolveAxisMoveX(oldX, oldY, proposedX, deltaX float64, obstacles []Obstacl
 	return clamp(newX, playerHalf, worldWidth-playerHalf)
 }
 
+// resolveAxisMoveY applies vertical movement while stopping at obstacle edges.
 func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacle) float64 {
 	newY := proposedY
 	for _, obs := range obstacles {
@@ -475,6 +479,7 @@ func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacl
 	return clamp(newY, playerHalf, worldHeight-playerHalf)
 }
 
+// resolveObstaclePenetration nudges a player out of overlapping obstacles.
 func resolveObstaclePenetration(state *playerState, obstacles []Obstacle) {
 	for _, obs := range obstacles {
 		if !circleRectOverlap(state.X, state.Y, playerHalf, obs) {
@@ -533,6 +538,7 @@ func resolveObstaclePenetration(state *playerState, obstacles []Obstacle) {
 	}
 }
 
+// resolvePlayerCollisions separates overlapping players while respecting walls.
 func resolvePlayerCollisions(players []*playerState, obstacles []Obstacle) {
 	if len(players) < 2 {
 		return
@@ -590,6 +596,7 @@ func resolvePlayerCollisions(players []*playerState, obstacles []Obstacle) {
 	}
 }
 
+// advanceEffectsLocked moves active projectiles and expires ones that collide or run out of range.
 func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
 	if len(h.effects) == 0 {
 		return
@@ -657,6 +664,7 @@ func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
 	}
 }
 
+// snapshotLocked copies players/effects for broadcasting while holding the mutex.
 func (h *Hub) snapshotLocked(now time.Time) ([]Player, []Effect) {
 	players := make([]Player, 0, len(h.players))
 	for _, player := range h.players {
@@ -674,6 +682,7 @@ func (h *Hub) snapshotLocked(now time.Time) ([]Player, []Effect) {
 	return players, effects
 }
 
+// pruneEffectsLocked drops expired effects from the in-memory list.
 func (h *Hub) pruneEffectsLocked(now time.Time) {
 	if len(h.effects) == 0 {
 		return
@@ -687,6 +696,7 @@ func (h *Hub) pruneEffectsLocked(now time.Time) {
 	h.effects = filtered
 }
 
+// broadcastState sends the latest world snapshot to every subscriber.
 func (h *Hub) broadcastState(players []Player, effects []Effect) {
 	if players == nil || effects == nil {
 		h.mu.Lock()
@@ -732,6 +742,7 @@ func (h *Hub) broadcastState(players []Player, effects []Effect) {
 	}
 }
 
+// Join registers a new player and returns the latest snapshot.
 func (h *Hub) Join() joinResponse {
 	id := h.nextID.Add(1)
 	playerID := fmt.Sprintf("player-%d", id)
@@ -753,6 +764,7 @@ func (h *Hub) Join() joinResponse {
 	return joinResponse{ID: playerID, Players: players, Obstacles: h.obstacles, Effects: effects}
 }
 
+// Subscribe associates a WebSocket connection with an existing player.
 func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, []Effect, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -776,6 +788,7 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 	return sub, players, effects, true
 }
 
+// Disconnect removes a player and closes any active subscriber connection.
 func (h *Hub) Disconnect(playerID string) ([]Player, []Effect) {
 	h.mu.Lock()
 	sub, subOK := h.subscribers[playerID]
@@ -808,11 +821,7 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []Effect) {
 	return players, effects
 }
 
-// UpdateIntent is invoked for every input message from the client. We clamp the
-// vector magnitude to 1 so clients cannot move faster than intended, derive the
-// canonical facing for the intent, and remember when the last command arrived.
-// If the player is idle we accept the client-supplied facing so their avatar
-// can turn in place without drifting.
+// UpdateIntent stores the latest movement vector and facing for a player.
 func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -846,6 +855,7 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool 
 	return true
 }
 
+// HandleAction routes an action string to the appropriate ability helper.
 func (h *Hub) HandleAction(playerID, action string) bool {
 	switch action {
 	case effectTypeAttack:
@@ -859,6 +869,7 @@ func (h *Hub) HandleAction(playerID, action string) bool {
 	}
 }
 
+// triggerMeleeAttack spawns a short-lived melee hitbox if the cooldown allows it.
 func (h *Hub) triggerMeleeAttack(playerID string) bool {
 	now := time.Now()
 
@@ -933,6 +944,7 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 	return true
 }
 
+// triggerFireball launches a projectile effect when the player is ready.
 func (h *Hub) triggerFireball(playerID string) bool {
 	now := time.Now()
 
@@ -1002,6 +1014,7 @@ func (h *Hub) triggerFireball(playerID string) bool {
 	return true
 }
 
+// meleeAttackRectangle builds the hitbox in front of a player for a melee swing.
 func meleeAttackRectangle(x, y float64, facing FacingDirection) (float64, float64, float64, float64) {
 	reach := meleeAttackReach
 	thickness := meleeAttackWidth
@@ -1020,6 +1033,7 @@ func meleeAttackRectangle(x, y float64, facing FacingDirection) (float64, float6
 	}
 }
 
+// UpdateHeartbeat records the most recent heartbeat time and RTT for a player.
 func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent int64) (time.Duration, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -1046,10 +1060,7 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 	return state.lastRTT, true
 }
 
-// advance runs once per tick. It applies the current intent to every active
-// player, prunes anyone who missed their heartbeat deadline, and resolves both
-// obstacle and player collisions before producing the snapshot we broadcast to
-// clients.
+// advance runs a single simulation step and returns updated snapshots plus stale subscribers.
 func (h *Hub) advance(now time.Time, dt float64) ([]Player, []Effect, []*subscriber) {
 	h.mu.Lock()
 
@@ -1083,6 +1094,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []Effect, []*subscri
 	return players, effects, toClose
 }
 
+// RunSimulation drives the fixed-rate tick loop until the stop channel closes.
 func (h *Hub) RunSimulation(stop <-chan struct{}) {
 	ticker := time.NewTicker(time.Second / tickRate)
 	defer ticker.Stop()
@@ -1108,6 +1120,7 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 	}
 }
 
+// DiagnosticsSnapshot exposes heartbeat data for the diagnostics endpoint.
 func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -1123,6 +1136,7 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 	return players
 }
 
+// main wires up HTTP handlers, starts the simulation, and serves the client.
 func main() {
 	hub := newHub()
 	stop := make(chan struct{})

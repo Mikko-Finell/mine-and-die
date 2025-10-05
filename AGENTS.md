@@ -1,26 +1,49 @@
 # Agent Guidelines
 
-This file applies to the entire repository.
+This document applies to the entire repository. Use it as a quick onboarding reference when making changes.
 
-## Repository layout
-- `server/`: Go 1.24.3 HTTP service that keeps authoritative game state. `main.go` hosts `/join` (POST join handshake), `/ws` (WebSocket for realtime state, intents, and heartbeats), `/diagnostics` (JSON snapshot of hub state), `/health` (liveness), and serves the static client. `main_test.go` contains focused regression tests around hub behaviour and heartbeat handling.
-- `client/`: Static HTML + vanilla JS front-end. `main.js` wires together DOM, state store, and modules. `network.js` contains fetch/WebSocket orchestration, intent dispatch, and heartbeat timers. `render.js` holds canvas drawing + interpolation. `input.js` translates keyboard events into intents and simulated latency adjustments. `styles.css` defines the simple HUD + canvas layout. `index.html` bootstraps modules via ES modules.
-- `README.md`: High-level overview and setup instructions for running server/client locally.
+## Project Summary
+Mine & Die is a small realtime prototype:
+- **Server:** Go 1.24 HTTP service with Gorilla WebSocket. It keeps all world state in memory, advances the simulation at ~15 Hz, and serves the static client.
+- **Client:** Vanilla HTML/JS rendered on a `<canvas>`. The browser connects via WebSocket for intents and receives authoritative snapshots from the server.
 
-## Design notes
-- Networking relies on `fetch` for the `/join` handshake and a single WebSocket channel for state updates, intents, and heartbeats. Avoid introducing alternate transports unless necessary.
-- The Go hub keeps all player state in-memory; prefer straightforward, single-threaded reasoning aided by the existing mutex/atomic primitives when extending it.
-- Client visuals intentionally stay lightweight grid-and-square rendering backed by interpolation in `render.js`. Preserve this style unless a broader art direction change is coordinated.
-- Client modules are dependency-free ES modules. Keep cross-module communication flowing through the shared `store` object passed from `main.js` to avoid hidden globals.
+## Directory Layout
+- `server/` – Go module containing the hub, simulation loop, HTTP handlers, and regression tests.
+  - `main.go` – Core types (`Hub`, `Player`, `Effect`), movement/collision logic, action handlers, and endpoint wiring.
+  - `main_test.go` – Behavioural tests covering joins, intents, effects, and heartbeats.
+- `client/` – Static assets served by the Go process.
+  - `main.js` – Builds the shared state store, hooks up diagnostics UI, and kicks off input/render/network flows.
+  - `network.js` – `/join` handshake, WebSocket management, outbound message helpers, heartbeats, and reconnect logic.
+  - `input.js` – Keyboard handling that normalizes movement vectors and triggers actions.
+  - `render.js` – Canvas drawing, interpolation, obstacle/effect rendering helpers.
+  - `styles.css` & `index.html` – Minimal layout and markup.
+- `docs/` – Living documentation for architecture, modules, and testing.
+- `README.md` – Quick pitch, documentation map, and setup guide.
 
-## Contribution tips
-- Update `README.md` whenever you add new endpoints, diagnostics, or significant client interactions that affect gameplay expectations.
-- Prefer small, incremental commits that align with features or fixes; include succinct messages describing the change.
+## Technologies
+- Go 1.24 with the standard library and `github.com/gorilla/websocket`.
+- ES modules running directly in the browser (no bundler).
+- HTML/CSS for layout and diagnostics readouts.
 
-## Movement & facing overview
-- The client owns keyboard bookkeeping. `client/input.js` tracks a set of pressed keys for velocity and keeps a last-pressed order so we can remember which way the player should face while idle. Every change results in a normalized `{dx, dy}` intent and facing update being sent immediately to the server.
-- The server is authoritative for simulation. `server/main.go` clamps incoming intent vectors, derives a canonical facing when movement is happening, and, once per tick, advances positions against world bounds, obstacles, and other players before broadcasting the latest state to everyone.
+## Running & Testing
+- Start the server from `server/` with `go run .`; it serves both APIs and static files on `:8080`.
+- Visit `http://localhost:8080` to load the client.
+- Execute `go test ./...` from the repository root before submitting.
 
-## Effect system overview
-- `server/main.go` keeps an extendable list of `Effect` records (type, owner, start/duration, geometry, params) and prunes them each tick. Helpers like `HandleAction`/`triggerMeleeAttack` append new entries, run immediate collision checks, and enforce per-player cooldowns.
-- Active effects are included in `joinResponse`/`stateMessage` payloads so clients can render them without additional round-trips. Client modules (`network.js`, `render.js`) mirror the array and paint translucent debug rectangles for attacks.
+## Coding Conventions
+- **Go:**
+  - Keep functions short, direct comments describing _why_ they exist. Avoid restating obvious control flow.
+  - Guard shared state with `Hub.mu`. Any multi-step mutation of hub maps/slices should happen while holding the mutex.
+  - Prefer returning copies (`snapshotLocked`) when sharing state with callers.
+- **JavaScript:**
+  - Continue using the shared `store` object for cross-module coordination—avoid adding hidden globals.
+  - ES module syntax only; no bundler-specific features.
+  - Keep comments concise and purpose-driven.
+- **General:**
+  - Update the relevant markdown in `docs/` when changing behaviour that affects contributors or runtime assumptions.
+  - Keep diagnostics (`/diagnostics`, HUD) in sync with new fields or metrics you add.
+
+## Pull Request Expectations
+- Include a brief summary plus testing notes in your PR body.
+- Run automated tests relevant to your change set (`go test ./...` at minimum).
+- Document new features, endpoints, or gameplay rules in the appropriate doc file under `docs/`.

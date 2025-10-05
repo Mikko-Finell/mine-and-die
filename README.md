@@ -1,88 +1,50 @@
 # mine-and-die
 
-Experimental browser-based, PvP-enabled permadeath MMO prototype. Players mine finite gold from neutral deposits, organize into guild hierarchies with configurable taxation, and establish control through direct conflict. The world has no formal ownership system—territory only persists while defended.
+Mine & Die is an experimental browser-based arena where players race to extract gold, fight over territory, and live with permadeath consequences. A Go backend simulates the world at a steady tick rate, while a lightweight JavaScript client renders the action in real time.
 
----
+## Documentation Map
+- [Project Overview](docs/README.md)
+- [Server Architecture](docs/server.md)
+- [Client Architecture](docs/client.md)
+- [Testing & Troubleshooting](docs/testing.md)
+- [Contributor Guidelines](AGENTS.md)
+
+Use these documents as the primary reference when extending gameplay, networking, or presentation.
 
 ## Core Concepts
+- **Gold Mining** – Finite deposits follow a halving schedule. Mining requires player action and exposes you to PvP risk.
+- **Permadeath** – Death deletes the character and drops everything. Create a new avatar to rejoin the fray.
+- **Guild Hierarchy** – Five roles (King → Noble → Knight → Squire → Citizen) with configurable taxes that flow upward.
+- **Player-Driven Economy** – No NPC merchants; scarcity and pricing are dictated by players. Monsters drop items, not gold.
+- **Emergent Territory** – Mines are neutral. Control exists only while actively defended by players.
 
-- **Gold Mining**
-  - Gold is a finite, halving-schedule resource.
-  - Players must equip a pickaxe and mine at designated deposits.
-  - Mining requires player action and exposes the miner to PvP risk.
-  - Mined gold enters the player’s inventory and triggers guild tax distribution.
+## Runtime Contract
+1. Clients `POST /join` to receive a snapshot containing their player ID, all known players, obstacles, and active effects.
+2. A WebSocket connection (`/ws?id=<player-id>`) delivers `state` messages ~15× per second.
+3. Clients send `{ type: "input", dx, dy, facing }` whenever movement intent changes and `{ type: "action", action }` for abilities.
+4. Heartbeats (`{ type: "heartbeat", sentAt }`) flow every ~2 seconds; missing three in a row disconnects the session.
+5. `/diagnostics` exposes a JSON summary of tick rate, heartbeat interval, and per-player timing data.
 
-- **Permadeath**
-  - Player death results in full character deletion and item drop.
-  - All inventory, gold, and equipment are dropped on death.
-  - No respawn; new character creation required.
+## Getting Started
+1. **Install dependencies** – Go ≥ 1.22 is required. Node.js is optional for future tooling.
+2. **Run the server**
+   ```bash
+   cd server
+   go run .
+   ```
+3. **Open the client** – Visit [http://localhost:8080](http://localhost:8080) in your browser.
+4. **Stop the server** – Press `Ctrl+C` in the terminal running `go run .`.
 
-- **Guilds**
-  - Five-tier hierarchy: King → Noble → Knight → Squire → Citizen.
-  - Guilds define custom tax percentages.
-  - All gold income is automatically taxed upward through the chain of command.
-  - Guilds maintain treasuries and can use funds for recruitment or defense.
-  - Peasants are guild-less players operating outside the hierarchy.
+The Go server serves static assets straight from `client/`, so refreshing the browser picks up any changes immediately.
 
-- **Economy**
-  - No NPC merchants or vendors.
-  - Monsters drop items, not gold.
-  - All trade, pricing, and supply chains are player-driven.
-  - Gold supply follows a halving schedule; scarcity increases over time.
-
-- **World State**
-  - Mines are neutral entities; there is no formal ownership.
-  - Control is emergent and based purely on manpower and coordination.
-  - Players and NPCs share the same simulation space.
-
----
-
-## Technical Overview
-
-- **Server**
-  - Language: Go
-  - Protocols: WebSocket (realtime state sync), HTTP (auth, static endpoints)
-  - Architecture: Authoritative tick-based simulation (10–20 Hz)
-  - State: In-memory world model with periodic persistence to SQLite/Postgres
-  - Modules:
-    - Player state & inventory
-    - Combat resolution (server-authoritative)
-    - Mining tick handler & emission schedule
-    - Guild and tax ledger
-    - Item spawn/despawn system
-  - Security: Movement clamping, server-only damage authority, per-session nonces
-
-- **Client**
-  - Stack: HTML5 + vanilla JS + `<canvas>` rendering
-  - Graphics: Early alpha uses procedurally generated canvas primitives rendered on the client; no sprite sheets are planned for the initial milestone.
-  - Networking: WebSocket client for input and state updates
-  - Features:
-    - Player movement and interpolation
-    - Mining and combat interactions
-    - Basic UI overlays (HP, gold, inventory)
-
-## Realtime Simulation Contract
-
-- **Tick loop**: The Go hub advances the world at ~15 Hz and clamps all player positions within the 800×600 arena before broadcasting the authoritative snapshot on every tick.
-- **Input payloads**: Clients send `{ "type": "input", "dx": <float>, "dy": <float> }` messages whenever directional intent changes. Vectors are normalized server-side and persisted until a new intent arrives.
-- **Heartbeat expectations**:
-  - Clients emit `{ "type": "heartbeat", "sentAt": <unixMillis> }` every ~2 seconds.
-  - The server responds with `{ "type": "heartbeat", "serverTime": <unixMillis>, "clientTime": <unixMillis>, "rtt": <ms> }` and removes sockets that miss three consecutive heartbeats (~6 seconds).
-- **Diagnostics**: `/diagnostics` returns a JSON payload with the current tick rate, heartbeat interval, and per-player heartbeat/latency observations for monitoring round-trip quality.
-- **World geometry**: The server seeds a handful of rectangular obstacles at startup. Their coordinates are included in `/join` responses and every realtime `state` payload so clients can render matching blockers. Player movement is resolved server-side with obstacle collisions and mutual player separation to prevent overlap.
-
-### Controls
-
-- **Movement**: WASD keys issue normalized intent vectors to the server.
-- **Melee attack**: Tap `Space` to swing a short-range attack in front of your facing.
-- **Fireball**: Press `F` to launch a ranged projectile that travels up to five tiles and vanishes on collision.
-
----
+## Testing
+Run the Go suite from the repository root:
+```bash
+go test ./...
+```
+The tests exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.
 
 ## Roadmap
-
-The project is in its foundational phase. The milestones below outline the intended progression toward the full Mine & Die experience. Each step is scoped to be deliverable, testable, and to build on the work completed in prior milestones.
-
 ### Milestone 1 – Authoritative tick loop & robust networking
 - Introduce a fixed-rate simulation ticker (10–20 Hz) that applies stored player intents, clamps movement, and rebroadcasts authoritative positions from the server.
 - Switch the WebSocket contract to accept input payloads, persisting them per player for consumption in the tick loop.
@@ -117,53 +79,3 @@ The project is in its foundational phase. The milestones below outline the inten
 - Add item spawn/despawn systems for NPCs/monsters, integrating drops into combat resolution and world state broadcasts.
 - Support player-to-player trade or guild treasury withdrawals with accompanying client UI.
 - Document persistence setup, the economic halving schedule, and trading expectations, including migration steps.
-
----
-
-## Development
-
-### Requirements
-- Go ≥ 1.22
-- Node.js (optional, for client tooling and future build steps)
-- SQLite (default local persistence)
-
-## Installation & Local Run Guide
-
-Follow the steps below to get the project running on a Unix-like environment (macOS or Linux). Each step assumes you are comfortable with a terminal but may be new to the Go toolchain.
-
-1. **Install Git (if not already installed).**
-   - macOS: `xcode-select --install`
-   - Debian/Ubuntu: `sudo apt update && sudo apt install git`
-
-2. **Install Go (required to run the game server).**
-   - macOS (Homebrew): `brew install go`
-   - Debian/Ubuntu: `sudo apt install golang`
-   - Alternatively, download an official tarball from [https://go.dev/dl/](https://go.dev/dl/) and follow the instructions provided there.
-   - Verify the installation with `go version`; it should report version 1.22 or newer.
-
-3. **(Optional) Install Node.js and npm.** While the current client is served as static files, future tooling may rely on Node.
-   - macOS (Homebrew): `brew install node`
-   - Debian/Ubuntu: `sudo apt install nodejs npm`
-   - Verify with `node --version` and `npm --version`.
-
-4. **Clone the repository and enter it.**
-   ```bash
-   git clone https://github.com/<your-username>/mine-and-die
-   cd mine-and-die
-   ```
-
-5. **Run the Go server.**
-   ```bash
-   cd server
-   go run .
-   ```
-   The terminal should print `server listening on :8080`. Leave this process running; it serves both the API and the static client from the `client` directory.
-
-6. **Open the client.**
-   - In a web browser on the same machine, navigate to [http://localhost:8080](http://localhost:8080).
-   - You should see the Mine & Die prototype and can start interacting with the local server immediately.
-
-7. **Stopping the server.**
-   - Return to the terminal running `go run .` and press `Ctrl+C` to shut down the server.
-
-If you make changes to the client assets, simply refresh the browser; the Go server serves the updated static files automatically. For more advanced client workflows (such as bundling or hot-module reloading), install Node.js and introduce your preferred tooling inside the `client/` directory.

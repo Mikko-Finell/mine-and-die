@@ -63,6 +63,7 @@ const store = {
   effects: [],
 };
 
+// updateDiagnosticsToggle syncs the toggle label with the current panel state.
 function updateDiagnosticsToggle() {
   if (!store.diagnosticsToggle || !store.diagnosticsSection) {
     return;
@@ -74,6 +75,7 @@ function updateDiagnosticsToggle() {
   store.diagnosticsToggle.setAttribute("aria-expanded", String(isVisible));
 }
 
+// setDiagnosticsVisibility shows or hides the diagnostics block.
 function setDiagnosticsVisibility(visible) {
   if (!store.diagnosticsSection) {
     return;
@@ -86,6 +88,7 @@ function setDiagnosticsVisibility(visible) {
   updateDiagnosticsToggle();
 }
 
+// initializeDiagnosticsToggle wires the button that expands diagnostics.
 function initializeDiagnosticsToggle() {
   if (!store.diagnosticsToggle || !store.diagnosticsSection) {
     return;
@@ -97,6 +100,7 @@ function initializeDiagnosticsToggle() {
   updateDiagnosticsToggle();
 }
 
+// renderStatus updates the status line with any latency text.
 function renderStatus() {
   if (!store.statusEl) return;
   if (store.latencyMs != null) {
@@ -108,18 +112,21 @@ function renderStatus() {
   }
 }
 
+// setStatusBase records the base status string before latency decorations.
 function setStatusBase(text) {
   store.statusBaseText = text;
   renderStatus();
   updateDiagnostics();
 }
 
+// setLatency stores the latest measured round-trip time.
 function setLatency(value) {
   store.latencyMs = value;
   renderStatus();
   updateDiagnostics();
 }
 
+// formatAgo renders a human-friendly time delta for diagnostics labels.
 function formatAgo(timestamp) {
   if (!timestamp) return "—";
   const delta = Math.max(0, Date.now() - timestamp);
@@ -133,11 +140,13 @@ function formatAgo(timestamp) {
   return `${minutes} min ago`;
 }
 
+// formatLatency formats a latency value with units for display.
 function formatLatency(value) {
   if (value == null) return "—";
   return `${Math.round(value)} ms`;
 }
 
+// updateDiagnostics refreshes the diagnostics sidebar with live values.
 function updateDiagnostics() {
   const els = store.diagnosticsEls;
   if (!els.connection) {
@@ -184,6 +193,7 @@ function updateDiagnostics() {
   }
 }
 
+// setSimulatedLatency updates the artificial latency slider and value.
 function setSimulatedLatency(storeRef, value) {
   storeRef.simulatedLatencyMs = Math.max(0, Number.isFinite(value) ? value : 0);
   if (storeRef.latencyInput) {
@@ -192,6 +202,7 @@ function setSimulatedLatency(storeRef, value) {
   updateDiagnostics();
 }
 
+// handleSimulatedLatencyInput parses latency overrides typed by the user.
 function handleSimulatedLatencyInput() {
   if (!store.latencyInput) {
     return;
@@ -204,6 +215,7 @@ function handleSimulatedLatencyInput() {
   }
 }
 
+// attachLatencyInputListener registers the diagnostics latency input handler.
 function attachLatencyInputListener() {
   if (!store.latencyInput) {
     return;
