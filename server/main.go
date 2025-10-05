@@ -112,12 +112,14 @@ type joinResponse struct {
 	ID        string     `json:"id"`
 	Players   []Player   `json:"players"`
 	Obstacles []Obstacle `json:"obstacles"`
+	Effects   []Effect   `json:"effects"`
 }
 
 type stateMessage struct {
 	Type       string     `json:"type"`
 	Players    []Player   `json:"players"`
 	Obstacles  []Obstacle `json:"obstacles"`
+	Effects    []Effect   `json:"effects"`
 	ServerTime int64      `json:"serverTime"`
 }
 
@@ -127,6 +129,31 @@ type clientMessage struct {
 	DY     float64 `json:"dy"`
 	Facing string  `json:"facing"`
 	SentAt int64   `json:"sentAt"`
+	Action string  `json:"action"`
+}
+
+// Effect represents a time-bound gameplay artifact (an attack swing, a buff,
+// an environmental hazard, etc.). It captures the minimum data the simulation
+// needs to reason about the effect while staying extendable via Params.
+type Effect struct {
+	ID       string             `json:"id"`
+	Type     string             `json:"type"`
+	Owner    string             `json:"owner"`
+	Start    int64              `json:"start"`
+	Duration int64              `json:"duration"`
+	X        float64            `json:"x,omitempty"`
+	Y        float64            `json:"y,omitempty"`
+	Width    float64            `json:"width,omitempty"`
+	Height   float64            `json:"height,omitempty"`
+	Params   map[string]float64 `json:"params,omitempty"`
+}
+
+// effectState keeps the runtime bookkeeping for an Effect. Expiration checks
+// are handled with the concrete time fields while the Effect payload remains
+// ready for serialization to connected clients.
+type effectState struct {
+	Effect
+	expiresAt time.Time
 }
 
 type heartbeatMessage struct {
@@ -148,6 +175,7 @@ type playerState struct {
 	lastInput     time.Time
 	lastHeartbeat time.Time
 	lastRTT       time.Duration
+	cooldowns     map[string]time.Time
 }
 
 type diagnosticsPlayer struct {
@@ -162,16 +190,28 @@ type Hub struct {
 	subscribers map[string]*subscriber
 	nextID      atomic.Uint64
 	obstacles   []Obstacle
+	effects     []*effectState
+	nextEffect  atomic.Uint64
 }
 
 func newHub() *Hub {
 	hub := &Hub{
 		players:     make(map[string]*playerState),
 		subscribers: make(map[string]*subscriber),
+		effects:     make([]*effectState, 0),
 	}
 	hub.obstacles = hub.generateObstacles(obstacleCount)
 	return hub
 }
+
+const (
+	meleeAttackCooldown = 400 * time.Millisecond
+	meleeAttackDuration = 150 * time.Millisecond
+	meleeAttackReach    = 56.0
+	meleeAttackWidth    = 40.0
+	meleeAttackDamage   = 10.0
+	effectTypeAttack    = "attack"
+)
 
 func (h *Hub) generateObstacles(count int) []Obstacle {
 	if count <= 0 {
@@ -449,7 +489,7 @@ func resolvePlayerCollisions(players []*playerState, obstacles []Obstacle) {
 	}
 }
 
-func (h *Hub) snapshotLocked() []Player {
+func (h *Hub) snapshotLocked(now time.Time) ([]Player, []Effect) {
 	players := make([]Player, 0, len(h.players))
 	for _, player := range h.players {
 		if player.Facing == "" {
@@ -457,17 +497,45 @@ func (h *Hub) snapshotLocked() []Player {
 		}
 		players = append(players, player.Player)
 	}
-	return players
+	effects := make([]Effect, 0, len(h.effects))
+	for _, eff := range h.effects {
+		if now.Before(eff.expiresAt) {
+			effects = append(effects, eff.Effect)
+		}
+	}
+	return players, effects
 }
 
-func (h *Hub) broadcastState(players []Player) {
-	if players == nil {
+func (h *Hub) pruneEffectsLocked(now time.Time) {
+	if len(h.effects) == 0 {
+		return
+	}
+	filtered := h.effects[:0]
+	for _, eff := range h.effects {
+		if now.Before(eff.expiresAt) {
+			filtered = append(filtered, eff)
+		}
+	}
+	h.effects = filtered
+}
+
+func (h *Hub) broadcastState(players []Player, effects []Effect) {
+	if players == nil || effects == nil {
 		h.mu.Lock()
-		players = h.snapshotLocked()
+		now := time.Now()
+		if players == nil || effects == nil {
+			players, effects = h.snapshotLocked(now)
+		}
 		h.mu.Unlock()
 	}
 
-	msg := stateMessage{Type: "state", Players: players, Obstacles: h.obstacles, ServerTime: time.Now().UnixMilli()}
+	msg := stateMessage{
+		Type:       "state",
+		Players:    players,
+		Obstacles:  h.obstacles,
+		Effects:    effects,
+		ServerTime: time.Now().UnixMilli(),
+	}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		log.Printf("failed to marshal state message: %v", err)
@@ -488,9 +556,9 @@ func (h *Hub) broadcastState(players []Player) {
 		sub.mu.Unlock()
 		if err != nil {
 			log.Printf("failed to send update to %s: %v", id, err)
-			players := h.Disconnect(id)
+			players, effects := h.Disconnect(id)
 			if players != nil {
-				go h.broadcastState(players)
+				go h.broadcastState(players, effects)
 			}
 		}
 	}
@@ -500,25 +568,30 @@ func (h *Hub) Join() joinResponse {
 	id := h.nextID.Add(1)
 	playerID := fmt.Sprintf("player-%d", id)
 	now := time.Now()
-	player := &playerState{Player: Player{ID: playerID, X: 80, Y: 80, Facing: defaultFacing}, lastHeartbeat: now}
+	player := &playerState{
+		Player:        Player{ID: playerID, X: 80, Y: 80, Facing: defaultFacing},
+		lastHeartbeat: now,
+		cooldowns:     make(map[string]time.Time),
+	}
 
 	h.mu.Lock()
+	h.pruneEffectsLocked(now)
 	h.players[playerID] = player
-	players := h.snapshotLocked()
+	players, effects := h.snapshotLocked(now)
 	h.mu.Unlock()
 
-	go h.broadcastState(players)
+	go h.broadcastState(players, effects)
 
-	return joinResponse{ID: playerID, Players: players, Obstacles: h.obstacles}
+	return joinResponse{ID: playerID, Players: players, Obstacles: h.obstacles, Effects: effects}
 }
 
-func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, bool) {
+func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, []Effect, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	state, ok := h.players[playerID]
 	if !ok {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 
 	state.lastHeartbeat = time.Now()
@@ -529,11 +602,13 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 
 	sub := &subscriber{conn: conn}
 	h.subscribers[playerID] = sub
-	players := h.snapshotLocked()
-	return sub, players, true
+	now := time.Now()
+	h.pruneEffectsLocked(now)
+	players, effects := h.snapshotLocked(now)
+	return sub, players, effects, true
 }
 
-func (h *Hub) Disconnect(playerID string) []Player {
+func (h *Hub) Disconnect(playerID string) ([]Player, []Effect) {
 	h.mu.Lock()
 	sub, subOK := h.subscribers[playerID]
 	if subOK {
@@ -546,8 +621,11 @@ func (h *Hub) Disconnect(playerID string) []Player {
 	}
 
 	var players []Player
+	var effects []Effect
 	if playerOK {
-		players = h.snapshotLocked()
+		now := time.Now()
+		h.pruneEffectsLocked(now)
+		players, effects = h.snapshotLocked(now)
 	}
 	h.mu.Unlock()
 
@@ -556,10 +634,10 @@ func (h *Hub) Disconnect(playerID string) []Player {
 	}
 
 	if !playerOK {
-		return nil
+		return nil, nil
 	}
 
-	return players
+	return players, effects
 }
 
 // UpdateIntent is invoked for every input message from the client. We clamp the
@@ -600,6 +678,108 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool 
 	return true
 }
 
+func (h *Hub) HandleAction(playerID, action string) bool {
+	switch action {
+	case effectTypeAttack:
+		h.triggerMeleeAttack(playerID)
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *Hub) triggerMeleeAttack(playerID string) bool {
+	now := time.Now()
+
+	h.mu.Lock()
+
+	state, ok := h.players[playerID]
+	if !ok {
+		h.mu.Unlock()
+		return false
+	}
+
+	if state.cooldowns == nil {
+		state.cooldowns = make(map[string]time.Time)
+	}
+
+	if last, ok := state.cooldowns[effectTypeAttack]; ok {
+		if now.Sub(last) < meleeAttackCooldown {
+			h.mu.Unlock()
+			return false
+		}
+	}
+
+	state.cooldowns[effectTypeAttack] = now
+
+	facing := state.Facing
+	if facing == "" {
+		facing = defaultFacing
+	}
+
+	rectX, rectY, rectW, rectH := meleeAttackRectangle(state.X, state.Y, facing)
+
+	effect := &effectState{
+		Effect: Effect{
+			ID:       fmt.Sprintf("effect-%d", h.nextEffect.Add(1)),
+			Type:     effectTypeAttack,
+			Owner:    playerID,
+			Start:    now.UnixMilli(),
+			Duration: meleeAttackDuration.Milliseconds(),
+			X:        rectX,
+			Y:        rectY,
+			Width:    rectW,
+			Height:   rectH,
+			Params: map[string]float64{
+				"damage": meleeAttackDamage,
+				"reach":  meleeAttackReach,
+				"width":  meleeAttackWidth,
+			},
+		},
+		expiresAt: now.Add(meleeAttackDuration),
+	}
+
+	h.pruneEffectsLocked(now)
+	h.effects = append(h.effects, effect)
+
+	area := Obstacle{X: rectX, Y: rectY, Width: rectW, Height: rectH}
+	hitIDs := make([]string, 0)
+	for id, target := range h.players {
+		if id == playerID {
+			continue
+		}
+		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
+			hitIDs = append(hitIDs, id)
+		}
+	}
+
+	h.mu.Unlock()
+
+	if len(hitIDs) > 0 {
+		log.Printf("%s %s overlaps players %v", playerID, effectTypeAttack, hitIDs)
+	}
+
+	return true
+}
+
+func meleeAttackRectangle(x, y float64, facing FacingDirection) (float64, float64, float64, float64) {
+	reach := meleeAttackReach
+	thickness := meleeAttackWidth
+
+	switch facing {
+	case FacingUp:
+		return x - thickness/2, y - playerHalf - reach, thickness, reach
+	case FacingDown:
+		return x - thickness/2, y + playerHalf, thickness, reach
+	case FacingLeft:
+		return x - playerHalf - reach, y - thickness/2, reach, thickness
+	case FacingRight:
+		return x + playerHalf, y - thickness/2, reach, thickness
+	default:
+		return x - thickness/2, y + playerHalf, thickness, reach
+	}
+}
+
 func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent int64) (time.Duration, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -630,7 +810,7 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 // player, prunes anyone who missed their heartbeat deadline, and resolves both
 // obstacle and player collisions before producing the snapshot we broadcast to
 // clients.
-func (h *Hub) advance(now time.Time, dt float64) ([]Player, []*subscriber) {
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []Effect, []*subscriber) {
 	h.mu.Lock()
 
 	toClose := make([]*subscriber, 0)
@@ -655,10 +835,11 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []*subscriber) {
 
 	resolvePlayerCollisions(activeStates, h.obstacles)
 
-	players := h.snapshotLocked()
+	h.pruneEffectsLocked(now)
+	players, effects := h.snapshotLocked(now)
 	h.mu.Unlock()
 
-	return players, toClose
+	return players, effects, toClose
 }
 
 func (h *Hub) RunSimulation(stop <-chan struct{}) {
@@ -677,11 +858,11 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 			}
 			last = now
 
-			players, toClose := h.advance(now, dt)
+			players, effects, toClose := h.advance(now, dt)
 			for _, sub := range toClose {
 				sub.conn.Close()
 			}
-			h.broadcastState(players)
+			h.broadcastState(players, effects)
 		}
 	}
 }
@@ -774,7 +955,7 @@ func main() {
 			return
 		}
 
-		sub, snapshot, ok := hub.Subscribe(playerID, conn)
+		sub, snapshotPlayers, snapshotEffects, ok := hub.Subscribe(playerID, conn)
 		if !ok {
 			message := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unknown player")
 			conn.WriteMessage(websocket.CloseMessage, message)
@@ -782,13 +963,19 @@ func main() {
 			return
 		}
 
-		initial := stateMessage{Type: "state", Players: snapshot, Obstacles: hub.obstacles, ServerTime: time.Now().UnixMilli()}
+		initial := stateMessage{
+			Type:       "state",
+			Players:    snapshotPlayers,
+			Obstacles:  hub.obstacles,
+			Effects:    snapshotEffects,
+			ServerTime: time.Now().UnixMilli(),
+		}
 		data, err := json.Marshal(initial)
 		if err != nil {
 			log.Printf("failed to marshal initial state for %s: %v", playerID, err)
-			players := hub.Disconnect(playerID)
+			players, effects := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players)
+				go hub.broadcastState(players, effects)
 			}
 			return
 		}
@@ -797,9 +984,9 @@ func main() {
 		conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			sub.mu.Unlock()
-			players := hub.Disconnect(playerID)
+			players, effects := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players)
+				go hub.broadcastState(players, effects)
 			}
 			return
 		}
@@ -808,9 +995,9 @@ func main() {
 		for {
 			_, payload, err := conn.ReadMessage()
 			if err != nil {
-				players := hub.Disconnect(playerID)
+				players, effects := hub.Disconnect(playerID)
 				if players != nil {
-					go hub.broadcastState(players)
+					go hub.broadcastState(players, effects)
 				}
 				return
 			}
@@ -825,6 +1012,13 @@ func main() {
 			case "input":
 				if !hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing) {
 					log.Printf("input ignored for unknown player %s", playerID)
+				}
+			case "action":
+				if msg.Action == "" {
+					continue
+				}
+				if !hub.HandleAction(playerID, msg.Action) {
+					log.Printf("unknown action %q from %s", msg.Action, playerID)
 				}
 			case "heartbeat":
 				now := time.Now()
@@ -850,9 +1044,9 @@ func main() {
 				conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 					sub.mu.Unlock()
-					players := hub.Disconnect(playerID)
+					players, effects := hub.Disconnect(playerID)
 					if players != nil {
-						go hub.broadcastState(players)
+						go hub.broadcastState(players, effects)
 					}
 					return
 				}

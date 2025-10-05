@@ -48,6 +48,9 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 	if len(first.Obstacles) != len(hub.obstacles) {
 		t.Fatalf("expected join response to include %d obstacles, got %d", len(hub.obstacles), len(first.Obstacles))
 	}
+	if len(first.Effects) != 0 {
+		t.Fatalf("expected initial effect list to be empty, got %d", len(first.Effects))
+	}
 }
 
 func TestUpdateIntentNormalizesVector(t *testing.T) {
@@ -157,7 +160,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 		lastHeartbeat: now,
 	}
 
-	players, toClose := hub.advance(now, 0.5)
+	players, _, toClose := hub.advance(now, 0.5)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers to close, got %d", len(toClose))
 	}
@@ -190,7 +193,7 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 		lastHeartbeat: time.Now().Add(-disconnectAfter - time.Second),
 	}
 
-	players, toClose := hub.advance(time.Now(), 0)
+	players, _, toClose := hub.advance(time.Now(), 0)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers returned when none registered")
 	}
@@ -199,6 +202,63 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	}
 	if _, ok := hub.players[staleID]; ok {
 		t.Fatalf("stale player still in hub map")
+	}
+}
+
+func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
+	hub := newHub()
+	attackerID := "attacker"
+	hub.players[attackerID] = &playerState{
+		Player:        Player{ID: attackerID, X: 200, Y: 200, Facing: FacingRight},
+		lastHeartbeat: time.Now(),
+		cooldowns:     make(map[string]time.Time),
+	}
+
+	if !hub.HandleAction(attackerID, effectTypeAttack) {
+		t.Fatalf("expected attack action to be recognized")
+	}
+
+	hub.mu.Lock()
+	if len(hub.effects) != 1 {
+		hub.mu.Unlock()
+		t.Fatalf("expected exactly one effect after first attack, got %d", len(hub.effects))
+	}
+	first := hub.effects[0]
+	if first.Type != effectTypeAttack {
+		hub.mu.Unlock()
+		t.Fatalf("expected effect type %q, got %q", effectTypeAttack, first.Type)
+	}
+	if first.Width <= 0 || first.Height <= 0 {
+		hub.mu.Unlock()
+		t.Fatalf("expected non-zero effect bounds, got width=%f height=%f", first.Width, first.Height)
+	}
+	firstStart := first.Start
+	hub.mu.Unlock()
+
+	hub.HandleAction(attackerID, effectTypeAttack)
+	hub.mu.Lock()
+	if len(hub.effects) != 1 {
+		hub.mu.Unlock()
+		t.Fatalf("expected cooldown to prevent new effect, have %d", len(hub.effects))
+	}
+
+	hub.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
+	hub.mu.Unlock()
+
+	hub.HandleAction(attackerID, effectTypeAttack)
+	hub.mu.Lock()
+	if len(hub.effects) != 2 {
+		hub.mu.Unlock()
+		t.Fatalf("expected second effect after cooldown reset, have %d", len(hub.effects))
+	}
+	second := hub.effects[1]
+	hub.mu.Unlock()
+
+	if second.ID == first.ID {
+		t.Fatalf("expected unique effect IDs, both were %q", second.ID)
+	}
+	if second.Start < firstStart {
+		t.Fatalf("expected second effect start (%d) to be >= first (%d)", second.Start, firstStart)
 	}
 }
 
@@ -273,7 +333,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 		lastHeartbeat: now,
 	}
 
-	players, _ := hub.advance(now, 1)
+	players, _, _ := hub.advance(now, 1)
 	blocker := findPlayer(players, playerID)
 	if blocker == nil {
 		t.Fatalf("expected player in snapshot")
@@ -306,7 +366,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 		lastHeartbeat: now,
 	}
 
-	players, _ := hub.advance(now, 1)
+	players, _, _ := hub.advance(now, 1)
 
 	first := findPlayer(players, firstID)
 	second := findPlayer(players, secondID)
