@@ -11,7 +11,8 @@ const MOVE_SPEED = 160; // pixels per second
 
 let playerId = null;
 let players = {};
-let eventSource = null;
+let socket = null;
+let reconnectTimeout = null;
 let pendingSync = false;
 let pendingPosition = { x: 80, y: 80 };
 let lastSentPosition = { x: 80, y: 80 };
@@ -31,6 +32,10 @@ function updateStatus(text) {
 async function joinGame() {
   if (isJoining) return;
   isJoining = true;
+  if (reconnectTimeout !== null) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
   updateStatus("Joining game...");
   try {
     const response = await fetch("/join", { method: "POST" });
@@ -55,14 +60,55 @@ async function joinGame() {
   }
 }
 
+function closeSocketSilently() {
+  if (!socket) return;
+  socket.onopen = null;
+  socket.onmessage = null;
+  socket.onclose = null;
+  socket.onerror = null;
+  try {
+    socket.close();
+  } catch (err) {
+    console.error("Failed to close socket", err);
+  }
+  socket = null;
+}
+
+function scheduleReconnect() {
+  if (reconnectTimeout !== null) return;
+  reconnectTimeout = setTimeout(() => {
+    reconnectTimeout = null;
+    joinGame();
+  }, 1000);
+}
+
+function handleConnectionLoss() {
+  closeSocketSilently();
+  if (playerId === null) {
+    return;
+  }
+  updateStatus("Connection lost. Rejoining...");
+  playerId = null;
+  players = {};
+  pendingSync = false;
+  scheduleReconnect();
+}
+
 function connectEvents() {
   if (!playerId) return;
-  if (eventSource) {
-    eventSource.close();
-  }
+  closeSocketSilently();
 
-  eventSource = new EventSource(`/events?id=${encodeURIComponent(playerId)}`);
-  eventSource.onmessage = (event) => {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const wsUrl = `${protocol}://${window.location.host}/ws?id=${encodeURIComponent(
+    playerId
+  )}`;
+  socket = new WebSocket(wsUrl);
+
+  socket.onopen = () => {
+    updateStatus(`Connected as ${playerId}. Use WASD to move.`);
+  };
+
+  socket.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data);
       if (payload.type === "state") {
@@ -76,17 +122,12 @@ function connectEvents() {
     }
   };
 
-  eventSource.onerror = () => {
-    updateStatus("Connection lost. Rejoining...");
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
-    }
-    playerId = null;
-    players = {};
-    pendingSync = false;
-    setTimeout(joinGame, 1000);
+  const handleSocketDrop = () => {
+    handleConnectionLoss();
   };
+
+  socket.onerror = handleSocketDrop;
+  socket.onclose = handleSocketDrop;
 }
 
 function handleKey(event, isPressed) {
@@ -184,17 +225,20 @@ async function syncPosition() {
   }
 
   try {
-    await fetch("/move", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ id: playerId, x, y }),
-      keepalive: true,
-    });
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    socket.send(
+      JSON.stringify({
+        type: "move",
+        x,
+        y,
+      })
+    );
     lastSentPosition = { x, y };
   } catch (err) {
     console.error("Failed to sync position", err);
+    return;
   }
 
   pendingSync = false;
