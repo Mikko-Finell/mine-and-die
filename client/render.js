@@ -85,6 +85,9 @@ function drawScene(store) {
     );
 
     const player = store.players[id];
+    if (player && typeof player.maxHealth === "number" && player.maxHealth > 0 && typeof player.health === "number") {
+      drawHealthBar(ctx, store, position, player, id);
+    }
     const facing = player && typeof player.facing === "string" ? player.facing : DEFAULT_FACING;
     const offset = FACING_OFFSETS[facing] || FACING_OFFSETS[DEFAULT_FACING];
     const indicatorLength = store.PLAYER_HALF + 6;
@@ -102,6 +105,30 @@ function drawScene(store) {
     ctx.stroke();
     ctx.restore();
   });
+}
+
+function drawHealthBar(ctx, store, position, player, id) {
+  const maxHealth = player.maxHealth;
+  const health = Math.max(0, Math.min(player.health, maxHealth));
+  const ratio = maxHealth > 0 ? health / maxHealth : 0;
+  const barWidth = store.PLAYER_SIZE;
+  const barHeight = 4;
+  const barX = position.x - store.PLAYER_HALF;
+  const barY = position.y - store.PLAYER_HALF - 8;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(15, 23, 42, 0.65)";
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+
+  const fillWidth = Math.max(0, Math.min(barWidth, barWidth * ratio));
+  if (fillWidth > 0) {
+    ctx.fillStyle = id === store.playerId ? "#4ade80" : "#f87171";
+    ctx.fillRect(barX, barY, fillWidth, barHeight);
+  }
+
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.9)";
+  ctx.strokeRect(barX - 0.5, barY - 0.5, barWidth + 1, barHeight + 1);
+  ctx.restore();
 }
 
 // drawEffects renders translucent rectangles for every active effect.

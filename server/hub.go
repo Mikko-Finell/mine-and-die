@@ -14,13 +14,14 @@ import (
 
 // Hub owns all live players, subscribers, obstacles, and active effects.
 type Hub struct {
-	mu          sync.Mutex
-	players     map[string]*playerState
-	subscribers map[string]*subscriber
-	nextID      atomic.Uint64
-	obstacles   []Obstacle
-	effects     []*effectState
-	nextEffect  atomic.Uint64
+	mu              sync.Mutex
+	players         map[string]*playerState
+	subscribers     map[string]*subscriber
+	nextID          atomic.Uint64
+	obstacles       []Obstacle
+	effects         []*effectState
+	nextEffect      atomic.Uint64
+	effectBehaviors map[string]effectBehavior
 }
 
 type subscriber struct {
@@ -31,9 +32,10 @@ type subscriber struct {
 // newHub creates a hub with empty maps and a freshly generated obstacle set.
 func newHub() *Hub {
 	hub := &Hub{
-		players:     make(map[string]*playerState),
-		subscribers: make(map[string]*subscriber),
-		effects:     make([]*effectState, 0),
+		players:         make(map[string]*playerState),
+		subscribers:     make(map[string]*subscriber),
+		effects:         make([]*effectState, 0),
+		effectBehaviors: newEffectBehaviors(),
 	}
 	hub.obstacles = hub.generateObstacles(obstacleCount)
 	return hub
@@ -58,6 +60,8 @@ func (h *Hub) Join() joinResponse {
 			X:         80,
 			Y:         80,
 			Facing:    defaultFacing,
+			Health:    playerMaxHealth,
+			MaxHealth: playerMaxHealth,
 			Inventory: inventory,
 		},
 		lastHeartbeat: now,

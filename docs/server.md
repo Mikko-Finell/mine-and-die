@@ -17,6 +17,7 @@ The `Hub` struct tracks:
 - `players` – map of player IDs to their live state (`playerState`).
 - `subscribers` – active WebSocket connections keyed by player ID.
 - `effects` – slice of in-flight ability payloads.
+- `effectBehaviors` – map of effect types to collision handlers (damage, healing, etc.).
 - `obstacles` – immutable slice shared with clients.
 - Atomic counters for player/effect IDs.
 
@@ -34,12 +35,12 @@ The `Hub` struct tracks:
 - Effects: `advanceEffectsLocked` moves projectiles, expires them on collision, and mirrors remaining range in `Params`.
 - Cleanup: removes players who miss `disconnectAfter` and prunes expired effects.
 
-### Actions and Cooldowns
+### Actions, Health, and Cooldowns
 `HandleAction` dispatches to `triggerMeleeAttack` or `triggerFireball`:
 - Melee: spawns a short-lived rectangular effect, records cooldown, immediately checks for overlapping players, and awards one gold coin when the swing overlaps a gold ore obstacle.
 - Fireball: spawns a projectile with velocity/duration; `advanceEffectsLocked` moves and expires it.
 
-Both helpers share the `Effect` struct (`type`, `owner`, bounding box, `Params`) that is sent to clients for rendering.
+Players now track `Health` and `MaxHealth`. Both helpers share the `Effect` struct (`type`, `owner`, bounding box, `Params`) that is sent to clients for rendering. The hub registers per-effect behaviour in `effectBehaviors`; melee swings and fireballs publish a `healthDelta` parameter that is applied to every overlapping target. Positive values heal (clamped to `MaxHealth`), negative values deal damage (never dropping below zero). Adding new effect types means registering another behaviour keyed by the effect's `Type`.
 
 ### Inventory System
 - Each `Player` carries an `Inventory` composed of ordered slots. The ordering is preserved in snapshots so clients can surface drag-and-drop later on.
