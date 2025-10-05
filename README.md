@@ -61,8 +61,6 @@ Experimental browser-based, PvP-enabled permadeath MMO prototype. Players mine f
     - Mining and combat interactions
     - Basic UI overlays (HP, gold, inventory)
 
----
-
 ## Realtime Simulation Contract
 
 - **Tick loop**: The Go hub advances the world at ~15 Hz and clamps all player positions within the 800×600 arena before broadcasting the authoritative snapshot on every tick.
@@ -71,6 +69,8 @@ Experimental browser-based, PvP-enabled permadeath MMO prototype. Players mine f
   - Clients emit `{ "type": "heartbeat", "sentAt": <unixMillis> }` every ~2 seconds.
   - The server responds with `{ "type": "heartbeat", "serverTime": <unixMillis>, "clientTime": <unixMillis>, "rtt": <ms> }` and removes sockets that miss three consecutive heartbeats (~6 seconds).
 - **Diagnostics**: `/diagnostics` returns a JSON payload with the current tick rate, heartbeat interval, and per-player heartbeat/latency observations for monitoring round-trip quality.
+
+---
 
 ## Roadmap
 
