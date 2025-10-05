@@ -37,6 +37,7 @@ const store = {
   playerId: null,
   players: {},
   displayPlayers: {},
+  obstacles: [],
   socket: null,
   reconnectTimeout: null,
   isJoining: false,

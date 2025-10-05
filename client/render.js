@@ -48,6 +48,13 @@ function drawScene(store) {
     ctx.stroke();
   }
 
+  store.obstacles.forEach((obstacle) => {
+    ctx.fillStyle = "#334155";
+    ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+    ctx.strokeStyle = "#475569";
+    ctx.strokeRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+  });
+
   Object.entries(store.displayPlayers).forEach(([id, position]) => {
     ctx.fillStyle = id === store.playerId ? "#38bdf8" : "#f97316";
     ctx.fillRect(
