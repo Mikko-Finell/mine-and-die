@@ -60,6 +60,12 @@ func parseFacing(value string) (FacingDirection, bool) {
 	}
 }
 
+// deriveFacing mirrors the client's facing resolution rules. The simulation
+// primarily trusts the intent vector that arrives from the client, so we reuse
+// that normalized direction to decide which of the cardinal strings should be
+// broadcast with the state snapshot. When the player is idle we stick with
+// whatever facing we already had (or the provided fallback) so avatars keep
+// looking the same direction between bursts of movement.
 func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
 	if fallback == "" {
 		fallback = defaultFacing
@@ -247,6 +253,11 @@ func clamp(value, min, max float64) float64 {
 	return value
 }
 
+// movePlayerWithObstacles advances a player according to their intent while
+// respecting world bounds, obstacles, and keeps movement speed consistent by
+// normalizing diagonal input. Movement is resolved axis-by-axis so we can push
+// right up against walls and slide along them, then any residual overlaps are
+// cleaned up with resolveObstaclePenetration.
 func movePlayerWithObstacles(state *playerState, dt float64, obstacles []Obstacle) {
 	dx := state.intentX
 	dy := state.intentY
@@ -551,6 +562,11 @@ func (h *Hub) Disconnect(playerID string) []Player {
 	return players
 }
 
+// UpdateIntent is invoked for every input message from the client. We clamp the
+// vector magnitude to 1 so clients cannot move faster than intended, derive the
+// canonical facing for the intent, and remember when the last command arrived.
+// If the player is idle we accept the client-supplied facing so their avatar
+// can turn in place without drifting.
 func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -610,6 +626,10 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 	return state.lastRTT, true
 }
 
+// advance runs once per tick. It applies the current intent to every active
+// player, prunes anyone who missed their heartbeat deadline, and resolves both
+// obstacle and player collisions before producing the snapshot we broadcast to
+// clients.
 func (h *Hub) advance(now time.Time, dt float64) ([]Player, []*subscriber) {
 	h.mu.Lock()
 
