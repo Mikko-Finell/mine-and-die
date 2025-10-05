@@ -11,6 +11,10 @@ const EFFECT_STYLES = {
     fill: "rgba(239, 68, 68, 0.25)",
     stroke: "rgba(239, 68, 68, 0.8)",
   },
+  fireball: {
+    fill: "rgba(251, 191, 36, 0.35)",
+    stroke: "rgba(251, 146, 60, 0.95)",
+  },
 };
 
 export function startRenderLoop(store) {

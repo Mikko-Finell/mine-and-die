@@ -9,6 +9,7 @@ const KEY_TO_FACING = {
 };
 const MOVEMENT_KEYS = new Set(Object.keys(KEY_TO_FACING));
 const ATTACK_ACTION = "attack";
+const FIREBALL_ACTION = "fireball";
 
 // registerInputHandlers keeps the authoritative record of keyboard intent on the
 // client. We maintain two pieces of state:
@@ -31,7 +32,17 @@ export function registerInputHandlers(store) {
       return;
     }
 
-    const key = event.key.toLowerCase();
+    const lowerKey = event.key.toLowerCase();
+
+    if (lowerKey === "f") {
+      event.preventDefault();
+      if (isPressed && !event.repeat) {
+        sendAction(store, FIREBALL_ACTION);
+      }
+      return;
+    }
+
+    const key = lowerKey;
     if (!MOVEMENT_KEYS.has(key)) {
       return;
     }

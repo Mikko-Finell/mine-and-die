@@ -382,3 +382,76 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 		t.Fatalf("expected players separated by at least %.2f, got %.2f", minSeparation, distance)
 	}
 }
+
+func TestTriggerFireballCreatesProjectile(t *testing.T) {
+	hub := newHub()
+	shooterID := "shooter"
+	now := time.Now()
+
+	hub.players[shooterID] = &playerState{
+		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight},
+		lastHeartbeat: now,
+		cooldowns:     make(map[string]time.Time),
+	}
+
+	if !hub.triggerFireball(shooterID) {
+		t.Fatalf("expected triggerFireball to succeed")
+	}
+
+	if len(hub.effects) != 1 {
+		t.Fatalf("expected 1 effect, got %d", len(hub.effects))
+	}
+
+	eff := hub.effects[0]
+	if eff.Type != effectTypeFireball {
+		t.Fatalf("expected effect type %q, got %q", effectTypeFireball, eff.Type)
+	}
+	if eff.remainingRange != fireballRange {
+		t.Fatalf("expected remaining range %.2f, got %.2f", fireballRange, eff.remainingRange)
+	}
+	if eff.velocityX <= 0 || eff.velocityY != 0 {
+		t.Fatalf("expected projectile to move right, got velocity (%.2f, %.2f)", eff.velocityX, eff.velocityY)
+	}
+}
+
+func TestFireballExpiresOnObstacleCollision(t *testing.T) {
+	hub := newHub()
+	now := time.Now()
+
+	shooterID := "caster"
+	hub.players[shooterID] = &playerState{
+		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight},
+		lastHeartbeat: now,
+		cooldowns:     make(map[string]time.Time),
+	}
+
+	hub.obstacles = []Obstacle{{
+		ID:     "wall",
+		X:      260,
+		Y:      180,
+		Width:  40,
+		Height: 40,
+	}}
+
+	if !hub.triggerFireball(shooterID) {
+		t.Fatalf("expected fireball to be created")
+	}
+
+	step := time.Second / time.Duration(tickRate)
+	dt := 1.0 / float64(tickRate)
+	expired := false
+	current := now
+
+	for i := 0; i < tickRate*2; i++ {
+		current = current.Add(step)
+		hub.advance(current, dt)
+		if len(hub.effects) == 0 {
+			expired = true
+			break
+		}
+	}
+
+	if !expired {
+		t.Fatalf("expected fireball to expire after hitting obstacle")
+	}
+}
