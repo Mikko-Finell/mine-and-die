@@ -1,3 +1,11 @@
+const DEFAULT_FACING = "down";
+const FACING_OFFSETS = {
+  up: { x: 0, y: -1 },
+  down: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 },
+};
+
 export function startRenderLoop(store) {
   store.lastTimestamp = performance.now();
 
@@ -63,5 +71,23 @@ function drawScene(store) {
       store.PLAYER_SIZE,
       store.PLAYER_SIZE
     );
+
+    const player = store.players[id];
+    const facing = player && typeof player.facing === "string" ? player.facing : DEFAULT_FACING;
+    const offset = FACING_OFFSETS[facing] || FACING_OFFSETS[DEFAULT_FACING];
+    const indicatorLength = store.PLAYER_HALF + 6;
+
+    ctx.save();
+    ctx.strokeStyle = id === store.playerId ? "#e0f2fe" : "#ffedd5";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(position.x, position.y);
+    ctx.lineTo(
+      position.x + offset.x * indicatorLength,
+      position.y + offset.y * indicatorLength
+    );
+    ctx.stroke();
+    ctx.restore();
   });
 }

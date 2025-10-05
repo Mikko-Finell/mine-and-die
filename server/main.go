@@ -34,9 +34,30 @@ const (
 )
 
 type Player struct {
-	ID string  `json:"id"`
-	X  float64 `json:"x"`
-	Y  float64 `json:"y"`
+	ID     string          `json:"id"`
+	X      float64         `json:"x"`
+	Y      float64         `json:"y"`
+	Facing FacingDirection `json:"facing"`
+}
+
+type FacingDirection string
+
+const (
+	FacingUp    FacingDirection = "up"
+	FacingDown  FacingDirection = "down"
+	FacingLeft  FacingDirection = "left"
+	FacingRight FacingDirection = "right"
+
+	defaultFacing FacingDirection = FacingDown
+)
+
+func parseFacing(value string) (FacingDirection, bool) {
+	switch FacingDirection(value) {
+	case FacingUp, FacingDown, FacingLeft, FacingRight:
+		return FacingDirection(value), true
+	default:
+		return "", false
+	}
 }
 
 type Obstacle struct {
@@ -64,6 +85,7 @@ type clientMessage struct {
 	Type   string  `json:"type"`
 	DX     float64 `json:"dx"`
 	DY     float64 `json:"dy"`
+	Facing string  `json:"facing"`
 	SentAt int64   `json:"sentAt"`
 }
 
@@ -385,6 +407,9 @@ func resolvePlayerCollisions(players []*playerState, obstacles []Obstacle) {
 func (h *Hub) snapshotLocked() []Player {
 	players := make([]Player, 0, len(h.players))
 	for _, player := range h.players {
+		if player.Facing == "" {
+			player.Facing = defaultFacing
+		}
 		players = append(players, player.Player)
 	}
 	return players
@@ -430,7 +455,7 @@ func (h *Hub) Join() joinResponse {
 	id := h.nextID.Add(1)
 	playerID := fmt.Sprintf("player-%d", id)
 	now := time.Now()
-	player := &playerState{Player: Player{ID: playerID, X: 80, Y: 80}, lastHeartbeat: now}
+	player := &playerState{Player: Player{ID: playerID, X: 80, Y: 80, Facing: defaultFacing}, lastHeartbeat: now}
 
 	h.mu.Lock()
 	h.players[playerID] = player
@@ -492,13 +517,17 @@ func (h *Hub) Disconnect(playerID string) []Player {
 	return players
 }
 
-func (h *Hub) UpdateIntent(playerID string, dx, dy float64) bool {
+func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	state, ok := h.players[playerID]
 	if !ok {
 		return false
+	}
+
+	if state.Facing == "" {
+		state.Facing = defaultFacing
 	}
 
 	length := math.Hypot(dx, dy)
@@ -509,6 +538,11 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64) bool {
 
 	state.intentX = dx
 	state.intentY = dy
+
+	if face, ok := parseFacing(facing); ok {
+		state.Facing = face
+	}
+
 	state.lastInput = time.Now()
 	return true
 }
@@ -732,7 +766,7 @@ func main() {
 
 			switch msg.Type {
 			case "input":
-				if !hub.UpdateIntent(playerID, msg.DX, msg.DY) {
+				if !hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing) {
 					log.Printf("input ignored for unknown player %s", playerID)
 				}
 			case "heartbeat":
