@@ -64,10 +64,7 @@ function drawScene(store) {
   }
 
   store.obstacles.forEach((obstacle) => {
-    ctx.fillStyle = "#334155";
-    ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-    ctx.strokeStyle = "#475569";
-    ctx.strokeRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+    drawObstacle(ctx, obstacle);
   });
 
   drawEffects(store);
@@ -131,4 +128,113 @@ function drawEffects(store) {
     ctx.strokeRect(x, y, width, height);
     ctx.restore();
   });
+}
+
+function drawObstacle(ctx, obstacle) {
+  if (!obstacle || typeof obstacle !== "object") {
+    return;
+  }
+
+  const normalizedType = normalizeObstacleType(obstacle.type);
+  if (normalizedType === "gold-ore") {
+    drawGoldOreObstacle(ctx, obstacle);
+    return;
+  }
+
+  drawDefaultObstacle(ctx, obstacle);
+}
+
+function drawDefaultObstacle(ctx, obstacle) {
+  const { x, y, width, height } = obstacle;
+  ctx.save();
+  ctx.fillStyle = "#334155";
+  ctx.fillRect(x, y, width, height);
+  ctx.strokeStyle = "#475569";
+  ctx.strokeRect(x, y, width, height);
+  ctx.restore();
+}
+
+function drawGoldOreObstacle(ctx, obstacle) {
+  const { x, y, width, height } = obstacle;
+  ctx.save();
+
+  const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
+  gradient.addColorStop(0, "#3f3a2d");
+  gradient.addColorStop(1, "#2f2a22");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, width, height);
+
+  ctx.strokeStyle = "#b09155";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+
+  const nuggetColors = ["#facc15", "#fde68a", "#eab308"];
+  const rng = createObstacleRng(obstacle);
+  const nuggetCount = Math.max(4, Math.round((width * height) / 350));
+
+  for (let i = 0; i < nuggetCount; i++) {
+    const radiusBase = Math.min(width, height) * (0.08 + rng() * 0.12);
+    const radiusX = Math.max(2, radiusBase * (0.9 + rng() * 0.6));
+    const radiusY = Math.max(2, radiusBase * (0.6 + rng() * 0.5));
+    const nuggetX = clampValue(x + radiusX + rng() * (width - radiusX * 2), x, x + width);
+    const nuggetY = clampValue(y + radiusY + rng() * (height - radiusY * 2), y, y + height);
+
+    ctx.beginPath();
+    ctx.ellipse(
+      nuggetX,
+      nuggetY,
+      radiusX,
+      radiusY,
+      rng() * Math.PI,
+      0,
+      Math.PI * 2
+    );
+    ctx.fillStyle = nuggetColors[i % nuggetColors.length];
+    ctx.fill();
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(250, 204, 21, 0.5)";
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function createObstacleRng(obstacle) {
+  const seedSource =
+    (typeof obstacle.id === "string" && obstacle.id) ||
+    (typeof obstacle.type === "string" && obstacle.type) ||
+    `${obstacle.x},${obstacle.y},${obstacle.width},${obstacle.height}`;
+
+  let seed = 0;
+  for (let i = 0; i < seedSource.length; i++) {
+    seed = (seed * 31 + seedSource.charCodeAt(i)) | 0;
+  }
+  seed ^= seed >>> 16;
+  if (seed === 0) {
+    seed = 0x9e3779b9;
+  }
+
+  return function rng() {
+    seed = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    seed ^= seed + Math.imul(seed ^ (seed >>> 7), 61 | seed);
+    return ((seed ^ (seed >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function clampValue(value, min, max) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+function normalizeObstacleType(rawType) {
+  if (typeof rawType !== "string") {
+    return "";
+  }
+  const trimmed = rawType.trim().toLowerCase();
+  if (trimmed === "goldore" || trimmed === "gold_ore" || trimmed === "gold ore") {
+    return "gold-ore";
+  }
+  return trimmed;
 }
