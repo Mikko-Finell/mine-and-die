@@ -6,10 +6,11 @@ import (
 )
 
 type Player struct {
-	ID     string          `json:"id"`
-	X      float64         `json:"x"`
-	Y      float64         `json:"y"`
-	Facing FacingDirection `json:"facing"`
+	ID        string          `json:"id"`
+	X         float64         `json:"x"`
+	Y         float64         `json:"y"`
+	Facing    FacingDirection `json:"facing"`
+	Inventory Inventory       `json:"inventory"`
 }
 
 type FacingDirection string
@@ -93,4 +94,10 @@ type playerState struct {
 	lastHeartbeat time.Time
 	lastRTT       time.Duration
 	cooldowns     map[string]time.Time
+}
+
+func (s *playerState) snapshot() Player {
+	player := s.Player
+	player.Inventory = s.Inventory.Clone()
+	return player
 }
