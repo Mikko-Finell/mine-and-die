@@ -1,0 +1,149 @@
+package main
+
+import "fmt"
+
+// ItemType represents a unique identifier for an item kind.
+type ItemType string
+
+const (
+	ItemTypeGold         ItemType = "gold"
+	ItemTypeHealthPotion ItemType = "health_potion"
+)
+
+// ItemDefinition describes metadata for an item kind that can appear in the world.
+type ItemDefinition struct {
+	Type        ItemType `json:"type"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+}
+
+var itemCatalog = map[ItemType]ItemDefinition{
+	ItemTypeGold: {
+		Type:        ItemTypeGold,
+		Name:        "Gold Coin",
+		Description: "Currency minted by the colony. Stackable with no limits.",
+	},
+	ItemTypeHealthPotion: {
+		Type:        ItemTypeHealthPotion,
+		Name:        "Lesser Healing Potion",
+		Description: "Restores a small amount of health when consumed.",
+	},
+}
+
+// ItemDefinitionFor fetches the definition for a given item type.
+func ItemDefinitionFor(itemType ItemType) (ItemDefinition, bool) {
+	def, ok := itemCatalog[itemType]
+	return def, ok
+}
+
+// ItemStack represents a quantity of a specific item type.
+type ItemStack struct {
+	Type     ItemType `json:"type"`
+	Quantity int      `json:"quantity"`
+}
+
+// InventorySlot stores an item stack at a specific position. The slot index is
+// always kept in sync with the position inside the inventory slice.
+type InventorySlot struct {
+	Slot int       `json:"slot"`
+	Item ItemStack `json:"item"`
+}
+
+// Inventory maintains an ordered list of slots. Order matters to allow players
+// to arrange their equipment however they prefer.
+type Inventory struct {
+	Slots []InventorySlot `json:"slots"`
+}
+
+// NewInventory returns an empty inventory with no slots.
+func NewInventory() Inventory {
+	return Inventory{Slots: make([]InventorySlot, 0)}
+}
+
+// Clone performs a deep copy of the inventory and all slots.
+func (inv Inventory) Clone() Inventory {
+	if len(inv.Slots) == 0 {
+		return Inventory{Slots: nil}
+	}
+	slots := make([]InventorySlot, len(inv.Slots))
+	copy(slots, inv.Slots)
+	return Inventory{Slots: slots}
+}
+
+// AddStack merges stackable items and returns the slot index that was affected.
+func (inv *Inventory) AddStack(stack ItemStack) (int, error) {
+	if stack.Quantity <= 0 {
+		return -1, fmt.Errorf("quantity must be positive, got %d", stack.Quantity)
+	}
+	if _, ok := ItemDefinitionFor(stack.Type); !ok {
+		return -1, fmt.Errorf("unknown item type %q", stack.Type)
+	}
+
+	for i := range inv.Slots {
+		if inv.Slots[i].Item.Type == stack.Type {
+			inv.Slots[i].Item.Quantity += stack.Quantity
+			return inv.Slots[i].Slot, nil
+		}
+	}
+
+	slot := InventorySlot{Slot: len(inv.Slots), Item: stack}
+	inv.Slots = append(inv.Slots, slot)
+	return slot.Slot, nil
+}
+
+// MoveSlot reorders an item to a new index while preserving slot metadata.
+func (inv *Inventory) MoveSlot(from, to int) error {
+	if from < 0 || from >= len(inv.Slots) {
+		return fmt.Errorf("from index %d out of range", from)
+	}
+	if to < 0 || to >= len(inv.Slots) {
+		return fmt.Errorf("to index %d out of range", to)
+	}
+	if from == to {
+		return nil
+	}
+
+	slot := inv.Slots[from]
+	inv.Slots = append(inv.Slots[:from], inv.Slots[from+1:]...)
+
+	// Insert at the new position.
+	if to >= len(inv.Slots) {
+		inv.Slots = append(inv.Slots, slot)
+	} else {
+		inv.Slots = append(inv.Slots[:to], append([]InventorySlot{slot}, inv.Slots[to:]...)...)
+	}
+
+	for i := range inv.Slots {
+		inv.Slots[i].Slot = i
+	}
+
+	return nil
+}
+
+// RemoveQuantity subtracts an amount from the given slot. If the stack reaches
+// zero it is removed entirely.
+func (inv *Inventory) RemoveQuantity(slotIndex int, quantity int) (ItemStack, error) {
+	if slotIndex < 0 || slotIndex >= len(inv.Slots) {
+		return ItemStack{}, fmt.Errorf("slot %d out of range", slotIndex)
+	}
+	if quantity <= 0 {
+		return ItemStack{}, fmt.Errorf("quantity must be positive, got %d", quantity)
+	}
+
+	slot := &inv.Slots[slotIndex]
+	if quantity > slot.Item.Quantity {
+		return ItemStack{}, fmt.Errorf("not enough quantity in slot %d", slotIndex)
+	}
+
+	slot.Item.Quantity -= quantity
+	removed := ItemStack{Type: slot.Item.Type, Quantity: quantity}
+
+	if slot.Item.Quantity == 0 {
+		inv.Slots = append(inv.Slots[:slotIndex], inv.Slots[slotIndex+1:]...)
+		for i := range inv.Slots {
+			inv.Slots[i].Slot = i
+		}
+	}
+
+	return removed, nil
+}

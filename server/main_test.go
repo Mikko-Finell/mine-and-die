@@ -29,6 +29,8 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 		t.Fatalf("snapshot missing newly joined player %q", first.ID)
 	} else if p.Facing == "" {
 		t.Fatalf("expected joined player to include facing direction")
+	} else if len(p.Inventory.Slots) == 0 {
+		t.Fatalf("expected joined player to start with inventory items")
 	}
 
 	second := hub.Join()
@@ -56,7 +58,7 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 func TestUpdateIntentNormalizesVector(t *testing.T) {
 	hub := newHub()
 	playerID := "player-1"
-	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing}}
+	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing, Inventory: NewInventory()}}
 
 	ok := hub.UpdateIntent(playerID, 10, 0, string(FacingRight))
 	if !ok {
@@ -106,7 +108,7 @@ func TestDeriveFacingFromMovement(t *testing.T) {
 func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 	hub := newHub()
 	playerID := "vector-facing"
-	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing}}
+	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing, Inventory: NewInventory()}}
 
 	cases := []struct {
 		name string
@@ -149,13 +151,13 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	boundaryID := "boundary"
 
 	hub.players[moverID] = &playerState{
-		Player:        Player{ID: moverID, X: 80, Y: 80, Facing: defaultFacing},
+		Player:        Player{ID: moverID, X: 80, Y: 80, Facing: defaultFacing, Inventory: NewInventory()},
 		intentX:       1,
 		intentY:       0,
 		lastHeartbeat: now,
 	}
 	hub.players[boundaryID] = &playerState{
-		Player:        Player{ID: boundaryID, X: worldWidth - playerHalf - 5, Y: 100, Facing: defaultFacing},
+		Player:        Player{ID: boundaryID, X: worldWidth - playerHalf - 5, Y: 100, Facing: defaultFacing, Inventory: NewInventory()},
 		intentX:       1,
 		lastHeartbeat: now,
 	}
@@ -189,7 +191,7 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	hub.obstacles = nil
 	staleID := "stale"
 	hub.players[staleID] = &playerState{
-		Player:        Player{ID: staleID, X: 100, Y: 100, Facing: defaultFacing},
+		Player:        Player{ID: staleID, X: 100, Y: 100, Facing: defaultFacing, Inventory: NewInventory()},
 		lastHeartbeat: time.Now().Add(-disconnectAfter - time.Second),
 	}
 
@@ -209,7 +211,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	hub := newHub()
 	attackerID := "attacker"
 	hub.players[attackerID] = &playerState{
-		Player:        Player{ID: attackerID, X: 200, Y: 200, Facing: FacingRight},
+		Player:        Player{ID: attackerID, X: 200, Y: 200, Facing: FacingRight, Inventory: NewInventory()},
 		lastHeartbeat: time.Now(),
 		cooldowns:     make(map[string]time.Time),
 	}
@@ -265,7 +267,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
 	hub := newHub()
 	playerID := "player"
-	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing}}
+	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing, Inventory: NewInventory()}}
 
 	received := time.Now()
 	clientSent := received.Add(-45 * time.Millisecond).UnixMilli()
@@ -292,7 +294,7 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 	playerID := "diag"
 	now := time.Now()
 	hub.players[playerID] = &playerState{
-		Player:        Player{ID: playerID, X: 120, Y: 140, Facing: defaultFacing},
+		Player:        Player{ID: playerID, X: 120, Y: 140, Facing: defaultFacing, Inventory: NewInventory()},
 		lastHeartbeat: now,
 		lastRTT:       30 * time.Millisecond,
 	}
@@ -327,7 +329,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 
 	playerID := "block"
 	hub.players[playerID] = &playerState{
-		Player:        Player{ID: playerID, X: 100, Y: 120, Facing: defaultFacing},
+		Player:        Player{ID: playerID, X: 100, Y: 120, Facing: defaultFacing, Inventory: NewInventory()},
 		intentX:       1,
 		intentY:       0,
 		lastHeartbeat: now,
@@ -354,13 +356,13 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	secondID := "second"
 
 	hub.players[firstID] = &playerState{
-		Player:        Player{ID: firstID, X: 300, Y: 200, Facing: defaultFacing},
+		Player:        Player{ID: firstID, X: 300, Y: 200, Facing: defaultFacing, Inventory: NewInventory()},
 		intentX:       1,
 		intentY:       0,
 		lastHeartbeat: now,
 	}
 	hub.players[secondID] = &playerState{
-		Player:        Player{ID: secondID, X: 300 + playerHalf/2, Y: 200, Facing: defaultFacing},
+		Player:        Player{ID: secondID, X: 300 + playerHalf/2, Y: 200, Facing: defaultFacing, Inventory: NewInventory()},
 		intentX:       -1,
 		intentY:       0,
 		lastHeartbeat: now,
@@ -389,7 +391,7 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	now := time.Now()
 
 	hub.players[shooterID] = &playerState{
-		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight},
+		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight, Inventory: NewInventory()},
 		lastHeartbeat: now,
 		cooldowns:     make(map[string]time.Time),
 	}
@@ -420,7 +422,7 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 
 	shooterID := "caster"
 	hub.players[shooterID] = &playerState{
-		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight},
+		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight, Inventory: NewInventory()},
 		lastHeartbeat: now,
 		cooldowns:     make(map[string]time.Time),
 	}

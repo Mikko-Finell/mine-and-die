@@ -44,8 +44,22 @@ func (h *Hub) Join() joinResponse {
 	id := h.nextID.Add(1)
 	playerID := fmt.Sprintf("player-%d", id)
 	now := time.Now()
+	inventory := NewInventory()
+	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
+		log.Printf("failed to seed gold for %s: %v", playerID, err)
+	}
+	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 2}); err != nil {
+		log.Printf("failed to seed potions for %s: %v", playerID, err)
+	}
+
 	player := &playerState{
-		Player:        Player{ID: playerID, X: 80, Y: 80, Facing: defaultFacing},
+		Player: Player{
+			ID:        playerID,
+			X:         80,
+			Y:         80,
+			Facing:    defaultFacing,
+			Inventory: inventory,
+		},
 		lastHeartbeat: now,
 		cooldowns:     make(map[string]time.Time),
 	}
@@ -262,7 +276,7 @@ func (h *Hub) snapshotLocked(now time.Time) ([]Player, []Effect) {
 		if player.Facing == "" {
 			player.Facing = defaultFacing
 		}
-		players = append(players, player.Player)
+		players = append(players, player.snapshot())
 	}
 	effects := make([]Effect, 0, len(h.effects))
 	for _, eff := range h.effects {

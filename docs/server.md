@@ -9,6 +9,7 @@ The Go service owns the authoritative world state and exposes three responsibili
 ## Core Packages and Types
 - `main.go` – Entire server implementation including the `Hub` type, HTTP handlers, and tick loop.
 - `main_test.go` – Behavioural tests covering joins, intents, effects, and heartbeat handling.
+- `inventory.go` – Item definitions plus helper methods for stacking, moving, and cloning player inventories.
 - Dependencies: only the Go standard library plus `github.com/gorilla/websocket`.
 
 ### Hub Overview
@@ -39,6 +40,12 @@ The `Hub` struct tracks:
 - Fireball: spawns a projectile with velocity/duration; `advanceEffectsLocked` moves and expires it.
 
 Both helpers share the `Effect` struct (`type`, `owner`, bounding box, `Params`) that is sent to clients for rendering.
+
+### Inventory System
+- Each `Player` carries an `Inventory` composed of ordered slots. The ordering is preserved in snapshots so clients can surface drag-and-drop later on.
+- `ItemStack` values automatically merge when the same `ItemType` is added twice, supporting infinite stacking for resources like gold.
+- `Inventory.MoveSlot` and `Inventory.RemoveQuantity` centralize reordering and stack splitting logic. Both operate while holding the hub mutex to keep state consistent.
+- `Inventory.Clone` is used when broadcasting player snapshots to avoid data races between the simulation and JSON encoding.
 
 ### Heartbeats and Diagnostics
 - Clients send `{ type: "heartbeat", sentAt }` ~every 2 seconds.
