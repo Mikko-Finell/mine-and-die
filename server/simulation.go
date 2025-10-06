@@ -227,6 +227,8 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 		}
 	}
 
+	w.advanceNPCPaths(tick)
+
 	actors := make([]*actorState, 0, len(w.players)+len(w.npcs))
 	// Movement system.
 	for _, player := range w.players {

@@ -45,7 +45,7 @@ The queue is drained at the start of each tick so every command is applied exact
 ### World & Simulation Systems
 `World.Step` is the heart of the simulation. Given the tick index, wall-clock time, delta seconds, and drained commands it:
 - Updates player intents, facings, and heartbeat metadata from queued commands.
-- Advances movement for players and NPCs against obstacles before resolving actor collisions.
+- Derives NPC intents via the A* path follower, then advances movement for players and NPCs against obstacles before resolving actor collisions.
 - Stages abilities triggered by commands and executes their effects (melee swings, fireballs).
 - Applies environmental hazards such as lava pools as damage-over-time.
 - Advances, prunes, and emits events for effect lifecycles and inventory rewards.

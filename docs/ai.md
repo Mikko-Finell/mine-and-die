@@ -24,8 +24,10 @@ The executor in `server/ai_executor.go` runs during the AI phase of each tick:
 1. NPC IDs are sorted to keep decision order deterministic.
 2. The executor skips actors whose `NextDecisionAt` lies in the future, capping total decisions per tick.
 3. Transitions are evaluated, emitting `AIStateChanged` events when state IDs change.
-4. Actions execute, emitting standard `CommandMove`/`CommandAction` items that flow through the existing command queue.
+4. Actions execute. Ability usage still enqueues `CommandAction` payloads, while movement actions plan path targets that the simulation's path follower resolves into per-tick intents.
 5. Blackboard bookkeeping updates waypoints, timers, `StuckCounter`, and schedules the next decision tick.
+
+`moveToward` actions build A* paths across a coarse navigation grid. If a direct path cannot be found the planner probes nearby tiles and selects the closest accessible fallback. Path progress is monitored each tick so pushes or external nudges trigger a replanning cooldown before the NPC resumes travel.
 
 Because actions only enqueue commands, the simulation loop remains the single authority for world mutations.
 

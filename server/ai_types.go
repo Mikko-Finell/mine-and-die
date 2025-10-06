@@ -28,5 +28,12 @@ type npcBlackboard struct {
 	PauseTicks        uint64
 	PatrolSpeed       float64
 	StuckEpsilon      float64
+	Path              []vec2
+	PathIndex         int
+	PathTarget        vec2
+	PathGoal          vec2
+	PathLastDistance  float64
+	PathStallTicks    uint16
+	PathRecalcTick    uint64
 	nextAbilityReady  [maxAIAbilities]uint64
 }
