@@ -445,7 +445,6 @@ func (cfg *aiCompiledConfig) applyDefaults(bb *npcBlackboard) {
 	bb.WaypointIndex = cfg.defaults.WaypointIndex
 	if cfg.defaults.ArriveRadius > 0 {
 		bb.ArriveRadius = cfg.defaults.ArriveRadius
-		bb.BaseArriveRadius = cfg.defaults.ArriveRadius
 	}
 	if cfg.defaults.PauseTicks > 0 {
 		bb.PauseTicks = cfg.defaults.PauseTicks
@@ -457,9 +456,6 @@ func (cfg *aiCompiledConfig) applyDefaults(bb *npcBlackboard) {
 		bb.StuckEpsilon = cfg.defaults.StuckEpsilon
 	} else if bb.StuckEpsilon <= 0 {
 		bb.StuckEpsilon = 0.5
-	}
-	if bb.WaypointArrivedIndex == 0 {
-		bb.WaypointArrivedIndex = -1
 	}
 }
 

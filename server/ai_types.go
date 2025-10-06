@@ -10,29 +10,23 @@ type vec2 struct {
 
 // npcBlackboard stores per-NPC AI memory required by the FSM executor.
 type npcBlackboard struct {
-	WaypointIndex        int
-	LastWaypointIndex    int
-	WaypointBestDist     float64
-	WaypointLastDist     float64
-	WaypointStall        uint16
-	WaypointNoProgress   uint16
-	WaypointArrived      bool
-	WaypointArrivedIndex int
-	WaypointArriveRadius float64
-	WaitUntil            uint64
-	NextDecisionAt       uint64
-	StateEnteredTick     uint64
-	LastDecisionTick     uint64
-	LastPos              vec2
-	LastMoveDelta        float64
-	StuckCounter         uint8
-	TargetActorID        string
-	ChaseUntil           uint64
-	ArriveRadius         float64
-	BaseArriveRadius     float64
-	PauseTicks           uint64
-	PatrolSpeed          float64
-	StuckEpsilon         float64
-	HoldPositionUntil    uint64
-	nextAbilityReady     [maxAIAbilities]uint64
+	WaypointIndex     int
+	LastWaypointIndex int
+	WaypointBestDist  float64
+	WaypointLastDist  float64
+	WaypointStall     uint16
+	WaitUntil         uint64
+	NextDecisionAt    uint64
+	StateEnteredTick  uint64
+	LastDecisionTick  uint64
+	LastPos           vec2
+	LastMoveDelta     float64
+	StuckCounter      uint8
+	TargetActorID     string
+	ChaseUntil        uint64
+	ArriveRadius      float64
+	PauseTicks        uint64
+	PatrolSpeed       float64
+	StuckEpsilon      float64
+	nextAbilityReady  [maxAIAbilities]uint64
 }

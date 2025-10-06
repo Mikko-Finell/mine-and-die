@@ -349,9 +349,6 @@ func (w *World) spawnInitialNPCs() {
 	if goblin.Blackboard.ArriveRadius <= 0 {
 		goblin.Blackboard.ArriveRadius = 16
 	}
-	if goblin.Blackboard.BaseArriveRadius <= 0 {
-		goblin.Blackboard.BaseArriveRadius = goblin.Blackboard.ArriveRadius
-	}
 	if goblin.Blackboard.PauseTicks == 0 {
 		goblin.Blackboard.PauseTicks = 30
 	}
@@ -363,7 +360,6 @@ func (w *World) spawnInitialNPCs() {
 	}
 	goblin.Blackboard.NextDecisionAt = 0
 	goblin.Blackboard.LastWaypointIndex = -1
-	goblin.Blackboard.WaypointArrivedIndex = -1
 
 	resolveObstaclePenetration(&goblin.actorState, w.obstacles)
 	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
