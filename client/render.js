@@ -35,23 +35,19 @@ function updateCamera(store) {
   const { width: worldWidth, height: worldHeight } = getWorldDimensions(store);
   const viewportWidth = store.canvas?.width || worldWidth;
   const viewportHeight = store.canvas?.height || worldHeight;
-  const maxX = Math.max(0, worldWidth - viewportWidth);
-  const maxY = Math.max(0, worldHeight - viewportHeight);
 
   if (camera.lockOnPlayer && store.playerId) {
     const target =
       store.displayPlayers[store.playerId] || store.players[store.playerId];
     if (target) {
-      const desiredX = target.x - viewportWidth / 2;
-      const desiredY = target.y - viewportHeight / 2;
-      camera.x = clampValue(desiredX, 0, maxX);
-      camera.y = clampValue(desiredY, 0, maxY);
+      camera.x = target.x - viewportWidth / 2;
+      camera.y = target.y - viewportHeight / 2;
       return;
     }
   }
 
-  camera.x = clampValue(camera.x || 0, 0, maxX);
-  camera.y = clampValue(camera.y || 0, 0, maxY);
+  camera.x = typeof camera.x === "number" ? camera.x : 0;
+  camera.y = typeof camera.y === "number" ? camera.y : 0;
 }
 
 // startRenderLoop animates interpolation and draws the scene each frame.

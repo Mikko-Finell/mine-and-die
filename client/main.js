@@ -293,12 +293,11 @@ function setCameraLock(lockOnPlayer) {
     const target =
       store.displayPlayers[store.playerId] || store.players[store.playerId];
     if (target) {
-      const desiredX = target.x - viewportWidth / 2;
-      const desiredY = target.y - viewportHeight / 2;
-      const maxX = Math.max(0, worldWidth - viewportWidth);
-      const maxY = Math.max(0, worldHeight - viewportHeight);
-      camera.x = clamp(desiredX, 0, maxX);
-      camera.y = clamp(desiredY, 0, maxY);
+      camera.x = target.x - viewportWidth / 2;
+      camera.y = target.y - viewportHeight / 2;
+    } else {
+      camera.x = worldWidth / 2 - viewportWidth / 2;
+      camera.y = worldHeight / 2 - viewportHeight / 2;
     }
   }
   renderStatus();
