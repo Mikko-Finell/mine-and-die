@@ -246,13 +246,9 @@ func (w *World) executeActions(cfg *aiCompiledConfig, npc *npcState, state *aiCo
 	for _, action := range state.actions {
 		switch action.id {
 		case aiActionMoveToward:
-			w.actionMoveToward(cfg, npc, action)
-			if cmd := buildMoveCommand(npc, tick, now); cmd != nil {
-				*commands = append(*commands, *cmd)
-			}
+			w.actionMoveToward(cfg, npc, action, tick)
 		case aiActionStop:
-			npc.intentX = 0
-			npc.intentY = 0
+			w.clearNPCPath(npc)
 			cmd := Command{
 				OriginTick: tick,
 				ActorID:    npc.ID,
@@ -279,7 +275,7 @@ func (w *World) executeActions(cfg *aiCompiledConfig, npc *npcState, state *aiCo
 	}
 }
 
-func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action aiCompiledAction) {
+func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action aiCompiledAction, tick uint64) {
 	if cfg == nil || npc == nil {
 		return
 	}
@@ -287,28 +283,32 @@ func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action ai
 	if int(action.paramIndex) < len(cfg.moveTowardParams) {
 		params = cfg.moveTowardParams[action.paramIndex]
 	}
+
+	var target vec2
+	var ok bool
+
 	switch params.Target {
 	case aiMoveTargetPlayer:
 		if npc.Blackboard.TargetActorID == "" {
-			npc.intentX = 0
-			npc.intentY = 0
+			w.clearNPCPath(npc)
 			return
 		}
-		target, ok := w.players[npc.Blackboard.TargetActorID]
-		if !ok {
-			npc.intentX = 0
-			npc.intentY = 0
+		player, exists := w.players[npc.Blackboard.TargetActorID]
+		if !exists {
+			w.clearNPCPath(npc)
 			return
 		}
-		npc.intentX = target.X - npc.X
-		npc.intentY = target.Y - npc.Y
+		target = vec2{X: player.X, Y: player.Y}
+		ok = true
 	case aiMoveTargetVector:
-		npc.intentX = params.Vector.X
-		npc.intentY = params.Vector.Y
+		target = vec2{
+			X: clamp(npc.X+params.Vector.X, playerHalf, worldWidth-playerHalf),
+			Y: clamp(npc.Y+params.Vector.Y, playerHalf, worldHeight-playerHalf),
+		}
+		ok = true
 	default:
 		if len(npc.Waypoints) == 0 {
-			npc.intentX = 0
-			npc.intentY = 0
+			w.clearNPCPath(npc)
 			return
 		}
 		idx := npc.Blackboard.WaypointIndex
@@ -318,29 +318,16 @@ func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action ai
 		if idx >= len(npc.Waypoints) {
 			idx = idx % len(npc.Waypoints)
 		}
-		waypoint := npc.Waypoints[idx]
-		npc.intentX = waypoint.X - npc.X
-		npc.intentY = waypoint.Y - npc.Y
+		target = npc.Waypoints[idx]
+		ok = true
 	}
-	npc.Facing = deriveFacing(npc.intentX, npc.intentY, npc.Facing)
-}
 
-func buildMoveCommand(npc *npcState, tick uint64, now time.Time) *Command {
-	if npc == nil {
-		return nil
+	if !ok {
+		w.clearNPCPath(npc)
+		return
 	}
-	cmd := &Command{
-		OriginTick: tick,
-		ActorID:    npc.ID,
-		Type:       CommandMove,
-		IssuedAt:   now,
-		Move: &MoveCommand{
-			DX:     npc.intentX,
-			DY:     npc.intentY,
-			Facing: npc.Facing,
-		},
-	}
-	return cmd
+
+	w.ensureNPCPath(npc, target, tick)
 }
 
 func (w *World) actionUseAbility(cfg *aiCompiledConfig, npc *npcState, action aiCompiledAction, tick uint64, now time.Time, commands *[]Command) {
@@ -461,6 +448,7 @@ func (w *World) actionSetWaypoint(cfg *aiCompiledConfig, npc *npcState, action a
 	if tick != npc.Blackboard.StateEnteredTick {
 		return
 	}
+	w.clearNPCPath(npc)
 	var params aiSetWaypointParams
 	if int(action.paramIndex) < len(cfg.setWaypointParams) {
 		params = cfg.setWaypointParams[action.paramIndex]
