@@ -53,6 +53,11 @@ The queue is drained at the start of each tick so every command is applied exact
 
 Systems append structured `Event` entries (movement, health deltas, effect spawns, loot awards, despawns) to the returned `StepOutput`. The hub can pipe these to subscribers alongside the traditional state snapshots when the client is ready.
 
+### Deterministic Randomness
+- `worldConfig.Seed` controls all pseudo-random behaviour. The default seed is `"prototype"`, but the client debug panel can POST a new value when restarting the world.
+- Subsystems derive independent RNG streams from the root seed (e.g. `obstacles.base`, `obstacles.gold`, `world`) so obstacle layouts, ore positions, and AI randomness stay reproducible.
+- Providing the same seed to `/world/reset` regenerates an identical world and AI behaviour, which keeps QA scenarios repeatable across sessions.
+
 ### Neutral Enemies
 - NPCs reuse the shared `Actor` struct for position, facing, health, and inventories, and add fields like `Type`, `AIControlled`, and `ExperienceReward`.
 - `spawnInitialNPCs` seeds multiple archetypes: goblins patrol fixed waypoints with lootable inventories while rats wander their den and flee when non-rat actors intrude. Additional spawns append `npcState` entries within the world's mutex-protected sections.
@@ -79,7 +84,7 @@ Players track `Health` and `MaxHealth`. Effect helpers share the `Effect` struct
 
 ### HTTP Endpoints
 - `POST /join` – allocate a player, return `{ id, players, obstacles, effects }` snapshot.
-- `POST /world/reset` – rebuild the world using the supplied `{ obstacles, npcs, lava }` toggles and broadcast the new snapshot to all players.
+- `POST /world/reset` – rebuild the world using the supplied `{ obstacles, npcs, lava, seed }` toggles and broadcast the new snapshot to all players. Leaving `seed` blank falls back to the default deterministic seed.
 - `GET /ws?id=...` – upgrade to WebSocket; first message is an immediate state snapshot.
 - `GET /diagnostics` – JSON payload with tick rate, heartbeat interval, and per-player metrics.
 - `GET /health` – simple liveness string.

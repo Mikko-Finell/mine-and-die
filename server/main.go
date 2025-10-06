@@ -57,9 +57,10 @@ func main() {
 		cfg := hub.CurrentConfig()
 
 		type resetRequest struct {
-			Obstacles *bool `json:"obstacles"`
-			NPCs      *bool `json:"npcs"`
-			Lava      *bool `json:"lava"`
+			Obstacles *bool   `json:"obstacles"`
+			NPCs      *bool   `json:"npcs"`
+			Lava      *bool   `json:"lava"`
+			Seed      *string `json:"seed"`
 		}
 
 		if r.Body != nil {
@@ -79,7 +80,12 @@ func main() {
 			if req.Lava != nil {
 				cfg.Lava = *req.Lava
 			}
+			if req.Seed != nil {
+				cfg.Seed = *req.Seed
+			}
 		}
+
+		cfg = cfg.normalized()
 
 		players, npcs, effects := hub.ResetWorld(cfg)
 		go hub.broadcastState(players, npcs, effects)

@@ -32,7 +32,7 @@ type subscriber struct {
 
 // newHub creates a hub with empty maps and a freshly generated world.
 func newHub() *Hub {
-	cfg := defaultWorldConfig()
+	cfg := defaultWorldConfig().normalized()
 	return &Hub{
 		world:           newWorld(cfg),
 		subscribers:     make(map[string]*subscriber),
@@ -90,6 +90,7 @@ func (h *Hub) Join() joinResponse {
 
 // ResetWorld replaces the current world with a freshly generated instance.
 func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
+	cfg = cfg.normalized()
 	now := time.Now()
 
 	h.commandsMu.Lock()

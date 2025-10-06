@@ -94,18 +94,22 @@ type World struct {
 	aiLibrary       *aiLibrary
 	config          worldConfig
 	rng             *rand.Rand
+	seed            string
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
 func newWorld(cfg worldConfig) *World {
+	normalized := cfg.normalized()
+
 	w := &World{
 		players:         make(map[string]*playerState),
 		npcs:            make(map[string]*npcState),
 		effects:         make([]*effectState, 0),
 		effectBehaviors: newEffectBehaviors(),
 		aiLibrary:       globalAILibrary,
-		config:          cfg,
-		rng:             rand.New(rand.NewSource(time.Now().UnixNano())),
+		config:          normalized,
+		rng:             newDeterministicRNG(normalized.Seed, "world"),
+		seed:            normalized.Seed,
 	}
 	w.obstacles = w.generateObstacles(obstacleCount)
 	w.spawnInitialNPCs()

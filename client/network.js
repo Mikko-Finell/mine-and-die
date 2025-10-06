@@ -1,16 +1,40 @@
 const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
+export const DEFAULT_WORLD_SEED = "prototype";
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 
 function normalizeWorldConfig(config) {
-  if (!config || typeof config !== "object") {
-    return { obstacles: true, npcs: true, lava: true };
-  }
-  return {
-    obstacles: config.obstacles !== false,
-    npcs: config.npcs !== false,
-    lava: config.lava !== false,
+  const normalized = {
+    obstacles: true,
+    npcs: true,
+    lava: true,
+    seed: DEFAULT_WORLD_SEED,
   };
+
+  if (!config || typeof config !== "object") {
+    return normalized;
+  }
+
+  if (config.obstacles === false) {
+    normalized.obstacles = false;
+  }
+  if (config.npcs === false) {
+    normalized.npcs = false;
+  }
+  if (config.lava === false) {
+    normalized.lava = false;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(config, "seed")) {
+    const rawSeed = config.seed;
+    if (typeof rawSeed === "string") {
+      normalized.seed = rawSeed.trim() || DEFAULT_WORLD_SEED;
+    } else if (rawSeed != null) {
+      normalized.seed = String(rawSeed).trim() || DEFAULT_WORLD_SEED;
+    }
+  }
+
+  return normalized;
 }
 
 // normalizeFacing guards against invalid facing values from the network.
@@ -422,10 +446,18 @@ function handleConnectionLoss(store) {
 }
 
 export async function resetWorld(store, config) {
+  const rawSeed = config?.seed;
+  let seed = "";
+  if (typeof rawSeed === "string") {
+    seed = rawSeed.trim();
+  } else if (rawSeed != null) {
+    seed = String(rawSeed).trim();
+  }
   const payload = {
     obstacles: !!config?.obstacles,
     npcs: !!config?.npcs,
     lava: !!config?.lava,
+    seed,
   };
 
   let response;
