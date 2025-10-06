@@ -27,6 +27,7 @@ func newTestPlayerState(id string) *playerState {
 			},
 		},
 		lastHeartbeat: time.Now(),
+		path:          playerPathState{ArriveRadius: defaultPlayerArriveRadius},
 	}
 }
 
@@ -167,6 +168,67 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 	runAdvance(hub, 1.0/float64(tickRate))
 	if got := hub.world.players[playerID].Facing; got != FacingLeft {
 		t.Fatalf("expected stationary facing update to respect client facing, got %q", got)
+	}
+}
+
+func TestPlayerPathCommands(t *testing.T) {
+	hub := newHub()
+	playerID := "player-path"
+	player := newTestPlayerState(playerID)
+	hub.world.AddPlayer(player)
+
+	if !hub.SetPlayerPath(playerID, 400, 320) {
+		t.Fatalf("expected SetPlayerPath to succeed")
+	}
+	now := time.Now()
+	hub.advance(now, 1.0/float64(tickRate))
+
+	state := hub.world.players[playerID]
+	if state == nil {
+		t.Fatalf("expected player to exist after path command")
+	}
+	if len(state.path.Path) == 0 {
+		t.Fatalf("expected path to be populated for player")
+	}
+	if state.path.PathTarget.X == 0 && state.path.PathTarget.Y == 0 {
+		t.Fatalf("expected path target to be recorded")
+	}
+	if state.intentX == 0 && state.intentY == 0 {
+		t.Fatalf("expected path follower to set intent")
+	}
+
+	if !hub.UpdateIntent(playerID, 1, 0, string(FacingRight)) {
+		t.Fatalf("expected UpdateIntent to succeed")
+	}
+	hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
+
+	state = hub.world.players[playerID]
+	if len(state.path.Path) != 0 {
+		t.Fatalf("expected manual input to clear player path")
+	}
+	if state.intentX <= 0 {
+		t.Fatalf("expected manual intent to persist after clearing path, got %f", state.intentX)
+	}
+
+	if !hub.SetPlayerPath(playerID, 200, 280) {
+		t.Fatalf("expected second SetPlayerPath to succeed")
+	}
+	hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
+	state = hub.world.players[playerID]
+	if len(state.path.Path) == 0 {
+		t.Fatalf("expected path to be populated after second command")
+	}
+
+	if !hub.ClearPlayerPath(playerID) {
+		t.Fatalf("expected ClearPlayerPath to succeed")
+	}
+	hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
+	state = hub.world.players[playerID]
+	if len(state.path.Path) != 0 {
+		t.Fatalf("expected player path to be cleared after explicit cancel")
+	}
+	if state.intentX != 0 || state.intentY != 0 {
+		t.Fatalf("expected intent to reset after cancel, got (%f,%f)", state.intentX, state.intentY)
 	}
 }
 

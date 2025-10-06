@@ -96,8 +96,11 @@ export async function joinGame(store) {
     store.currentIntent = { dx: 0, dy: 0 };
     store.currentFacing = normalizeFacing(store.players[store.playerId].facing);
     store.directionOrder = [];
+    store.isPathActive = false;
+    store.activePathTarget = null;
+    store.lastPathRequestAt = null;
     store.setLatency(null);
-    store.setStatusBase(`Connected as ${store.playerId}. Use WASD to move.`);
+    store.setStatusBase(`Connected as ${store.playerId}. Use WASD or click to move.`);
     connectEvents(store);
     store.updateDiagnostics();
     if (store.renderInventory) {
@@ -133,7 +136,7 @@ export function connectEvents(store) {
   store.updateDiagnostics();
 
   store.socket.onopen = () => {
-    store.setStatusBase(`Connected as ${store.playerId}. Use WASD to move.`);
+    store.setStatusBase(`Connected as ${store.playerId}. Use WASD or click to move.`);
     store.setLatency(null);
     sendCurrentIntent(store);
     startHeartbeat(store);
@@ -202,6 +205,21 @@ export function connectEvents(store) {
             delete store.displayNPCs[id];
           }
         });
+        if (
+          store.isPathActive &&
+          store.activePathTarget &&
+          store.players[store.playerId]
+        ) {
+          const target = store.activePathTarget;
+          const playerState = store.players[store.playerId];
+          const dx = playerState.x - target.x;
+          const dy = playerState.y - target.y;
+          const arriveRadius = (store.PLAYER_HALF || 14) + 2;
+          if (Math.hypot(dx, dy) <= arriveRadius) {
+            store.isPathActive = false;
+            store.activePathTarget = null;
+          }
+        }
         store.lastStateReceivedAt = Date.now();
         store.updateDiagnostics();
         if (store.renderInventory) {
@@ -253,6 +271,48 @@ export function sendCurrentIntent(store) {
   if (store.players[store.playerId]) {
     store.players[store.playerId].facing = store.currentFacing;
   }
+}
+
+// sendMoveTo requests server-driven navigation toward a world position.
+export function sendMoveTo(store, x, y) {
+  const canvas = store.canvas;
+  const width = canvas ? canvas.width : store.GRID_WIDTH * store.TILE_SIZE;
+  const height = canvas ? canvas.height : store.GRID_HEIGHT * store.TILE_SIZE;
+  const maxX = Math.max(store.PLAYER_HALF, width - store.PLAYER_HALF);
+  const maxY = Math.max(store.PLAYER_HALF, height - store.PLAYER_HALF);
+  const clampedX = Math.max(store.PLAYER_HALF, Math.min(x, maxX));
+  const clampedY = Math.max(store.PLAYER_HALF, Math.min(y, maxY));
+  if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
+    store.activePathTarget = { x: clampedX, y: clampedY };
+    store.isPathActive = false;
+    return;
+  }
+  const payload = { type: "path", x: clampedX, y: clampedY };
+  sendMessage(store, payload, {
+    onSent: () => {
+      store.activePathTarget = { x: clampedX, y: clampedY };
+      store.isPathActive = true;
+      store.lastPathRequestAt = Date.now();
+      store.updateDiagnostics();
+    },
+  });
+}
+
+// sendCancelPath stops the current server-driven navigation, if any.
+export function sendCancelPath(store) {
+  store.isPathActive = false;
+  store.activePathTarget = null;
+  store.lastPathRequestAt = null;
+  if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
+    store.updateDiagnostics();
+    return;
+  }
+  const payload = { type: "cancelPath" };
+  sendMessage(store, payload, {
+    onSent: () => {
+      store.updateDiagnostics();
+    },
+  });
 }
 
 // sendAction dispatches a one-off action message for abilities.
@@ -345,6 +405,9 @@ function handleConnectionLoss(store) {
   store.currentIntent = { dx: 0, dy: 0 };
   store.currentFacing = DEFAULT_FACING;
   store.directionOrder = [];
+  store.isPathActive = false;
+  store.activePathTarget = null;
+  store.lastPathRequestAt = null;
   store.updateDiagnostics();
   if (store.playerId === null) {
     return;

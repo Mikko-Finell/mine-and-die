@@ -1,4 +1,4 @@
-import { joinGame, resetWorld } from "./network.js";
+import { joinGame, resetWorld, sendMoveTo } from "./network.js";
 import { startRenderLoop } from "./render.js";
 import { registerInputHandlers } from "./input.js";
 
@@ -75,6 +75,8 @@ const store = {
   isJoining: false,
   currentIntent: { dx: 0, dy: 0 },
   currentFacing: "down",
+  isPathActive: false,
+  activePathTarget: null,
   heartbeatTimer: null,
   lastTimestamp: performance.now(),
   latencyInputListener: null,
@@ -88,6 +90,7 @@ const store = {
   lastMessageSentAt: null,
   messagesSent: 0,
   bytesSent: 0,
+  lastPathRequestAt: null,
   effects: [],
   inventorySlotCount: DEFAULT_INVENTORY_SLOTS,
   worldConfig: { obstacles: true, npcs: true, lava: true },
@@ -95,6 +98,8 @@ const store = {
   updateWorldConfigUI: null,
   lastWorldResetAt: null,
 };
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 // updateDiagnosticsToggle syncs the toggle label with the current panel state.
 function updateDiagnosticsToggle() {
@@ -119,6 +124,34 @@ function setDiagnosticsVisibility(visible) {
     store.diagnosticsSection.setAttribute("hidden", "");
   }
   updateDiagnosticsToggle();
+}
+
+function initializeCanvasPathing() {
+  if (!store.canvas) {
+    return;
+  }
+  const handlePointerDown = (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    const rect = store.canvas.getBoundingClientRect();
+    const scaleX = store.canvas.width / rect.width;
+    const scaleY = store.canvas.height / rect.height;
+    const x = clamp(
+      (event.clientX - rect.left) * scaleX,
+      store.PLAYER_HALF,
+      store.canvas.width - store.PLAYER_HALF,
+    );
+    const y = clamp(
+      (event.clientY - rect.top) * scaleY,
+      store.PLAYER_HALF,
+      store.canvas.height - store.PLAYER_HALF,
+    );
+    sendMoveTo(store, x, y);
+  };
+  store.canvas.addEventListener("pointerdown", handlePointerDown);
+  store.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
 // initializeDiagnosticsToggle wires the button that expands diagnostics.
@@ -195,12 +228,22 @@ function updateDiagnostics() {
   const npcLabel = `${npcCount} NPC${npcCount === 1 ? "" : "s"}`;
   els.players.textContent = `${playerCount} players · ${npcLabel}`;
   els.stateAge.textContent = formatAgo(store.lastStateReceivedAt);
-  const intentLabel =
-    store.currentIntent.dx === 0 && store.currentIntent.dy === 0
-      ? "idle"
-      : `dx:${store.currentIntent.dx.toFixed(2)} dy:${store.currentIntent.dy.toFixed(2)}`;
+  let intentLabel;
+  if (store.isPathActive && store.activePathTarget) {
+    const target = store.activePathTarget;
+    intentLabel = `path → (${Math.round(target.x)}, ${Math.round(target.y)})`;
+  } else if (store.currentIntent.dx === 0 && store.currentIntent.dy === 0) {
+    intentLabel = "idle";
+  } else {
+    intentLabel = `dx:${store.currentIntent.dx.toFixed(2)} dy:${store.currentIntent.dy.toFixed(2)}`;
+  }
   els.intent.textContent = intentLabel;
-  els.intentAge.textContent = formatAgo(store.lastIntentSentAt);
+  const lastIntentTs =
+    typeof store.lastIntentSentAt === "number" ? store.lastIntentSentAt : 0;
+  const lastPathTs =
+    typeof store.lastPathRequestAt === "number" ? store.lastPathRequestAt : 0;
+  const lastMovementAt = Math.max(lastIntentTs, lastPathTs);
+  els.intentAge.textContent = formatAgo(lastMovementAt || null);
 
   const heartbeatStatus = store.heartbeatTimer !== null ? "active" : "idle";
   const heartbeatParts = [heartbeatStatus];
@@ -450,6 +493,7 @@ store.updateWorldConfigUI = () => syncWorldResetControls();
 initializeDiagnosticsToggle();
 attachLatencyInputListener();
 initializeWorldResetControls();
+initializeCanvasPathing();
 setSimulatedLatency(store, 0);
 updateDiagnostics();
 renderInventory();

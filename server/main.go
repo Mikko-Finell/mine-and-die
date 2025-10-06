@@ -201,6 +201,14 @@ func main() {
 				if !hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing) {
 					log.Printf("input ignored for unknown player %s", playerID)
 				}
+			case "path":
+				if !hub.SetPlayerPath(playerID, msg.X, msg.Y) {
+					log.Printf("path request ignored for unknown player %s", playerID)
+				}
+			case "cancelPath":
+				if !hub.ClearPlayerPath(playerID) {
+					log.Printf("cancelPath ignored for unknown player %s", playerID)
+				}
 			case "action":
 				if msg.Action == "" {
 					continue
