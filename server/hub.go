@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,18 +11,17 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Hub owns all live players, subscribers, obstacles, and active effects.
+// Hub coordinates subscribers and orchestrates the deterministic world simulation.
 type Hub struct {
-	mu              sync.Mutex
-	players         map[string]*playerState
-	npcs            map[string]*npcState
-	subscribers     map[string]*subscriber
-	nextID          atomic.Uint64
-	nextNPC         atomic.Uint64
-	obstacles       []Obstacle
-	effects         []*effectState
-	nextEffect      atomic.Uint64
-	effectBehaviors map[string]effectBehavior
+	mu          sync.Mutex
+	world       *World
+	subscribers map[string]*subscriber
+
+	nextID atomic.Uint64
+	tick   atomic.Uint64
+
+	commandsMu      sync.Mutex
+	pendingCommands []Command
 }
 
 type subscriber struct {
@@ -31,49 +29,13 @@ type subscriber struct {
 	mu   sync.Mutex
 }
 
-// newHub creates a hub with empty maps and a freshly generated obstacle set.
+// newHub creates a hub with empty maps and a freshly generated world.
 func newHub() *Hub {
-	hub := &Hub{
-		players:         make(map[string]*playerState),
-		npcs:            make(map[string]*npcState),
+	return &Hub{
+		world:           newWorld(),
 		subscribers:     make(map[string]*subscriber),
-		effects:         make([]*effectState, 0),
-		effectBehaviors: newEffectBehaviors(),
+		pendingCommands: make([]Command, 0),
 	}
-	hub.obstacles = hub.generateObstacles(obstacleCount)
-	hub.spawnInitialNPCs()
-	return hub
-}
-
-// spawnInitialNPCs seeds the world with a baseline set of neutral enemies.
-func (h *Hub) spawnInitialNPCs() {
-	inventory := NewInventory()
-	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
-		log.Printf("failed to seed goblin gold: %v", err)
-	}
-	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 1}); err != nil {
-		log.Printf("failed to seed goblin potion: %v", err)
-	}
-
-	id := fmt.Sprintf("npc-goblin-%d", h.nextNPC.Add(1))
-	goblin := &npcState{
-		actorState: actorState{
-			Actor: Actor{
-				ID:        id,
-				X:         360,
-				Y:         260,
-				Facing:    defaultFacing,
-				Health:    60,
-				MaxHealth: 60,
-				Inventory: inventory,
-			},
-		},
-		Type:             NPCTypeGoblin,
-		ExperienceReward: 25,
-	}
-
-	resolveObstaclePenetration(&goblin.actorState, h.obstacles)
-	h.npcs[id] = goblin
 }
 
 // Join registers a new player and returns the latest snapshot.
@@ -81,6 +43,7 @@ func (h *Hub) Join() joinResponse {
 	id := h.nextID.Add(1)
 	playerID := fmt.Sprintf("player-%d", id)
 	now := time.Now()
+
 	inventory := NewInventory()
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
 		log.Printf("failed to seed gold for %s: %v", playerID, err)
@@ -106,14 +69,14 @@ func (h *Hub) Join() joinResponse {
 	}
 
 	h.mu.Lock()
-	h.pruneEffectsLocked(now)
-	h.players[playerID] = player
-	players, npcs, effects := h.snapshotLocked(now)
+	h.world.AddPlayer(player)
+	players, npcs, effects := h.world.Snapshot(now)
+	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	h.mu.Unlock()
 
 	go h.broadcastState(players, npcs, effects)
 
-	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: h.obstacles, Effects: effects}
+	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects}
 }
 
 // Subscribe associates a WebSocket connection with an existing player.
@@ -121,7 +84,7 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	state, ok := h.players[playerID]
+	state, ok := h.world.players[playerID]
 	if !ok {
 		return nil, nil, nil, nil, false
 	}
@@ -135,8 +98,7 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 	sub := &subscriber{conn: conn}
 	h.subscribers[playerID] = sub
 	now := time.Now()
-	h.pruneEffectsLocked(now)
-	players, npcs, effects := h.snapshotLocked(now)
+	players, npcs, effects := h.world.Snapshot(now)
 	return sub, players, npcs, effects, true
 }
 
@@ -148,18 +110,13 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 		delete(h.subscribers, playerID)
 	}
 
-	_, playerOK := h.players[playerID]
-	if playerOK {
-		delete(h.players, playerID)
-	}
-
+	removed := h.world.RemovePlayer(playerID)
 	var players []Player
 	var npcs []NPC
 	var effects []Effect
-	if playerOK {
+	if removed {
 		now := time.Now()
-		h.pruneEffectsLocked(now)
-		players, npcs, effects = h.snapshotLocked(now)
+		players, npcs, effects = h.world.Snapshot(now)
 	}
 	h.mu.Unlock()
 
@@ -167,7 +124,7 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 		sub.conn.Close()
 	}
 
-	if !playerOK {
+	if !removed {
 		return nil, nil, nil
 	}
 
@@ -176,49 +133,60 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 
 // UpdateIntent stores the latest movement vector and facing for a player.
 func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	state, ok := h.players[playerID]
-	if !ok {
-		return false
-	}
-
-	if state.Facing == "" {
-		state.Facing = defaultFacing
-	}
-
-	length := math.Hypot(dx, dy)
-	if length > 1 {
-		dx /= length
-		dy /= length
-	}
-
-	state.intentX = dx
-	state.intentY = dy
-
-	state.Facing = deriveFacing(dx, dy, state.Facing)
-	if dx == 0 && dy == 0 {
+	parsedFacing := FacingDirection("")
+	if facing != "" {
 		if face, ok := parseFacing(facing); ok {
-			state.Facing = face
+			parsedFacing = face
 		}
 	}
 
-	state.lastInput = time.Now()
+	if !h.playerExists(playerID) {
+		return false
+	}
+
+	cmd := Command{
+		OriginTick: h.tick.Load(),
+		ActorID:    playerID,
+		Type:       CommandMove,
+		IssuedAt:   time.Now(),
+		Move: &MoveCommand{
+			DX:     dx,
+			DY:     dy,
+			Facing: parsedFacing,
+		},
+	}
+	h.enqueueCommand(cmd)
+	return true
+}
+
+// HandleAction queues an action command for processing on the next tick.
+func (h *Hub) HandleAction(playerID, action string) bool {
+	switch action {
+	case effectTypeAttack, effectTypeFireball:
+	default:
+		return false
+	}
+	if !h.playerExists(playerID) {
+		return false
+	}
+	cmd := Command{
+		OriginTick: h.tick.Load(),
+		ActorID:    playerID,
+		Type:       CommandAction,
+		IssuedAt:   time.Now(),
+		Action: &ActionCommand{
+			Name: action,
+		},
+	}
+	h.enqueueCommand(cmd)
 	return true
 }
 
 // UpdateHeartbeat records the most recent heartbeat time and RTT for a player.
 func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent int64) (time.Duration, bool) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	state, ok := h.players[playerID]
-	if !ok {
+	if !h.playerExists(playerID) {
 		return 0, false
 	}
-
-	state.lastHeartbeat = receivedAt
 
 	var rtt time.Duration
 	if clientSent > 0 {
@@ -228,75 +196,43 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 			if rtt < 0 {
 				rtt = 0
 			}
-			state.lastRTT = rtt
 		}
 	}
 
-	return state.lastRTT, true
+	cmd := Command{
+		OriginTick: h.tick.Load(),
+		ActorID:    playerID,
+		Type:       CommandHeartbeat,
+		IssuedAt:   receivedAt,
+		Heartbeat: &HeartbeatCommand{
+			ReceivedAt: receivedAt,
+			ClientSent: clientSent,
+			RTT:        rtt,
+		},
+	}
+	h.enqueueCommand(cmd)
+
+	return rtt, true
 }
 
 // advance runs a single simulation step and returns updated snapshots plus stale subscribers.
-func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []*subscriber) {
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []*subscriber, []Event) {
+	tick := h.tick.Add(1)
+	commands := h.drainCommands()
+
 	h.mu.Lock()
-
-	toClose := make([]*subscriber, 0)
-	activeStates := make([]*actorState, 0, len(h.players)+len(h.npcs))
-	for id, state := range h.players {
-		if now.Sub(state.lastHeartbeat) > disconnectAfter {
-			if sub, ok := h.subscribers[id]; ok {
-				toClose = append(toClose, sub)
-				delete(h.subscribers, id)
-			}
-			delete(h.players, id)
-			log.Printf("disconnecting %s due to heartbeat timeout", id)
-			continue
-		}
-
-		activeStates = append(activeStates, &state.actorState)
-
-		if state.intentX != 0 || state.intentY != 0 {
-			moveActorWithObstacles(&state.actorState, dt, h.obstacles)
+	output := h.world.Step(tick, now, dt, commands)
+	players, npcs, effects := h.world.Snapshot(now)
+	toClose := make([]*subscriber, 0, len(output.RemovedPlayerIDs))
+	for _, id := range output.RemovedPlayerIDs {
+		if sub, ok := h.subscribers[id]; ok {
+			toClose = append(toClose, sub)
+			delete(h.subscribers, id)
 		}
 	}
-
-	for _, npc := range h.npcs {
-		activeStates = append(activeStates, &npc.actorState)
-		if npc.intentX != 0 || npc.intentY != 0 {
-			moveActorWithObstacles(&npc.actorState, dt, h.obstacles)
-		}
-	}
-
-	resolveActorCollisions(activeStates, h.obstacles)
-	h.applyEnvironmentalDamageLocked(activeStates, dt)
-
-	h.advanceEffectsLocked(now, dt)
-	h.pruneEffectsLocked(now)
-	players, npcs, effects := h.snapshotLocked(now)
 	h.mu.Unlock()
 
-	return players, npcs, effects, toClose
-}
-
-// applyEnvironmentalDamageLocked processes hazard areas that deal damage over time.
-func (h *Hub) applyEnvironmentalDamageLocked(states []*actorState, dt float64) {
-	if dt <= 0 || len(states) == 0 {
-		return
-	}
-	damage := lavaDamagePerSecond * dt
-	if damage <= 0 {
-		return
-	}
-	for _, state := range states {
-		for _, obs := range h.obstacles {
-			if obs.Type != obstacleTypeLava {
-				continue
-			}
-			if circleRectOverlap(state.X, state.Y, playerHalf, obs) {
-				state.applyHealthDelta(-damage)
-				break
-			}
-		}
-	}
+	return players, npcs, effects, toClose, output.Events
 }
 
 // RunSimulation drives the fixed-rate tick loop until the stop channel closes.
@@ -316,7 +252,7 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 			}
 			last = now
 
-			players, npcs, effects, toClose := h.advance(now, dt)
+			players, npcs, effects, toClose, _ := h.advance(now, dt)
 			for _, sub := range toClose {
 				sub.conn.Close()
 			}
@@ -330,8 +266,8 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	players := make([]diagnosticsPlayer, 0, len(h.players))
-	for _, state := range h.players {
+	players := make([]diagnosticsPlayer, 0, len(h.world.players))
+	for _, state := range h.world.players {
 		players = append(players, diagnosticsPlayer{
 			ID:            state.ID,
 			LastHeartbeat: state.lastHeartbeat.UnixMilli(),
@@ -341,44 +277,23 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 	return players
 }
 
-// snapshotLocked copies players/effects for broadcasting while holding the mutex.
-func (h *Hub) snapshotLocked(now time.Time) ([]Player, []NPC, []Effect) {
-	players := make([]Player, 0, len(h.players))
-	for _, player := range h.players {
-		if player.Facing == "" {
-			player.Facing = defaultFacing
-		}
-		players = append(players, player.snapshot())
-	}
-	npcs := make([]NPC, 0, len(h.npcs))
-	for _, npc := range h.npcs {
-		npcs = append(npcs, npc.snapshot())
-	}
-	effects := make([]Effect, 0, len(h.effects))
-	for _, eff := range h.effects {
-		if now.Before(eff.expiresAt) {
-			effects = append(effects, eff.Effect)
-		}
-	}
-	return players, npcs, effects
-}
-
 // broadcastState sends the latest world snapshot to every subscriber.
 func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect) {
+	h.mu.Lock()
 	if players == nil || npcs == nil || effects == nil {
-		h.mu.Lock()
 		now := time.Now()
 		if players == nil || npcs == nil || effects == nil {
-			players, npcs, effects = h.snapshotLocked(now)
+			players, npcs, effects = h.world.Snapshot(now)
 		}
-		h.mu.Unlock()
 	}
+	obstacles := append([]Obstacle(nil), h.world.obstacles...)
+	h.mu.Unlock()
 
 	msg := stateMessage{
 		Type:       "state",
 		Players:    players,
 		NPCs:       npcs,
-		Obstacles:  h.obstacles,
+		Obstacles:  obstacles,
 		Effects:    effects,
 		ServerTime: time.Now().UnixMilli(),
 	}
@@ -408,4 +323,29 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect) {
 			}
 		}
 	}
+}
+
+func (h *Hub) enqueueCommand(cmd Command) {
+	h.commandsMu.Lock()
+	h.pendingCommands = append(h.pendingCommands, cmd)
+	h.commandsMu.Unlock()
+}
+
+func (h *Hub) drainCommands() []Command {
+	h.commandsMu.Lock()
+	cmds := h.pendingCommands
+	h.pendingCommands = nil
+	h.commandsMu.Unlock()
+	if len(cmds) == 0 {
+		return nil
+	}
+	copied := make([]Command, len(cmds))
+	copy(copied, cmds)
+	return copied
+}
+
+func (h *Hub) playerExists(playerID string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.world.HasPlayer(playerID)
 }

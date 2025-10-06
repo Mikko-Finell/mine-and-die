@@ -30,13 +30,13 @@ type effectState struct {
 }
 
 type effectBehavior interface {
-	OnHit(h *Hub, eff *effectState, target *playerState, now time.Time)
+	OnHit(w *World, eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput)
 }
 
-type effectBehaviorFunc func(h *Hub, eff *effectState, target *playerState, now time.Time)
+type effectBehaviorFunc func(w *World, eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput)
 
-func (f effectBehaviorFunc) OnHit(h *Hub, eff *effectState, target *playerState, now time.Time) {
-	f(h, eff, target, now)
+func (f effectBehaviorFunc) OnHit(w *World, eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput) {
+	f(w, eff, target, now, tick, output)
 }
 
 const (
@@ -67,7 +67,7 @@ func newEffectBehaviors() map[string]effectBehavior {
 }
 
 func healthDeltaBehavior(param string, fallback float64) effectBehavior {
-	return effectBehaviorFunc(func(h *Hub, eff *effectState, target *playerState, now time.Time) {
+	return effectBehaviorFunc(func(w *World, eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput) {
 		delta := fallback
 		if eff != nil && eff.Params != nil {
 			if value, ok := eff.Params[param]; ok {
@@ -77,35 +77,27 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 		if delta == 0 {
 			return
 		}
-		if target.applyHealthDelta(delta) && delta < 0 && target.Health <= 0 {
-			log.Printf("%s defeated %s with %s", eff.Owner, target.ID, eff.Type)
+		if target.applyHealthDelta(delta) {
+			output.Events = append(output.Events, Event{
+				Tick:     tick,
+				EntityID: target.ID,
+				Type:     EventHealthChanged,
+				Payload: map[string]any{
+					"delta":  delta,
+					"health": target.Health,
+				},
+			})
+			if delta < 0 && target.Health <= 0 {
+				log.Printf("%s defeated %s with %s", eff.Owner, target.ID, eff.Type)
+			}
 		}
 	})
 }
 
-// HandleAction routes an action string to the appropriate ability helper.
-func (h *Hub) HandleAction(playerID, action string) bool {
-	switch action {
-	case effectTypeAttack:
-		h.triggerMeleeAttack(playerID)
-		return true
-	case effectTypeFireball:
-		h.triggerFireball(playerID)
-		return true
-	default:
-		return false
-	}
-}
-
 // triggerMeleeAttack spawns a short-lived melee hitbox if the cooldown allows it.
-func (h *Hub) triggerMeleeAttack(playerID string) bool {
-	now := time.Now()
-
-	h.mu.Lock()
-
-	state, ok := h.players[playerID]
+func (w *World) triggerMeleeAttack(playerID string, now time.Time, tick uint64, output *StepOutput) bool {
+	state, ok := w.players[playerID]
 	if !ok {
-		h.mu.Unlock()
 		return false
 	}
 
@@ -115,7 +107,6 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 
 	if last, ok := state.cooldowns[effectTypeAttack]; ok {
 		if now.Sub(last) < meleeAttackCooldown {
-			h.mu.Unlock()
 			return false
 		}
 	}
@@ -129,9 +120,11 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 
 	rectX, rectY, rectW, rectH := meleeAttackRectangle(state.X, state.Y, facing)
 
+	w.pruneEffects(now)
+	w.nextEffectID++
 	effect := &effectState{
 		Effect: Effect{
-			ID:       fmt.Sprintf("effect-%d", h.nextEffect.Add(1)),
+			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
 			Type:     effectTypeAttack,
 			Owner:    playerID,
 			Start:    now.UnixMilli(),
@@ -149,34 +142,52 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 		expiresAt: now.Add(meleeAttackDuration),
 	}
 
-	h.pruneEffectsLocked(now)
-	h.effects = append(h.effects, effect)
+	w.effects = append(w.effects, effect)
+	output.Events = append(output.Events, Event{
+		Tick:     tick,
+		EntityID: effect.ID,
+		Type:     EventEffectSpawned,
+		Payload: map[string]any{
+			"owner": playerID,
+			"kind":  effectTypeAttack,
+		},
+	})
 
 	area := Obstacle{X: rectX, Y: rectY, Width: rectW, Height: rectH}
-	for _, obs := range h.obstacles {
+	for _, obs := range w.obstacles {
 		if obs.Type != obstacleTypeGoldOre {
 			continue
 		}
 		if !obstaclesOverlap(area, obs, 0) {
 			continue
 		}
-		if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1}); err != nil {
+		if slot, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1}); err != nil {
 			log.Printf("failed to add mined gold for %s: %v", playerID, err)
+		} else {
+			output.Events = append(output.Events, Event{
+				Tick:     tick,
+				EntityID: playerID,
+				Type:     EventItemAdded,
+				Payload: map[string]any{
+					"item":     ItemTypeGold,
+					"quantity": 1,
+					"slot":     slot,
+				},
+			})
 		}
 		break
 	}
+
 	hitIDs := make([]string, 0)
-	for id, target := range h.players {
+	for id, target := range w.players {
 		if id == playerID {
 			continue
 		}
 		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
 			hitIDs = append(hitIDs, id)
-			h.applyEffectHitLocked(effect, target, now)
+			w.applyEffectHit(effect, target, now, tick, output)
 		}
 	}
-
-	h.mu.Unlock()
 
 	if len(hitIDs) > 0 {
 		log.Printf("%s %s overlaps players %v", playerID, effectTypeAttack, hitIDs)
@@ -186,13 +197,8 @@ func (h *Hub) triggerMeleeAttack(playerID string) bool {
 }
 
 // triggerFireball launches a projectile effect when the player is ready.
-func (h *Hub) triggerFireball(playerID string) bool {
-	now := time.Now()
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	state, ok := h.players[playerID]
+func (w *World) triggerFireball(playerID string, now time.Time, tick uint64, output *StepOutput) bool {
+	state, ok := w.players[playerID]
 	if !ok {
 		return false
 	}
@@ -224,9 +230,11 @@ func (h *Hub) triggerFireball(playerID string) bool {
 	centerX := state.X + dirX*spawnOffset
 	centerY := state.Y + dirY*spawnOffset
 
+	w.pruneEffects(now)
+	w.nextEffectID++
 	effect := &effectState{
 		Effect: Effect{
-			ID:       fmt.Sprintf("effect-%d", h.nextEffect.Add(1)),
+			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
 			Type:     effectTypeFireball,
 			Owner:    playerID,
 			Start:    now.UnixMilli(),
@@ -251,8 +259,16 @@ func (h *Hub) triggerFireball(playerID string) bool {
 		projectile:     true,
 	}
 
-	h.pruneEffectsLocked(now)
-	h.effects = append(h.effects, effect)
+	w.effects = append(w.effects, effect)
+	output.Events = append(output.Events, Event{
+		Tick:     tick,
+		EntityID: effect.ID,
+		Type:     EventEffectSpawned,
+		Payload: map[string]any{
+			"owner": playerID,
+			"kind":  effectTypeFireball,
+		},
+	})
 	return true
 }
 
@@ -275,13 +291,13 @@ func meleeAttackRectangle(x, y float64, facing FacingDirection) (float64, float6
 	}
 }
 
-// advanceEffectsLocked moves active projectiles and expires ones that collide or run out of range.
-func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
-	if len(h.effects) == 0 {
+// advanceEffects moves active projectiles and expires ones that collide or run out of range.
+func (w *World) advanceEffects(now time.Time, dt float64, tick uint64, output *StepOutput) {
+	if len(w.effects) == 0 {
 		return
 	}
 
-	for _, eff := range h.effects {
+	for _, eff := range w.effects {
 		if !eff.projectile || !now.Before(eff.expiresAt) {
 			continue
 		}
@@ -315,7 +331,7 @@ func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
 		area := Obstacle{X: eff.Effect.X, Y: eff.Effect.Y, Width: eff.Effect.Width, Height: eff.Effect.Height}
 
 		collided := false
-		for _, obs := range h.obstacles {
+		for _, obs := range w.obstacles {
 			if obs.Type == obstacleTypeLava {
 				continue
 			}
@@ -331,14 +347,14 @@ func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
 		}
 
 		hitTargets := make([]string, 0)
-		for id, target := range h.players {
+		for id, target := range w.players {
 			if id == eff.Owner {
 				continue
 			}
 			if circleRectOverlap(target.X, target.Y, playerHalf, area) {
 				collided = true
 				hitTargets = append(hitTargets, id)
-				h.applyEffectHitLocked(eff, target, now)
+				w.applyEffectHit(eff, target, now, tick, output)
 			}
 		}
 
@@ -351,27 +367,59 @@ func (h *Hub) advanceEffectsLocked(now time.Time, dt float64) {
 	}
 }
 
-// pruneEffectsLocked drops expired effects from the in-memory list.
-func (h *Hub) pruneEffectsLocked(now time.Time) {
-	if len(h.effects) == 0 {
+// pruneEffects drops expired effects from the in-memory list.
+func (w *World) pruneEffects(now time.Time) {
+	if len(w.effects) == 0 {
 		return
 	}
-	filtered := h.effects[:0]
-	for _, eff := range h.effects {
+	filtered := w.effects[:0]
+	for _, eff := range w.effects {
 		if now.Before(eff.expiresAt) {
 			filtered = append(filtered, eff)
 		}
 	}
-	h.effects = filtered
+	w.effects = filtered
 }
 
-func (h *Hub) applyEffectHitLocked(eff *effectState, target *playerState, now time.Time) {
+func (w *World) applyEffectHit(eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput) {
 	if eff == nil || target == nil {
 		return
 	}
-	behavior, ok := h.effectBehaviors[eff.Type]
+	behavior, ok := w.effectBehaviors[eff.Type]
 	if !ok || behavior == nil {
 		return
 	}
-	behavior.OnHit(h, eff, target, now)
+	behavior.OnHit(w, eff, target, now, tick, output)
+}
+
+// applyEnvironmentalDamage processes hazard areas that deal damage over time.
+func (w *World) applyEnvironmentalDamage(states []*actorState, dt float64, tick uint64, output *StepOutput) {
+	if dt <= 0 || len(states) == 0 {
+		return
+	}
+	damage := lavaDamagePerSecond * dt
+	if damage <= 0 {
+		return
+	}
+	for _, state := range states {
+		for _, obs := range w.obstacles {
+			if obs.Type != obstacleTypeLava {
+				continue
+			}
+			if circleRectOverlap(state.X, state.Y, playerHalf, obs) {
+				if state.applyHealthDelta(-damage) {
+					output.Events = append(output.Events, Event{
+						Tick:     tick,
+						EntityID: state.ID,
+						Type:     EventHealthChanged,
+						Payload: map[string]any{
+							"delta":  -damage,
+							"health": state.Health,
+						},
+					})
+				}
+				break
+			}
+		}
+	}
 }

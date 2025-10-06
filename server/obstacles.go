@@ -21,11 +21,11 @@ type Obstacle struct {
 }
 
 // generateObstacles scatters blocking rectangles and ore deposits around the map.
-func (h *Hub) generateObstacles(count int) []Obstacle {
+func (w *World) generateObstacles(count int) []Obstacle {
 	if count <= 0 {
 		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-		obstacles := h.generateGoldOreNodes(goldOreCount, nil, rng)
-		lavaPools := h.generateLavaPools(obstacles)
+		obstacles := w.generateGoldOreNodes(goldOreCount, nil, rng)
+		lavaPools := w.generateLavaPools(obstacles)
 		return append(obstacles, lavaPools...)
 	}
 
@@ -76,15 +76,15 @@ func (h *Hub) generateObstacles(count int) []Obstacle {
 		obstacles = append(obstacles, candidate)
 	}
 
-	goldOre := h.generateGoldOreNodes(goldOreCount, obstacles, rng)
+	goldOre := w.generateGoldOreNodes(goldOreCount, obstacles, rng)
 	obstacles = append(obstacles, goldOre...)
 
-	lavaPools := h.generateLavaPools(obstacles)
+	lavaPools := w.generateLavaPools(obstacles)
 	return append(obstacles, lavaPools...)
 }
 
 // generateGoldOreNodes places ore obstacles while avoiding overlaps.
-func (h *Hub) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Rand) []Obstacle {
+func (w *World) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Rand) []Obstacle {
 	if count <= 0 || rng == nil {
 		return nil
 	}
@@ -152,7 +152,7 @@ func (h *Hub) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Ran
 }
 
 // generateLavaPools inserts deterministic lava hazards that remain walkable but harmful.
-func (h *Hub) generateLavaPools(existing []Obstacle) []Obstacle {
+func (w *World) generateLavaPools(existing []Obstacle) []Obstacle {
 	templates := []Obstacle{
 		{ID: "lava-1", Type: obstacleTypeLava, X: 320, Y: 120, Width: 80, Height: 80},
 		{ID: "lava-2", Type: obstacleTypeLava, X: 520, Y: 260, Width: 80, Height: 80},

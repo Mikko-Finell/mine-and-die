@@ -26,7 +26,13 @@ func newTestPlayerState(id string) *playerState {
 				MaxHealth: playerMaxHealth,
 			},
 		},
+		lastHeartbeat: time.Now(),
 	}
+}
+
+func runAdvance(h *Hub, dt float64) ([]Player, []NPC, []Effect, []Event) {
+	players, npcs, effects, _, events := h.advance(time.Now(), dt)
+	return players, npcs, effects, events
 }
 
 func TestHubJoinCreatesPlayer(t *testing.T) {
@@ -58,15 +64,15 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 	if len(second.Players) != 2 {
 		t.Fatalf("expected snapshot to contain 2 players, got %d", len(second.Players))
 	}
-	if _, ok := hub.players[first.ID]; !ok {
+	if _, ok := hub.world.players[first.ID]; !ok {
 		t.Fatalf("hub players map missing first player")
 	}
-	if _, ok := hub.players[second.ID]; !ok {
+	if _, ok := hub.world.players[second.ID]; !ok {
 		t.Fatalf("hub players map missing second player")
 	}
 
-	if len(first.Obstacles) != len(hub.obstacles) {
-		t.Fatalf("expected join response to include %d obstacles, got %d", len(hub.obstacles), len(first.Obstacles))
+	if len(first.Obstacles) != len(hub.world.obstacles) {
+		t.Fatalf("expected join response to include %d obstacles, got %d", len(hub.world.obstacles), len(first.Obstacles))
 	}
 	if len(first.Effects) != 0 {
 		t.Fatalf("expected initial effect list to be empty, got %d", len(first.Effects))
@@ -76,14 +82,16 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 func TestUpdateIntentNormalizesVector(t *testing.T) {
 	hub := newHub()
 	playerID := "player-1"
-	hub.players[playerID] = newTestPlayerState(playerID)
+	hub.world.players[playerID] = newTestPlayerState(playerID)
 
 	ok := hub.UpdateIntent(playerID, 10, 0, string(FacingRight))
 	if !ok {
 		t.Fatalf("expected UpdateIntent to succeed for existing player")
 	}
 
-	state := hub.players[playerID]
+	runAdvance(hub, 1.0/float64(tickRate))
+
+	state := hub.world.players[playerID]
 	if state.intentX <= 0 || state.intentX > 1 {
 		t.Fatalf("expected normalized intentX in (0,1], got %f", state.intentX)
 	}
@@ -126,7 +134,7 @@ func TestDeriveFacingFromMovement(t *testing.T) {
 func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 	hub := newHub()
 	playerID := "vector-facing"
-	hub.players[playerID] = newTestPlayerState(playerID)
+	hub.world.players[playerID] = newTestPlayerState(playerID)
 
 	cases := []struct {
 		name string
@@ -145,7 +153,8 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 			if !hub.UpdateIntent(playerID, tc.dx, tc.dy, string(FacingRight)) {
 				t.Fatalf("UpdateIntent failed for player")
 			}
-			state := hub.players[playerID]
+			runAdvance(hub, 1.0/float64(tickRate))
+			state := hub.world.players[playerID]
 			if state.Facing != tc.want {
 				t.Fatalf("expected facing %q, got %q", tc.want, state.Facing)
 			}
@@ -155,14 +164,15 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 	if !hub.UpdateIntent(playerID, 0, 0, string(FacingLeft)) {
 		t.Fatalf("UpdateIntent failed for stationary update")
 	}
-	if got := hub.players[playerID].Facing; got != FacingLeft {
+	runAdvance(hub, 1.0/float64(tickRate))
+	if got := hub.world.players[playerID].Facing; got != FacingLeft {
 		t.Fatalf("expected stationary facing update to respect client facing, got %q", got)
 	}
 }
 
 func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	hub := newHub()
-	hub.obstacles = nil
+	hub.world.obstacles = nil
 	now := time.Now()
 
 	moverID := "mover"
@@ -174,16 +184,16 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	moverState.intentX = 1
 	moverState.intentY = 0
 	moverState.lastHeartbeat = now
-	hub.players[moverID] = moverState
+	hub.world.players[moverID] = moverState
 
 	boundaryState := newTestPlayerState(boundaryID)
 	boundaryState.X = worldWidth - playerHalf - 5
 	boundaryState.Y = 100
 	boundaryState.intentX = 1
 	boundaryState.lastHeartbeat = now
-	hub.players[boundaryID] = boundaryState
+	hub.world.players[boundaryID] = boundaryState
 
-	players, _, _, toClose := hub.advance(now, 0.5)
+	players, _, _, toClose, _ := hub.advance(now, 0.5)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers to close, got %d", len(toClose))
 	}
@@ -209,22 +219,22 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 
 func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	hub := newHub()
-	hub.obstacles = nil
+	hub.world.obstacles = nil
 	staleID := "stale"
 	staleState := newTestPlayerState(staleID)
 	staleState.X = 100
 	staleState.Y = 100
 	staleState.lastHeartbeat = time.Now().Add(-disconnectAfter - time.Second)
-	hub.players[staleID] = staleState
+	hub.world.players[staleID] = staleState
 
-	players, _, _, toClose := hub.advance(time.Now(), 0)
+	players, _, _, toClose, _ := hub.advance(time.Now(), 0)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers returned when none registered")
 	}
 	if findPlayer(players, staleID) != nil {
 		t.Fatalf("stale player still present after advance")
 	}
-	if _, ok := hub.players[staleID]; ok {
+	if _, ok := hub.world.players[staleID]; ok {
 		t.Fatalf("stale player still in hub map")
 	}
 }
@@ -238,18 +248,20 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	attackerState.Facing = FacingRight
 	attackerState.lastHeartbeat = time.Now()
 	attackerState.cooldowns = make(map[string]time.Time)
-	hub.players[attackerID] = attackerState
+	hub.world.players[attackerID] = attackerState
 
 	if !hub.HandleAction(attackerID, effectTypeAttack) {
 		t.Fatalf("expected attack action to be recognized")
 	}
 
+	runAdvance(hub, 1.0/float64(tickRate))
+
 	hub.mu.Lock()
-	if len(hub.effects) != 1 {
+	if len(hub.world.effects) != 1 {
 		hub.mu.Unlock()
-		t.Fatalf("expected exactly one effect after first attack, got %d", len(hub.effects))
+		t.Fatalf("expected exactly one effect after first attack, got %d", len(hub.world.effects))
 	}
-	first := hub.effects[0]
+	first := hub.world.effects[0]
 	if first.Type != effectTypeAttack {
 		hub.mu.Unlock()
 		t.Fatalf("expected effect type %q, got %q", effectTypeAttack, first.Type)
@@ -262,22 +274,23 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	hub.mu.Unlock()
 
 	hub.HandleAction(attackerID, effectTypeAttack)
+	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
-	if len(hub.effects) != 1 {
+	if len(hub.world.effects) != 1 {
 		hub.mu.Unlock()
-		t.Fatalf("expected cooldown to prevent new effect, have %d", len(hub.effects))
+		t.Fatalf("expected cooldown to prevent new effect, have %d", len(hub.world.effects))
 	}
-
-	hub.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
+	hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
 	hub.mu.Unlock()
 
 	hub.HandleAction(attackerID, effectTypeAttack)
+	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
-	if len(hub.effects) != 2 {
+	if len(hub.world.effects) != 2 {
 		hub.mu.Unlock()
-		t.Fatalf("expected second effect after cooldown reset, have %d", len(hub.effects))
+		t.Fatalf("expected second effect after cooldown reset, have %d", len(hub.world.effects))
 	}
-	second := hub.effects[1]
+	second := hub.world.effects[1]
 	hub.mu.Unlock()
 
 	if second.ID == first.ID {
@@ -300,21 +313,23 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 	attackerState.Facing = FacingRight
 	attackerState.lastHeartbeat = now
 	attackerState.cooldowns = make(map[string]time.Time)
-	hub.players[attackerID] = attackerState
+	hub.world.players[attackerID] = attackerState
 
 	targetState := newTestPlayerState(targetID)
 	targetState.X = 200 + playerHalf + meleeAttackReach/2
 	targetState.Y = 200
 	targetState.Facing = FacingLeft
 	targetState.lastHeartbeat = now
-	hub.players[targetID] = targetState
+	hub.world.players[targetID] = targetState
 
 	if !hub.HandleAction(attackerID, effectTypeAttack) {
 		t.Fatalf("expected melee attack to execute")
 	}
 
+	runAdvance(hub, 1.0/float64(tickRate))
+
 	hub.mu.Lock()
-	target := hub.players[targetID]
+	target := hub.world.players[targetID]
 	if target == nil {
 		hub.mu.Unlock()
 		t.Fatalf("expected target to remain in hub")
@@ -329,7 +344,7 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 
 func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 	hub := newHub()
-	hub.obstacles = []Obstacle{{
+	hub.world.obstacles = []Obstacle{{
 		ID:     "gold-node",
 		Type:   obstacleTypeGoldOre,
 		X:      180,
@@ -345,16 +360,18 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 	minerState.Facing = FacingDown
 	minerState.lastHeartbeat = time.Now()
 	minerState.cooldowns = make(map[string]time.Time)
-	hub.players[minerID] = minerState
+	hub.world.players[minerID] = minerState
 
 	if !hub.HandleAction(minerID, effectTypeAttack) {
 		t.Fatalf("expected melee attack to trigger")
 	}
 
+	runAdvance(hub, 1.0/float64(tickRate))
+
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
-	state, ok := hub.players[minerID]
+	state, ok := hub.world.players[minerID]
 	if !ok {
 		t.Fatalf("expected miner to remain registered")
 	}
@@ -373,7 +390,7 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
 	hub := newHub()
 	playerID := "player"
-	hub.players[playerID] = newTestPlayerState(playerID)
+	hub.world.players[playerID] = newTestPlayerState(playerID)
 
 	received := time.Now()
 	clientSent := received.Add(-45 * time.Millisecond).UnixMilli()
@@ -386,7 +403,9 @@ func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
 		t.Fatalf("expected positive RTT, got %s", rtt)
 	}
 
-	state := hub.players[playerID]
+	runAdvance(hub, 1.0/float64(tickRate))
+
+	state := hub.world.players[playerID]
 	if state.lastHeartbeat != received {
 		t.Fatalf("lastHeartbeat not updated: want %v, got %v", received, state.lastHeartbeat)
 	}
@@ -404,7 +423,7 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 	diagState.Y = 140
 	diagState.lastHeartbeat = now
 	diagState.lastRTT = 30 * time.Millisecond
-	hub.players[playerID] = diagState
+	hub.world.players[playerID] = diagState
 
 	snapshot := hub.DiagnosticsSnapshot()
 	if len(snapshot) != 1 {
@@ -426,7 +445,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	hub := newHub()
 	now := time.Now()
 
-	hub.obstacles = []Obstacle{{
+	hub.world.obstacles = []Obstacle{{
 		ID:     "obstacle-test",
 		X:      160,
 		Y:      40,
@@ -441,15 +460,15 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	blockState.intentX = 1
 	blockState.intentY = 0
 	blockState.lastHeartbeat = now
-	hub.players[playerID] = blockState
+	hub.world.players[playerID] = blockState
 
-	players, _, _, _ := hub.advance(now, 1)
+	players, _, _, _, _ := hub.advance(now, 1)
 	blocker := findPlayer(players, playerID)
 	if blocker == nil {
 		t.Fatalf("expected player in snapshot")
 	}
 
-	maxX := hub.obstacles[0].X - playerHalf
+	maxX := hub.world.obstacles[0].X - playerHalf
 	if blocker.X > maxX+1e-6 {
 		t.Fatalf("expected player to stop before obstacle at %.2f, got %.2f", maxX, blocker.X)
 	}
@@ -459,7 +478,7 @@ func TestLavaDamagesPlayer(t *testing.T) {
 	hub := newHub()
 	now := time.Now()
 
-	hub.obstacles = []Obstacle{{
+	hub.world.obstacles = []Obstacle{{
 		ID:     "lava-test",
 		Type:   obstacleTypeLava,
 		X:      200,
@@ -473,10 +492,10 @@ func TestLavaDamagesPlayer(t *testing.T) {
 	walkerState.X = 220
 	walkerState.Y = 220
 	walkerState.lastHeartbeat = now
-	hub.players[playerID] = walkerState
+	hub.world.players[playerID] = walkerState
 
 	dt := 1.0
-	players, _, _, _ := hub.advance(now, dt)
+	players, _, _, _, _ := hub.advance(now, dt)
 
 	damaged := findPlayer(players, playerID)
 	if damaged == nil {
@@ -491,7 +510,7 @@ func TestLavaDamagesPlayer(t *testing.T) {
 
 func TestPlayersSeparateWhenColliding(t *testing.T) {
 	hub := newHub()
-	hub.obstacles = nil
+	hub.world.obstacles = nil
 	now := time.Now()
 
 	firstID := "first"
@@ -503,7 +522,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	firstState.intentX = 1
 	firstState.intentY = 0
 	firstState.lastHeartbeat = now
-	hub.players[firstID] = firstState
+	hub.world.players[firstID] = firstState
 
 	secondState := newTestPlayerState(secondID)
 	secondState.X = 300 + playerHalf/2
@@ -511,9 +530,9 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	secondState.intentX = -1
 	secondState.intentY = 0
 	secondState.lastHeartbeat = now
-	hub.players[secondID] = secondState
+	hub.world.players[secondID] = secondState
 
-	players, _, _, _ := hub.advance(now, 1)
+	players, _, _, _, _ := hub.advance(now, 1)
 
 	first := findPlayer(players, firstID)
 	second := findPlayer(players, secondID)
@@ -532,6 +551,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 
 func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	hub := newHub()
+	hub.world.obstacles = nil
 	shooterID := "shooter"
 	now := time.Now()
 
@@ -541,22 +561,28 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	shooterState.Facing = FacingRight
 	shooterState.lastHeartbeat = now
 	shooterState.cooldowns = make(map[string]time.Time)
-	hub.players[shooterID] = shooterState
+	hub.world.players[shooterID] = shooterState
 
-	if !hub.triggerFireball(shooterID) {
-		t.Fatalf("expected triggerFireball to succeed")
+	if !hub.HandleAction(shooterID, effectTypeFireball) {
+		t.Fatalf("expected fireball action to be recognized")
 	}
 
-	if len(hub.effects) != 1 {
-		t.Fatalf("expected 1 effect, got %d", len(hub.effects))
-	}
+	runAdvance(hub, 1.0/float64(tickRate))
 
-	eff := hub.effects[0]
+	hub.mu.Lock()
+	if len(hub.world.effects) != 1 {
+		hub.mu.Unlock()
+		t.Fatalf("expected 1 effect in world, got %d", len(hub.world.effects))
+	}
+	eff := hub.world.effects[0]
+	hub.mu.Unlock()
+
 	if eff.Type != effectTypeFireball {
 		t.Fatalf("expected effect type %q, got %q", effectTypeFireball, eff.Type)
 	}
-	if eff.remainingRange != fireballRange {
-		t.Fatalf("expected remaining range %.2f, got %.2f", fireballRange, eff.remainingRange)
+	expectedRange := fireballRange - fireballSpeed/float64(tickRate)
+	if math.Abs(eff.remainingRange-expectedRange) > 1e-6 {
+		t.Fatalf("expected remaining range %.2f, got %.2f", expectedRange, eff.remainingRange)
 	}
 	if eff.velocityX <= 0 || eff.velocityY != 0 {
 		t.Fatalf("expected projectile to move right, got velocity (%.2f, %.2f)", eff.velocityX, eff.velocityY)
@@ -565,6 +591,7 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 
 func TestFireballDealsDamageOnHit(t *testing.T) {
 	hub := newHub()
+	hub.world.obstacles = nil
 	now := time.Now()
 
 	shooterID := "caster"
@@ -581,25 +608,29 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 	casterState.Facing = FacingRight
 	casterState.lastHeartbeat = now
 	casterState.cooldowns = make(map[string]time.Time)
-	hub.players[shooterID] = casterState
+	hub.world.players[shooterID] = casterState
 
 	victimState := newTestPlayerState(targetID)
-	victimState.X = shooterX + spawnOffset + travel
+	victimState.X = shooterX + spawnOffset + travel/2
 	victimState.Y = shooterY
 	victimState.Facing = FacingLeft
 	victimState.lastHeartbeat = now
-	hub.players[targetID] = victimState
+	hub.world.players[targetID] = victimState
 
-	if !hub.triggerFireball(shooterID) {
+	if !hub.HandleAction(shooterID, effectTypeFireball) {
 		t.Fatalf("expected fireball to be created")
 	}
 
-	step := time.Second / time.Duration(tickRate)
 	dt := 1.0 / float64(tickRate)
-	hub.advance(now.Add(step), dt)
+	step := time.Second / time.Duration(tickRate)
+	current := now
+	for i := 0; i < 3; i++ {
+		hub.advance(current, dt)
+		current = current.Add(step)
+	}
 
 	hub.mu.Lock()
-	target := hub.players[targetID]
+	target := hub.world.players[targetID]
 	if target == nil {
 		hub.mu.Unlock()
 		t.Fatalf("expected target to remain in hub")
@@ -620,13 +651,12 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 	state.Y = 160
 	state.Health = playerMaxHealth - 30
 	state.lastHeartbeat = time.Now()
-	hub.players[playerID] = state
+	hub.world.players[playerID] = state
 
 	heal := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "healer", Params: map[string]float64{"healthDelta": 50}}}
 
-	hub.mu.Lock()
-	hub.applyEffectHitLocked(heal, state, time.Now())
-	hub.mu.Unlock()
+	output := StepOutput{}
+	hub.world.applyEffectHit(heal, state, time.Now(), hub.tick.Load(), &output)
 
 	if math.Abs(state.Health-playerMaxHealth) > 1e-6 {
 		t.Fatalf("expected healing to clamp to max %.1f, got %.1f", playerMaxHealth, state.Health)
@@ -641,13 +671,12 @@ func TestHealthDamageClampsToZero(t *testing.T) {
 	state.Y = 180
 	state.Health = 5
 	state.lastHeartbeat = time.Now()
-	hub.players[playerID] = state
+	hub.world.players[playerID] = state
 
 	blast := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "boom", Params: map[string]float64{"healthDelta": -50}}}
 
-	hub.mu.Lock()
-	hub.applyEffectHitLocked(blast, state, time.Now())
-	hub.mu.Unlock()
+	output := StepOutput{}
+	hub.world.applyEffectHit(blast, state, time.Now(), hub.tick.Load(), &output)
 
 	if state.Health != 0 {
 		t.Fatalf("expected damage to clamp to zero health, got %.1f", state.Health)
@@ -665,9 +694,9 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 	casterState.Facing = FacingRight
 	casterState.lastHeartbeat = now
 	casterState.cooldowns = make(map[string]time.Time)
-	hub.players[shooterID] = casterState
+	hub.world.players[shooterID] = casterState
 
-	hub.obstacles = []Obstacle{{
+	hub.world.obstacles = []Obstacle{{
 		ID:     "wall",
 		X:      260,
 		Y:      180,
@@ -675,7 +704,7 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 		Height: 40,
 	}}
 
-	if !hub.triggerFireball(shooterID) {
+	if !hub.HandleAction(shooterID, effectTypeFireball) {
 		t.Fatalf("expected fireball to be created")
 	}
 
@@ -684,10 +713,12 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 	expired := false
 	current := now
 
+	runAdvance(hub, dt)
+
 	for i := 0; i < tickRate*2; i++ {
 		current = current.Add(step)
 		hub.advance(current, dt)
-		if len(hub.effects) == 0 {
+		if len(hub.world.effects) == 0 {
 			expired = true
 			break
 		}

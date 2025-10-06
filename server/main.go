@@ -96,7 +96,7 @@ func main() {
 			Type:       "state",
 			Players:    snapshotPlayers,
 			NPCs:       snapshotNPCs,
-			Obstacles:  hub.obstacles,
+			Obstacles:  append([]Obstacle(nil), hub.world.obstacles...),
 			Effects:    snapshotEffects,
 			ServerTime: time.Now().UnixMilli(),
 		}
