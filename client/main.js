@@ -52,6 +52,8 @@ const store = {
   playerId: null,
   players: {},
   displayPlayers: {},
+  npcs: {},
+  displayNPCs: {},
   obstacles: [],
   socket: null,
   reconnectTimeout: null,
@@ -169,7 +171,10 @@ function updateDiagnostics() {
     ? socketStates[store.socket.readyState] || "unknown"
     : "disconnected";
   els.connection.textContent = connectionText;
-  els.players.textContent = String(Object.keys(store.players).length);
+  const playerCount = Object.keys(store.players).length;
+  const npcCount = Object.keys(store.npcs || {}).length;
+  const npcLabel = `${npcCount} NPC${npcCount === 1 ? "" : "s"}`;
+  els.players.textContent = `${playerCount} players · ${npcLabel}`;
   els.stateAge.textContent = formatAgo(store.lastStateReceivedAt);
   const intentLabel =
     store.currentIntent.dx === 0 && store.currentIntent.dy === 0

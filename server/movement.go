@@ -2,8 +2,8 @@ package main
 
 import "math"
 
-// movePlayerWithObstacles advances a player while clamping speed, bounds, and walls.
-func movePlayerWithObstacles(state *playerState, dt float64, obstacles []Obstacle) {
+// moveActorWithObstacles advances an actor while clamping speed, bounds, and walls.
+func moveActorWithObstacles(state *actorState, dt float64, obstacles []Obstacle) {
 	dx := state.intentX
 	dy := state.intentY
 	length := math.Hypot(dx, dy)
@@ -87,8 +87,8 @@ func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacl
 	return clamp(newY, playerHalf, worldHeight-playerHalf)
 }
 
-// resolveObstaclePenetration nudges a player out of overlapping obstacles.
-func resolveObstaclePenetration(state *playerState, obstacles []Obstacle) {
+// resolveObstaclePenetration nudges an actor out of overlapping obstacles.
+func resolveObstaclePenetration(state *actorState, obstacles []Obstacle) {
 	for _, obs := range obstacles {
 		if obs.Type == obstacleTypeLava {
 			continue
@@ -149,19 +149,19 @@ func resolveObstaclePenetration(state *playerState, obstacles []Obstacle) {
 	}
 }
 
-// resolvePlayerCollisions separates overlapping players while respecting walls.
-func resolvePlayerCollisions(players []*playerState, obstacles []Obstacle) {
-	if len(players) < 2 {
+// resolveActorCollisions separates overlapping actors while respecting walls.
+func resolveActorCollisions(actors []*actorState, obstacles []Obstacle) {
+	if len(actors) < 2 {
 		return
 	}
 
 	const iterations = 4
 	for iter := 0; iter < iterations; iter++ {
 		adjusted := false
-		for i := 0; i < len(players); i++ {
-			for j := i + 1; j < len(players); j++ {
-				p1 := players[i]
-				p2 := players[j]
+		for i := 0; i < len(actors); i++ {
+			for j := i + 1; j < len(actors); j++ {
+				p1 := actors[i]
+				p2 := actors[j]
 				dx := p2.X - p1.X
 				dy := p2.Y - p1.Y
 				distSq := dx*dx + dy*dy

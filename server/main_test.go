@@ -15,6 +15,20 @@ func findPlayer(players []Player, id string) *Player {
 	return nil
 }
 
+func newTestPlayerState(id string) *playerState {
+	return &playerState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        id,
+				Facing:    defaultFacing,
+				Inventory: NewInventory(),
+				Health:    playerMaxHealth,
+				MaxHealth: playerMaxHealth,
+			},
+		},
+	}
+}
+
 func TestHubJoinCreatesPlayer(t *testing.T) {
 	hub := newHub()
 
@@ -62,7 +76,7 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 func TestUpdateIntentNormalizesVector(t *testing.T) {
 	hub := newHub()
 	playerID := "player-1"
-	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth}}
+	hub.players[playerID] = newTestPlayerState(playerID)
 
 	ok := hub.UpdateIntent(playerID, 10, 0, string(FacingRight))
 	if !ok {
@@ -112,7 +126,7 @@ func TestDeriveFacingFromMovement(t *testing.T) {
 func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 	hub := newHub()
 	playerID := "vector-facing"
-	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth}}
+	hub.players[playerID] = newTestPlayerState(playerID)
 
 	cases := []struct {
 		name string
@@ -154,19 +168,22 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	moverID := "mover"
 	boundaryID := "boundary"
 
-	hub.players[moverID] = &playerState{
-		Player:        Player{ID: moverID, X: 80, Y: 80, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		intentX:       1,
-		intentY:       0,
-		lastHeartbeat: now,
-	}
-	hub.players[boundaryID] = &playerState{
-		Player:        Player{ID: boundaryID, X: worldWidth - playerHalf - 5, Y: 100, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		intentX:       1,
-		lastHeartbeat: now,
-	}
+	moverState := newTestPlayerState(moverID)
+	moverState.X = 80
+	moverState.Y = 80
+	moverState.intentX = 1
+	moverState.intentY = 0
+	moverState.lastHeartbeat = now
+	hub.players[moverID] = moverState
 
-	players, _, toClose := hub.advance(now, 0.5)
+	boundaryState := newTestPlayerState(boundaryID)
+	boundaryState.X = worldWidth - playerHalf - 5
+	boundaryState.Y = 100
+	boundaryState.intentX = 1
+	boundaryState.lastHeartbeat = now
+	hub.players[boundaryID] = boundaryState
+
+	players, _, _, toClose := hub.advance(now, 0.5)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers to close, got %d", len(toClose))
 	}
@@ -194,12 +211,13 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	hub := newHub()
 	hub.obstacles = nil
 	staleID := "stale"
-	hub.players[staleID] = &playerState{
-		Player:        Player{ID: staleID, X: 100, Y: 100, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		lastHeartbeat: time.Now().Add(-disconnectAfter - time.Second),
-	}
+	staleState := newTestPlayerState(staleID)
+	staleState.X = 100
+	staleState.Y = 100
+	staleState.lastHeartbeat = time.Now().Add(-disconnectAfter - time.Second)
+	hub.players[staleID] = staleState
 
-	players, _, toClose := hub.advance(time.Now(), 0)
+	players, _, _, toClose := hub.advance(time.Now(), 0)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers returned when none registered")
 	}
@@ -214,11 +232,13 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	hub := newHub()
 	attackerID := "attacker"
-	hub.players[attackerID] = &playerState{
-		Player:        Player{ID: attackerID, X: 200, Y: 200, Facing: FacingRight, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		lastHeartbeat: time.Now(),
-		cooldowns:     make(map[string]time.Time),
-	}
+	attackerState := newTestPlayerState(attackerID)
+	attackerState.X = 200
+	attackerState.Y = 200
+	attackerState.Facing = FacingRight
+	attackerState.lastHeartbeat = time.Now()
+	attackerState.cooldowns = make(map[string]time.Time)
+	hub.players[attackerID] = attackerState
 
 	if !hub.HandleAction(attackerID, effectTypeAttack) {
 		t.Fatalf("expected attack action to be recognized")
@@ -274,23 +294,20 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 	attackerID := "attacker"
 	targetID := "target"
 
-	hub.players[attackerID] = &playerState{
-		Player:        Player{ID: attackerID, X: 200, Y: 200, Facing: FacingRight, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		lastHeartbeat: now,
-		cooldowns:     make(map[string]time.Time),
-	}
-	hub.players[targetID] = &playerState{
-		Player: Player{
-			ID:        targetID,
-			X:         200 + playerHalf + meleeAttackReach/2,
-			Y:         200,
-			Facing:    FacingLeft,
-			Inventory: NewInventory(),
-			Health:    playerMaxHealth,
-			MaxHealth: playerMaxHealth,
-		},
-		lastHeartbeat: now,
-	}
+	attackerState := newTestPlayerState(attackerID)
+	attackerState.X = 200
+	attackerState.Y = 200
+	attackerState.Facing = FacingRight
+	attackerState.lastHeartbeat = now
+	attackerState.cooldowns = make(map[string]time.Time)
+	hub.players[attackerID] = attackerState
+
+	targetState := newTestPlayerState(targetID)
+	targetState.X = 200 + playerHalf + meleeAttackReach/2
+	targetState.Y = 200
+	targetState.Facing = FacingLeft
+	targetState.lastHeartbeat = now
+	hub.players[targetID] = targetState
 
 	if !hub.HandleAction(attackerID, effectTypeAttack) {
 		t.Fatalf("expected melee attack to execute")
@@ -322,19 +339,13 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 	}}
 
 	minerID := "miner"
-	hub.players[minerID] = &playerState{
-		Player: Player{
-			ID:        minerID,
-			X:         200,
-			Y:         186,
-			Facing:    FacingDown,
-			Inventory: NewInventory(),
-			Health:    playerMaxHealth,
-			MaxHealth: playerMaxHealth,
-		},
-		lastHeartbeat: time.Now(),
-		cooldowns:     make(map[string]time.Time),
-	}
+	minerState := newTestPlayerState(minerID)
+	minerState.X = 200
+	minerState.Y = 186
+	minerState.Facing = FacingDown
+	minerState.lastHeartbeat = time.Now()
+	minerState.cooldowns = make(map[string]time.Time)
+	hub.players[minerID] = minerState
 
 	if !hub.HandleAction(minerID, effectTypeAttack) {
 		t.Fatalf("expected melee attack to trigger")
@@ -362,7 +373,7 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
 	hub := newHub()
 	playerID := "player"
-	hub.players[playerID] = &playerState{Player: Player{ID: playerID, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth}}
+	hub.players[playerID] = newTestPlayerState(playerID)
 
 	received := time.Now()
 	clientSent := received.Add(-45 * time.Millisecond).UnixMilli()
@@ -388,11 +399,12 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 	hub := newHub()
 	playerID := "diag"
 	now := time.Now()
-	hub.players[playerID] = &playerState{
-		Player:        Player{ID: playerID, X: 120, Y: 140, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		lastHeartbeat: now,
-		lastRTT:       30 * time.Millisecond,
-	}
+	diagState := newTestPlayerState(playerID)
+	diagState.X = 120
+	diagState.Y = 140
+	diagState.lastHeartbeat = now
+	diagState.lastRTT = 30 * time.Millisecond
+	hub.players[playerID] = diagState
 
 	snapshot := hub.DiagnosticsSnapshot()
 	if len(snapshot) != 1 {
@@ -423,14 +435,15 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	}}
 
 	playerID := "block"
-	hub.players[playerID] = &playerState{
-		Player:        Player{ID: playerID, X: 100, Y: 120, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		intentX:       1,
-		intentY:       0,
-		lastHeartbeat: now,
-	}
+	blockState := newTestPlayerState(playerID)
+	blockState.X = 100
+	blockState.Y = 120
+	blockState.intentX = 1
+	blockState.intentY = 0
+	blockState.lastHeartbeat = now
+	hub.players[playerID] = blockState
 
-	players, _, _ := hub.advance(now, 1)
+	players, _, _, _ := hub.advance(now, 1)
 	blocker := findPlayer(players, playerID)
 	if blocker == nil {
 		t.Fatalf("expected player in snapshot")
@@ -456,21 +469,14 @@ func TestLavaDamagesPlayer(t *testing.T) {
 	}}
 
 	playerID := "walker"
-	hub.players[playerID] = &playerState{
-		Player: Player{
-			ID:        playerID,
-			X:         220,
-			Y:         220,
-			Facing:    defaultFacing,
-			Inventory: NewInventory(),
-			Health:    playerMaxHealth,
-			MaxHealth: playerMaxHealth,
-		},
-		lastHeartbeat: now,
-	}
+	walkerState := newTestPlayerState(playerID)
+	walkerState.X = 220
+	walkerState.Y = 220
+	walkerState.lastHeartbeat = now
+	hub.players[playerID] = walkerState
 
 	dt := 1.0
-	players, _, _ := hub.advance(now, dt)
+	players, _, _, _ := hub.advance(now, dt)
 
 	damaged := findPlayer(players, playerID)
 	if damaged == nil {
@@ -491,20 +497,23 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	firstID := "first"
 	secondID := "second"
 
-	hub.players[firstID] = &playerState{
-		Player:        Player{ID: firstID, X: 300, Y: 200, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		intentX:       1,
-		intentY:       0,
-		lastHeartbeat: now,
-	}
-	hub.players[secondID] = &playerState{
-		Player:        Player{ID: secondID, X: 300 + playerHalf/2, Y: 200, Facing: defaultFacing, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		intentX:       -1,
-		intentY:       0,
-		lastHeartbeat: now,
-	}
+	firstState := newTestPlayerState(firstID)
+	firstState.X = 300
+	firstState.Y = 200
+	firstState.intentX = 1
+	firstState.intentY = 0
+	firstState.lastHeartbeat = now
+	hub.players[firstID] = firstState
 
-	players, _, _ := hub.advance(now, 1)
+	secondState := newTestPlayerState(secondID)
+	secondState.X = 300 + playerHalf/2
+	secondState.Y = 200
+	secondState.intentX = -1
+	secondState.intentY = 0
+	secondState.lastHeartbeat = now
+	hub.players[secondID] = secondState
+
+	players, _, _, _ := hub.advance(now, 1)
 
 	first := findPlayer(players, firstID)
 	second := findPlayer(players, secondID)
@@ -526,11 +535,13 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	shooterID := "shooter"
 	now := time.Now()
 
-	hub.players[shooterID] = &playerState{
-		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		lastHeartbeat: now,
-		cooldowns:     make(map[string]time.Time),
-	}
+	shooterState := newTestPlayerState(shooterID)
+	shooterState.X = 200
+	shooterState.Y = 200
+	shooterState.Facing = FacingRight
+	shooterState.lastHeartbeat = now
+	shooterState.cooldowns = make(map[string]time.Time)
+	hub.players[shooterID] = shooterState
 
 	if !hub.triggerFireball(shooterID) {
 		t.Fatalf("expected triggerFireball to succeed")
@@ -564,23 +575,20 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 	travel := fireballSpeed / float64(tickRate)
 	spawnOffset := playerHalf + fireballSpawnGap + fireballSize/2
 
-	hub.players[shooterID] = &playerState{
-		Player:        Player{ID: shooterID, X: shooterX, Y: shooterY, Facing: FacingRight, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		lastHeartbeat: now,
-		cooldowns:     make(map[string]time.Time),
-	}
-	hub.players[targetID] = &playerState{
-		Player: Player{
-			ID:        targetID,
-			X:         shooterX + spawnOffset + travel,
-			Y:         shooterY,
-			Facing:    FacingLeft,
-			Inventory: NewInventory(),
-			Health:    playerMaxHealth,
-			MaxHealth: playerMaxHealth,
-		},
-		lastHeartbeat: now,
-	}
+	casterState := newTestPlayerState(shooterID)
+	casterState.X = shooterX
+	casterState.Y = shooterY
+	casterState.Facing = FacingRight
+	casterState.lastHeartbeat = now
+	casterState.cooldowns = make(map[string]time.Time)
+	hub.players[shooterID] = casterState
+
+	victimState := newTestPlayerState(targetID)
+	victimState.X = shooterX + spawnOffset + travel
+	victimState.Y = shooterY
+	victimState.Facing = FacingLeft
+	victimState.lastHeartbeat = now
+	hub.players[targetID] = victimState
 
 	if !hub.triggerFireball(shooterID) {
 		t.Fatalf("expected fireball to be created")
@@ -607,18 +615,11 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 	hub := newHub()
 	playerID := "patient"
-	state := &playerState{
-		Player: Player{
-			ID:        playerID,
-			X:         160,
-			Y:         160,
-			Facing:    defaultFacing,
-			Inventory: NewInventory(),
-			Health:    playerMaxHealth - 30,
-			MaxHealth: playerMaxHealth,
-		},
-		lastHeartbeat: time.Now(),
-	}
+	state := newTestPlayerState(playerID)
+	state.X = 160
+	state.Y = 160
+	state.Health = playerMaxHealth - 30
+	state.lastHeartbeat = time.Now()
 	hub.players[playerID] = state
 
 	heal := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "healer", Params: map[string]float64{"healthDelta": 50}}}
@@ -635,18 +636,11 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 func TestHealthDamageClampsToZero(t *testing.T) {
 	hub := newHub()
 	playerID := "fragile"
-	state := &playerState{
-		Player: Player{
-			ID:        playerID,
-			X:         180,
-			Y:         180,
-			Facing:    defaultFacing,
-			Inventory: NewInventory(),
-			Health:    5,
-			MaxHealth: playerMaxHealth,
-		},
-		lastHeartbeat: time.Now(),
-	}
+	state := newTestPlayerState(playerID)
+	state.X = 180
+	state.Y = 180
+	state.Health = 5
+	state.lastHeartbeat = time.Now()
 	hub.players[playerID] = state
 
 	blast := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "boom", Params: map[string]float64{"healthDelta": -50}}}
@@ -665,11 +659,13 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 	now := time.Now()
 
 	shooterID := "caster"
-	hub.players[shooterID] = &playerState{
-		Player:        Player{ID: shooterID, X: 200, Y: 200, Facing: FacingRight, Inventory: NewInventory(), Health: playerMaxHealth, MaxHealth: playerMaxHealth},
-		lastHeartbeat: now,
-		cooldowns:     make(map[string]time.Time),
-	}
+	casterState := newTestPlayerState(shooterID)
+	casterState.X = 200
+	casterState.Y = 200
+	casterState.Facing = FacingRight
+	casterState.lastHeartbeat = now
+	casterState.cooldowns = make(map[string]time.Time)
+	hub.players[shooterID] = casterState
 
 	hub.obstacles = []Obstacle{{
 		ID:     "wall",
