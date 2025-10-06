@@ -338,6 +338,8 @@ func (w *World) spawnInitialNPCs() {
 		Waypoints: []vec2{
 			{X: 360, Y: 260},
 			{X: 480, Y: 260},
+			{X: 480, Y: 380},
+			{X: 360, Y: 380},
 		},
 	}
 
@@ -366,4 +368,62 @@ func (w *World) spawnInitialNPCs() {
 	resolveObstaclePenetration(&goblin.actorState, w.obstacles)
 	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
 	w.npcs[id] = goblin
+
+	w.nextNPCID++
+	id = fmt.Sprintf("npc-goblin-%d", w.nextNPCID)
+	southGoblinInventory := NewInventory()
+	if _, err := southGoblinInventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 8}); err != nil {
+		log.Printf("failed to seed goblin gold: %v", err)
+	}
+	if _, err := southGoblinInventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 1}); err != nil {
+		log.Printf("failed to seed goblin potion: %v", err)
+	}
+	southernGoblin := &npcState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        id,
+				X:         640,
+				Y:         480,
+				Facing:    defaultFacing,
+				Health:    60,
+				MaxHealth: 60,
+				Inventory: southGoblinInventory,
+			},
+		},
+		Type:             NPCTypeGoblin,
+		ExperienceReward: 25,
+		Waypoints: []vec2{
+			{X: 640, Y: 480},
+			{X: 760, Y: 480},
+			{X: 760, Y: 600},
+			{X: 520, Y: 600},
+			{X: 520, Y: 480},
+		},
+	}
+
+	if w.aiLibrary != nil {
+		if cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin); cfg != nil {
+			southernGoblin.AIConfigID = cfg.id
+			southernGoblin.AIState = cfg.initialState
+			cfg.applyDefaults(&southernGoblin.Blackboard)
+		}
+	}
+	if southernGoblin.Blackboard.ArriveRadius <= 0 {
+		southernGoblin.Blackboard.ArriveRadius = 16
+	}
+	if southernGoblin.Blackboard.PauseTicks == 0 {
+		southernGoblin.Blackboard.PauseTicks = 30
+	}
+	if southernGoblin.Blackboard.StuckEpsilon <= 0 {
+		southernGoblin.Blackboard.StuckEpsilon = 0.5
+	}
+	if southernGoblin.Blackboard.WaypointIndex < 0 || southernGoblin.Blackboard.WaypointIndex >= len(southernGoblin.Waypoints) {
+		southernGoblin.Blackboard.WaypointIndex = 0
+	}
+	southernGoblin.Blackboard.NextDecisionAt = 0
+	southernGoblin.Blackboard.LastWaypointIndex = -1
+
+	resolveObstaclePenetration(&southernGoblin.actorState, w.obstacles)
+	southernGoblin.Blackboard.LastPos = vec2{X: southernGoblin.X, Y: southernGoblin.Y}
+	w.npcs[id] = southernGoblin
 }
