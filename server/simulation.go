@@ -1,0 +1,305 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"math"
+	"time"
+)
+
+// CommandType enumerates the supported simulation commands.
+type CommandType string
+
+const (
+	CommandMove      CommandType = "Move"
+	CommandAction    CommandType = "Action"
+	CommandHeartbeat CommandType = "Heartbeat"
+)
+
+// Command represents an intent captured for processing on the next tick.
+type Command struct {
+	OriginTick uint64
+	ActorID    string
+	Type       CommandType
+	IssuedAt   time.Time
+	Move       *MoveCommand
+	Action     *ActionCommand
+	Heartbeat  *HeartbeatCommand
+}
+
+// MoveCommand carries the desired movement vector and facing.
+type MoveCommand struct {
+	DX     float64
+	DY     float64
+	Facing FacingDirection
+}
+
+// ActionCommand identifies an ability or interaction trigger.
+type ActionCommand struct {
+	Name string
+}
+
+// HeartbeatCommand updates connectivity metadata for an actor.
+type HeartbeatCommand struct {
+	ReceivedAt time.Time
+	ClientSent int64
+	RTT        time.Duration
+}
+
+// EventType captures the discrete kinds of simulation output.
+type EventType string
+
+const (
+	EventActorMoved     EventType = "ActorMoved"
+	EventHealthChanged  EventType = "HealthChanged"
+	EventEffectSpawned  EventType = "EffectSpawned"
+	EventItemAdded      EventType = "ItemAdded"
+	EventActorDespawned EventType = "ActorDespawned"
+)
+
+// Event describes a state change emitted during a tick.
+type Event struct {
+	Tick     uint64
+	EntityID string
+	Type     EventType
+	Payload  map[string]any
+}
+
+// StepOutput aggregates the results of a simulation step.
+type StepOutput struct {
+	Events           []Event
+	RemovedPlayerIDs []string
+}
+
+// World owns the authoritative simulation state.
+type World struct {
+	players         map[string]*playerState
+	npcs            map[string]*npcState
+	effects         []*effectState
+	obstacles       []Obstacle
+	effectBehaviors map[string]effectBehavior
+	nextEffectID    uint64
+	nextNPCID       uint64
+}
+
+// newWorld constructs an empty world with generated obstacles and seeded NPCs.
+func newWorld() *World {
+	w := &World{
+		players:         make(map[string]*playerState),
+		npcs:            make(map[string]*npcState),
+		effects:         make([]*effectState, 0),
+		effectBehaviors: newEffectBehaviors(),
+	}
+	w.obstacles = w.generateObstacles(obstacleCount)
+	w.spawnInitialNPCs()
+	return w
+}
+
+// Snapshot copies players, NPCs, and effects into broadcast-friendly structs.
+func (w *World) Snapshot(now time.Time) ([]Player, []NPC, []Effect) {
+	players := make([]Player, 0, len(w.players))
+	for _, player := range w.players {
+		players = append(players, player.snapshot())
+	}
+	npcs := make([]NPC, 0, len(w.npcs))
+	for _, npc := range w.npcs {
+		npcs = append(npcs, npc.snapshot())
+	}
+	effects := make([]Effect, 0, len(w.effects))
+	for _, eff := range w.effects {
+		if now.Before(eff.expiresAt) {
+			effects = append(effects, eff.Effect)
+		}
+	}
+	return players, npcs, effects
+}
+
+// HasPlayer reports whether the world currently tracks the given player.
+func (w *World) HasPlayer(id string) bool {
+	_, ok := w.players[id]
+	return ok
+}
+
+// AddPlayer registers a new player state with the world.
+func (w *World) AddPlayer(state *playerState) {
+	if state == nil {
+		return
+	}
+	w.players[state.ID] = state
+}
+
+// RemovePlayer drops a player from the world and returns whether it was present.
+func (w *World) RemovePlayer(id string) bool {
+	if _, ok := w.players[id]; !ok {
+		return false
+	}
+	delete(w.players, id)
+	return true
+}
+
+// Step advances the simulation by a single tick applying all staged commands.
+func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command) StepOutput {
+	if dt <= 0 {
+		dt = 1.0 / float64(tickRate)
+	}
+	output := StepOutput{Events: make([]Event, 0)}
+
+	type stagedAction struct {
+		actorID string
+		command *ActionCommand
+	}
+
+	stagedActions := make([]stagedAction, 0)
+	// Process commands.
+	for _, cmd := range commands {
+		switch cmd.Type {
+		case CommandMove:
+			if cmd.Move == nil {
+				continue
+			}
+			if player, ok := w.players[cmd.ActorID]; ok {
+				dx := cmd.Move.DX
+				dy := cmd.Move.DY
+				length := math.Hypot(dx, dy)
+				if length > 1 {
+					dx /= length
+					dy /= length
+				}
+				player.intentX = dx
+				player.intentY = dy
+				player.Facing = deriveFacing(dx, dy, player.Facing)
+				if dx == 0 && dy == 0 {
+					if cmd.Move.Facing != "" {
+						player.Facing = cmd.Move.Facing
+					}
+				}
+				if !cmd.IssuedAt.IsZero() {
+					player.lastInput = cmd.IssuedAt
+				} else {
+					player.lastInput = now
+				}
+			}
+		case CommandAction:
+			if cmd.Action == nil {
+				continue
+			}
+			stagedActions = append(stagedActions, stagedAction{actorID: cmd.ActorID, command: cmd.Action})
+		case CommandHeartbeat:
+			if cmd.Heartbeat == nil {
+				continue
+			}
+			if player, ok := w.players[cmd.ActorID]; ok {
+				player.lastHeartbeat = cmd.Heartbeat.ReceivedAt
+				player.lastRTT = cmd.Heartbeat.RTT
+			}
+		}
+	}
+
+	actors := make([]*actorState, 0, len(w.players)+len(w.npcs))
+	// Movement system.
+	for _, player := range w.players {
+		prevX, prevY := player.X, player.Y
+		if player.intentX != 0 || player.intentY != 0 {
+			moveActorWithObstacles(&player.actorState, dt, w.obstacles)
+		}
+		actors = append(actors, &player.actorState)
+		if prevX != player.X || prevY != player.Y {
+			output.Events = append(output.Events, Event{
+				Tick:     tick,
+				EntityID: player.ID,
+				Type:     EventActorMoved,
+				Payload: map[string]any{
+					"x": player.X,
+					"y": player.Y,
+				},
+			})
+		}
+	}
+	for _, npc := range w.npcs {
+		prevX, prevY := npc.X, npc.Y
+		if npc.intentX != 0 || npc.intentY != 0 {
+			moveActorWithObstacles(&npc.actorState, dt, w.obstacles)
+		}
+		actors = append(actors, &npc.actorState)
+		if prevX != npc.X || prevY != npc.Y {
+			output.Events = append(output.Events, Event{
+				Tick:     tick,
+				EntityID: npc.ID,
+				Type:     EventActorMoved,
+				Payload: map[string]any{
+					"x": npc.X,
+					"y": npc.Y,
+				},
+			})
+		}
+	}
+
+	resolveActorCollisions(actors, w.obstacles)
+
+	// Ability and effect staging.
+	for _, action := range stagedActions {
+		switch action.command.Name {
+		case effectTypeAttack:
+			w.triggerMeleeAttack(action.actorID, now, tick, &output)
+		case effectTypeFireball:
+			w.triggerFireball(action.actorID, now, tick, &output)
+		}
+	}
+
+	// Environmental systems.
+	w.applyEnvironmentalDamage(actors, dt, tick, &output)
+
+	w.advanceEffects(now, dt, tick, &output)
+	w.pruneEffects(now)
+
+	// Lifecycle system: remove stale players.
+	cutoff := now.Add(-disconnectAfter)
+	for id, player := range w.players {
+		if player.lastHeartbeat.IsZero() {
+			continue
+		}
+		if player.lastHeartbeat.Before(cutoff) {
+			delete(w.players, id)
+			output.RemovedPlayerIDs = append(output.RemovedPlayerIDs, id)
+			output.Events = append(output.Events, Event{
+				Tick:     tick,
+				EntityID: id,
+				Type:     EventActorDespawned,
+				Payload:  map[string]any{"reason": "heartbeatTimeout"},
+			})
+		}
+	}
+
+	return output
+}
+
+func (w *World) spawnInitialNPCs() {
+	inventory := NewInventory()
+	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
+		log.Printf("failed to seed goblin gold: %v", err)
+	}
+	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 1}); err != nil {
+		log.Printf("failed to seed goblin potion: %v", err)
+	}
+
+	w.nextNPCID++
+	id := fmt.Sprintf("npc-goblin-%d", w.nextNPCID)
+	goblin := &npcState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        id,
+				X:         360,
+				Y:         260,
+				Facing:    defaultFacing,
+				Health:    60,
+				MaxHealth: 60,
+				Inventory: inventory,
+			},
+		},
+		Type:             NPCTypeGoblin,
+		ExperienceReward: 25,
+	}
+
+	resolveObstaclePenetration(&goblin.actorState, w.obstacles)
+	w.npcs[id] = goblin
+}
