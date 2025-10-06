@@ -282,23 +282,14 @@ function setCameraLock(lockOnPlayer) {
   if (camera.lockOnPlayer) {
     const viewportWidth = store.canvas?.width || store.WORLD_WIDTH || 0;
     const viewportHeight = store.canvas?.height || store.WORLD_HEIGHT || 0;
-    const worldWidth =
-      typeof store.WORLD_WIDTH === "number"
-        ? store.WORLD_WIDTH
-        : viewportWidth;
-    const worldHeight =
-      typeof store.WORLD_HEIGHT === "number"
-        ? store.WORLD_HEIGHT
-        : viewportHeight;
     const target =
       store.displayPlayers[store.playerId] || store.players[store.playerId];
     if (target) {
-      const desiredX = target.x - viewportWidth / 2;
-      const desiredY = target.y - viewportHeight / 2;
-      const maxX = Math.max(0, worldWidth - viewportWidth);
-      const maxY = Math.max(0, worldHeight - viewportHeight);
-      camera.x = clamp(desiredX, 0, maxX);
-      camera.y = clamp(desiredY, 0, maxY);
+      camera.x = target.x - viewportWidth / 2;
+      camera.y = target.y - viewportHeight / 2;
+    } else {
+      camera.x = 0;
+      camera.y = 0;
     }
   }
   renderStatus();
