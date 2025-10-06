@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-type Player struct {
+// Actor captures the shared state for any living entity in the world.
+type Actor struct {
 	ID        string          `json:"id"`
 	X         float64         `json:"x"`
 	Y         float64         `json:"y"`
@@ -13,6 +14,11 @@ type Player struct {
 	Health    float64         `json:"health"`
 	MaxHealth float64         `json:"maxHealth"`
 	Inventory Inventory       `json:"inventory"`
+}
+
+// Player mirrors the actor state for human-controlled characters.
+type Player struct {
+	Actor
 }
 
 type FacingDirection string
@@ -88,25 +94,24 @@ func facingToVector(facing FacingDirection) (float64, float64) {
 	}
 }
 
-type playerState struct {
-	Player
-	intentX       float64
-	intentY       float64
-	lastInput     time.Time
-	lastHeartbeat time.Time
-	lastRTT       time.Duration
-	cooldowns     map[string]time.Time
+type actorState struct {
+	Actor
+	intentX float64
+	intentY float64
 }
 
-func (s *playerState) snapshot() Player {
-	player := s.Player
-	player.Inventory = s.Inventory.Clone()
-	return player
+func (s *actorState) snapshotActor() Actor {
+	actor := s.Actor
+	if actor.Facing == "" {
+		actor.Facing = defaultFacing
+	}
+	actor.Inventory = s.Inventory.Clone()
+	return actor
 }
 
-// applyHealthDelta adjusts the player's health while clamping to [0, MaxHealth].
+// applyHealthDelta adjusts the actor's health while clamping to [0, MaxHealth].
 // It returns true when the value actually changes.
-func (s *playerState) applyHealthDelta(delta float64) bool {
+func (s *actorState) applyHealthDelta(delta float64) bool {
 	if delta == 0 {
 		return false
 	}
@@ -126,4 +131,16 @@ func (s *playerState) applyHealthDelta(delta float64) bool {
 	}
 	s.Health = next
 	return true
+}
+
+type playerState struct {
+	actorState
+	lastInput     time.Time
+	lastHeartbeat time.Time
+	lastRTT       time.Duration
+	cooldowns     map[string]time.Time
+}
+
+func (s *playerState) snapshot() Player {
+	return Player{Actor: s.snapshotActor()}
 }

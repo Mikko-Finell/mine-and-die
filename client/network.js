@@ -55,6 +55,11 @@ export async function joinGame(store) {
     store.players = Object.fromEntries(
       payload.players.map((p) => [p.id, { ...p, facing: normalizeFacing(p.facing) }])
     );
+    store.npcs = Object.fromEntries(
+      Array.isArray(payload.npcs)
+        ? payload.npcs.map((npc) => [npc.id, { ...npc, facing: normalizeFacing(npc.facing) }])
+        : []
+    );
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     store.effects = Array.isArray(payload.effects) ? payload.effects : [];
     if (!store.players[store.playerId]) {
@@ -68,6 +73,10 @@ export async function joinGame(store) {
     store.displayPlayers = {};
     Object.values(store.players).forEach((p) => {
       store.displayPlayers[p.id] = { x: p.x, y: p.y };
+    });
+    store.displayNPCs = {};
+    Object.values(store.npcs).forEach((npc) => {
+      store.displayNPCs[npc.id] = { x: npc.x, y: npc.y };
     });
     store.currentIntent = { dx: 0, dy: 0 };
     store.currentFacing = normalizeFacing(store.players[store.playerId].facing);
@@ -123,6 +132,11 @@ export function connectEvents(store) {
         store.players = Object.fromEntries(
           payload.players.map((p) => [p.id, { ...p, facing: normalizeFacing(p.facing) }])
         );
+        store.npcs = Object.fromEntries(
+          Array.isArray(payload.npcs)
+            ? payload.npcs.map((npc) => [npc.id, { ...npc, facing: normalizeFacing(npc.facing) }])
+            : []
+        );
         if (Array.isArray(payload.obstacles)) {
           store.obstacles = payload.obstacles;
         }
@@ -155,6 +169,16 @@ export function connectEvents(store) {
         Object.keys(store.displayPlayers).forEach((id) => {
           if (!store.players[id]) {
             delete store.displayPlayers[id];
+          }
+        });
+        Object.values(store.npcs).forEach((npc) => {
+          if (!store.displayNPCs[npc.id]) {
+            store.displayNPCs[npc.id] = { x: npc.x, y: npc.y };
+          }
+        });
+        Object.keys(store.displayNPCs).forEach((id) => {
+          if (!store.npcs[id]) {
+            delete store.displayNPCs[id];
           }
         });
         store.lastStateReceivedAt = Date.now();
@@ -308,5 +332,7 @@ function handleConnectionLoss(store) {
   store.playerId = null;
   store.players = {};
   store.displayPlayers = {};
+  store.npcs = {};
+  store.displayNPCs = {};
   scheduleReconnect(store);
 }

@@ -84,7 +84,7 @@ func main() {
 			return
 		}
 
-		sub, snapshotPlayers, snapshotEffects, ok := hub.Subscribe(playerID, conn)
+		sub, snapshotPlayers, snapshotNPCs, snapshotEffects, ok := hub.Subscribe(playerID, conn)
 		if !ok {
 			message := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unknown player")
 			conn.WriteMessage(websocket.CloseMessage, message)
@@ -95,6 +95,7 @@ func main() {
 		initial := stateMessage{
 			Type:       "state",
 			Players:    snapshotPlayers,
+			NPCs:       snapshotNPCs,
 			Obstacles:  hub.obstacles,
 			Effects:    snapshotEffects,
 			ServerTime: time.Now().UnixMilli(),
@@ -102,9 +103,9 @@ func main() {
 		data, err := json.Marshal(initial)
 		if err != nil {
 			log.Printf("failed to marshal initial state for %s: %v", playerID, err)
-			players, effects := hub.Disconnect(playerID)
+			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players, effects)
+				go hub.broadcastState(players, npcs, effects)
 			}
 			return
 		}
@@ -113,9 +114,9 @@ func main() {
 		conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			sub.mu.Unlock()
-			players, effects := hub.Disconnect(playerID)
+			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players, effects)
+				go hub.broadcastState(players, npcs, effects)
 			}
 			return
 		}
@@ -124,9 +125,9 @@ func main() {
 		for {
 			_, payload, err := conn.ReadMessage()
 			if err != nil {
-				players, effects := hub.Disconnect(playerID)
+				players, npcs, effects := hub.Disconnect(playerID)
 				if players != nil {
-					go hub.broadcastState(players, effects)
+					go hub.broadcastState(players, npcs, effects)
 				}
 				return
 			}
@@ -173,9 +174,9 @@ func main() {
 				conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 					sub.mu.Unlock()
-					players, effects := hub.Disconnect(playerID)
+					players, npcs, effects := hub.Disconnect(playerID)
 					if players != nil {
-						go hub.broadcastState(players, effects)
+						go hub.broadcastState(players, npcs, effects)
 					}
 					return
 				}

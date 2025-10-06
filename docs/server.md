@@ -15,13 +15,14 @@ The Go service owns the authoritative world state and exposes three responsibili
 ### Hub Overview
 The `Hub` struct tracks:
 - `players` – map of player IDs to their live state (`playerState`).
+- `npcs` – neutral enemies keyed by ID (`npcState`).
 - `subscribers` – active WebSocket connections keyed by player ID.
 - `effects` – slice of in-flight ability payloads.
 - `effectBehaviors` – map of effect types to collision handlers (damage, healing, etc.).
 - `obstacles` – immutable slice shared with clients (walls, gold ore, lava hazards).
 - Atomic counters for player/effect IDs.
 
-`newHub()` seeds the obstacle list (walls + gold ore) and prepares maps.
+`newHub()` seeds the obstacle list (walls + gold ore), prepares maps, and calls `spawnInitialNPCs()` to place a baseline set of neutral enemies.
 
 ### Tick Loop
 `RunSimulation` spins a `time.Ticker` at `tickRate` (15 Hz). Each tick:
@@ -30,11 +31,16 @@ The `Hub` struct tracks:
 3. Broadcasts the latest snapshot via `broadcastState`.
 
 `advance` handles:
-- Movement: `movePlayerWithObstacles` normalizes intent, clamps to bounds, and slides along walls.
-- Separation: `resolvePlayerCollisions` iteratively pushes overlapping players apart.
+- Movement: `moveActorWithObstacles` normalizes intent, clamps to bounds, and slides along walls for both players and NPCs.
+- Separation: `resolveActorCollisions` iteratively pushes overlapping actors apart.
 - Hazards: `applyEnvironmentalDamageLocked` ticks lava pools that remain walkable but burn players standing inside them.
 - Effects: `advanceEffectsLocked` moves projectiles, expires them on collision, and mirrors remaining range in `Params`.
 - Cleanup: removes players who miss `disconnectAfter` and prunes expired effects.
+
+### Neutral Enemies
+- NPCs reuse the shared `Actor` struct for position, facing, health, and inventories, and add fields like `Type`, `AIControlled`, and `ExperienceReward`.
+- `spawnInitialNPCs` currently seeds a stationary goblin with gold and a potion; additional spawns simply append `npcState` entries while holding `Hub.mu`.
+- Snapshots include a `npcs` array alongside the existing `players`, enabling the client to render and later target neutral enemies without special casing.
 
 ### Actions, Health, and Cooldowns
 `HandleAction` dispatches to `triggerMeleeAttack` or `triggerFireball`:
@@ -66,6 +72,7 @@ Players now track `Health` and `MaxHealth`. Both helpers share the `Effect` stru
 - Add new player fields within `Player`/`playerState` and include them in `snapshotLocked`.
 - Register new actions in `HandleAction` and encode behaviour in dedicated helpers.
 - Extend `Effect.Params` for additional metadata—clients simply mirror the JSON.
+- Spawn new NPC types by creating `npcState` records and adding them to `Hub.npcs` under the mutex.
 - Preserve locking discipline: acquire `Hub.mu` before touching shared maps/slices.
 - Update or add tests in `main_test.go` whenever gameplay rules change.
 

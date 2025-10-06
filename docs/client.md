@@ -16,6 +16,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Simulation constants (`TILE_SIZE`, `PLAYER_SIZE`, etc.).
 - Connection state (`socket`, `playerId`, heartbeat timestamps).
 - Player dictionaries: `players` (authoritative) and `displayPlayers` (interpolated positions).
+- NPC dictionaries: `npcs` mirrors neutral enemies from the server, `displayNPCs` lerps their positions for rendering.
 - Arrays for `obstacles` and `effects` mirrored from server payloads.
 
 ## Initialization Sequence
@@ -26,7 +27,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 5. `connectEvents(store)` sets up WebSocket callbacks and kicks off the heartbeat loop.
 
 ## Networking Details
-- **State updates:** The server emits `state` messages containing players, obstacles, effects, and `serverTime`. The client overwrites `store.players`, merges `displayPlayers`, and keeps diagnostics fresh.
+- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, and keeps diagnostics fresh.
 - **Intents:** `sendCurrentIntent` serializes `{ type: "input", dx, dy, facing }` whenever movement or facing changes.
 - **Actions:** `sendAction` is used by `input.js` for melee and fireball triggers.
 - **Heartbeats:** `startHeartbeat` sets an interval that calls `sendHeartbeat`; acknowledgements update latency displays.
@@ -35,6 +36,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 ## Rendering Notes
 - Grid + background are redrawn each frame for clarity.
 - Players are drawn as colored squares with a facing indicator line; the local player uses cyan/white, others orange/cream.
+- NPCs are drawn in violet with their facing indicator and optional type label.
 - Obstacles use either a stone block style or a gold ore treatment with deterministic pseudo-random nuggets.
 - Effects are translucent rectangles whose styles map to effect `type` strings.
 

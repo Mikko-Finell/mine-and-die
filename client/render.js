@@ -41,6 +41,21 @@ export function startRenderLoop(store) {
       }
     });
 
+    Object.entries(store.npcs).forEach(([id, npc]) => {
+      if (!store.displayNPCs[id]) {
+        store.displayNPCs[id] = { x: npc.x, y: npc.y };
+      }
+      const display = store.displayNPCs[id];
+      display.x += (npc.x - display.x) * lerpAmount;
+      display.y += (npc.y - display.y) * lerpAmount;
+    });
+
+    Object.keys(store.displayNPCs).forEach((id) => {
+      if (!store.npcs[id]) {
+        delete store.displayNPCs[id];
+      }
+    });
+
     drawScene(store);
     requestAnimationFrame(gameLoop);
   }
@@ -75,6 +90,8 @@ function drawScene(store) {
 
   drawEffects(store);
 
+  drawNPCs(store);
+
   Object.entries(store.displayPlayers).forEach(([id, position]) => {
     ctx.fillStyle = id === store.playerId ? "#38bdf8" : "#f97316";
     ctx.fillRect(
@@ -104,6 +121,56 @@ function drawScene(store) {
     );
     ctx.stroke();
     ctx.restore();
+  });
+}
+
+function drawNPCs(store) {
+  const { ctx } = store;
+  Object.entries(store.displayNPCs).forEach(([id, position]) => {
+    ctx.fillStyle = "#a855f7";
+    ctx.fillRect(
+      position.x - store.PLAYER_HALF,
+      position.y - store.PLAYER_HALF,
+      store.PLAYER_SIZE,
+      store.PLAYER_SIZE
+    );
+
+    const npc = store.npcs[id];
+    if (
+      npc &&
+      typeof npc.maxHealth === "number" &&
+      npc.maxHealth > 0 &&
+      typeof npc.health === "number"
+    ) {
+      drawHealthBar(ctx, store, position, npc, id);
+    }
+
+    const facing = npc && typeof npc.facing === "string" ? npc.facing : DEFAULT_FACING;
+    const offset = FACING_OFFSETS[facing] || FACING_OFFSETS[DEFAULT_FACING];
+    const indicatorLength = store.PLAYER_HALF + 6;
+
+    ctx.save();
+    ctx.strokeStyle = "#f5d0fe";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(position.x, position.y);
+    ctx.lineTo(
+      position.x + offset.x * indicatorLength,
+      position.y + offset.y * indicatorLength
+    );
+    ctx.stroke();
+    ctx.restore();
+
+    if (npc && typeof npc.type === "string" && npc.type.length > 0) {
+      ctx.save();
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(npc.type, position.x, position.y - store.PLAYER_HALF - 10);
+      ctx.restore();
+    }
   });
 }
 
