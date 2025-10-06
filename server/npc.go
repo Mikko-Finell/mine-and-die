@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 // NPCType enumerates the available neutral enemy archetypes.
 type NPCType string
 
@@ -23,6 +25,7 @@ type npcState struct {
 	AIConfigID       uint16
 	Blackboard       npcBlackboard
 	Waypoints        []vec2
+	cooldowns        map[string]time.Time
 }
 
 func (s *npcState) snapshot() NPC {

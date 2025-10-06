@@ -94,24 +94,34 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 	})
 }
 
+func (w *World) abilityOwner(actorID string) (*actorState, *map[string]time.Time) {
+	if player, ok := w.players[actorID]; ok {
+		return &player.actorState, &player.cooldowns
+	}
+	if npc, ok := w.npcs[actorID]; ok {
+		return &npc.actorState, &npc.cooldowns
+	}
+	return nil, nil
+}
+
 // triggerMeleeAttack spawns a short-lived melee hitbox if the cooldown allows it.
-func (w *World) triggerMeleeAttack(playerID string, now time.Time, tick uint64, output *StepOutput) bool {
-	state, ok := w.players[playerID]
-	if !ok {
+func (w *World) triggerMeleeAttack(actorID string, now time.Time, tick uint64, output *StepOutput) bool {
+	state, cooldowns := w.abilityOwner(actorID)
+	if state == nil || cooldowns == nil {
 		return false
 	}
 
-	if state.cooldowns == nil {
-		state.cooldowns = make(map[string]time.Time)
+	if *cooldowns == nil {
+		*cooldowns = make(map[string]time.Time)
 	}
 
-	if last, ok := state.cooldowns[effectTypeAttack]; ok {
+	if last, ok := (*cooldowns)[effectTypeAttack]; ok {
 		if now.Sub(last) < meleeAttackCooldown {
 			return false
 		}
 	}
 
-	state.cooldowns[effectTypeAttack] = now
+	(*cooldowns)[effectTypeAttack] = now
 
 	facing := state.Facing
 	if facing == "" {
@@ -126,7 +136,7 @@ func (w *World) triggerMeleeAttack(playerID string, now time.Time, tick uint64, 
 		Effect: Effect{
 			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
 			Type:     effectTypeAttack,
-			Owner:    playerID,
+			Owner:    actorID,
 			Start:    now.UnixMilli(),
 			Duration: meleeAttackDuration.Milliseconds(),
 			X:        rectX,
@@ -148,7 +158,7 @@ func (w *World) triggerMeleeAttack(playerID string, now time.Time, tick uint64, 
 		EntityID: effect.ID,
 		Type:     EventEffectSpawned,
 		Payload: map[string]any{
-			"owner": playerID,
+			"owner": actorID,
 			"kind":  effectTypeAttack,
 		},
 	})
@@ -162,11 +172,11 @@ func (w *World) triggerMeleeAttack(playerID string, now time.Time, tick uint64, 
 			continue
 		}
 		if slot, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1}); err != nil {
-			log.Printf("failed to add mined gold for %s: %v", playerID, err)
+			log.Printf("failed to add mined gold for %s: %v", actorID, err)
 		} else {
 			output.Events = append(output.Events, Event{
 				Tick:     tick,
-				EntityID: playerID,
+				EntityID: actorID,
 				Type:     EventItemAdded,
 				Payload: map[string]any{
 					"item":     ItemTypeGold,
@@ -180,7 +190,7 @@ func (w *World) triggerMeleeAttack(playerID string, now time.Time, tick uint64, 
 
 	hitIDs := make([]string, 0)
 	for id, target := range w.players {
-		if id == playerID {
+		if id == actorID {
 			continue
 		}
 		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
@@ -190,30 +200,30 @@ func (w *World) triggerMeleeAttack(playerID string, now time.Time, tick uint64, 
 	}
 
 	if len(hitIDs) > 0 {
-		log.Printf("%s %s overlaps players %v", playerID, effectTypeAttack, hitIDs)
+		log.Printf("%s %s overlaps players %v", actorID, effectTypeAttack, hitIDs)
 	}
 
 	return true
 }
 
 // triggerFireball launches a projectile effect when the player is ready.
-func (w *World) triggerFireball(playerID string, now time.Time, tick uint64, output *StepOutput) bool {
-	state, ok := w.players[playerID]
-	if !ok {
+func (w *World) triggerFireball(actorID string, now time.Time, tick uint64, output *StepOutput) bool {
+	state, cooldowns := w.abilityOwner(actorID)
+	if state == nil || cooldowns == nil {
 		return false
 	}
 
-	if state.cooldowns == nil {
-		state.cooldowns = make(map[string]time.Time)
+	if *cooldowns == nil {
+		*cooldowns = make(map[string]time.Time)
 	}
 
-	if last, ok := state.cooldowns[effectTypeFireball]; ok {
+	if last, ok := (*cooldowns)[effectTypeFireball]; ok {
 		if now.Sub(last) < fireballCooldown {
 			return false
 		}
 	}
 
-	state.cooldowns[effectTypeFireball] = now
+	(*cooldowns)[effectTypeFireball] = now
 
 	facing := state.Facing
 	if facing == "" {
@@ -236,7 +246,7 @@ func (w *World) triggerFireball(playerID string, now time.Time, tick uint64, out
 		Effect: Effect{
 			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
 			Type:     effectTypeFireball,
-			Owner:    playerID,
+			Owner:    actorID,
 			Start:    now.UnixMilli(),
 			Duration: fireballLifetime.Milliseconds(),
 			X:        centerX - radius,
@@ -265,7 +275,7 @@ func (w *World) triggerFireball(playerID string, now time.Time, tick uint64, out
 		EntityID: effect.ID,
 		Type:     EventEffectSpawned,
 		Payload: map[string]any{
-			"owner": playerID,
+			"owner": actorID,
 			"kind":  effectTypeFireball,
 		},
 	})
