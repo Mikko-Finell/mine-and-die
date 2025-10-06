@@ -1,4 +1,4 @@
-import { joinGame } from "./network.js";
+import { joinGame, resetWorld } from "./network.js";
 import { startRenderLoop } from "./render.js";
 import { registerInputHandlers } from "./input.js";
 
@@ -10,6 +10,11 @@ const diagnosticsToggle = document.getElementById("diagnostics-toggle");
 const diagnosticsSection = document.getElementById("diagnostics");
 const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
+const worldResetForm = document.getElementById("world-reset-form");
+const worldResetStatus = document.getElementById("world-reset-status");
+const worldResetObstacles = document.getElementById("world-reset-obstacles");
+const worldResetNPCs = document.getElementById("world-reset-npcs");
+const worldResetLava = document.getElementById("world-reset-lava");
 
 const diagnosticsEls = {
   connection: document.getElementById("diag-connection"),
@@ -40,6 +45,13 @@ const store = {
   diagnosticsEls,
   inventoryPanel,
   inventoryGrid,
+  worldResetForm,
+  worldResetStatusEl: worldResetStatus,
+  worldResetInputs: {
+    obstacles: worldResetObstacles,
+    npcs: worldResetNPCs,
+    lava: worldResetLava,
+  },
   TILE_SIZE: 40,
   GRID_WIDTH: canvas.width / 40,
   GRID_HEIGHT: canvas.height / 40,
@@ -75,6 +87,10 @@ const store = {
   bytesSent: 0,
   effects: [],
   inventorySlotCount: DEFAULT_INVENTORY_SLOTS,
+  worldConfig: { obstacles: true, npcs: true, lava: true },
+  isResettingWorld: false,
+  updateWorldConfigUI: null,
+  lastWorldResetAt: null,
 };
 
 // updateDiagnosticsToggle syncs the toggle label with the current panel state.
@@ -210,6 +226,77 @@ function updateDiagnostics() {
   }
 }
 
+function syncWorldResetControls() {
+  const cfg = store.worldConfig || {};
+  if (store.worldResetInputs.obstacles) {
+    store.worldResetInputs.obstacles.checked = cfg.obstacles !== false;
+  }
+  if (store.worldResetInputs.npcs) {
+    store.worldResetInputs.npcs.checked = cfg.npcs !== false;
+  }
+  if (store.worldResetInputs.lava) {
+    store.worldResetInputs.lava.checked = cfg.lava !== false;
+  }
+}
+
+function setWorldResetPending(pending) {
+  store.isResettingWorld = pending;
+  if (!store.worldResetForm) {
+    return;
+  }
+  const elements = store.worldResetForm.querySelectorAll("input, button");
+  elements.forEach((element) => {
+    if ("disabled" in element) {
+      element.disabled = pending;
+    }
+  });
+}
+
+function showWorldResetStatus(message, isError = false) {
+  if (!store.worldResetStatusEl) {
+    return;
+  }
+  store.worldResetStatusEl.textContent = message || "";
+  store.worldResetStatusEl.dataset.error = isError ? "true" : "false";
+}
+
+function initializeWorldResetControls() {
+  if (!store.worldResetForm) {
+    return;
+  }
+
+  store.worldResetForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (store.isResettingWorld) {
+      return;
+    }
+
+    const desiredConfig = {
+      obstacles: !!store.worldResetInputs.obstacles?.checked,
+      npcs: !!store.worldResetInputs.npcs?.checked,
+      lava: !!store.worldResetInputs.lava?.checked,
+    };
+
+    setWorldResetPending(true);
+    showWorldResetStatus("Restarting world...");
+    try {
+      await resetWorld(store, desiredConfig);
+      store.lastWorldResetAt = Date.now();
+      const timestamp = new Date(store.lastWorldResetAt).toLocaleTimeString();
+      showWorldResetStatus(`World restarted at ${timestamp}.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showWorldResetStatus(`Failed to restart world: ${message}`, true);
+    } finally {
+      setWorldResetPending(false);
+    }
+  });
+
+  setWorldResetPending(false);
+  syncWorldResetControls();
+  showWorldResetStatus("");
+}
+
 function formatItemName(type) {
   if (typeof type !== "string" || type.length === 0) {
     return "Unknown";
@@ -320,9 +407,11 @@ store.updateDiagnostics = updateDiagnostics;
 store.setSimulatedLatency = (value) => setSimulatedLatency(store, value);
 store.setDiagnosticsVisibility = setDiagnosticsVisibility;
 store.renderInventory = renderInventory;
+store.updateWorldConfigUI = () => syncWorldResetControls();
 
 initializeDiagnosticsToggle();
 attachLatencyInputListener();
+initializeWorldResetControls();
 setSimulatedLatency(store, 0);
 updateDiagnostics();
 renderInventory();

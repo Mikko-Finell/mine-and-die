@@ -79,6 +79,7 @@ Players track `Health` and `MaxHealth`. Effect helpers share the `Effect` struct
 
 ### HTTP Endpoints
 - `POST /join` – allocate a player, return `{ id, players, obstacles, effects }` snapshot.
+- `POST /world/reset` – rebuild the world using the supplied `{ obstacles, npcs, lava }` toggles and broadcast the new snapshot to all players.
 - `GET /ws?id=...` – upgrade to WebSocket; first message is an immediate state snapshot.
 - `GET /diagnostics` – JSON payload with tick rate, heartbeat interval, and per-player metrics.
 - `GET /health` – simple liveness string.

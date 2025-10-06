@@ -136,6 +136,83 @@ canvas {
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
 }
 
+.world-reset-panel {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0.85rem 1.25rem;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(2, 6, 23, 0.3);
+  text-align: left;
+}
+
+.world-reset-panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+.world-reset-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.world-reset-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #cbd5f5;
+}
+
+.world-reset-option input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #38bdf8;
+}
+
+.world-reset-button {
+  margin-top: 0.75rem;
+  padding: 0.45rem 1.1rem;
+  background: #1e293b;
+  color: inherit;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.3);
+}
+
+.world-reset-button:hover,
+.world-reset-button:focus-visible {
+  background: #334155;
+  border-color: #475569;
+  outline: none;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.4);
+}
+
+.world-reset-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.world-reset-status {
+  min-height: 1.2rem;
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.world-reset-status[data-error="true"] {
+  color: #fca5a5;
+}
+
 #diagnostics {
   margin-top: 1.5rem;
   max-width: 420px;

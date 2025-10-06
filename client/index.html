@@ -35,6 +35,51 @@
       >
         Show diagnostics
       </button>
+      <section
+        id="world-reset-panel"
+        class="world-reset-panel"
+        aria-labelledby="world-reset-heading"
+      >
+        <h2 id="world-reset-heading">World setup</h2>
+        <form id="world-reset-form">
+          <div class="world-reset-options">
+            <label class="world-reset-option" for="world-reset-obstacles">
+              <input
+                type="checkbox"
+                id="world-reset-obstacles"
+                name="obstacles"
+                checked
+              />
+              <span>Enable obstacles</span>
+            </label>
+            <label class="world-reset-option" for="world-reset-npcs">
+              <input
+                type="checkbox"
+                id="world-reset-npcs"
+                name="npcs"
+                checked
+              />
+              <span>Enable NPCs</span>
+            </label>
+            <label class="world-reset-option" for="world-reset-lava">
+              <input
+                type="checkbox"
+                id="world-reset-lava"
+                name="lava"
+                checked
+              />
+              <span>Enable lava</span>
+            </label>
+          </div>
+          <button type="submit" class="world-reset-button">Restart world</button>
+          <p
+            id="world-reset-status"
+            class="world-reset-status"
+            role="status"
+            aria-live="polite"
+          ></p>
+        </form>
+      </section>
       <section id="diagnostics" hidden>
         <h2>Diagnostics</h2>
         <div class="diagnostic-line">

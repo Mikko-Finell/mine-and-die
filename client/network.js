@@ -2,6 +2,17 @@ const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 
+function normalizeWorldConfig(config) {
+  if (!config || typeof config !== "object") {
+    return { obstacles: true, npcs: true, lava: true };
+  }
+  return {
+    obstacles: config.obstacles !== false,
+    npcs: config.npcs !== false,
+    lava: config.lava !== false,
+  };
+}
+
 // normalizeFacing guards against invalid facing values from the network.
 function normalizeFacing(facing) {
   return typeof facing === "string" && VALID_FACINGS.has(facing)
@@ -62,6 +73,10 @@ export async function joinGame(store) {
     );
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     store.effects = Array.isArray(payload.effects) ? payload.effects : [];
+    store.worldConfig = normalizeWorldConfig(payload.config);
+    if (typeof store.updateWorldConfigUI === "function") {
+      store.updateWorldConfigUI();
+    }
     if (!store.players[store.playerId]) {
       store.players[store.playerId] = {
         id: store.playerId,
@@ -144,6 +159,12 @@ export function connectEvents(store) {
           store.effects = payload.effects;
         } else {
           store.effects = [];
+        }
+        if (payload.config) {
+          store.worldConfig = normalizeWorldConfig(payload.config);
+          if (typeof store.updateWorldConfigUI === "function") {
+            store.updateWorldConfigUI();
+          }
         }
         if (store.players[store.playerId]) {
           store.players[store.playerId].facing = normalizeFacing(
@@ -335,4 +356,51 @@ function handleConnectionLoss(store) {
   store.npcs = {};
   store.displayNPCs = {};
   scheduleReconnect(store);
+}
+
+export async function resetWorld(store, config) {
+  const payload = {
+    obstacles: !!config?.obstacles,
+    npcs: !!config?.npcs,
+    lava: !!config?.lava,
+  };
+
+  let response;
+  try {
+    response = await fetch("/world/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`request failed: ${message}`);
+  }
+
+  if (!response.ok) {
+    let errorText = "";
+    try {
+      errorText = await response.text();
+    } catch (err) {
+      errorText = "";
+    }
+    const fallback = `request failed with status ${response.status}`;
+    throw new Error(errorText || fallback);
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`invalid response: ${message}`);
+  }
+
+  const normalized = normalizeWorldConfig(data.config);
+  store.worldConfig = normalized;
+  if (typeof store.updateWorldConfigUI === "function") {
+    store.updateWorldConfigUI();
+  }
+
+  return normalized;
 }
