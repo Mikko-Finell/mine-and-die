@@ -7,48 +7,64 @@ The Go service owns the authoritative world state and exposes three responsibili
 3. **Static hosting** – the root handler serves the `client/` directory.
 
 ## Core Packages and Types
-- `main.go` – Entire server implementation including the `Hub` type, HTTP handlers, and tick loop.
-- `main_test.go` – Behavioural tests covering joins, intents, effects, and heartbeat handling.
+- `main.go` – HTTP handlers, WebSocket wiring, and process bootstrap.
+- `hub.go` – `Hub` implementation, player/session lifecycle, command queue, simulation ticker, and broadcast helpers.
+- `simulation.go` – `World` data model plus the per-tick command processor and event emission.
+- `effects.go` – Ability cooldowns, projectile movement, environmental hazards, and shared effect behaviours.
 - `inventory.go` – Item definitions plus helper methods for stacking, moving, and cloning player inventories.
+- `npc.go` – Neutral enemy types and snapshot helpers.
+- `messages.go` – Wire payload contracts.
+- `main_test.go` – Behavioural tests covering joins, intents, effects, and heartbeat handling.
 - Dependencies: only the Go standard library plus `github.com/gorilla/websocket`.
 
 ### Hub Overview
-The `Hub` struct tracks:
-- `players` – map of player IDs to their live state (`playerState`).
-- `npcs` – neutral enemies keyed by ID (`npcState`).
+The `Hub` struct keeps simulation concerns isolated from transport:
+- `world` – pointer to the authoritative `World` instance that owns players, NPCs, effects, and obstacles.
 - `subscribers` – active WebSocket connections keyed by player ID.
-- `effects` – slice of in-flight ability payloads.
-- `effectBehaviors` – map of effect types to collision handlers (damage, healing, etc.).
-- `obstacles` – immutable slice shared with clients (walls, gold ore, lava hazards).
-- Atomic counters for player/effect IDs.
+- `pendingCommands` – slice of staged simulation commands populated by HTTP/WebSocket handlers.
+- Atomic counters for player IDs (`nextID`) and the current simulation tick (`tick`).
 
-`newHub()` seeds the obstacle list (walls + gold ore), prepares maps, and calls `spawnInitialNPCs()` to place a baseline set of neutral enemies.
+`newHub()` seeds a fresh `World` with generated obstacles and NPCs, ready to accept joins.
+
+### Command Flow
+Network handlers never mutate actors directly. Instead they enqueue typed `Command` structs:
+- `CommandMove` stores normalized intent vectors and optional facing overrides from `UpdateIntent`.
+- `CommandAction` captures action strings from `HandleAction` (melee, fireball, etc.).
+- `CommandHeartbeat` records connectivity metadata and round-trip times from `UpdateHeartbeat`.
+
+The queue is drained at the start of each tick so every command is applied exactly once in submission order.
 
 ### Tick Loop
 `RunSimulation` spins a `time.Ticker` at `tickRate` (15 Hz). Each tick:
-1. Calls `advance` with the elapsed delta.
-2. Closes stale sockets (missed heartbeats).
+1. Calls `advance` with the elapsed delta so the world can process staged commands.
+2. Closes subscriber sockets for players removed by the simulation (missed heartbeats, disconnects).
 3. Broadcasts the latest snapshot via `broadcastState`.
 
-`advance` handles:
-- Movement: `moveActorWithObstacles` normalizes intent, clamps to bounds, and slides along walls for both players and NPCs.
-- Separation: `resolveActorCollisions` iteratively pushes overlapping actors apart.
-- Hazards: `applyEnvironmentalDamageLocked` ticks lava pools that remain walkable but burn players standing inside them.
-- Effects: `advanceEffectsLocked` moves projectiles, expires them on collision, and mirrors remaining range in `Params`.
-- Cleanup: removes players who miss `disconnectAfter` and prunes expired effects.
+`advance` locks the world, calls `World.Step`, and returns the new snapshot along with `Event` records detailing what happened.
+
+### World & Simulation Systems
+`World.Step` is the heart of the simulation. Given the tick index, wall-clock time, delta seconds, and drained commands it:
+- Updates player intents, facings, and heartbeat metadata from queued commands.
+- Advances movement for players and NPCs against obstacles before resolving actor collisions.
+- Stages abilities triggered by commands and executes their effects (melee swings, fireballs).
+- Applies environmental hazards such as lava pools as damage-over-time.
+- Advances, prunes, and emits events for effect lifecycles and inventory rewards.
+- Removes players whose last heartbeat is older than `disconnectAfter` and reports despawns.
+
+Systems append structured `Event` entries (movement, health deltas, effect spawns, loot awards, despawns) to the returned `StepOutput`. The hub can pipe these to subscribers alongside the traditional state snapshots when the client is ready.
 
 ### Neutral Enemies
 - NPCs reuse the shared `Actor` struct for position, facing, health, and inventories, and add fields like `Type`, `AIControlled`, and `ExperienceReward`.
-- `spawnInitialNPCs` currently seeds a stationary goblin with gold and a potion; additional spawns simply append `npcState` entries while holding `Hub.mu`.
+- `spawnInitialNPCs` currently seeds a stationary goblin with gold and a potion. Additional spawns append `npcState` entries within the world's mutex-protected sections.
 - Snapshots include a `npcs` array alongside the existing `players`, enabling the client to render and later target neutral enemies without special casing.
 
 ### Actions, Health, and Cooldowns
-`HandleAction` dispatches to `triggerMeleeAttack` or `triggerFireball`:
-- Melee: spawns a short-lived rectangular effect, records cooldown, immediately checks for overlapping players, and awards one gold coin when the swing overlaps a gold ore obstacle.
-- Fireball: spawns a projectile with velocity/duration; `advanceEffectsLocked` moves and expires it.
-- Lava pools: generated via `generateLavaPools`, they are communicated as obstacles but ignored by movement collision checks so players can wade through them while taking damage (`lavaDamagePerSecond`).
+`World.Step` invokes action helpers based on staged commands:
+- Melee swings: `triggerMeleeAttack` spawns a short-lived rectangular effect, records cooldown, damages overlapping players, and awards one gold coin when the hitbox overlaps gold ore.
+- Fireballs: `triggerFireball` launches a projectile, `advanceEffects` moves it forward, checks for collisions, and expires it when range is exhausted.
+- Hazards: lava pools generated by `generateObstacles` are ignored by collision checks but burn actors standing inside them via `applyEnvironmentalDamage`.
 
-Players now track `Health` and `MaxHealth`. Both helpers share the `Effect` struct (`type`, `owner`, bounding box, `Params`) that is sent to clients for rendering. The hub registers per-effect behaviour in `effectBehaviors`; melee swings and fireballs publish a `healthDelta` parameter that is applied to every overlapping target. Positive values heal (clamped to `MaxHealth`), negative values deal damage (never dropping below zero). Adding new effect types means registering another behaviour keyed by the effect's `Type`.
+Players track `Health` and `MaxHealth`. Effect helpers share the `Effect` struct (`type`, `owner`, bounding box, `Params`) sent to clients. Behaviours are registered in `effectBehaviors`; melee swings and fireballs publish `healthDelta` parameters applied to every overlapping target. Positive values heal (clamped to `MaxHealth`), negative values deal damage.
 
 ### Inventory System
 - Each `Player` carries an `Inventory` composed of ordered slots. The ordering is preserved in snapshots so clients can surface drag-and-drop later on.
@@ -58,7 +74,7 @@ Players now track `Health` and `MaxHealth`. Both helpers share the `Effect` stru
 
 ### Heartbeats and Diagnostics
 - Clients send `{ type: "heartbeat", sentAt }` ~every 2 seconds.
-- `UpdateHeartbeat` stores the last heartbeat time, computes RTT, and keeps the connection eligible.
+- `UpdateHeartbeat` enqueues a heartbeat command recording the receipt time and RTT so the simulation can update `playerState` records during the next tick.
 - `DiagnosticsSnapshot` returns minimal player heartbeat info for the `/diagnostics` endpoint.
 
 ### HTTP Endpoints

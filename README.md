@@ -16,11 +16,14 @@ The Go module under `server/` is now split by responsibility so contributors can
 
 - `constants.go` – Shared world and timing constants.
 - `main.go` – HTTP wiring, endpoint registration, and WebSocket loop bootstrap.
-- `hub.go` – Core state container plus join/subscribe/disconnect flows and the simulation ticker.
+- `hub.go` – Core state container plus join/subscribe/disconnect flows, the command queue, and the simulation ticker.
+- `simulation.go` – World data model, per-tick system orchestration, and event emission.
 - `player.go` – Player-facing types, facing math, and intent bookkeeping.
+- `npc.go` – Neutral enemy definitions, snapshots, and seeding helpers.
 - `movement.go` – Movement helpers, collision resolution, and clamp utilities.
 - `obstacles.go` – Procedural world generation and geometry helpers.
-- `effects.go` – Ability cooldowns, projectiles, and effect lifecycle management.
+- `effects.go` – Ability cooldowns, projectiles, environmental hazards, and effect lifecycle management.
+- `inventory.go` – Item and stack management utilities.
 - `messages.go` – JSON payload contracts for `/join`, `/ws`, and heartbeat acknowledgements.
 
 ## Core Concepts
@@ -33,9 +36,14 @@ The Go module under `server/` is now split by responsibility so contributors can
 ## Runtime Contract
 1. Clients `POST /join` to receive a snapshot containing their player ID, all known players, obstacles, and active effects.
 2. A WebSocket connection (`/ws?id=<player-id>`) delivers `state` messages ~15× per second.
-3. Clients send `{ type: "input", dx, dy, facing }` whenever movement intent changes and `{ type: "action", action }` for abilities.
-4. Heartbeats (`{ type: "heartbeat", sentAt }`) flow every ~2 seconds; missing three in a row disconnects the session.
+3. Clients send `{ type: "input", dx, dy, facing }` whenever movement intent changes and `{ type: "action", action }` for abilities. The hub stages these as simulation commands.
+4. Heartbeats (`{ type: "heartbeat", sentAt }`) flow every ~2 seconds; the hub records the timing as a command and missing three in a row disconnects the session.
 5. `/diagnostics` exposes a JSON summary of tick rate, heartbeat interval, and per-player timing data.
+
+## Command & Event Pipeline
+- **Commands** – Each inbound message becomes a typed command (`Move`, `Action`, `Heartbeat`) stored until the next tick. Commands capture the issuing tick, player ID, and structured payload so the simulation runs deterministically.
+- **World step** – `World.Step` consumes staged commands, updates intents/heartbeats, advances movement, resolves collisions, executes abilities, applies hazards, and prunes stale actors.
+- **Events** – Systems append high-level events (movement, health changes, effect spawns, loot awards, despawns) to the step output. The hub can fan these out alongside snapshots for future HUD/analytics features.
 
 ## Getting Started
 1. **Install dependencies** – Go ≥ 1.22 is required. Node.js is optional for future tooling.
