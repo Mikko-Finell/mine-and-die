@@ -164,6 +164,7 @@ export async function joinGame(store) {
     Object.values(store.npcs).forEach((npc) => {
       store.displayNPCs[npc.id] = { x: npc.x, y: npc.y };
     });
+    store.cameraNeedsSnap = true;
     store.currentIntent = { dx: 0, dy: 0 };
     store.currentFacing = normalizeFacing(store.players[store.playerId].facing);
     store.directionOrder = [];
@@ -347,8 +348,18 @@ export function sendCurrentIntent(store) {
 // sendMoveTo requests server-driven navigation toward a world position.
 export function sendMoveTo(store, x, y) {
   const canvas = store.canvas;
-  const width = canvas ? canvas.width : store.GRID_WIDTH * store.TILE_SIZE;
-  const height = canvas ? canvas.height : store.GRID_HEIGHT * store.TILE_SIZE;
+  const width =
+    typeof store.worldWidth === "number"
+      ? store.worldWidth
+      : canvas
+        ? canvas.width
+        : store.GRID_WIDTH * store.TILE_SIZE;
+  const height =
+    typeof store.worldHeight === "number"
+      ? store.worldHeight
+      : canvas
+        ? canvas.height
+        : store.GRID_HEIGHT * store.TILE_SIZE;
   const maxX = Math.max(store.PLAYER_HALF, width - store.PLAYER_HALF);
   const maxY = Math.max(store.PLAYER_HALF, height - store.PLAYER_HALF);
   const clampedX = Math.max(store.PLAYER_HALF, Math.min(x, maxX));

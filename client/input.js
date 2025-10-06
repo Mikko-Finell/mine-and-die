@@ -24,6 +24,17 @@ export function registerInputHandlers(store) {
 
     const lowerKey = event.key.toLowerCase();
 
+    if (lowerKey === "c") {
+      event.preventDefault();
+      if (isPressed && !event.repeat) {
+        store.cameraLocked = !store.cameraLocked;
+        if (store.cameraLocked) {
+          store.cameraNeedsSnap = true;
+        }
+      }
+      return;
+    }
+
     if (lowerKey === "f") {
       event.preventDefault();
       if (isPressed && !event.repeat) {

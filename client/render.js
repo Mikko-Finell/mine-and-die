@@ -17,6 +17,60 @@ const EFFECT_STYLES = {
   },
 };
 
+const clampNumber = (value, min, max) => Math.min(max, Math.max(min, value));
+
+function getWorldWidth(store) {
+  if (typeof store.worldWidth === "number") {
+    return store.worldWidth;
+  }
+  return store.GRID_WIDTH * store.TILE_SIZE;
+}
+
+function getWorldHeight(store) {
+  if (typeof store.worldHeight === "number") {
+    return store.worldHeight;
+  }
+  return store.GRID_HEIGHT * store.TILE_SIZE;
+}
+
+function updateCamera(store) {
+  if (!store.canvas) {
+    return;
+  }
+  if (!store.camera) {
+    store.camera = { x: 0, y: 0 };
+  }
+
+  const worldWidth = getWorldWidth(store);
+  const worldHeight = getWorldHeight(store);
+  const maxX = Math.max(0, worldWidth - store.canvas.width);
+  const maxY = Math.max(0, worldHeight - store.canvas.height);
+
+  if (store.cameraLocked && store.playerId) {
+    const player = store.displayPlayers[store.playerId];
+    if (!player) {
+      store.cameraNeedsSnap = true;
+      return;
+    }
+    let desiredX = player.x - store.canvas.width / 2;
+    let desiredY = player.y - store.canvas.height / 2;
+    desiredX = clampNumber(desiredX, 0, maxX);
+    desiredY = clampNumber(desiredY, 0, maxY);
+
+    if (store.cameraNeedsSnap) {
+      store.camera.x = desiredX;
+      store.camera.y = desiredY;
+      store.cameraNeedsSnap = false;
+    } else {
+      store.camera.x = desiredX;
+      store.camera.y = desiredY;
+    }
+  } else {
+    store.camera.x = clampNumber(store.camera.x || 0, 0, maxX);
+    store.camera.y = clampNumber(store.camera.y || 0, 0, maxY);
+  }
+}
+
 // startRenderLoop animates interpolation and draws the scene each frame.
 export function startRenderLoop(store) {
   store.lastTimestamp = performance.now();
@@ -56,6 +110,7 @@ export function startRenderLoop(store) {
       }
     });
 
+    updateCamera(store);
     drawScene(store);
     requestAnimationFrame(gameLoop);
   }
@@ -66,21 +121,32 @@ export function startRenderLoop(store) {
 // drawScene paints the background, obstacles, effects, and players.
 function drawScene(store) {
   const { ctx, canvas } = store;
+  if (!ctx || !canvas) {
+    return;
+  }
+  const cameraX = store.camera?.x || 0;
+  const cameraY = store.camera?.y || 0;
+  const worldWidth = getWorldWidth(store);
+  const worldHeight = getWorldHeight(store);
+
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  ctx.save();
+  ctx.translate(-cameraX, -cameraY);
+
   ctx.strokeStyle = "#1e293b";
   ctx.lineWidth = 1;
-  for (let x = 0; x <= store.GRID_WIDTH; x++) {
+  for (let x = 0; x <= worldWidth; x += store.TILE_SIZE) {
     ctx.beginPath();
-    ctx.moveTo(x * store.TILE_SIZE, 0);
-    ctx.lineTo(x * store.TILE_SIZE, canvas.height);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, worldHeight);
     ctx.stroke();
   }
-  for (let y = 0; y <= store.GRID_HEIGHT; y++) {
+  for (let y = 0; y <= worldHeight; y += store.TILE_SIZE) {
     ctx.beginPath();
-    ctx.moveTo(0, y * store.TILE_SIZE);
-    ctx.lineTo(canvas.width, y * store.TILE_SIZE);
+    ctx.moveTo(0, y);
+    ctx.lineTo(worldWidth, y);
     ctx.stroke();
   }
 
@@ -122,6 +188,8 @@ function drawScene(store) {
     ctx.stroke();
     ctx.restore();
   });
+
+  ctx.restore();
 }
 
 function drawNPCs(store) {

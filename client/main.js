@@ -125,6 +125,11 @@ const store = {
   PLAYER_SIZE: 28,
   PLAYER_HALF: 28 / 2,
   LERP_RATE: 12,
+  worldWidth: canvas.width,
+  worldHeight: canvas.height,
+  camera: { x: 0, y: 0 },
+  cameraLocked: true,
+  cameraNeedsSnap: true,
   statusBaseText: "Preparing session…",
   latencyMs: null,
   simulatedLatencyMs: 0,
@@ -177,15 +182,25 @@ function initializeCanvasPathing() {
     const rect = store.canvas.getBoundingClientRect();
     const scaleX = store.canvas.width / rect.width;
     const scaleY = store.canvas.height / rect.height;
+    const cameraX = store.camera?.x || 0;
+    const cameraY = store.camera?.y || 0;
+    const worldWidth =
+      typeof store.worldWidth === "number"
+        ? store.worldWidth
+        : store.GRID_WIDTH * store.TILE_SIZE;
+    const worldHeight =
+      typeof store.worldHeight === "number"
+        ? store.worldHeight
+        : store.GRID_HEIGHT * store.TILE_SIZE;
     const x = clamp(
-      (event.clientX - rect.left) * scaleX,
+      (event.clientX - rect.left) * scaleX + cameraX,
       store.PLAYER_HALF,
-      store.canvas.width - store.PLAYER_HALF,
+      Math.max(store.PLAYER_HALF, worldWidth - store.PLAYER_HALF),
     );
     const y = clamp(
-      (event.clientY - rect.top) * scaleY,
+      (event.clientY - rect.top) * scaleY + cameraY,
       store.PLAYER_HALF,
-      store.canvas.height - store.PLAYER_HALF,
+      Math.max(store.PLAYER_HALF, worldHeight - store.PLAYER_HALF),
     );
     sendMoveTo(store, x, y);
   };
