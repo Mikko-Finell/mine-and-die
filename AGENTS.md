@@ -53,6 +53,11 @@ Mine & Die is a small realtime prototype:
   - Update the relevant markdown in `docs/` when changing behaviour that affects contributors or runtime assumptions.
   - Keep diagnostics (`/diagnostics`, HUD) in sync with new fields or metrics you add.
 
+## AI System Notes
+- NPC behaviours live in JSON configs under `server/ai_configs/`. Run `gofmt` after touching any Go helpers and keep configs free of trailing comments so the embed loader stays simple.
+- The runtime compiles configs into ID-based tables (`ai_library.go`) and evaluates them in `ai_executor.go`. Avoid reintroducing string lookups or dynamic dispatch inside the tick loop.
+- Add table-driven tests in `server/ai_test.go` whenever you introduce new conditions, actions, or behaviours so deterministic runs remain covered.
+
 ## Pull Request Expectations
 - Include a brief summary plus testing notes in your PR body.
 - Run automated tests relevant to your change set (`cd server && go test ./...` at minimum).

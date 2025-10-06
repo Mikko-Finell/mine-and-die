@@ -8,6 +8,7 @@ Mine & Die is an experimental browser-based arena where players race to extract 
 - [Client Architecture](docs/client.md)
 - [Testing & Troubleshooting](docs/testing.md)
 - [Contributor Guidelines](AGENTS.md)
+- [AI System](docs/ai.md)
 
 Use these documents as the primary reference when extending gameplay, networking, or presentation.
 
@@ -20,6 +21,9 @@ The Go module under `server/` is now split by responsibility so contributors can
 - `simulation.go` – World data model, per-tick system orchestration, and event emission.
 - `player.go` – Player-facing types, facing math, and intent bookkeeping.
 - `npc.go` – Neutral enemy definitions, snapshots, and seeding helpers.
+- `ai_types.go` – Shared AI structs used by the finite state machine executor.
+- `ai_library.go` – Loads author-authored FSM configs, validates them, and compiles compact runtime data.
+- `ai_executor.go` – Evaluates NPC state machines each tick and enqueues deterministic commands.
 - `movement.go` – Movement helpers, collision resolution, and clamp utilities.
 - `obstacles.go` – Procedural world generation and geometry helpers.
 - `effects.go` – Ability cooldowns, projectiles, environmental hazards, and effect lifecycle management.
@@ -42,8 +46,19 @@ The Go module under `server/` is now split by responsibility so contributors can
 
 ## Command & Event Pipeline
 - **Commands** – Each inbound message becomes a typed command (`Move`, `Action`, `Heartbeat`) stored until the next tick. Commands capture the issuing tick, player ID, and structured payload so the simulation runs deterministically.
+- **AI pass** – Before staging player commands, the server runs finite state machines for every NPC whose cadence is due. The executor reads compiled configs from `server/ai_configs/`, evaluates transitions using pre-resolved IDs, and enqueues standard `Command` structs (movement, facing, abilities). This keeps the hot path lock-free and avoids string lookups during the tick.
 - **World step** – `World.Step` consumes staged commands, updates intents/heartbeats, advances movement, resolves collisions, executes abilities, applies hazards, and prunes stale actors.
 - **Events** – Systems append high-level events (movement, health changes, effect spawns, loot awards, despawns) to the step output. The hub can fan these out alongside snapshots for future HUD/analytics features.
+
+## AI System
+NPC behaviour is authored as declarative finite state machines. Designers write JSON configs (see `server/ai_configs/`) describing states, transition conditions, and action lists. At startup the server compiles these configs into ID-based tables so the runtime never performs string lookups or reflection. Each tick the executor:
+
+1. Sorts NPC IDs for deterministic iteration and checks the `NextDecisionAt` cadence gate.
+2. Evaluates transitions in order, applying the first matching condition and emitting `AIStateChanged` events.
+3. Executes the state's actions, which only enqueue standard commands (`CommandMove`, `CommandAction`, etc.).
+4. Updates per-NPC blackboards (timer bookkeeping, waypoint indices, stuck counters) and schedules the next evaluation tick.
+
+The initial `goblin` patrol uses a simple `Patrol ↔ Wait` loop defined in `server/ai_configs/goblin.json`. Additional behaviours can reuse the same condition/action library without modifying the tick loop.
 
 ## Getting Started
 1. **Install dependencies** – Go ≥ 1.22 is required. Node.js is optional for future tooling.
