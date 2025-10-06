@@ -31,9 +31,9 @@ func newTestPlayerState(id string) *playerState {
 	}
 }
 
-func runAdvance(h *Hub, dt float64) ([]Player, []NPC, []Effect, []Event) {
-	players, npcs, effects, _, events := h.advance(time.Now(), dt)
-	return players, npcs, effects, events
+func runAdvance(h *Hub, dt float64) ([]Player, []NPC, []Effect) {
+	players, npcs, effects, _ := h.advance(time.Now(), dt)
+	return players, npcs, effects
 }
 
 func TestHubJoinCreatesPlayer(t *testing.T) {
@@ -77,6 +77,40 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 	}
 	if len(first.Effects) != 0 {
 		t.Fatalf("expected initial effect list to be empty, got %d", len(first.Effects))
+	}
+}
+
+func TestWorldGenerationDeterministicWithSeed(t *testing.T) {
+	cfg := defaultWorldConfig()
+	cfg.Seed = "deterministic-test"
+
+	w1 := newWorld(cfg)
+	w2 := newWorld(cfg)
+
+	if len(w1.obstacles) != len(w2.obstacles) {
+		t.Fatalf("expected identical obstacle counts, got %d and %d", len(w1.obstacles), len(w2.obstacles))
+	}
+	for i := range w1.obstacles {
+		if w1.obstacles[i] != w2.obstacles[i] {
+			t.Fatalf("expected deterministic obstacles for seed, index %d differed: %#v vs %#v", i, w1.obstacles[i], w2.obstacles[i])
+		}
+	}
+
+	cfg.Seed = "deterministic-test-alt"
+	w3 := newWorld(cfg)
+
+	if len(w1.obstacles) != len(w3.obstacles) {
+		return
+	}
+	identical := true
+	for i := range w1.obstacles {
+		if w1.obstacles[i] != w3.obstacles[i] {
+			identical = false
+			break
+		}
+	}
+	if identical {
+		t.Fatalf("expected different seed to produce different obstacle layout")
 	}
 }
 
@@ -255,7 +289,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	boundaryState.lastHeartbeat = now
 	hub.world.players[boundaryID] = boundaryState
 
-	players, _, _, toClose, _ := hub.advance(now, 0.5)
+	players, _, _, toClose := hub.advance(now, 0.5)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers to close, got %d", len(toClose))
 	}
@@ -289,7 +323,7 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	staleState.lastHeartbeat = time.Now().Add(-disconnectAfter - time.Second)
 	hub.world.players[staleID] = staleState
 
-	players, _, _, toClose, _ := hub.advance(time.Now(), 0)
+	players, _, _, toClose := hub.advance(time.Now(), 0)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers returned when none registered")
 	}
@@ -426,13 +460,11 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 	attackerState.cooldowns = make(map[string]time.Time)
 	hub.world.players[attackerID] = attackerState
 
-	var events []Event
 	for i := 0; i < 6; i++ {
 		if !hub.HandleAction(attackerID, effectTypeAttack) {
 			t.Fatalf("expected melee attack to trigger")
 		}
-		_, _, _, stepEvents := runAdvance(hub, 1.0/float64(tickRate))
-		events = stepEvents
+		runAdvance(hub, 1.0/float64(tickRate))
 		if i < 5 {
 			hub.mu.Lock()
 			hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
@@ -447,18 +479,8 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 		t.Fatalf("expected goblin %q to be removed after defeat", goblin.ID)
 	}
 
-	defeated := false
-	for _, event := range events {
-		if event.Type != EventActorDespawned || event.EntityID != goblin.ID {
-			continue
-		}
-		defeated = true
-		if reason, ok := event.Payload["reason"].(string); !ok || reason != "defeated" {
-			t.Fatalf("expected despawn reason 'defeated', got %#v", event.Payload["reason"])
-		}
-	}
-	if !defeated {
-		t.Fatalf("expected defeat event for goblin %q", goblin.ID)
+	if _, ok := hub.world.npcs[goblin.ID]; ok {
+		t.Fatalf("expected goblin %q to be removed after defeat", goblin.ID)
 	}
 }
 
@@ -582,7 +604,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	blockState.lastHeartbeat = now
 	hub.world.players[playerID] = blockState
 
-	players, _, _, _, _ := hub.advance(now, 1)
+	players, _, _, _ := hub.advance(now, 1)
 	blocker := findPlayer(players, playerID)
 	if blocker == nil {
 		t.Fatalf("expected player in snapshot")
@@ -615,7 +637,7 @@ func TestLavaDamagesPlayer(t *testing.T) {
 	hub.world.players[playerID] = walkerState
 
 	dt := 1.0
-	players, _, _, _, _ := hub.advance(now, dt)
+	players, _, _, _ := hub.advance(now, dt)
 
 	damaged := findPlayer(players, playerID)
 	if damaged == nil {
@@ -652,7 +674,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	secondState.lastHeartbeat = now
 	hub.world.players[secondID] = secondState
 
-	players, _, _, _, _ := hub.advance(now, 1)
+	players, _, _, _ := hub.advance(now, 1)
 
 	first := findPlayer(players, firstID)
 	second := findPlayer(players, secondID)
@@ -775,8 +797,7 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 
 	heal := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "healer", Params: map[string]float64{"healthDelta": 50}}}
 
-	output := StepOutput{}
-	hub.world.applyEffectHitPlayer(heal, state, time.Now(), hub.tick.Load(), &output)
+	hub.world.applyEffectHitPlayer(heal, state, time.Now())
 
 	if math.Abs(state.Health-playerMaxHealth) > 1e-6 {
 		t.Fatalf("expected healing to clamp to max %.1f, got %.1f", playerMaxHealth, state.Health)
@@ -795,8 +816,7 @@ func TestHealthDamageClampsToZero(t *testing.T) {
 
 	blast := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "boom", Params: map[string]float64{"healthDelta": -50}}}
 
-	output := StepOutput{}
-	hub.world.applyEffectHitPlayer(blast, state, time.Now(), hub.tick.Load(), &output)
+	hub.world.applyEffectHitPlayer(blast, state, time.Now())
 
 	if state.Health != 0 {
 		t.Fatalf("expected damage to clamp to zero health, got %.1f", state.Health)

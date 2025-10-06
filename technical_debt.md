@@ -2,17 +2,11 @@
 
 ## Server
 
-### Events are produced but never reach clients
-- `Hub.advance` returns the `StepOutput` events from `World.Step`, yet `RunSimulation` discards them and `broadcastState` only sends the snapshot. The README still promises that the hub can fan events out alongside snapshots, so the current implementation leaves that feature half-finished and wastes the extra allocations each tick. Tighten this by either wiring an event channel to clients or deleting the unused plumbing to simplify maintenance.【F:server/hub.go†L296-L338】【F:README.md†L47-L52】
-
 ### Command queue has no backpressure or per-client limits
 - Every network handler appends to `pendingCommands` under a mutex and the slice is only cleared once per tick. A single misbehaving client can spam movement or path commands and grow the slice without bound before the next simulation step. Add per-player caps or drop-older policies so the hub cannot be trivially DoS'd.【F:server/hub.go†L24-L25】【F:server/hub.go†L206-L237】【F:server/hub.go†L408-L425】
 
 ### World resets destroy all player progress
 - `ResetWorld` rebuilds the world and reseeds every connected player via `seedPlayerState`, resetting inventory, health, and position to the defaults. The HTTP handler exposes this endpoint without documentation or confirmation, so a click in the diagnostics UI wipes everyone. Either persist player state across resets or document that this endpoint is destructive and meant for tests only.【F:server/hub.go†L92-L116】【F:server/main.go†L40-L118】【F:client/main.js†L315-L360】
-
-### Procedural generation ignores the world RNG
-- `World` owns an RNG for deterministic AI behaviour, but `generateObstacles` and `generateGoldOreNodes` spin up a fresh `rand.NewSource(time.Now())` each time. Resets therefore produce different obstacle layouts and make regression tests brittle despite the docs recommending deterministic layouts. Refactor these helpers to use `w.rng` (seeded during `newWorld`) so the configuration can be reproduced by injecting a known seed.【F:server/obstacles.go†L23-L160】【F:server/simulation.go†L68-L93】【F:docs/testing.md†L13-L18】
 
 ### Broadcast fan-out spawns ad-hoc goroutines
 - Joins, disconnects, and even failed writes spawn `go hub.broadcastState(...)`. During churn we can end up with many concurrent broadcasters all snapshotting the world and looping over subscribers. Centralise broadcasting in the simulation loop (or queue work onto a single dispatcher) to avoid goroutine storms and duplicated snapshots.【F:server/hub.go†L72-L89】【F:server/main.go†L165-L189】【F:server/hub.go†L393-L405】
