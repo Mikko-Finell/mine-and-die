@@ -122,6 +122,8 @@ const store = {
   TILE_SIZE: 40,
   GRID_WIDTH: canvas.width / 40,
   GRID_HEIGHT: canvas.height / 40,
+  WORLD_WIDTH: canvas.width,
+  WORLD_HEIGHT: canvas.height,
   PLAYER_SIZE: 28,
   PLAYER_HALF: 28 / 2,
   LERP_RATE: 12,
@@ -156,6 +158,11 @@ const store = {
   bytesSent: 0,
   lastPathRequestAt: null,
   effects: [],
+  camera: {
+    x: 0,
+    y: 0,
+    lockOnPlayer: true,
+  },
   inventorySlotCount: DEFAULT_INVENTORY_SLOTS,
   worldConfig: { ...DEFAULT_WORLD_CONFIG },
   isResettingWorld: false,
@@ -177,15 +184,27 @@ function initializeCanvasPathing() {
     const rect = store.canvas.getBoundingClientRect();
     const scaleX = store.canvas.width / rect.width;
     const scaleY = store.canvas.height / rect.height;
+    const localX = (event.clientX - rect.left) * scaleX;
+    const localY = (event.clientY - rect.top) * scaleY;
+    const cameraX = store.camera?.x || 0;
+    const cameraY = store.camera?.y || 0;
+    const worldWidth =
+      typeof store.WORLD_WIDTH === "number"
+        ? store.WORLD_WIDTH
+        : store.canvas.width;
+    const worldHeight =
+      typeof store.WORLD_HEIGHT === "number"
+        ? store.WORLD_HEIGHT
+        : store.canvas.height;
     const x = clamp(
-      (event.clientX - rect.left) * scaleX,
+      cameraX + localX,
       store.PLAYER_HALF,
-      store.canvas.width - store.PLAYER_HALF,
+      worldWidth - store.PLAYER_HALF,
     );
     const y = clamp(
-      (event.clientY - rect.top) * scaleY,
+      cameraY + localY,
       store.PLAYER_HALF,
-      store.canvas.height - store.PLAYER_HALF,
+      worldHeight - store.PLAYER_HALF,
     );
     sendMoveTo(store, x, y);
   };
@@ -221,7 +240,16 @@ function initializeDebugPanelToggle() {
 // renderStatus updates the status line with any latency text.
 function renderStatus() {
   if (store.statusEl) {
-    store.statusEl.textContent = store.statusBaseText || "";
+    const baseText = store.statusBaseText || "";
+    const camera = store.camera;
+    let cameraSuffix = "";
+    if (camera) {
+      cameraSuffix = camera.lockOnPlayer
+        ? "Camera locked — press C to unlock."
+        : "Camera unlocked — press C to lock.";
+    }
+    const separator = baseText && cameraSuffix ? " " : "";
+    store.statusEl.textContent = `${baseText}${separator}${cameraSuffix}`.trim();
   }
   if (store.latencyDisplay) {
     if (store.latencyMs != null) {
@@ -239,6 +267,47 @@ function setStatusBase(text) {
   store.statusBaseText = text;
   renderStatus();
   updateDiagnostics();
+}
+
+function ensureCamera() {
+  if (!store.camera) {
+    store.camera = { x: 0, y: 0, lockOnPlayer: true };
+  }
+  return store.camera;
+}
+
+function setCameraLock(lockOnPlayer) {
+  const camera = ensureCamera();
+  camera.lockOnPlayer = !!lockOnPlayer;
+  if (camera.lockOnPlayer) {
+    const viewportWidth = store.canvas?.width || store.WORLD_WIDTH || 0;
+    const viewportHeight = store.canvas?.height || store.WORLD_HEIGHT || 0;
+    const worldWidth =
+      typeof store.WORLD_WIDTH === "number"
+        ? store.WORLD_WIDTH
+        : viewportWidth;
+    const worldHeight =
+      typeof store.WORLD_HEIGHT === "number"
+        ? store.WORLD_HEIGHT
+        : viewportHeight;
+    const target =
+      store.displayPlayers[store.playerId] || store.players[store.playerId];
+    if (target) {
+      const desiredX = target.x - viewportWidth / 2;
+      const desiredY = target.y - viewportHeight / 2;
+      const maxX = Math.max(0, worldWidth - viewportWidth);
+      const maxY = Math.max(0, worldHeight - viewportHeight);
+      camera.x = clamp(desiredX, 0, maxX);
+      camera.y = clamp(desiredY, 0, maxY);
+    }
+  }
+  renderStatus();
+  updateDiagnostics();
+}
+
+function toggleCameraLock() {
+  const camera = ensureCamera();
+  setCameraLock(!camera.lockOnPlayer);
 }
 
 // setLatency stores the latest measured round-trip time.
@@ -662,6 +731,8 @@ store.updateDiagnostics = updateDiagnostics;
 store.setSimulatedLatency = (value) => setSimulatedLatency(store, value);
 store.renderInventory = renderInventory;
 store.updateWorldConfigUI = () => syncWorldResetControls();
+store.setCameraLock = setCameraLock;
+store.toggleCameraLock = toggleCameraLock;
 
 initializeDebugPanelToggle();
 attachLatencyInputListener();

@@ -32,6 +32,14 @@ export function registerInputHandlers(store) {
       return;
     }
 
+    if (lowerKey === "c") {
+      event.preventDefault();
+      if (isPressed && !event.repeat && typeof store.toggleCameraLock === "function") {
+        store.toggleCameraLock();
+      }
+      return;
+    }
+
     const key = lowerKey;
     if (!MOVEMENT_KEYS.has(key)) {
       return;

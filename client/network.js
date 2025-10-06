@@ -347,10 +347,14 @@ export function sendCurrentIntent(store) {
 // sendMoveTo requests server-driven navigation toward a world position.
 export function sendMoveTo(store, x, y) {
   const canvas = store.canvas;
-  const width = canvas ? canvas.width : store.GRID_WIDTH * store.TILE_SIZE;
-  const height = canvas ? canvas.height : store.GRID_HEIGHT * store.TILE_SIZE;
-  const maxX = Math.max(store.PLAYER_HALF, width - store.PLAYER_HALF);
-  const maxY = Math.max(store.PLAYER_HALF, height - store.PLAYER_HALF);
+  const fallbackWidth = canvas ? canvas.width : store.GRID_WIDTH * store.TILE_SIZE;
+  const fallbackHeight = canvas ? canvas.height : store.GRID_HEIGHT * store.TILE_SIZE;
+  const worldWidth =
+    typeof store.WORLD_WIDTH === "number" ? store.WORLD_WIDTH : fallbackWidth;
+  const worldHeight =
+    typeof store.WORLD_HEIGHT === "number" ? store.WORLD_HEIGHT : fallbackHeight;
+  const maxX = Math.max(store.PLAYER_HALF, worldWidth - store.PLAYER_HALF);
+  const maxY = Math.max(store.PLAYER_HALF, worldHeight - store.PLAYER_HALF);
   const clampedX = Math.max(store.PLAYER_HALF, Math.min(x, maxX));
   const clampedY = Math.max(store.PLAYER_HALF, Math.min(y, maxY));
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {

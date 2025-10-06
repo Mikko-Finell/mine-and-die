@@ -17,6 +17,43 @@ const EFFECT_STYLES = {
   },
 };
 
+function getWorldDimensions(store) {
+  const fallbackWidth = store.canvas?.width || store.GRID_WIDTH * store.TILE_SIZE;
+  const fallbackHeight = store.canvas?.height || store.GRID_HEIGHT * store.TILE_SIZE;
+  const width =
+    typeof store.WORLD_WIDTH === "number" ? store.WORLD_WIDTH : fallbackWidth;
+  const height =
+    typeof store.WORLD_HEIGHT === "number" ? store.WORLD_HEIGHT : fallbackHeight;
+  return { width, height };
+}
+
+function updateCamera(store) {
+  if (!store.camera) {
+    store.camera = { x: 0, y: 0, lockOnPlayer: true };
+  }
+  const camera = store.camera;
+  const { width: worldWidth, height: worldHeight } = getWorldDimensions(store);
+  const viewportWidth = store.canvas?.width || worldWidth;
+  const viewportHeight = store.canvas?.height || worldHeight;
+  const maxX = Math.max(0, worldWidth - viewportWidth);
+  const maxY = Math.max(0, worldHeight - viewportHeight);
+
+  if (camera.lockOnPlayer && store.playerId) {
+    const target =
+      store.displayPlayers[store.playerId] || store.players[store.playerId];
+    if (target) {
+      const desiredX = target.x - viewportWidth / 2;
+      const desiredY = target.y - viewportHeight / 2;
+      camera.x = clampValue(desiredX, 0, maxX);
+      camera.y = clampValue(desiredY, 0, maxY);
+      return;
+    }
+  }
+
+  camera.x = clampValue(camera.x || 0, 0, maxX);
+  camera.y = clampValue(camera.y || 0, 0, maxY);
+}
+
 // startRenderLoop animates interpolation and draws the scene each frame.
 export function startRenderLoop(store) {
   store.lastTimestamp = performance.now();
@@ -56,6 +93,8 @@ export function startRenderLoop(store) {
       }
     });
 
+    updateCamera(store);
+
     drawScene(store);
     requestAnimationFrame(gameLoop);
   }
@@ -69,18 +108,29 @@ function drawScene(store) {
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  const camera = store.camera || { x: 0, y: 0 };
+  const tileSize = store.TILE_SIZE || 40;
+  const { width: worldWidth, height: worldHeight } = getWorldDimensions(store);
+
+  ctx.save();
+  ctx.translate(-camera.x, -camera.y);
+
   ctx.strokeStyle = "#1e293b";
   ctx.lineWidth = 1;
-  for (let x = 0; x <= store.GRID_WIDTH; x++) {
+  const columnCount = Math.ceil(worldWidth / tileSize);
+  for (let column = 0; column <= columnCount; column++) {
+    const x = Math.min(column * tileSize, worldWidth);
     ctx.beginPath();
-    ctx.moveTo(x * store.TILE_SIZE, 0);
-    ctx.lineTo(x * store.TILE_SIZE, canvas.height);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, worldHeight);
     ctx.stroke();
   }
-  for (let y = 0; y <= store.GRID_HEIGHT; y++) {
+  const rowCount = Math.ceil(worldHeight / tileSize);
+  for (let row = 0; row <= rowCount; row++) {
+    const y = Math.min(row * tileSize, worldHeight);
     ctx.beginPath();
-    ctx.moveTo(0, y * store.TILE_SIZE);
-    ctx.lineTo(canvas.width, y * store.TILE_SIZE);
+    ctx.moveTo(0, y);
+    ctx.lineTo(worldWidth, y);
     ctx.stroke();
   }
 
@@ -122,6 +172,8 @@ function drawScene(store) {
     ctx.stroke();
     ctx.restore();
   });
+
+  ctx.restore();
 }
 
 function drawNPCs(store) {
