@@ -404,6 +404,64 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 	hub.mu.Unlock()
 }
 
+func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
+	hub := newHub()
+
+	var goblin *npcState
+	for _, npc := range hub.world.npcs {
+		if npc.Type == NPCTypeGoblin {
+			goblin = npc
+			break
+		}
+	}
+	if goblin == nil {
+		t.Fatalf("expected seeded goblin NPC")
+	}
+
+	attackerID := "hero"
+	attackerState := newTestPlayerState(attackerID)
+	attackerState.X = goblin.X - playerHalf - meleeAttackReach/2
+	attackerState.Y = goblin.Y
+	attackerState.Facing = FacingRight
+	attackerState.cooldowns = make(map[string]time.Time)
+	hub.world.players[attackerID] = attackerState
+
+	var events []Event
+	for i := 0; i < 6; i++ {
+		if !hub.HandleAction(attackerID, effectTypeAttack) {
+			t.Fatalf("expected melee attack to trigger")
+		}
+		_, _, _, stepEvents := runAdvance(hub, 1.0/float64(tickRate))
+		events = stepEvents
+		if i < 5 {
+			hub.mu.Lock()
+			hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
+			hub.mu.Unlock()
+		}
+	}
+
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	if _, alive := hub.world.npcs[goblin.ID]; alive {
+		t.Fatalf("expected goblin %q to be removed after defeat", goblin.ID)
+	}
+
+	defeated := false
+	for _, event := range events {
+		if event.Type != EventActorDespawned || event.EntityID != goblin.ID {
+			continue
+		}
+		defeated = true
+		if reason, ok := event.Payload["reason"].(string); !ok || reason != "defeated" {
+			t.Fatalf("expected despawn reason 'defeated', got %#v", event.Payload["reason"])
+		}
+	}
+	if !defeated {
+		t.Fatalf("expected defeat event for goblin %q", goblin.ID)
+	}
+}
+
 func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = []Obstacle{{
@@ -718,7 +776,7 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 	heal := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "healer", Params: map[string]float64{"healthDelta": 50}}}
 
 	output := StepOutput{}
-	hub.world.applyEffectHit(heal, state, time.Now(), hub.tick.Load(), &output)
+	hub.world.applyEffectHitPlayer(heal, state, time.Now(), hub.tick.Load(), &output)
 
 	if math.Abs(state.Health-playerMaxHealth) > 1e-6 {
 		t.Fatalf("expected healing to clamp to max %.1f, got %.1f", playerMaxHealth, state.Health)
@@ -738,7 +796,7 @@ func TestHealthDamageClampsToZero(t *testing.T) {
 	blast := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "boom", Params: map[string]float64{"healthDelta": -50}}}
 
 	output := StepOutput{}
-	hub.world.applyEffectHit(blast, state, time.Now(), hub.tick.Load(), &output)
+	hub.world.applyEffectHitPlayer(blast, state, time.Now(), hub.tick.Load(), &output)
 
 	if state.Health != 0 {
 		t.Fatalf("expected damage to clamp to zero health, got %.1f", state.Health)
