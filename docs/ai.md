@@ -37,3 +37,5 @@ Because actions only enqueue commands, the simulation loop remains the single au
 - `Wait` executes every tick, calls `stop()`, sets a timer for `pause_ticks`, advances the waypoint index once on entry, and returns to `Patrol` when the timer expires.
 
 The defaults seed goblins with two waypoints, pause for half a second (~30 ticks), and detect stuck behaviour using a small epsilon. Adding new archetypes follows the same pattern—extend the JSON, cover it with table-driven tests, and the executor requires no modifications.
+
+During execution, movement intents feed into the navigation grid: NPCs run A* against the obstacle layout to reach their current waypoint (or target player), pause for a tick when shoved off course, and retry with a fresh path. If the requested destination is completely enclosed, the navigator selects the nearest reachable fallback location so patrols keep flowing.

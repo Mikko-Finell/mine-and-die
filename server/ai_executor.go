@@ -135,6 +135,12 @@ func (w *World) evaluateCondition(cfg *aiCompiledConfig, npc *npcState, transiti
 		dx := npc.X - waypoint.X
 		dy := npc.Y - waypoint.Y
 		dist := math.Hypot(dx, dy)
+		if npc.pathWaypointIdx == idx && npc.pathHasFallback {
+			fallback := math.Hypot(npc.X-npc.pathActual.X, npc.Y-npc.pathActual.Y)
+			if fallback < dist {
+				dist = fallback
+			}
+		}
 		if dist <= radius {
 			return true
 		}
@@ -246,7 +252,7 @@ func (w *World) executeActions(cfg *aiCompiledConfig, npc *npcState, state *aiCo
 	for _, action := range state.actions {
 		switch action.id {
 		case aiActionMoveToward:
-			w.actionMoveToward(cfg, npc, action)
+			w.actionMoveToward(cfg, npc, action, tick)
 			if cmd := buildMoveCommand(npc, tick, now); cmd != nil {
 				*commands = append(*commands, *cmd)
 			}
@@ -279,7 +285,7 @@ func (w *World) executeActions(cfg *aiCompiledConfig, npc *npcState, state *aiCo
 	}
 }
 
-func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action aiCompiledAction) {
+func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action aiCompiledAction, tick uint64) {
 	if cfg == nil || npc == nil {
 		return
 	}
@@ -287,6 +293,9 @@ func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action ai
 	if int(action.paramIndex) < len(cfg.moveTowardParams) {
 		params = cfg.moveTowardParams[action.paramIndex]
 	}
+	target := vec2{}
+	waypointIdx := -1
+	hasTarget := false
 	switch params.Target {
 	case aiMoveTargetPlayer:
 		if npc.Blackboard.TargetActorID == "" {
@@ -294,17 +303,23 @@ func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action ai
 			npc.intentY = 0
 			return
 		}
-		target, ok := w.players[npc.Blackboard.TargetActorID]
+		player, ok := w.players[npc.Blackboard.TargetActorID]
 		if !ok {
 			npc.intentX = 0
 			npc.intentY = 0
 			return
 		}
-		npc.intentX = target.X - npc.X
-		npc.intentY = target.Y - npc.Y
+		targetPos := vec2{X: player.X, Y: player.Y}
+		target = targetPos
+		hasTarget = true
 	case aiMoveTargetVector:
-		npc.intentX = params.Vector.X
-		npc.intentY = params.Vector.Y
+		if params.Vector.X == 0 && params.Vector.Y == 0 {
+			npc.intentX = 0
+			npc.intentY = 0
+			return
+		}
+		target = vec2{X: npc.X + params.Vector.X, Y: npc.Y + params.Vector.Y}
+		hasTarget = true
 	default:
 		if len(npc.Waypoints) == 0 {
 			npc.intentX = 0
@@ -319,10 +334,18 @@ func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action ai
 			idx = idx % len(npc.Waypoints)
 		}
 		waypoint := npc.Waypoints[idx]
-		npc.intentX = waypoint.X - npc.X
-		npc.intentY = waypoint.Y - npc.Y
+		target = waypoint
+		waypointIdx = idx
+		hasTarget = true
 	}
-	npc.Facing = deriveFacing(npc.intentX, npc.intentY, npc.Facing)
+	if !hasTarget {
+		npc.intentX = 0
+		npc.intentY = 0
+		return
+	}
+	if !w.navigateNPC(npc, target, waypointIdx, tick) {
+		npc.Facing = deriveFacing(npc.intentX, npc.intentY, npc.Facing)
+	}
 }
 
 func buildMoveCommand(npc *npcState, tick uint64, now time.Time) *Command {
@@ -341,6 +364,145 @@ func buildMoveCommand(npc *npcState, tick uint64, now time.Time) *Command {
 		},
 	}
 	return cmd
+}
+
+func (w *World) navigateNPC(npc *npcState, target vec2, waypointIdx int, tick uint64) bool {
+	if w == nil || npc == nil {
+		return false
+	}
+	if w.nav == nil {
+		dx := target.X - npc.X
+		dy := target.Y - npc.Y
+		if dx == 0 && dy == 0 {
+			npc.intentX = 0
+			npc.intentY = 0
+			return false
+		}
+		npc.intentX = dx
+		npc.intentY = dy
+		npc.Facing = deriveFacing(dx, dy, npc.Facing)
+		return true
+	}
+
+	if waypointIdx >= 0 && npc.pathWaypointIdx != waypointIdx {
+		npc.resetPathState()
+	}
+
+	tolerance := w.nav.cellSize * 0.25
+	if tolerance <= 0 {
+		tolerance = 1
+	}
+	if !vectorsClose(npc.pathDesired, target, tolerance) {
+		if npc.pathWaypointIdx == waypointIdx {
+			npc.resetPathNodes()
+		} else {
+			npc.resetPathState()
+		}
+	}
+
+	if npc.pathCooldownTick > tick {
+		npc.intentX = 0
+		npc.intentY = 0
+		return false
+	}
+
+	if len(npc.pathNodes) == 0 {
+		desired := target
+		actual := desired
+		fallback := false
+		start := vec2{X: npc.X, Y: npc.Y}
+		path := w.nav.FindPath(start, actual)
+		if len(path) == 0 {
+			if alt, ok := w.nav.nearestWalkable(desired, 5); ok {
+				path = w.nav.FindPath(start, alt)
+				if len(path) > 0 {
+					actual = alt
+					fallback = !vectorsClose(actual, desired, tolerance)
+				}
+			}
+		}
+		if len(path) == 0 {
+			npc.intentX = 0
+			npc.intentY = 0
+			npc.pathDesired = desired
+			npc.pathActual = vec2{}
+			npc.pathHasFallback = false
+			npc.pathWaypointIdx = waypointIdx
+			npc.pathCooldownTick = tick + 1
+			return false
+		}
+		npc.pathNodes = path
+		npc.pathIndex = 0
+		npc.pathDesired = desired
+		npc.pathActual = actual
+		npc.pathHasFallback = fallback
+		npc.pathWaypointIdx = waypointIdx
+		if len(path) > 0 {
+			next := path[0]
+			npc.pathLastDist = math.Hypot(npc.X-next.X, npc.Y-next.Y)
+		} else {
+			npc.pathLastDist = 0
+		}
+	} else {
+		npc.pathWaypointIdx = waypointIdx
+	}
+
+	if len(npc.pathNodes) == 0 {
+		return false
+	}
+
+	if npc.pathIndex >= len(npc.pathNodes) {
+		npc.resetPathNodes()
+		return false
+	}
+
+	prevDist := npc.pathLastDist
+	node := npc.pathNodes[npc.pathIndex]
+	dist := math.Hypot(npc.X-node.X, npc.Y-node.Y)
+	arriveTol := w.nav.cellSize * 0.2
+	if npc.Blackboard.ArriveRadius > 0 {
+		arriveTol = math.Max(arriveTol, npc.Blackboard.ArriveRadius*0.25)
+	}
+	lastIndex := len(npc.pathNodes) - 1
+	for dist <= arriveTol && npc.pathIndex < lastIndex {
+		npc.pathIndex++
+		node = npc.pathNodes[npc.pathIndex]
+		dist = math.Hypot(npc.X-node.X, npc.Y-node.Y)
+		prevDist = dist
+	}
+	if dist <= arriveTol {
+		npc.resetPathNodes()
+		return false
+	}
+
+	deviation := w.nav.cellSize * 0.75
+	if prevDist > 0 && dist > prevDist+deviation {
+		npc.resetPathState()
+		npc.pathCooldownTick = tick + 1
+		npc.intentX = 0
+		npc.intentY = 0
+		return false
+	}
+
+	npc.pathLastDist = dist
+	dx := node.X - npc.X
+	dy := node.Y - npc.Y
+	length := math.Hypot(dx, dy)
+	if length == 0 {
+		npc.pathIndex++
+		return w.navigateNPC(npc, target, waypointIdx, tick)
+	}
+	npc.intentX = dx / length
+	npc.intentY = dy / length
+	npc.Facing = deriveFacing(npc.intentX, npc.intentY, npc.Facing)
+	return true
+}
+
+func vectorsClose(a, b vec2, epsilon float64) bool {
+	if epsilon <= 0 {
+		epsilon = 1e-3
+	}
+	return math.Hypot(a.X-b.X, a.Y-b.Y) <= epsilon
 }
 
 func (w *World) actionUseAbility(cfg *aiCompiledConfig, npc *npcState, action aiCompiledAction, tick uint64, now time.Time, commands *[]Command) {
@@ -528,6 +690,12 @@ func (w *World) updateBlackboard(npc *npcState) {
 	}
 	waypoint := npc.Waypoints[idx]
 	dist := math.Hypot(npc.X-waypoint.X, npc.Y-waypoint.Y)
+	if npc.pathWaypointIdx == idx && npc.pathHasFallback {
+		fallback := math.Hypot(npc.X-npc.pathActual.X, npc.Y-npc.pathActual.Y)
+		if fallback < dist {
+			dist = fallback
+		}
+	}
 
 	if npc.Blackboard.LastWaypointIndex != idx {
 		npc.Blackboard.LastWaypointIndex = idx

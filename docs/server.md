@@ -57,6 +57,7 @@ Systems append structured `Event` entries (movement, health deltas, effect spawn
 - NPCs reuse the shared `Actor` struct for position, facing, health, and inventories, and add fields like `Type`, `AIControlled`, and `ExperienceReward`.
 - `spawnInitialNPCs` currently seeds a stationary goblin with gold and a potion. Additional spawns append `npcState` entries within the world's mutex-protected sections.
 - Snapshots include a `npcs` array alongside the existing `players`, enabling the client to render and later target neutral enemies without special casing.
+- NPC navigation builds a lightweight grid from generated obstacles and runs A* each tick to reach waypoints or chase targets. Paths are recomputed when the actor is displaced, and when a destination is sealed the system picks the nearest reachable fallback cell instead.
 
 ### Actions, Health, and Cooldowns
 `World.Step` invokes action helpers based on staged commands:

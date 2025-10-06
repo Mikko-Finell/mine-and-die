@@ -56,8 +56,10 @@ func newStaticAIWorld() (*World, *npcState) {
 	npc.Blackboard.NextDecisionAt = 0
 	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
 	npc.Blackboard.LastWaypointIndex = -1
+	npc.resetPathState()
 
 	w.npcs[npc.ID] = npc
+	w.rebuildNavigation()
 	return w, npc
 }
 
@@ -128,6 +130,7 @@ func TestGoblinAdvancesWhenWaypointBlocked(t *testing.T) {
 		Width:  60,
 		Height: 60,
 	})
+	w.rebuildNavigation()
 
 	dt := 1.0 / float64(tickRate)
 	now := time.Unix(0, 0)

@@ -173,6 +173,7 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = nil
+	hub.world.rebuildNavigation()
 	now := time.Now()
 
 	moverID := "mover"
@@ -220,6 +221,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = nil
+	hub.world.rebuildNavigation()
 	staleID := "stale"
 	staleState := newTestPlayerState(staleID)
 	staleState.X = 100
@@ -511,6 +513,7 @@ func TestLavaDamagesPlayer(t *testing.T) {
 func TestPlayersSeparateWhenColliding(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = nil
+	hub.world.rebuildNavigation()
 	now := time.Now()
 
 	firstID := "first"
@@ -552,6 +555,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = nil
+	hub.world.rebuildNavigation()
 	shooterID := "shooter"
 	now := time.Now()
 
@@ -592,6 +596,7 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 func TestFireballDealsDamageOnHit(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = nil
+	hub.world.rebuildNavigation()
 	now := time.Now()
 
 	shooterID := "caster"

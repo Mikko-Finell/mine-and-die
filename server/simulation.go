@@ -78,6 +78,7 @@ type World struct {
 	npcs            map[string]*npcState
 	effects         []*effectState
 	obstacles       []Obstacle
+	nav             *navGrid
 	effectBehaviors map[string]effectBehavior
 	nextEffectID    uint64
 	nextNPCID       uint64
@@ -96,8 +97,16 @@ func newWorld(cfg worldConfig) *World {
 		config:          cfg,
 	}
 	w.obstacles = w.generateObstacles(obstacleCount)
+	w.rebuildNavigation()
 	w.spawnInitialNPCs()
 	return w
+}
+
+func (w *World) rebuildNavigation() {
+	if w == nil {
+		return
+	}
+	w.nav = newNavGrid(navCellSize, w.obstacles)
 }
 
 // Snapshot copies players, NPCs, and effects into broadcast-friendly structs.
@@ -363,5 +372,6 @@ func (w *World) spawnInitialNPCs() {
 
 	resolveObstaclePenetration(&goblin.actorState, w.obstacles)
 	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
+	goblin.resetPathState()
 	w.npcs[id] = goblin
 }
