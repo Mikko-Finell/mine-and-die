@@ -9,7 +9,7 @@ The Go service owns the authoritative world state and exposes three responsibili
 ## Core Packages and Types
 - `main.go` – HTTP handlers, WebSocket wiring, and process bootstrap.
 - `hub.go` – `Hub` implementation, player/session lifecycle, command queue, simulation ticker, and broadcast helpers.
-- `simulation.go` – `World` data model plus the per-tick command processor and event emission.
+- `simulation.go` – `World` data model plus the per-tick command processor and effect systems.
 - `effects.go` – Ability cooldowns, projectile movement, environmental hazards, and shared effect behaviours.
 - `inventory.go` – Item definitions plus helper methods for stacking, moving, and cloning player inventories.
 - `npc.go` – Neutral enemy types and snapshot helpers.
@@ -40,7 +40,7 @@ The queue is drained at the start of each tick so every command is applied exact
 2. Closes subscriber sockets for players removed by the simulation (missed heartbeats, disconnects).
 3. Broadcasts the latest snapshot via `broadcastState`.
 
-`advance` locks the world, calls `World.Step`, and returns the new snapshot along with `Event` records detailing what happened.
+`advance` locks the world, calls `World.Step`, and returns the new snapshot alongside the list of subscribers to disconnect.
 
 ### World & Simulation Systems
 `World.Step` is the heart of the simulation. Given the tick index, wall-clock time, delta seconds, and drained commands it:
@@ -48,10 +48,8 @@ The queue is drained at the start of each tick so every command is applied exact
 - Derives NPC intents via the A* path follower, then advances movement for players and NPCs against obstacles before resolving actor collisions.
 - Stages abilities triggered by commands and executes their effects (melee swings, fireballs).
 - Applies environmental hazards such as lava pools as damage-over-time.
-- Advances, prunes, and emits events for effect lifecycles and inventory rewards.
-- Removes players whose last heartbeat is older than `disconnectAfter` and reports despawns.
-
-Systems append structured `Event` entries (movement, health deltas, effect spawns, loot awards, despawns) to the returned `StepOutput`. The hub can pipe these to subscribers alongside the traditional state snapshots when the client is ready.
+- Advances and prunes effect lifecycles plus awards ore mining loot.
+- Removes players whose last heartbeat is older than `disconnectAfter`.
 
 ### Deterministic Randomness
 - `worldConfig.Seed` controls all pseudo-random behaviour. The default seed is `"prototype"`, but the client debug panel can POST a new value when restarting the world.

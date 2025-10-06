@@ -18,7 +18,7 @@ The Go module under `server/` is now split by responsibility so contributors can
 - `constants.go` – Shared world and timing constants.
 - `main.go` – HTTP wiring, endpoint registration, and WebSocket loop bootstrap.
 - `hub.go` – Core state container plus join/subscribe/disconnect flows, the command queue, and the simulation ticker.
-- `simulation.go` – World data model, per-tick system orchestration, and event emission.
+- `simulation.go` – World data model, per-tick system orchestration, and combat/effect systems.
 - `player.go` – Player-facing types, facing math, and intent bookkeeping.
 - `npc.go` – Neutral enemy definitions, snapshots, and seeding helpers.
 - `ai_types.go` – Shared AI structs used by the finite state machine executor.
@@ -44,17 +44,17 @@ The Go module under `server/` is now split by responsibility so contributors can
 4. Heartbeats (`{ type: "heartbeat", sentAt }`) flow every ~2 seconds; the hub records the timing as a command and missing three in a row disconnects the session.
 5. `/diagnostics` exposes a JSON summary of tick rate, heartbeat interval, and per-player timing data.
 
-## Command & Event Pipeline
+## Command Pipeline
 - **Commands** – Each inbound message becomes a typed command (`Move`, `Action`, `Heartbeat`) stored until the next tick. Commands capture the issuing tick, player ID, and structured payload so the simulation runs deterministically.
 - **AI pass** – Before staging player commands, the server runs finite state machines for every NPC whose cadence is due. The executor reads compiled configs from `server/ai_configs/`, evaluates transitions using pre-resolved IDs, and enqueues standard `Command` structs (movement, facing, abilities). This keeps the hot path lock-free and avoids string lookups during the tick.
 - **World step** – `World.Step` consumes staged commands, updates intents/heartbeats, advances movement, resolves collisions, executes abilities, applies hazards, and prunes stale actors.
-- **Events** – Systems append high-level events (movement, health changes, effect spawns, loot awards, despawns) to the step output. The hub can fan these out alongside snapshots for future HUD/analytics features.
+  The hub broadcasts the resulting snapshots to every subscriber each tick.
 
 ## AI System
 NPC behaviour is authored as declarative finite state machines. Designers write JSON configs (see `server/ai_configs/`) describing states, transition conditions, and action lists. At startup the server compiles these configs into ID-based tables so the runtime never performs string lookups or reflection. Each tick the executor:
 
 1. Sorts NPC IDs for deterministic iteration and checks the `NextDecisionAt` cadence gate.
-2. Evaluates transitions in order, applying the first matching condition and emitting `AIStateChanged` events.
+2. Evaluates transitions in order, applying the first matching condition and updating the NPC's active state when it changes.
 3. Executes the state's actions, which only enqueue standard commands (`CommandMove`, `CommandAction`, etc.).
 4. Updates per-NPC blackboards (timer bookkeeping, waypoint indices, stuck counters) and schedules the next evaluation tick.
 
@@ -95,7 +95,7 @@ The tests exercise join flow, intent handling, collision resolution, effect life
 ### Milestone 2 – Combat & permadeath
 - **Server**
   - Expand the player model with health, damage, equipment, and cooldown tracking, resolving combat in the tick loop.
-  - Handle permadeath cleanup, dropping inventories, removing dead sessions, and broadcasting events.
+  - Handle permadeath cleanup, dropping inventories, and removing dead sessions.
 - **Client**
   - Visualize HP, damage feedback, respawn/creation flows, and dropped loot within the HUD.
 - **Systems & Economy**

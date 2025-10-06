@@ -295,15 +295,15 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 }
 
 // advance runs a single simulation step and returns updated snapshots plus stale subscribers.
-func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []*subscriber, []Event) {
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []*subscriber) {
 	tick := h.tick.Add(1)
 	commands := h.drainCommands()
 
 	h.mu.Lock()
-	output := h.world.Step(tick, now, dt, commands)
+	removed := h.world.Step(tick, now, dt, commands)
 	players, npcs, effects := h.world.Snapshot(now)
-	toClose := make([]*subscriber, 0, len(output.RemovedPlayerIDs))
-	for _, id := range output.RemovedPlayerIDs {
+	toClose := make([]*subscriber, 0, len(removed))
+	for _, id := range removed {
 		if sub, ok := h.subscribers[id]; ok {
 			toClose = append(toClose, sub)
 			delete(h.subscribers, id)
@@ -311,7 +311,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []*
 	}
 	h.mu.Unlock()
 
-	return players, npcs, effects, toClose, output.Events
+	return players, npcs, effects, toClose
 }
 
 // RunSimulation drives the fixed-rate tick loop until the stop channel closes.
@@ -331,7 +331,7 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 			}
 			last = now
 
-			players, npcs, effects, toClose, _ := h.advance(now, dt)
+			players, npcs, effects, toClose := h.advance(now, dt)
 			for _, sub := range toClose {
 				sub.conn.Close()
 			}

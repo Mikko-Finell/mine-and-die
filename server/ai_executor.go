@@ -18,9 +18,9 @@ var abilityIDToCommand = map[aiAbilityID]string{
 	aiAbilityFireball: effectTypeFireball,
 }
 
-func (w *World) runAI(tick uint64, now time.Time) ([]Command, []Event) {
+func (w *World) runAI(tick uint64, now time.Time) []Command {
 	if w == nil || w.aiLibrary == nil || len(w.npcs) == 0 {
-		return nil, nil
+		return nil
 	}
 	npcIDs := make([]string, 0, len(w.npcs))
 	for id := range w.npcs {
@@ -29,7 +29,6 @@ func (w *World) runAI(tick uint64, now time.Time) ([]Command, []Event) {
 	sort.Strings(npcIDs)
 
 	commands := make([]Command, 0)
-	events := make([]Event, 0)
 	decisions := 0
 	for _, id := range npcIDs {
 		npc := w.npcs[id]
@@ -59,7 +58,6 @@ func (w *World) runAI(tick uint64, now time.Time) ([]Command, []Event) {
 			npc.AIState = stateIndex
 		}
 		state := &cfg.states[stateIndex]
-		previousState := npc.AIState
 
 		for _, transition := range state.transitions {
 			if w.evaluateCondition(cfg, npc, &transition, tick, now) {
@@ -72,15 +70,6 @@ func (w *World) runAI(tick uint64, now time.Time) ([]Command, []Event) {
 					if cfg.states[npc.AIState].enterTimer > 0 {
 						npc.Blackboard.WaitUntil = tick + uint64(cfg.states[npc.AIState].enterTimer)
 					}
-					events = append(events, Event{
-						Tick:     tick,
-						EntityID: npc.ID,
-						Type:     EventAIStateChanged,
-						Payload: map[string]any{
-							"from": cfg.stateName(previousState),
-							"to":   cfg.stateName(npc.AIState),
-						},
-					})
 				}
 				stateIndex = npc.AIState
 				state = &cfg.states[stateIndex]
@@ -101,7 +90,7 @@ func (w *World) runAI(tick uint64, now time.Time) ([]Command, []Event) {
 		npc.Blackboard.LastDecisionTick = tick
 		w.updateBlackboard(npc)
 	}
-	return commands, events
+	return commands
 }
 
 func (w *World) evaluateCondition(cfg *aiCompiledConfig, npc *npcState, transition *aiCompiledTransition, tick uint64, now time.Time) bool {

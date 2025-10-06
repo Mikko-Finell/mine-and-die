@@ -56,32 +56,6 @@ type HeartbeatCommand struct {
 	RTT        time.Duration
 }
 
-// EventType captures the discrete kinds of simulation output.
-type EventType string
-
-const (
-	EventActorMoved     EventType = "ActorMoved"
-	EventHealthChanged  EventType = "HealthChanged"
-	EventEffectSpawned  EventType = "EffectSpawned"
-	EventItemAdded      EventType = "ItemAdded"
-	EventActorDespawned EventType = "ActorDespawned"
-	EventAIStateChanged EventType = "AIStateChanged"
-)
-
-// Event describes a state change emitted during a tick.
-type Event struct {
-	Tick     uint64
-	EntityID string
-	Type     EventType
-	Payload  map[string]any
-}
-
-// StepOutput aggregates the results of a simulation step.
-type StepOutput struct {
-	Events           []Event
-	RemovedPlayerIDs []string
-}
-
 // World owns the authoritative simulation state.
 type World struct {
 	players         map[string]*playerState
@@ -158,7 +132,7 @@ func (w *World) RemovePlayer(id string) bool {
 	return true
 }
 
-func (w *World) handleNPCDefeat(npc *npcState, tick uint64, output *StepOutput) {
+func (w *World) handleNPCDefeat(npc *npcState) {
 	if npc == nil {
 		return
 	}
@@ -166,19 +140,9 @@ func (w *World) handleNPCDefeat(npc *npcState, tick uint64, output *StepOutput) 
 		return
 	}
 	delete(w.npcs, npc.ID)
-	if output == nil {
-		return
-	}
-	payload := map[string]any{"reason": "defeated"}
-	output.Events = append(output.Events, Event{
-		Tick:     tick,
-		EntityID: npc.ID,
-		Type:     EventActorDespawned,
-		Payload:  payload,
-	})
 }
 
-func (w *World) pruneDefeatedNPCs(tick uint64, output *StepOutput) {
+func (w *World) pruneDefeatedNPCs() {
 	if len(w.npcs) == 0 {
 		return
 	}
@@ -189,21 +153,17 @@ func (w *World) pruneDefeatedNPCs(tick uint64, output *StepOutput) {
 		}
 	}
 	for _, npc := range defeated {
-		w.handleNPCDefeat(npc, tick, output)
+		w.handleNPCDefeat(npc)
 	}
 }
 
 // Step advances the simulation by a single tick applying all staged commands.
-func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command) StepOutput {
+func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command) []string {
 	if dt <= 0 {
 		dt = 1.0 / float64(tickRate)
 	}
-	output := StepOutput{Events: make([]Event, 0)}
 
-	aiCommands, aiEvents := w.runAI(tick, now)
-	if len(aiEvents) > 0 {
-		output.Events = append(output.Events, aiEvents...)
-	}
+	aiCommands := w.runAI(tick, now)
 	if len(aiCommands) > 0 {
 		combined := make([]Command, 0, len(aiCommands)+len(commands))
 		combined = append(combined, aiCommands...)
@@ -311,40 +271,16 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	actors := make([]*actorState, 0, len(w.players)+len(w.npcs))
 	// Movement system.
 	for _, player := range w.players {
-		prevX, prevY := player.X, player.Y
 		if player.intentX != 0 || player.intentY != 0 {
 			moveActorWithObstacles(&player.actorState, dt, w.obstacles)
 		}
 		actors = append(actors, &player.actorState)
-		if prevX != player.X || prevY != player.Y {
-			output.Events = append(output.Events, Event{
-				Tick:     tick,
-				EntityID: player.ID,
-				Type:     EventActorMoved,
-				Payload: map[string]any{
-					"x": player.X,
-					"y": player.Y,
-				},
-			})
-		}
 	}
 	for _, npc := range w.npcs {
-		prevX, prevY := npc.X, npc.Y
 		if npc.intentX != 0 || npc.intentY != 0 {
 			moveActorWithObstacles(&npc.actorState, dt, w.obstacles)
 		}
 		actors = append(actors, &npc.actorState)
-		if prevX != npc.X || prevY != npc.Y {
-			output.Events = append(output.Events, Event{
-				Tick:     tick,
-				EntityID: npc.ID,
-				Type:     EventActorMoved,
-				Payload: map[string]any{
-					"x": npc.X,
-					"y": npc.Y,
-				},
-			})
-		}
 	}
 
 	resolveActorCollisions(actors, w.obstacles)
@@ -353,38 +289,33 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	for _, action := range stagedActions {
 		switch action.command.Name {
 		case effectTypeAttack:
-			w.triggerMeleeAttack(action.actorID, now, tick, &output)
+			w.triggerMeleeAttack(action.actorID, now)
 		case effectTypeFireball:
-			w.triggerFireball(action.actorID, now, tick, &output)
+			w.triggerFireball(action.actorID, now)
 		}
 	}
 
 	// Environmental systems.
-	w.applyEnvironmentalDamage(actors, dt, tick, &output)
+	w.applyEnvironmentalDamage(actors, dt)
 
-	w.advanceEffects(now, dt, tick, &output)
+	w.advanceEffects(now, dt)
 	w.pruneEffects(now)
-	w.pruneDefeatedNPCs(tick, &output)
+	w.pruneDefeatedNPCs()
 
 	// Lifecycle system: remove stale players.
 	cutoff := now.Add(-disconnectAfter)
+	removedPlayers := make([]string, 0)
 	for id, player := range w.players {
 		if player.lastHeartbeat.IsZero() {
 			continue
 		}
 		if player.lastHeartbeat.Before(cutoff) {
 			delete(w.players, id)
-			output.RemovedPlayerIDs = append(output.RemovedPlayerIDs, id)
-			output.Events = append(output.Events, Event{
-				Tick:     tick,
-				EntityID: id,
-				Type:     EventActorDespawned,
-				Payload:  map[string]any{"reason": "heartbeatTimeout"},
-			})
+			removedPlayers = append(removedPlayers, id)
 		}
 	}
 
-	return output
+	return removedPlayers
 }
 
 func (w *World) spawnInitialNPCs() {
