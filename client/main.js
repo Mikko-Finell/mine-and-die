@@ -3,11 +3,13 @@ import { startRenderLoop } from "./render.js";
 import { registerInputHandlers } from "./input.js";
 
 const statusEl = document.getElementById("status");
+const latencyDisplay = document.getElementById("latency-display");
+const debugPanel = document.getElementById("debug-panel");
+const debugPanelBody = document.getElementById("debug-panel-body");
+const debugPanelToggle = document.getElementById("debug-panel-toggle");
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
 const latencyInput = document.getElementById("latency-input");
-const diagnosticsToggle = document.getElementById("diagnostics-toggle");
-const diagnosticsSection = document.getElementById("diagnostics");
 const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
 const worldResetForm = document.getElementById("world-reset-form");
@@ -42,8 +44,10 @@ const store = {
   canvas,
   ctx,
   latencyInput,
-  diagnosticsToggle,
-  diagnosticsSection,
+  latencyDisplay,
+  debugPanel,
+  debugPanelBody,
+  debugPanelToggle,
   diagnosticsEls,
   inventoryPanel,
   inventoryGrid,
@@ -61,7 +65,7 @@ const store = {
   PLAYER_SIZE: 28,
   PLAYER_HALF: 28 / 2,
   LERP_RATE: 12,
-  statusBaseText: "",
+  statusBaseText: "Preparing session…",
   latencyMs: null,
   simulatedLatencyMs: 0,
   playerId: null,
@@ -101,31 +105,6 @@ const store = {
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-// updateDiagnosticsToggle syncs the toggle label with the current panel state.
-function updateDiagnosticsToggle() {
-  if (!store.diagnosticsToggle || !store.diagnosticsSection) {
-    return;
-  }
-  const isVisible = !store.diagnosticsSection.hasAttribute("hidden");
-  store.diagnosticsToggle.textContent = isVisible
-    ? "Hide diagnostics"
-    : "Show diagnostics";
-  store.diagnosticsToggle.setAttribute("aria-expanded", String(isVisible));
-}
-
-// setDiagnosticsVisibility shows or hides the diagnostics block.
-function setDiagnosticsVisibility(visible) {
-  if (!store.diagnosticsSection) {
-    return;
-  }
-  if (visible) {
-    store.diagnosticsSection.removeAttribute("hidden");
-  } else {
-    store.diagnosticsSection.setAttribute("hidden", "");
-  }
-  updateDiagnosticsToggle();
-}
-
 function initializeCanvasPathing() {
   if (!store.canvas) {
     return;
@@ -154,27 +133,44 @@ function initializeCanvasPathing() {
   store.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
-// initializeDiagnosticsToggle wires the button that expands diagnostics.
-function initializeDiagnosticsToggle() {
-  if (!store.diagnosticsToggle || !store.diagnosticsSection) {
+function initializeDebugPanelToggle() {
+  if (!store.debugPanelToggle || !store.debugPanelBody || !store.debugPanel) {
     return;
   }
-  store.diagnosticsToggle.addEventListener("click", () => {
-    const isVisible = !store.diagnosticsSection.hasAttribute("hidden");
-    setDiagnosticsVisibility(!isVisible);
+
+  const applyState = () => {
+    const collapsed = store.debugPanel?.dataset?.collapsed === "true";
+    if (collapsed) {
+      store.debugPanelBody.setAttribute("hidden", "");
+    } else {
+      store.debugPanelBody.removeAttribute("hidden");
+    }
+    store.debugPanelToggle.textContent = collapsed ? "Show panel" : "Hide panel";
+    store.debugPanelToggle.setAttribute("aria-expanded", String(!collapsed));
+  };
+
+  store.debugPanelToggle.addEventListener("click", () => {
+    const collapsed = store.debugPanel?.dataset?.collapsed === "true";
+    store.debugPanel.dataset.collapsed = collapsed ? "false" : "true";
+    applyState();
   });
-  updateDiagnosticsToggle();
+
+  applyState();
 }
 
 // renderStatus updates the status line with any latency text.
 function renderStatus() {
-  if (!store.statusEl) return;
-  if (store.latencyMs != null) {
-    store.statusEl.textContent = `${store.statusBaseText} (latency: ${Math.round(
-      store.latencyMs
-    )} ms)`;
-  } else {
-    store.statusEl.textContent = store.statusBaseText;
+  if (store.statusEl) {
+    store.statusEl.textContent = store.statusBaseText || "";
+  }
+  if (store.latencyDisplay) {
+    if (store.latencyMs != null) {
+      store.latencyDisplay.textContent = `${Math.round(store.latencyMs)} ms`;
+      store.latencyDisplay.dataset.state = "active";
+    } else {
+      store.latencyDisplay.textContent = "—";
+      store.latencyDisplay.dataset.state = "idle";
+    }
   }
 }
 
@@ -486,16 +482,16 @@ store.setStatusBase = setStatusBase;
 store.setLatency = setLatency;
 store.updateDiagnostics = updateDiagnostics;
 store.setSimulatedLatency = (value) => setSimulatedLatency(store, value);
-store.setDiagnosticsVisibility = setDiagnosticsVisibility;
 store.renderInventory = renderInventory;
 store.updateWorldConfigUI = () => syncWorldResetControls();
 
-initializeDiagnosticsToggle();
+initializeDebugPanelToggle();
 attachLatencyInputListener();
 initializeWorldResetControls();
 initializeCanvasPathing();
 setSimulatedLatency(store, 0);
 updateDiagnostics();
+renderStatus();
 renderInventory();
 
 registerInputHandlers(store);
