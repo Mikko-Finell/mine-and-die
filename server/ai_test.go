@@ -2,7 +2,6 @@ package main
 
 import (
 	"math"
-	"math/rand"
 	"testing"
 	"time"
 )
@@ -16,7 +15,12 @@ func newStaticAIWorld() (*World, *npcState) {
 		obstacles:       nil,
 		aiLibrary:       globalAILibrary,
 	}
-	w.rng = rand.New(rand.NewSource(1))
+	cfg := defaultWorldConfig()
+	cfg.Seed = "ai-test-static"
+	cfg = cfg.normalized()
+	w.config = cfg
+	w.seed = cfg.Seed
+	w.rng = newDeterministicRNG(w.seed, "world")
 
 	npc := &npcState{
 		actorState: actorState{
@@ -74,7 +78,12 @@ func newRatTestWorld() (*World, *npcState) {
 		obstacles:       nil,
 		aiLibrary:       globalAILibrary,
 	}
-	w.rng = rand.New(rand.NewSource(7))
+	cfg := defaultWorldConfig()
+	cfg.Seed = "ai-test-rat"
+	cfg = cfg.normalized()
+	w.config = cfg
+	w.seed = cfg.Seed
+	w.rng = newDeterministicRNG(w.seed, "world")
 
 	rat := &npcState{
 		actorState: actorState{

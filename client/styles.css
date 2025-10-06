@@ -383,6 +383,42 @@ canvas {
   color: #94a3b8;
 }
 
+.world-reset-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.world-reset-field__label {
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.world-reset-field__input {
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.75);
+  color: #f8fafc;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.world-reset-field__input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.7);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.world-reset-field__hint {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
 .world-reset-actions {
   display: flex;
   flex-direction: column;

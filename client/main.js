@@ -1,4 +1,9 @@
-import { joinGame, resetWorld, sendMoveTo } from "./network.js";
+import {
+  joinGame,
+  resetWorld,
+  sendMoveTo,
+  DEFAULT_WORLD_SEED,
+} from "./network.js";
 import { startRenderLoop } from "./render.js";
 import { registerInputHandlers } from "./input.js";
 
@@ -17,6 +22,7 @@ const worldResetStatus = document.getElementById("world-reset-status");
 const worldResetObstacles = document.getElementById("world-reset-obstacles");
 const worldResetNPCs = document.getElementById("world-reset-npcs");
 const worldResetLava = document.getElementById("world-reset-lava");
+const worldResetSeed = document.getElementById("world-reset-seed");
 
 const diagnosticsEls = {
   connection: document.getElementById("diag-connection"),
@@ -37,7 +43,8 @@ const ITEM_METADATA = {
   health_potion: { name: "Lesser Healing Potion", icon: "🧪" },
 };
 
-const WORLD_RESET_KEYS = ["obstacles", "npcs", "lava"];
+const WORLD_RESET_TOGGLE_KEYS = ["obstacles", "npcs", "lava"];
+const WORLD_RESET_CONFIG_KEYS = [...WORLD_RESET_TOGGLE_KEYS, "seed"];
 
 const store = {
   statusEl,
@@ -57,8 +64,14 @@ const store = {
     obstacles: worldResetObstacles,
     npcs: worldResetNPCs,
     lava: worldResetLava,
+    seed: worldResetSeed,
   },
-  worldResetDirtyFields: { obstacles: false, npcs: false, lava: false },
+  worldResetDirtyFields: {
+    obstacles: false,
+    npcs: false,
+    lava: false,
+    seed: false,
+  },
   TILE_SIZE: 40,
   GRID_WIDTH: canvas.width / 40,
   GRID_HEIGHT: canvas.height / 40,
@@ -97,7 +110,12 @@ const store = {
   lastPathRequestAt: null,
   effects: [],
   inventorySlotCount: DEFAULT_INVENTORY_SLOTS,
-  worldConfig: { obstacles: true, npcs: true, lava: true },
+  worldConfig: {
+    obstacles: true,
+    npcs: true,
+    lava: true,
+    seed: DEFAULT_WORLD_SEED,
+  },
   isResettingWorld: false,
   updateWorldConfigUI: null,
   lastWorldResetAt: null,
@@ -271,10 +289,15 @@ function updateDiagnostics() {
 function syncWorldResetControls() {
   const cfg = store.worldConfig || {};
   if (!store.worldResetDirtyFields) {
-    store.worldResetDirtyFields = { obstacles: false, npcs: false, lava: false };
+    store.worldResetDirtyFields = {
+      obstacles: false,
+      npcs: false,
+      lava: false,
+      seed: false,
+    };
   }
 
-  WORLD_RESET_KEYS.forEach((key) => {
+  WORLD_RESET_TOGGLE_KEYS.forEach((key) => {
     const input = store.worldResetInputs[key];
     if (!input) {
       return;
@@ -289,6 +312,17 @@ function syncWorldResetControls() {
       input.checked = desired;
     }
   });
+
+  const seedInput = store.worldResetInputs.seed;
+  if (seedInput) {
+    const desiredSeed =
+      typeof cfg.seed === "string" && cfg.seed.trim().length > 0
+        ? cfg.seed
+        : DEFAULT_WORLD_SEED;
+    if (!store.worldResetDirtyFields.seed) {
+      seedInput.value = desiredSeed;
+    }
+  }
 }
 
 function setWorldResetPending(pending) {
@@ -318,10 +352,15 @@ function initializeWorldResetControls() {
   }
 
   if (!store.worldResetDirtyFields) {
-    store.worldResetDirtyFields = { obstacles: false, npcs: false, lava: false };
+    store.worldResetDirtyFields = {
+      obstacles: false,
+      npcs: false,
+      lava: false,
+      seed: false,
+    };
   }
 
-  const registerDirtyTracking = (key) => {
+  const registerToggleDirtyTracking = (key) => {
     const input = store.worldResetInputs[key];
     if (!input) {
       return;
@@ -336,7 +375,21 @@ function initializeWorldResetControls() {
     input.addEventListener("input", updateDirtyState);
   };
 
-  WORLD_RESET_KEYS.forEach(registerDirtyTracking);
+  WORLD_RESET_TOGGLE_KEYS.forEach(registerToggleDirtyTracking);
+
+  const seedInput = store.worldResetInputs.seed;
+  if (seedInput) {
+    const updateSeedDirtyState = () => {
+      const expected =
+        typeof store.worldConfig?.seed === "string" &&
+        store.worldConfig.seed.trim().length > 0
+          ? store.worldConfig.seed
+          : DEFAULT_WORLD_SEED;
+      store.worldResetDirtyFields.seed = seedInput.value !== expected;
+    };
+    seedInput.addEventListener("input", updateSeedDirtyState);
+    seedInput.addEventListener("change", updateSeedDirtyState);
+  }
 
   store.worldResetForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -348,13 +401,14 @@ function initializeWorldResetControls() {
       obstacles: !!store.worldResetInputs.obstacles?.checked,
       npcs: !!store.worldResetInputs.npcs?.checked,
       lava: !!store.worldResetInputs.lava?.checked,
+      seed: store.worldResetInputs.seed?.value?.trim() || "",
     };
 
     setWorldResetPending(true);
     showWorldResetStatus("Restarting world...");
     try {
       await resetWorld(store, desiredConfig);
-      WORLD_RESET_KEYS.forEach((key) => {
+      WORLD_RESET_CONFIG_KEYS.forEach((key) => {
         store.worldResetDirtyFields[key] = false;
       });
       syncWorldResetControls();

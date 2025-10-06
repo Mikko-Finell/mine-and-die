@@ -111,6 +111,25 @@
                       </span>
                     </label>
                   </div>
+                  <div class="world-reset-field">
+                    <label class="world-reset-field__label" for="world-reset-seed">
+                      World seed
+                    </label>
+                    <input
+                      id="world-reset-seed"
+                      name="seed"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="prototype"
+                      class="world-reset-field__input"
+                      aria-describedby="world-reset-seed-hint"
+                    />
+                    <p id="world-reset-seed-hint" class="world-reset-field__hint">
+                      Runs with the same seed produce identical obstacle layouts and AI randomness.
+                    </p>
+                  </div>
                   <div class="world-reset-actions">
                     <button type="submit" class="world-reset-button">Restart world</button>
                     <p

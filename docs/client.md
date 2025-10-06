@@ -4,7 +4,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 
 ## Module Overview
 - `index.html` – Declares the canvas, status text, diagnostics panel, and loads `main.js` via `<script type="module">`.
-- `main.js` – Builds the shared `store` object, wires diagnostics UI, and starts input, render, and networking flows.
+- `main.js` – Builds the shared `store` object, wires diagnostics UI, and starts input, render, and networking flows. The debug panel world reset form exposes toggles plus a deterministic seed input so QA can regenerate identical layouts on demand.
 - `network.js` – Handles the `/join` handshake, WebSocket lifecycle, heartbeat timers, and outbound message helpers.
 - `input.js` – Converts keyboard events into normalized intents and action messages.
 - `render.js` – Performs `<canvas>` drawing, lerps network state to display positions, and renders effects/obstacles.
@@ -18,6 +18,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Player dictionaries: `players` (authoritative) and `displayPlayers` (interpolated positions).
 - NPC dictionaries: `npcs` mirrors neutral enemies from the server, `displayNPCs` lerps their positions for rendering.
 - Arrays for `obstacles` and `effects` mirrored from server payloads.
+- `worldConfig` mirrors the server's toggles along with the deterministic `seed` string used when restarting the world from the debug panel.
 
 ## Initialization Sequence
 1. `main.js` prepares UI helpers, attaches diagnostics toggles, and registers the latency override input.

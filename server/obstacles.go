@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"time"
 )
 
 const (
@@ -29,7 +28,7 @@ func (w *World) generateObstacles(count int) []Obstacle {
 		return nil
 	}
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := w.subsystemRNG("obstacles.base")
 	baseCount := count
 	if baseCount < 0 {
 		baseCount = 0
@@ -81,7 +80,8 @@ func (w *World) generateObstacles(count int) []Obstacle {
 		obstacles = append(obstacles, candidate)
 	}
 
-	goldOre := w.generateGoldOreNodes(goldOreCount, obstacles, rng)
+	oreRNG := w.subsystemRNG("obstacles.gold")
+	goldOre := w.generateGoldOreNodes(goldOreCount, obstacles, oreRNG)
 	obstacles = append(obstacles, goldOre...)
 
 	if w.config.Lava {
