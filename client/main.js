@@ -20,8 +20,17 @@ const inventoryGrid = document.getElementById("inventory-grid");
 const worldResetForm = document.getElementById("world-reset-form");
 const worldResetStatus = document.getElementById("world-reset-status");
 const worldResetObstacles = document.getElementById("world-reset-obstacles");
+const worldResetObstaclesCount = document.getElementById(
+  "world-reset-obstacles-count",
+);
 const worldResetNPCs = document.getElementById("world-reset-npcs");
+const worldResetNPCCount = document.getElementById("world-reset-npcs-count");
 const worldResetLava = document.getElementById("world-reset-lava");
+const worldResetLavaCount = document.getElementById("world-reset-lava-count");
+const worldResetGoldMines = document.getElementById("world-reset-gold-mines");
+const worldResetGoldMineCount = document.getElementById(
+  "world-reset-gold-mines-count",
+);
 const worldResetSeed = document.getElementById("world-reset-seed");
 
 const diagnosticsEls = {
@@ -43,8 +52,36 @@ const ITEM_METADATA = {
   health_potion: { name: "Lesser Healing Potion", icon: "🧪" },
 };
 
-const WORLD_RESET_TOGGLE_KEYS = ["obstacles", "npcs", "lava"];
-const WORLD_RESET_CONFIG_KEYS = [...WORLD_RESET_TOGGLE_KEYS, "seed"];
+const WORLD_RESET_TOGGLE_KEYS = ["obstacles", "npcs", "lava", "goldMines"];
+const WORLD_RESET_COUNT_KEYS = [
+  "obstaclesCount",
+  "npcCount",
+  "lavaCount",
+  "goldMineCount",
+];
+const WORLD_RESET_COUNT_BY_TOGGLE = {
+  obstacles: "obstaclesCount",
+  npcs: "npcCount",
+  lava: "lavaCount",
+  goldMines: "goldMineCount",
+};
+const WORLD_RESET_CONFIG_KEYS = [
+  ...WORLD_RESET_TOGGLE_KEYS,
+  ...WORLD_RESET_COUNT_KEYS,
+  "seed",
+];
+
+const DEFAULT_WORLD_CONFIG = {
+  obstacles: true,
+  obstaclesCount: 2,
+  goldMines: true,
+  goldMineCount: 1,
+  npcs: true,
+  npcCount: 3,
+  lava: true,
+  lavaCount: 3,
+  seed: DEFAULT_WORLD_SEED,
+};
 
 const store = {
   statusEl,
@@ -62,14 +99,24 @@ const store = {
   worldResetStatusEl: worldResetStatus,
   worldResetInputs: {
     obstacles: worldResetObstacles,
+    obstaclesCount: worldResetObstaclesCount,
     npcs: worldResetNPCs,
+    npcCount: worldResetNPCCount,
     lava: worldResetLava,
+    lavaCount: worldResetLavaCount,
+    goldMines: worldResetGoldMines,
+    goldMineCount: worldResetGoldMineCount,
     seed: worldResetSeed,
   },
   worldResetDirtyFields: {
     obstacles: false,
+    obstaclesCount: false,
     npcs: false,
+    npcCount: false,
     lava: false,
+    lavaCount: false,
+    goldMines: false,
+    goldMineCount: false,
     seed: false,
   },
   TILE_SIZE: 40,
@@ -110,12 +157,7 @@ const store = {
   lastPathRequestAt: null,
   effects: [],
   inventorySlotCount: DEFAULT_INVENTORY_SLOTS,
-  worldConfig: {
-    obstacles: true,
-    npcs: true,
-    lava: true,
-    seed: DEFAULT_WORLD_SEED,
-  },
+  worldConfig: { ...DEFAULT_WORLD_CONFIG },
   isResettingWorld: false,
   updateWorldConfigUI: null,
   lastWorldResetAt: null,
@@ -286,16 +328,45 @@ function updateDiagnostics() {
   }
 }
 
-function syncWorldResetControls() {
-  const cfg = store.worldConfig || {};
+function ensureWorldResetDirtyFields() {
   if (!store.worldResetDirtyFields) {
-    store.worldResetDirtyFields = {
-      obstacles: false,
-      npcs: false,
-      lava: false,
-      seed: false,
-    };
+    store.worldResetDirtyFields = {};
   }
+  WORLD_RESET_CONFIG_KEYS.forEach((key) => {
+    if (typeof store.worldResetDirtyFields[key] !== "boolean") {
+      store.worldResetDirtyFields[key] = false;
+    }
+  });
+}
+
+function getConfigCount(cfg, key) {
+  const raw = Number(cfg?.[key]);
+  if (Number.isFinite(raw)) {
+    return Math.max(0, Math.floor(raw));
+  }
+  const fallback = Number(DEFAULT_WORLD_CONFIG[key]);
+  if (Number.isFinite(fallback)) {
+    return Math.max(0, Math.floor(fallback));
+  }
+  return 0;
+}
+
+function updateCountDisabledState(toggleKey) {
+  const countKey = WORLD_RESET_COUNT_BY_TOGGLE[toggleKey];
+  if (!countKey) {
+    return;
+  }
+  const toggleInput = store.worldResetInputs[toggleKey];
+  const countInput = store.worldResetInputs[countKey];
+  if (!countInput) {
+    return;
+  }
+  countInput.disabled = !toggleInput?.checked;
+}
+
+function syncWorldResetControls() {
+  const cfg = store.worldConfig || DEFAULT_WORLD_CONFIG;
+  ensureWorldResetDirtyFields();
 
   WORLD_RESET_TOGGLE_KEYS.forEach((key) => {
     const input = store.worldResetInputs[key];
@@ -310,6 +381,24 @@ function syncWorldResetControls() {
 
     if (!store.worldResetDirtyFields[key]) {
       input.checked = desired;
+    }
+    updateCountDisabledState(key);
+  });
+
+  WORLD_RESET_COUNT_KEYS.forEach((key) => {
+    const input = store.worldResetInputs[key];
+    if (!input) {
+      return;
+    }
+
+    const desiredValue = getConfigCount(cfg, key);
+    const currentValue = Number.parseInt(input.value, 10);
+    if (Number.isFinite(currentValue) && currentValue === desiredValue) {
+      store.worldResetDirtyFields[key] = false;
+    }
+
+    if (!store.worldResetDirtyFields[key]) {
+      input.value = String(desiredValue);
     }
   });
 
@@ -336,6 +425,9 @@ function setWorldResetPending(pending) {
       element.disabled = pending;
     }
   });
+  if (!pending) {
+    WORLD_RESET_TOGGLE_KEYS.forEach((key) => updateCountDisabledState(key));
+  }
 }
 
 function showWorldResetStatus(message, isError = false) {
@@ -351,14 +443,7 @@ function initializeWorldResetControls() {
     return;
   }
 
-  if (!store.worldResetDirtyFields) {
-    store.worldResetDirtyFields = {
-      obstacles: false,
-      npcs: false,
-      lava: false,
-      seed: false,
-    };
-  }
+  ensureWorldResetDirtyFields();
 
   const registerToggleDirtyTracking = (key) => {
     const input = store.worldResetInputs[key];
@@ -367,15 +452,37 @@ function initializeWorldResetControls() {
     }
 
     const updateDirtyState = () => {
-      const expected = store.worldConfig ? store.worldConfig[key] !== false : true;
+      const expectedConfig = store.worldConfig || DEFAULT_WORLD_CONFIG;
+      const expected = expectedConfig[key] !== false;
       store.worldResetDirtyFields[key] = input.checked !== expected;
+      updateCountDisabledState(key);
     };
 
     input.addEventListener("change", updateDirtyState);
     input.addEventListener("input", updateDirtyState);
+    updateCountDisabledState(key);
   };
 
   WORLD_RESET_TOGGLE_KEYS.forEach(registerToggleDirtyTracking);
+
+  const registerCountDirtyTracking = (key) => {
+    const input = store.worldResetInputs[key];
+    if (!input) {
+      return;
+    }
+
+    const updateDirtyState = () => {
+      const expected = getConfigCount(store.worldConfig || DEFAULT_WORLD_CONFIG, key);
+      const parsed = Number.parseInt(input.value, 10);
+      const normalized = Number.isFinite(parsed) ? Math.max(0, parsed) : expected;
+      store.worldResetDirtyFields[key] = normalized !== expected;
+    };
+
+    input.addEventListener("input", updateDirtyState);
+    input.addEventListener("change", updateDirtyState);
+  };
+
+  WORLD_RESET_COUNT_KEYS.forEach(registerCountDirtyTracking);
 
   const seedInput = store.worldResetInputs.seed;
   if (seedInput) {
@@ -397,10 +504,27 @@ function initializeWorldResetControls() {
       return;
     }
 
+    const parseCountValue = (key) => {
+      const input = store.worldResetInputs[key];
+      if (!input) {
+        return getConfigCount(store.worldConfig || DEFAULT_WORLD_CONFIG, key);
+      }
+      const parsed = Number.parseInt(input.value, 10);
+      if (Number.isFinite(parsed)) {
+        return Math.max(0, parsed);
+      }
+      return getConfigCount(store.worldConfig || DEFAULT_WORLD_CONFIG, key);
+    };
+
     const desiredConfig = {
       obstacles: !!store.worldResetInputs.obstacles?.checked,
+      obstaclesCount: parseCountValue("obstaclesCount"),
+      goldMines: !!store.worldResetInputs.goldMines?.checked,
+      goldMineCount: parseCountValue("goldMineCount"),
       npcs: !!store.worldResetInputs.npcs?.checked,
+      npcCount: parseCountValue("npcCount"),
       lava: !!store.worldResetInputs.lava?.checked,
+      lavaCount: parseCountValue("lavaCount"),
       seed: store.worldResetInputs.seed?.value?.trim() || "",
     };
 

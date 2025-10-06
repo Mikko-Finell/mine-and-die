@@ -4,7 +4,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 
 ## Module Overview
 - `index.html` – Declares the canvas, status text, diagnostics panel, and loads `main.js` via `<script type="module">`.
-- `main.js` – Builds the shared `store` object, wires diagnostics UI, and starts input, render, and networking flows. The debug panel world reset form exposes toggles plus a deterministic seed input so QA can regenerate identical layouts on demand.
+- `main.js` – Builds the shared `store` object, wires diagnostics UI, and starts input, render, and networking flows. The debug panel world reset form exposes toggles, per-system spawn counts, and a deterministic seed input so QA can regenerate identical layouts on demand.
 - `network.js` – Handles the `/join` handshake, WebSocket lifecycle, heartbeat timers, and outbound message helpers.
 - `input.js` – Converts keyboard events into normalized intents and action messages.
 - `render.js` – Performs `<canvas>` drawing, lerps network state to display positions, and renders effects/obstacles.

@@ -78,38 +78,145 @@
               <div class="debug-section__content">
                 <form id="world-reset-form" class="world-reset-form">
                   <div class="world-reset-grid">
-                    <label class="world-reset-toggle" for="world-reset-obstacles">
-                      <input
-                        type="checkbox"
-                        id="world-reset-obstacles"
-                        name="obstacles"
-                        checked
-                      />
-                      <span class="world-reset-toggle__body">
-                        <span class="world-reset-toggle__title">Enable obstacles</span>
-                        <span class="world-reset-toggle__hint"
-                          >Spawn rocks, ore veins, and collision geometry.</span
+                    <div class="world-reset-option">
+                      <label class="world-reset-toggle" for="world-reset-obstacles">
+                        <input
+                          type="checkbox"
+                          id="world-reset-obstacles"
+                          name="obstacles"
+                          checked
+                        />
+                        <span class="world-reset-toggle__body">
+                          <span class="world-reset-toggle__title">Enable obstacles</span>
+                          <span class="world-reset-toggle__hint"
+                            >Spawn rocks, ore veins, and collision geometry.</span
+                          >
+                        </span>
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-obstacles-count"
+                      >
+                        <span class="world-reset-quantity__label">Count</span>
+                        <input
+                          id="world-reset-obstacles-count"
+                          name="obstaclesCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="2"
+                          class="world-reset-quantity__input"
+                          aria-label="Obstacle count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >How many large rocks to scatter around the map.</span
                         >
-                      </span>
-                    </label>
-                    <label class="world-reset-toggle" for="world-reset-npcs">
-                      <input type="checkbox" id="world-reset-npcs" name="npcs" checked />
-                      <span class="world-reset-toggle__body">
-                        <span class="world-reset-toggle__title">Enable NPCs</span>
-                        <span class="world-reset-toggle__hint"
-                          >Populate the mine with neutral enemies.</span
+                      </label>
+                    </div>
+                    <div class="world-reset-option">
+                      <label class="world-reset-toggle" for="world-reset-npcs">
+                        <input
+                          type="checkbox"
+                          id="world-reset-npcs"
+                          name="npcs"
+                          checked
+                        />
+                        <span class="world-reset-toggle__body">
+                          <span class="world-reset-toggle__title">Enable NPCs</span>
+                          <span class="world-reset-toggle__hint"
+                            >Populate the mine with neutral enemies.</span
+                          >
+                        </span>
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-npcs-count"
+                      >
+                        <span class="world-reset-quantity__label">Count</span>
+                        <input
+                          id="world-reset-npcs-count"
+                          name="npcCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="3"
+                          class="world-reset-quantity__input"
+                          aria-label="NPC count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >How many neutral enemies should patrol.</span
                         >
-                      </span>
-                    </label>
-                    <label class="world-reset-toggle" for="world-reset-lava">
-                      <input type="checkbox" id="world-reset-lava" name="lava" checked />
-                      <span class="world-reset-toggle__body">
-                        <span class="world-reset-toggle__title">Enable lava</span>
-                        <span class="world-reset-toggle__hint"
-                          >Include flowing lava pools and hazards.</span
+                      </label>
+                    </div>
+                    <div class="world-reset-option">
+                      <label class="world-reset-toggle" for="world-reset-lava">
+                        <input type="checkbox" id="world-reset-lava" name="lava" checked />
+                        <span class="world-reset-toggle__body">
+                          <span class="world-reset-toggle__title">Enable lava</span>
+                          <span class="world-reset-toggle__hint"
+                            >Include flowing lava pools and hazards.</span
+                          >
+                        </span>
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-lava-count"
+                      >
+                        <span class="world-reset-quantity__label">Count</span>
+                        <input
+                          id="world-reset-lava-count"
+                          name="lavaCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="3"
+                          class="world-reset-quantity__input"
+                          aria-label="Lava pool count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >Limit how many lava pools appear.</span
                         >
-                      </span>
-                    </label>
+                      </label>
+                    </div>
+                    <div class="world-reset-option">
+                      <label class="world-reset-toggle" for="world-reset-gold-mines">
+                        <input
+                          type="checkbox"
+                          id="world-reset-gold-mines"
+                          name="goldMines"
+                          checked
+                        />
+                        <span class="world-reset-toggle__body">
+                          <span class="world-reset-toggle__title">Enable gold mines</span>
+                          <span class="world-reset-toggle__hint"
+                            >Scatter rich ore deposits for mining.</span
+                          >
+                        </span>
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-gold-mines-count"
+                      >
+                        <span class="world-reset-quantity__label">Count</span>
+                        <input
+                          id="world-reset-gold-mines-count"
+                          name="goldMineCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="1"
+                          class="world-reset-quantity__input"
+                          aria-label="Gold mine count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >Choose how many ore veins are generated.</span
+                        >
+                      </label>
+                    </div>
                   </div>
                   <div class="world-reset-field">
                     <label class="world-reset-field__label" for="world-reset-seed">

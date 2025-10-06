@@ -13,14 +13,16 @@ const (
 	lavaDamagePerSecond   = 20.0
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
-	obstacleCount         = 2
+	defaultObstacleCount  = 2
 	obstacleMinWidth      = 60.0
 	obstacleMaxWidth      = 140.0
 	obstacleMinHeight     = 60.0
 	obstacleMaxHeight     = 140.0
 	obstacleSpawnMargin   = 100.0
 	playerSpawnSafeRadius = 120.0
-	goldOreCount          = 4
+	defaultGoldMineCount  = 1
+	defaultNPCCount       = 3
+	defaultLavaCount      = 3
 	goldOreMinSize        = 56.0
 	goldOreMaxSize        = 96.0
 )

@@ -21,71 +21,69 @@ type Obstacle struct {
 
 // generateObstacles scatters blocking rectangles and ore deposits around the map.
 func (w *World) generateObstacles(count int) []Obstacle {
-	if !w.config.Obstacles {
-		if w.config.Lava {
-			return w.generateLavaPools(nil)
-		}
-		return nil
-	}
-
-	rng := w.subsystemRNG("obstacles.base")
 	baseCount := count
 	if baseCount < 0 {
 		baseCount = 0
 	}
 
 	obstacles := make([]Obstacle, 0, baseCount)
-	attempts := 0
-	maxAttempts := baseCount * 20
 
-	for len(obstacles) < baseCount && attempts < maxAttempts {
-		attempts++
+	if w.config.Obstacles && baseCount > 0 {
+		rng := w.subsystemRNG("obstacles.base")
+		attempts := 0
+		maxAttempts := baseCount * 20
 
-		width := obstacleMinWidth + rng.Float64()*(obstacleMaxWidth-obstacleMinWidth)
-		height := obstacleMinHeight + rng.Float64()*(obstacleMaxHeight-obstacleMinHeight)
+		for len(obstacles) < baseCount && attempts < maxAttempts {
+			attempts++
 
-		maxX := worldWidth - obstacleSpawnMargin - width
-		maxY := worldHeight - obstacleSpawnMargin - height
-		if maxX <= obstacleSpawnMargin || maxY <= obstacleSpawnMargin {
-			break
-		}
+			width := obstacleMinWidth + rng.Float64()*(obstacleMaxWidth-obstacleMinWidth)
+			height := obstacleMinHeight + rng.Float64()*(obstacleMaxHeight-obstacleMinHeight)
 
-		x := obstacleSpawnMargin + rng.Float64()*(maxX-obstacleSpawnMargin)
-		y := obstacleSpawnMargin + rng.Float64()*(maxY-obstacleSpawnMargin)
-
-		candidate := Obstacle{
-			ID:     fmt.Sprintf("obstacle-%d", len(obstacles)+1),
-			X:      x,
-			Y:      y,
-			Width:  width,
-			Height: height,
-		}
-
-		if circleRectOverlap(80, 80, playerSpawnSafeRadius, candidate) {
-			continue
-		}
-
-		overlapsExisting := false
-		for _, obs := range obstacles {
-			if obstaclesOverlap(candidate, obs, playerHalf) {
-				overlapsExisting = true
+			maxX := worldWidth - obstacleSpawnMargin - width
+			maxY := worldHeight - obstacleSpawnMargin - height
+			if maxX <= obstacleSpawnMargin || maxY <= obstacleSpawnMargin {
 				break
 			}
-		}
 
-		if overlapsExisting {
-			continue
-		}
+			x := obstacleSpawnMargin + rng.Float64()*(maxX-obstacleSpawnMargin)
+			y := obstacleSpawnMargin + rng.Float64()*(maxY-obstacleSpawnMargin)
 
-		obstacles = append(obstacles, candidate)
+			candidate := Obstacle{
+				ID:     fmt.Sprintf("obstacle-%d", len(obstacles)+1),
+				X:      x,
+				Y:      y,
+				Width:  width,
+				Height: height,
+			}
+
+			if circleRectOverlap(80, 80, playerSpawnSafeRadius, candidate) {
+				continue
+			}
+
+			overlapsExisting := false
+			for _, obs := range obstacles {
+				if obstaclesOverlap(candidate, obs, playerHalf) {
+					overlapsExisting = true
+					break
+				}
+			}
+
+			if overlapsExisting {
+				continue
+			}
+
+			obstacles = append(obstacles, candidate)
+		}
 	}
 
-	oreRNG := w.subsystemRNG("obstacles.gold")
-	goldOre := w.generateGoldOreNodes(goldOreCount, obstacles, oreRNG)
-	obstacles = append(obstacles, goldOre...)
+	if w.config.GoldMines && w.config.GoldMineCount > 0 {
+		oreRNG := w.subsystemRNG("obstacles.gold")
+		goldOre := w.generateGoldOreNodes(w.config.GoldMineCount, obstacles, oreRNG)
+		obstacles = append(obstacles, goldOre...)
+	}
 
 	if w.config.Lava {
-		lavaPools := w.generateLavaPools(obstacles)
+		lavaPools := w.generateLavaPools(w.config.LavaCount, obstacles)
 		obstacles = append(obstacles, lavaPools...)
 	}
 
@@ -161,7 +159,11 @@ func (w *World) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.R
 }
 
 // generateLavaPools inserts deterministic lava hazards that remain walkable but harmful.
-func (w *World) generateLavaPools(existing []Obstacle) []Obstacle {
+func (w *World) generateLavaPools(count int, existing []Obstacle) []Obstacle {
+	if count <= 0 {
+		return nil
+	}
+
 	templates := []Obstacle{
 		{ID: "lava-1", Type: obstacleTypeLava, X: 320, Y: 120, Width: 80, Height: 80},
 		{ID: "lava-2", Type: obstacleTypeLava, X: 520, Y: 260, Width: 80, Height: 80},
@@ -170,9 +172,21 @@ func (w *World) generateLavaPools(existing []Obstacle) []Obstacle {
 
 	pools := make([]Obstacle, 0, len(templates))
 	for _, tpl := range templates {
+		if len(pools) >= count {
+			break
+		}
 		overlaps := false
 		for _, obs := range existing {
 			if obstaclesOverlap(tpl, obs, 0) {
+				overlaps = true
+				break
+			}
+		}
+		if overlaps {
+			continue
+		}
+		for _, pool := range pools {
+			if obstaclesOverlap(tpl, pool, 0) {
 				overlaps = true
 				break
 			}
