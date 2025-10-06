@@ -12,6 +12,9 @@ func (w *World) followNPCPath(npc *npcState, tick uint64) {
 	if npc == nil {
 		return
 	}
+	if npc.Type == NPCTypeRat {
+		return
+	}
 	bb := &npc.Blackboard
 	if len(bb.Path) == 0 {
 		npc.intentX = 0

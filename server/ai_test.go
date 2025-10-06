@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"math/rand"
 	"testing"
 	"time"
 )
@@ -14,6 +15,7 @@ func newStaticAIWorld() (*World, *npcState) {
 		effectBehaviors: newEffectBehaviors(),
 		obstacles:       nil,
 		aiLibrary:       globalAILibrary,
+		rng:             rand.New(rand.NewSource(1)),
 	}
 
 	npc := &npcState{

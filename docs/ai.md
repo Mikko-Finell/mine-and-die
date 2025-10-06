@@ -39,3 +39,11 @@ Because actions only enqueue commands, the simulation loop remains the single au
 - `Wait` executes every tick, calls `stop()`, sets a timer for `pause_ticks`, advances the waypoint index once on entry, and returns to `Patrol` when the timer expires.
 
 The defaults seed goblins with two waypoints, pause for half a second (~30 ticks), and detect stuck behaviour using a small epsilon. Adding new archetypes follows the same pattern—extend the JSON, cover it with table-driven tests, and the executor requires no modifications.
+
+## Rat Scavenger Behaviour
+
+Rats are lightweight ambience critters implemented directly in Go (`server/rat_ai.go`). They do not use the JSON FSM pipeline—the executor short-circuits to a bespoke wander/flee routine when it sees `type: "rat"`.
+
+- **Wandering.** Each rat remembers its spawn position and periodically picks a random target within ~200 pixels using the world's deterministic RNG. Movement commands are emitted at a reduced speed so the critter meanders instead of sprinting like a player.
+- **Threat response.** If any non-rat actor (player or hostile NPC) comes within 140 pixels, the rat stores a flee vector and issues full-speed move commands away from the intruder for roughly four seconds. The flee logic also fires when a goblin walks past, keeping ambience NPCs from clustering around fights.
+- **Testing.** `server/rat_test.go` exercises both behaviours: rats eventually leave their spawn point when left alone and gain distance from nearby threats.

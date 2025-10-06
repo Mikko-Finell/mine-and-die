@@ -7,6 +7,7 @@ type NPCType string
 
 const (
 	NPCTypeGoblin NPCType = "goblin"
+	NPCTypeRat    NPCType = "rat"
 )
 
 // NPC describes an AI-controlled entity mirrored to the client.
@@ -26,6 +27,12 @@ type npcState struct {
 	Blackboard       npcBlackboard
 	Waypoints        []vec2
 	cooldowns        map[string]time.Time
+
+	wanderOrigin   vec2
+	wanderTarget   vec2
+	nextWanderTick uint64
+	fleeUntilTick  uint64
+	fleeVector     vec2
 }
 
 func (s *npcState) snapshot() NPC {

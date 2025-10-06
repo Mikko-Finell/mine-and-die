@@ -40,6 +40,20 @@ func (w *World) runAI(tick uint64, now time.Time) ([]Command, []Event) {
 			w.updateBlackboard(npc)
 			continue
 		}
+		if npc.Type == NPCTypeRat {
+			if decisions >= maxAIDecisionsPerTick {
+				npc.Blackboard.NextDecisionAt = tick + 1
+				w.updateBlackboard(npc)
+				continue
+			}
+			decisions++
+			if ratCommands := w.runRatBehavior(npc, tick, now); len(ratCommands) > 0 {
+				commands = append(commands, ratCommands...)
+			}
+			npc.Blackboard.LastDecisionTick = tick
+			w.updateBlackboard(npc)
+			continue
+		}
 		if npc.AIConfigID == 0 {
 			continue
 		}
@@ -49,10 +63,10 @@ func (w *World) runAI(tick uint64, now time.Time) ([]Command, []Event) {
 		}
 		if decisions >= maxAIDecisionsPerTick {
 			npc.Blackboard.NextDecisionAt = tick + 1
+			w.updateBlackboard(npc)
 			continue
 		}
 		decisions++
-
 		stateIndex := npc.AIState
 		if int(stateIndex) >= len(cfg.states) {
 			stateIndex = cfg.initialState
