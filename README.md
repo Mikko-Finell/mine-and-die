@@ -58,7 +58,7 @@ NPC behaviour is authored as declarative finite state machines. Designers write 
 3. Executes the state's actions, which only enqueue standard commands (`CommandMove`, `CommandAction`, etc.).
 4. Updates per-NPC blackboards (timer bookkeeping, waypoint indices, stuck counters) and schedules the next evaluation tick.
 
-The initial `goblin` patrol uses a simple `Patrol ↔ Wait` loop defined in `server/ai_configs/goblin.json`. Additional behaviours can reuse the same condition/action library without modifying the tick loop.
+The initial `goblin` patrol uses a simple `Patrol ↔ Wait` loop (`server/ai_configs/goblin.json`). The new `rat` archetype demonstrates random roaming and flee logic powered by `setRandomDestination`, `nonRatWithin`, and `moveAway` without changing the tick loop—just add a config and tests.
 
 ## Getting Started
 1. **Install dependencies** – Go ≥ 1.22 is required. Node.js is optional for future tooling.

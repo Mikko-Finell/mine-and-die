@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"math/rand"
 	"testing"
 	"time"
 )
@@ -15,6 +16,7 @@ func newStaticAIWorld() (*World, *npcState) {
 		obstacles:       nil,
 		aiLibrary:       globalAILibrary,
 	}
+	w.rng = rand.New(rand.NewSource(1))
 
 	npc := &npcState{
 		actorState: actorState{
@@ -61,6 +63,59 @@ func newStaticAIWorld() (*World, *npcState) {
 
 	w.npcs[npc.ID] = npc
 	return w, npc
+}
+
+func newRatTestWorld() (*World, *npcState) {
+	w := &World{
+		players:         make(map[string]*playerState),
+		npcs:            make(map[string]*npcState),
+		effects:         make([]*effectState, 0),
+		effectBehaviors: newEffectBehaviors(),
+		obstacles:       nil,
+		aiLibrary:       globalAILibrary,
+	}
+	w.rng = rand.New(rand.NewSource(7))
+
+	rat := &npcState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        "npc-rat-test",
+				X:         420,
+				Y:         360,
+				Facing:    defaultFacing,
+				Health:    18,
+				MaxHealth: 18,
+				Inventory: NewInventory(),
+			},
+		},
+		Type:             NPCTypeRat,
+		ExperienceReward: 8,
+		Home:             vec2{X: 420, Y: 360},
+	}
+
+	if w.aiLibrary != nil {
+		if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
+			rat.AIConfigID = cfg.id
+			rat.AIState = cfg.initialState
+			cfg.applyDefaults(&rat.Blackboard)
+		}
+	}
+	if rat.Blackboard.ArriveRadius <= 0 {
+		rat.Blackboard.ArriveRadius = 10
+	}
+	if rat.Blackboard.PauseTicks == 0 {
+		rat.Blackboard.PauseTicks = 20
+	}
+	if rat.Blackboard.StuckEpsilon <= 0 {
+		rat.Blackboard.StuckEpsilon = 0.4
+	}
+	rat.Blackboard.WaypointIndex = 0
+	rat.Blackboard.NextDecisionAt = 0
+	rat.Blackboard.LastWaypointIndex = -1
+	rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
+
+	w.npcs[rat.ID] = rat
+	return w, rat
 }
 
 func TestGoblinPatrolsBetweenWaypoints(t *testing.T) {
@@ -188,5 +243,110 @@ func TestAISimulationDeterminism(t *testing.T) {
 		if math.Abs(npc1.X-npc2.X) > 1e-6 || math.Abs(npc1.Y-npc2.Y) > 1e-6 {
 			t.Fatalf("npc positions diverged at tick %d", tick)
 		}
+	}
+}
+
+func TestRatWandersAndPicksNewDestinations(t *testing.T) {
+	w, rat := newRatTestWorld()
+	if rat == nil {
+		t.Fatalf("expected rat NPC")
+	}
+
+	dt := 1.0 / float64(tickRate)
+	now := time.Unix(0, 0)
+	startX := rat.X
+	startY := rat.Y
+	moved := false
+	targets := make(map[[2]int]struct{})
+
+	for tick := uint64(1); tick <= 400; tick++ {
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+
+		if !moved {
+			dx := rat.X - startX
+			dy := rat.Y - startY
+			if math.Hypot(dx, dy) > 15 {
+				moved = true
+			}
+		}
+
+		target := rat.Blackboard.PathTarget
+		if target.X != 0 || target.Y != 0 {
+			key := [2]int{int(math.Round(target.X)), int(math.Round(target.Y))}
+			targets[key] = struct{}{}
+		}
+	}
+
+	if !moved {
+		t.Fatalf("expected rat to wander away from its starting point")
+	}
+	if len(targets) < 2 {
+		t.Fatalf("expected rat to select multiple roam targets, saw %d", len(targets))
+	}
+}
+
+func TestRatFleesFromNearbyThreat(t *testing.T) {
+	w, rat := newRatTestWorld()
+	if rat == nil {
+		t.Fatalf("expected rat NPC")
+	}
+
+	player := &playerState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        "player-threat",
+				X:         rat.X + 20,
+				Y:         rat.Y,
+				Facing:    defaultFacing,
+				Health:    playerMaxHealth,
+				MaxHealth: playerMaxHealth,
+				Inventory: NewInventory(),
+			},
+		},
+	}
+	w.players[player.ID] = player
+
+	var fleeStateID uint8 = 255
+	if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
+		for idx, name := range cfg.stateNames {
+			if name == "Flee" {
+				fleeStateID = uint8(idx)
+				break
+			}
+		}
+	}
+	if fleeStateID == 255 {
+		t.Fatalf("failed to locate flee state in rat config")
+	}
+
+	dt := 1.0 / float64(tickRate)
+	now := time.Unix(0, 0)
+	entered := false
+	entryTick := uint64(0)
+
+	for tick := uint64(1); tick <= 240; tick++ {
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+		if rat.AIState == fleeStateID {
+			entered = true
+			entryTick = tick
+			break
+		}
+	}
+
+	if !entered {
+		t.Fatalf("expected rat to enter flee state when threatened")
+	}
+
+	entryDist := math.Hypot(rat.X-player.X, rat.Y-player.Y)
+	for offset := uint64(1); offset <= 90; offset++ {
+		tick := entryTick + offset
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+	}
+	finalDist := math.Hypot(rat.X-player.X, rat.Y-player.Y)
+	if finalDist <= entryDist+1e-3 {
+		t.Fatalf("expected rat to increase distance from threat (%.2f -> %.2f)", entryDist, finalDist)
 	}
 }

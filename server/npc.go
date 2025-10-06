@@ -7,6 +7,7 @@ type NPCType string
 
 const (
 	NPCTypeGoblin NPCType = "goblin"
+	NPCTypeRat    NPCType = "rat"
 )
 
 // NPC describes an AI-controlled entity mirrored to the client.
@@ -25,6 +26,7 @@ type npcState struct {
 	AIConfigID       uint16
 	Blackboard       npcBlackboard
 	Waypoints        []vec2
+	Home             vec2
 	cooldowns        map[string]time.Time
 }
 

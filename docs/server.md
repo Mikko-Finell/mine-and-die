@@ -55,7 +55,7 @@ Systems append structured `Event` entries (movement, health deltas, effect spawn
 
 ### Neutral Enemies
 - NPCs reuse the shared `Actor` struct for position, facing, health, and inventories, and add fields like `Type`, `AIControlled`, and `ExperienceReward`.
-- `spawnInitialNPCs` currently seeds a stationary goblin with gold and a potion. Additional spawns append `npcState` entries within the world's mutex-protected sections.
+- `spawnInitialNPCs` seeds multiple archetypes: goblins patrol fixed waypoints with lootable inventories while rats wander their den and flee when non-rat actors intrude. Additional spawns append `npcState` entries within the world's mutex-protected sections.
 - Snapshots include a `npcs` array alongside the existing `players`, enabling the client to render and later target neutral enemies without special casing.
 
 ### Actions, Health, and Cooldowns
