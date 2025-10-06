@@ -12,8 +12,8 @@ Each config targets a single NPC archetype and contains:
 
 States reference declarative actions and conditions from the shared library:
 
-- **Actions** (`actions[]`) enqueue commands or tweak blackboard data without mutating world state. Examples include `moveToward`, `stop`, `setTimer`, `setWaypoint`, and `useAbility`.
-- **Transitions** (`transitions[]`) evaluate conditions in order (`reachedWaypoint`, `timerExpired`, `playerWithin`, `stuck`, etc.). The first condition that returns true selects the next state.
+- **Actions** (`actions[]`) enqueue commands or tweak blackboard data without mutating world state. Examples include `moveToward`, `stop`, `setTimer`, `setWaypoint`, `setRandomDestination` for free-roam targets, `moveAway` to flee from a threat, and `useAbility`.
+- **Transitions** (`transitions[]`) evaluate conditions in order (`reachedWaypoint`, `timerExpired`, `playerWithin`, `nonRatWithin`, `stuck`, etc.). The first condition that returns true selects the next state.
 
 Configs are embedded at build time and compiled by `server/ai_library.go` into typed slices that map names → small enums and parameter blocks. This step validates references and prevents runtime string work.
 
@@ -39,3 +39,13 @@ Because actions only enqueue commands, the simulation loop remains the single au
 - `Wait` executes every tick, calls `stop()`, sets a timer for `pause_ticks`, advances the waypoint index once on entry, and returns to `Patrol` when the timer expires.
 
 The defaults seed goblins with two waypoints, pause for half a second (~30 ticks), and detect stuck behaviour using a small epsilon. Adding new archetypes follows the same pattern—extend the JSON, cover it with table-driven tests, and the executor requires no modifications.
+
+## Rat Wander & Flee Example
+
+`server/ai_configs/rat.json` shows how lightweight behaviours can mix the new actions and conditions:
+
+- `Wander` runs every few ticks, calls `setRandomDestination` to pick a roam point near the rat's den, and schedules a timer so the same state re-evaluates periodically.
+- `Pause` clears movement for a short breather while still watching for nearby non-rat actors via `nonRatWithin`.
+- `Flee` fires when players or hostile NPCs get close. `moveAway` recalculates paths away from the stored threat each cadence until `lostSight` or a timer returns the rat to calmer states.
+
+The config keeps the behaviour deterministic—random choices draw from the world's seeded RNG—so regression tests can assert both wandering and scurry responses.

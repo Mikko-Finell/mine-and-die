@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"time"
 )
 
@@ -92,6 +93,7 @@ type World struct {
 	nextNPCID       uint64
 	aiLibrary       *aiLibrary
 	config          worldConfig
+	rng             *rand.Rand
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
@@ -103,6 +105,7 @@ func newWorld(cfg worldConfig) *World {
 		effectBehaviors: newEffectBehaviors(),
 		aiLibrary:       globalAILibrary,
 		config:          cfg,
+		rng:             rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 	w.obstacles = w.generateObstacles(obstacleCount)
 	w.spawnInitialNPCs()
@@ -463,4 +466,47 @@ func (w *World) spawnInitialNPCs() {
 	resolveObstaclePenetration(&southernGoblin.actorState, w.obstacles)
 	southernGoblin.Blackboard.LastPos = vec2{X: southernGoblin.X, Y: southernGoblin.Y}
 	w.npcs[id] = southernGoblin
+
+	w.nextNPCID++
+	id = fmt.Sprintf("npc-rat-%d", w.nextNPCID)
+	rat := &npcState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        id,
+				X:         280,
+				Y:         520,
+				Facing:    defaultFacing,
+				Health:    18,
+				MaxHealth: 18,
+				Inventory: NewInventory(),
+			},
+		},
+		Type:             NPCTypeRat,
+		ExperienceReward: 8,
+		Home:             vec2{X: 280, Y: 520},
+	}
+
+	if w.aiLibrary != nil {
+		if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
+			rat.AIConfigID = cfg.id
+			rat.AIState = cfg.initialState
+			cfg.applyDefaults(&rat.Blackboard)
+		}
+	}
+	if rat.Blackboard.ArriveRadius <= 0 {
+		rat.Blackboard.ArriveRadius = 10
+	}
+	if rat.Blackboard.PauseTicks == 0 {
+		rat.Blackboard.PauseTicks = 20
+	}
+	if rat.Blackboard.StuckEpsilon <= 0 {
+		rat.Blackboard.StuckEpsilon = 0.5
+	}
+	rat.Blackboard.WaypointIndex = 0
+	rat.Blackboard.NextDecisionAt = 0
+	rat.Blackboard.LastWaypointIndex = -1
+
+	resolveObstaclePenetration(&rat.actorState, w.obstacles)
+	rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
+	w.npcs[id] = rat
 }

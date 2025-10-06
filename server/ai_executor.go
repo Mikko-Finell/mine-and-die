@@ -187,6 +187,24 @@ func (w *World) evaluateCondition(cfg *aiCompiledConfig, npc *npcState, transiti
 			return true
 		}
 		return false
+	case aiConditionNonRatWithin:
+		var params aiActorWithinParams
+		if int(transition.paramIndex) < len(cfg.nonRatWithinParams) {
+			params = cfg.nonRatWithinParams[transition.paramIndex]
+		}
+		radius := params.Radius
+		if radius <= 0 {
+			radius = 6
+		}
+		id, distSq, ok := w.closestNonRatActor(npc)
+		if !ok {
+			return false
+		}
+		if distSq <= radius*radius {
+			npc.Blackboard.TargetActorID = id
+			return true
+		}
+		return false
 	case aiConditionLostSight:
 		if npc.Blackboard.TargetActorID == "" {
 			return true
@@ -199,12 +217,12 @@ func (w *World) evaluateCondition(cfg *aiCompiledConfig, npc *npcState, transiti
 		if threshold <= 0 {
 			threshold = 8
 		}
-		target, ok := w.players[npc.Blackboard.TargetActorID]
+		targetX, targetY, ok := w.actorPosition(npc.Blackboard.TargetActorID)
 		if !ok {
 			return true
 		}
-		dx := target.X - npc.X
-		dy := target.Y - npc.Y
+		dx := targetX - npc.X
+		dy := targetY - npc.Y
 		return math.Hypot(dx, dy) > threshold
 	case aiConditionCooldownReady:
 		var params aiCooldownReadyParams
@@ -271,6 +289,10 @@ func (w *World) executeActions(cfg *aiCompiledConfig, npc *npcState, state *aiCo
 			w.actionSetTimer(cfg, npc, action, tick)
 		case aiActionSetWaypoint:
 			w.actionSetWaypoint(cfg, npc, action, tick)
+		case aiActionSetRandomDestination:
+			w.actionSetRandomDestination(cfg, npc, action, tick)
+		case aiActionMoveAway:
+			w.actionMoveAwayFromTarget(cfg, npc, action, tick)
 		}
 	}
 }
@@ -478,6 +500,105 @@ func (w *World) actionSetWaypoint(cfg *aiCompiledConfig, npc *npcState, action a
 	npc.Blackboard.WaypointStall = 0
 }
 
+func (w *World) actionSetRandomDestination(cfg *aiCompiledConfig, npc *npcState, action aiCompiledAction, tick uint64) {
+	if cfg == nil || npc == nil {
+		return
+	}
+	if tick != npc.Blackboard.StateEnteredTick {
+		return
+	}
+	var params aiRandomDestinationParams
+	if int(action.paramIndex) < len(cfg.randomDestinationParams) {
+		params = cfg.randomDestinationParams[action.paramIndex]
+	}
+	radius := params.Radius
+	if radius <= 0 {
+		radius = 180
+	}
+	minRadius := params.MinRadius
+	if minRadius < 0 {
+		minRadius = 0
+	}
+	if minRadius > radius {
+		minRadius = radius * 0.5
+	}
+	center := npc.Home
+	if center.X == 0 && center.Y == 0 {
+		center = vec2{X: npc.X, Y: npc.Y}
+		npc.Home = center
+	}
+	attempts := 6
+	for i := 0; i < attempts; i++ {
+		angle := w.randomAngle()
+		distance := w.randomDistance(minRadius, radius)
+		if distance <= 0 {
+			distance = radius
+		}
+		target := vec2{
+			X: clamp(center.X+math.Cos(angle)*distance, playerHalf, worldWidth-playerHalf),
+			Y: clamp(center.Y+math.Sin(angle)*distance, playerHalf, worldHeight-playerHalf),
+		}
+		if w.ensureNPCPath(npc, target, tick) {
+			return
+		}
+	}
+	w.clearNPCPath(npc)
+}
+
+func (w *World) actionMoveAwayFromTarget(cfg *aiCompiledConfig, npc *npcState, action aiCompiledAction, tick uint64) {
+	if cfg == nil || npc == nil {
+		return
+	}
+	var params aiMoveAwayParams
+	if int(action.paramIndex) < len(cfg.moveAwayParams) {
+		params = cfg.moveAwayParams[action.paramIndex]
+	}
+	distance := params.Distance
+	if distance <= 0 {
+		distance = 220
+	}
+	minDistance := params.MinDistance
+	if minDistance < 0 {
+		minDistance = 0
+	}
+	if minDistance > distance {
+		minDistance = distance * 0.5
+	}
+	targetID := npc.Blackboard.TargetActorID
+	if targetID == "" {
+		w.clearNPCPath(npc)
+		return
+	}
+	tx, ty, ok := w.actorPosition(targetID)
+	if !ok {
+		w.clearNPCPath(npc)
+		return
+	}
+	dx := npc.X - tx
+	dy := npc.Y - ty
+	if dx == 0 && dy == 0 {
+		angle := w.randomAngle()
+		dx = math.Cos(angle)
+		dy = math.Sin(angle)
+	}
+	norm := math.Hypot(dx, dy)
+	if norm == 0 {
+		w.clearNPCPath(npc)
+		return
+	}
+	dx /= norm
+	dy /= norm
+	goalDist := w.randomDistance(minDistance, distance)
+	if goalDist <= 0 {
+		goalDist = distance
+	}
+	target := vec2{
+		X: clamp(npc.X+dx*goalDist, playerHalf, worldWidth-playerHalf),
+		Y: clamp(npc.Y+dy*goalDist, playerHalf, worldHeight-playerHalf),
+	}
+	w.ensureNPCPath(npc, target, tick)
+}
+
 func (w *World) updateBlackboard(npc *npcState) {
 	if npc == nil {
 		return
@@ -553,6 +674,64 @@ func (w *World) closestPlayer(x, y float64) (string, float64, bool) {
 		return "", 0, false
 	}
 	return bestID, bestDistSq, true
+}
+
+func (w *World) closestNonRatActor(npc *npcState) (string, float64, bool) {
+	if w == nil || npc == nil {
+		return "", 0, false
+	}
+	type candidate struct {
+		id string
+		x  float64
+		y  float64
+	}
+	candidates := make([]candidate, 0, len(w.players)+len(w.npcs))
+	for id, player := range w.players {
+		if player == nil {
+			continue
+		}
+		candidates = append(candidates, candidate{id: id, x: player.X, y: player.Y})
+	}
+	for id, other := range w.npcs {
+		if other == nil || other.ID == npc.ID || other.Type == NPCTypeRat {
+			continue
+		}
+		candidates = append(candidates, candidate{id: id, x: other.X, y: other.Y})
+	}
+	if len(candidates) == 0 {
+		return "", 0, false
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].id < candidates[j].id
+	})
+	bestID := ""
+	bestDist := math.MaxFloat64
+	for _, cand := range candidates {
+		dx := cand.x - npc.X
+		dy := cand.y - npc.Y
+		distSq := dx*dx + dy*dy
+		if distSq < bestDist-1e-6 || (math.Abs(distSq-bestDist) <= 1e-6 && cand.id < bestID) {
+			bestDist = distSq
+			bestID = cand.id
+		}
+	}
+	if bestID == "" {
+		return "", 0, false
+	}
+	return bestID, bestDist, true
+}
+
+func (w *World) actorPosition(id string) (float64, float64, bool) {
+	if w == nil || id == "" {
+		return 0, 0, false
+	}
+	if player, ok := w.players[id]; ok && player != nil {
+		return player.X, player.Y, true
+	}
+	if npc, ok := w.npcs[id]; ok && npc != nil {
+		return npc.X, npc.Y, true
+	}
+	return 0, 0, false
 }
 
 func abilityCooldownTicks(ability aiAbilityID) uint64 {

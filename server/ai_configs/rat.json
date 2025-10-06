@@ -1,0 +1,48 @@
+{
+  "npc_type": "rat",
+  "blackboard_defaults": {
+    "arrive_radius": 10,
+    "pause_ticks": 20,
+    "stuck_epsilon": 0.4
+  },
+  "states": [
+    {
+      "id": "Wander",
+      "tick_every": 8,
+      "actions": [
+        { "name": "setRandomDestination", "radius": 220, "min_radius": 60 },
+        { "name": "setTimer", "duration_ticks": 45 }
+      ],
+      "transitions": [
+        { "if": "nonRatWithin", "radius": 180, "to": "Flee" },
+        { "if": "timerExpired", "to": "Pause" }
+      ]
+    },
+    {
+      "id": "Pause",
+      "tick_every": 4,
+      "duration_ticks": 20,
+      "actions": [
+        { "name": "stop" },
+        { "name": "setTimer", "duration_ticks": 20 }
+      ],
+      "transitions": [
+        { "if": "nonRatWithin", "radius": 180, "to": "Flee" },
+        { "if": "timerExpired", "to": "Wander" }
+      ]
+    },
+    {
+      "id": "Flee",
+      "tick_every": 2,
+      "actions": [
+        { "name": "moveAway", "distance": 260, "min_distance": 120 },
+        { "name": "setTimer", "duration_ticks": 35 }
+      ],
+      "transitions": [
+        { "if": "lostSight", "distance": 260, "to": "Pause" },
+        { "if": "timerExpired", "to": "Pause" },
+        { "if": "nonRatWithin", "radius": 200, "to": "Flee" }
+      ]
+    }
+  ]
+}

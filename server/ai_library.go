@@ -26,16 +26,19 @@ type aiCompiledConfig struct {
 	stateNames   []string
 	defaults     aiBlackboardDefaults
 
-	moveTowardParams      []aiMoveTowardParams
-	useAbilityParams      []aiUseAbilityParams
-	faceParams            []aiFaceParams
-	setTimerParams        []aiSetTimerParams
-	setWaypointParams     []aiSetWaypointParams
-	reachedWaypointParams []aiReachedWaypointParams
-	playerWithinParams    []aiPlayerWithinParams
-	lostSightParams       []aiLostSightParams
-	cooldownReadyParams   []aiCooldownReadyParams
-	stuckParams           []aiStuckParams
+	moveTowardParams        []aiMoveTowardParams
+	useAbilityParams        []aiUseAbilityParams
+	faceParams              []aiFaceParams
+	setTimerParams          []aiSetTimerParams
+	setWaypointParams       []aiSetWaypointParams
+	randomDestinationParams []aiRandomDestinationParams
+	moveAwayParams          []aiMoveAwayParams
+	reachedWaypointParams   []aiReachedWaypointParams
+	playerWithinParams      []aiPlayerWithinParams
+	lostSightParams         []aiLostSightParams
+	cooldownReadyParams     []aiCooldownReadyParams
+	stuckParams             []aiStuckParams
+	nonRatWithinParams      []aiActorWithinParams
 }
 
 type aiCompiledState struct {
@@ -94,6 +97,10 @@ type aiPlayerWithinParams struct {
 	Radius float64
 }
 
+type aiActorWithinParams struct {
+	Radius float64
+}
+
 type aiLostSightParams struct {
 	Distance float64
 }
@@ -105,6 +112,16 @@ type aiCooldownReadyParams struct {
 type aiStuckParams struct {
 	Decisions uint8
 	Epsilon   float64
+}
+
+type aiRandomDestinationParams struct {
+	Radius    float64
+	MinRadius float64
+}
+
+type aiMoveAwayParams struct {
+	Distance    float64
+	MinDistance float64
 }
 
 type aiMoveTarget uint8
@@ -128,6 +145,8 @@ const (
 	aiActionFace
 	aiActionSetTimer
 	aiActionSetWaypoint
+	aiActionSetRandomDestination
+	aiActionMoveAway
 )
 
 const (
@@ -137,6 +156,7 @@ const (
 	aiConditionLostSight
 	aiConditionCooldownReady
 	aiConditionStuck
+	aiConditionNonRatWithin
 )
 
 const (
@@ -175,6 +195,10 @@ type aiAuthoringAction struct {
 	Advance       bool               `json:"advance,omitempty"`
 	Ability       string             `json:"ability,omitempty"`
 	Vector        *aiAuthoringVector `json:"vector,omitempty"`
+	Radius        float64            `json:"radius,omitempty"`
+	MinRadius     float64            `json:"min_radius,omitempty"`
+	Distance      float64            `json:"distance,omitempty"`
+	MinDistance   float64            `json:"min_distance,omitempty"`
 }
 
 type aiAuthoringVector struct {
@@ -305,6 +329,14 @@ func compileAIConfig(authoring aiAuthoringConfig) (*aiCompiledConfig, error) {
 				}
 				cfg.moveTowardParams = append(cfg.moveTowardParams, params)
 				compiledAction.paramIndex = uint16(len(cfg.moveTowardParams) - 1)
+			case aiActionSetRandomDestination:
+				params := aiRandomDestinationParams{Radius: action.Radius, MinRadius: action.MinRadius}
+				cfg.randomDestinationParams = append(cfg.randomDestinationParams, params)
+				compiledAction.paramIndex = uint16(len(cfg.randomDestinationParams) - 1)
+			case aiActionMoveAway:
+				params := aiMoveAwayParams{Distance: action.Distance, MinDistance: action.MinDistance}
+				cfg.moveAwayParams = append(cfg.moveAwayParams, params)
+				compiledAction.paramIndex = uint16(len(cfg.moveAwayParams) - 1)
 			case aiActionUseAbility:
 				ability, err := parseAbilityID(action.Ability)
 				if err != nil {
@@ -351,6 +383,9 @@ func compileAIConfig(authoring aiAuthoringConfig) (*aiCompiledConfig, error) {
 			case aiConditionPlayerWithin:
 				cfg.playerWithinParams = append(cfg.playerWithinParams, aiPlayerWithinParams{Radius: transition.Radius})
 				compiledTransition.paramIndex = uint16(len(cfg.playerWithinParams) - 1)
+			case aiConditionNonRatWithin:
+				cfg.nonRatWithinParams = append(cfg.nonRatWithinParams, aiActorWithinParams{Radius: transition.Radius})
+				compiledTransition.paramIndex = uint16(len(cfg.nonRatWithinParams) - 1)
 			case aiConditionLostSight:
 				cfg.lostSightParams = append(cfg.lostSightParams, aiLostSightParams{Distance: transition.Distance})
 				compiledTransition.paramIndex = uint16(len(cfg.lostSightParams) - 1)
@@ -387,6 +422,10 @@ func parseAIActionID(name string) (aiActionID, error) {
 		return aiActionSetTimer, nil
 	case "setwaypoint":
 		return aiActionSetWaypoint, nil
+	case "setrandomdestination":
+		return aiActionSetRandomDestination, nil
+	case "moveaway":
+		return aiActionMoveAway, nil
 	default:
 		return 0, fmt.Errorf("unknown action %q", name)
 	}
@@ -407,6 +446,8 @@ func parseAIConditionID(name string) (aiConditionID, error) {
 		return aiConditionCooldownReady, nil
 	case "stuck":
 		return aiConditionStuck, nil
+	case "nonratwithin":
+		return aiConditionNonRatWithin, nil
 	default:
 		return 0, fmt.Errorf("unknown condition %q", name)
 	}
