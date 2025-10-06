@@ -176,13 +176,15 @@ func main() {
 		cfg := hub.CurrentConfig()
 
 		initial := stateMessage{
-			Type:       "state",
-			Players:    snapshotPlayers,
-			NPCs:       snapshotNPCs,
-			Obstacles:  append([]Obstacle(nil), hub.world.obstacles...),
-			Effects:    snapshotEffects,
-			ServerTime: time.Now().UnixMilli(),
-			Config:     cfg,
+			Type:        "state",
+			Players:     snapshotPlayers,
+			NPCs:        snapshotNPCs,
+			Obstacles:   append([]Obstacle(nil), hub.world.obstacles...),
+			Effects:     snapshotEffects,
+			ServerTime:  time.Now().UnixMilli(),
+			Config:      cfg,
+			WorldWidth:  worldWidth,
+			WorldHeight: worldHeight,
 		}
 		data, err := json.Marshal(initial)
 		if err != nil {

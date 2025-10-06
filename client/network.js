@@ -145,6 +145,12 @@ export async function joinGame(store) {
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     store.effects = Array.isArray(payload.effects) ? payload.effects : [];
     store.worldConfig = normalizeWorldConfig(payload.config);
+    if (typeof payload.worldWidth === "number") {
+      store.WORLD_WIDTH = payload.worldWidth;
+    }
+    if (typeof payload.worldHeight === "number") {
+      store.WORLD_HEIGHT = payload.worldHeight;
+    }
     if (typeof store.updateWorldConfigUI === "function") {
       store.updateWorldConfigUI();
     }
@@ -239,6 +245,12 @@ export function connectEvents(store) {
           if (typeof store.updateWorldConfigUI === "function") {
             store.updateWorldConfigUI();
           }
+        }
+        if (typeof payload.worldWidth === "number") {
+          store.WORLD_WIDTH = payload.worldWidth;
+        }
+        if (typeof payload.worldHeight === "number") {
+          store.WORLD_HEIGHT = payload.worldHeight;
         }
         if (store.players[store.playerId]) {
           store.players[store.playerId].facing = normalizeFacing(
