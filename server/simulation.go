@@ -14,6 +14,7 @@ const (
 	CommandMove      CommandType = "Move"
 	CommandAction    CommandType = "Action"
 	CommandHeartbeat CommandType = "Heartbeat"
+	CommandPath      CommandType = "Path"
 )
 
 // Command represents an intent captured for processing on the next tick.
@@ -25,6 +26,7 @@ type Command struct {
 	Move       *MoveCommand
 	Action     *ActionCommand
 	Heartbeat  *HeartbeatCommand
+	Path       *PathCommand
 }
 
 // MoveCommand carries the desired movement vector and facing.
@@ -44,6 +46,12 @@ type HeartbeatCommand struct {
 	ReceivedAt time.Time
 	ClientSent int64
 	RTT        time.Duration
+}
+
+// PathCommand requests the server to navigate an actor toward a location.
+type PathCommand struct {
+	X float64
+	Y float64
 }
 
 // EventType captures the discrete kinds of simulation output.
@@ -181,6 +189,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 					dx /= length
 					dy /= length
 				}
+				if dx != 0 || dy != 0 {
+					w.clearPlayerPath(player)
+				}
 				player.intentX = dx
 				player.intentY = dy
 				player.Facing = deriveFacing(dx, dy, player.Facing)
@@ -224,9 +235,25 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 				player.lastHeartbeat = cmd.Heartbeat.ReceivedAt
 				player.lastRTT = cmd.Heartbeat.RTT
 			}
+		case CommandPath:
+			if cmd.Path == nil {
+				continue
+			}
+			player, ok := w.players[cmd.ActorID]
+			if !ok {
+				continue
+			}
+			target := vec2{
+				X: clamp(cmd.Path.X, playerHalf, worldWidth-playerHalf),
+				Y: clamp(cmd.Path.Y, playerHalf, worldHeight-playerHalf),
+			}
+			if w.ensurePlayerPath(player, target, tick) {
+				player.lastInput = now
+			}
 		}
 	}
 
+	w.advancePlayerPaths(tick)
 	w.advanceNPCPaths(tick)
 
 	actors := make([]*actorState, 0, len(w.players)+len(w.npcs))

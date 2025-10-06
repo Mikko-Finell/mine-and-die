@@ -29,6 +29,7 @@ The `Hub` struct keeps simulation concerns isolated from transport:
 ### Command Flow
 Network handlers never mutate actors directly. Instead they enqueue typed `Command` structs:
 - `CommandMove` stores normalized intent vectors and optional facing overrides from `UpdateIntent`.
+- `CommandPath` captures click-to-move requests; the world rebuilds an A* path for the player on the next tick.
 - `CommandAction` captures action strings from `HandleAction` (melee, fireball, etc.).
 - `CommandHeartbeat` records connectivity metadata and round-trip times from `UpdateHeartbeat`.
 
@@ -45,7 +46,7 @@ The queue is drained at the start of each tick so every command is applied exact
 ### World & Simulation Systems
 `World.Step` is the heart of the simulation. Given the tick index, wall-clock time, delta seconds, and drained commands it:
 - Updates player intents, facings, and heartbeat metadata from queued commands.
-- Derives NPC intents via the A* path follower, then advances movement for players and NPCs against obstacles before resolving actor collisions.
+- Derives queued player paths and NPC intents via the shared A* follower, then advances movement for players and NPCs against obstacles before resolving actor collisions.
 - Stages abilities triggered by commands and executes their effects (melee swings, fireballs).
 - Applies environmental hazards such as lava pools as damage-over-time.
 - Advances, prunes, and emits events for effect lifecycles and inventory rewards.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -196,6 +197,33 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool 
 			DX:     dx,
 			DY:     dy,
 			Facing: parsedFacing,
+		},
+	}
+	h.enqueueCommand(cmd)
+	return true
+}
+
+// SetPlayerPath enqueues a pathfinding request for the player toward a world position.
+func (h *Hub) SetPlayerPath(playerID string, x, y float64) bool {
+	if playerID == "" {
+		return false
+	}
+	if math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
+		return false
+	}
+	if !h.playerExists(playerID) {
+		return false
+	}
+	targetX := clamp(x, playerHalf, worldWidth-playerHalf)
+	targetY := clamp(y, playerHalf, worldHeight-playerHalf)
+	cmd := Command{
+		OriginTick: h.tick.Load(),
+		ActorID:    playerID,
+		Type:       CommandPath,
+		IssuedAt:   time.Now(),
+		Path: &PathCommand{
+			X: targetX,
+			Y: targetY,
 		},
 	}
 	h.enqueueCommand(cmd)

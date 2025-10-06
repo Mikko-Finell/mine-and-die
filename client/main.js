@@ -80,6 +80,8 @@ const store = {
   latencyInputListener: null,
   keys: new Set(),
   directionOrder: [],
+  pathFollowing: false,
+  pendingPathTarget: null,
   lastStateReceivedAt: null,
   lastIntentSentAt: null,
   lastHeartbeatSentAt: null,

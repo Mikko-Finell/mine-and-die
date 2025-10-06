@@ -6,7 +6,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - `index.html` – Declares the canvas, status text, diagnostics panel, and loads `main.js` via `<script type="module">`.
 - `main.js` – Builds the shared `store` object, wires diagnostics UI, and starts input, render, and networking flows.
 - `network.js` – Handles the `/join` handshake, WebSocket lifecycle, heartbeat timers, and outbound message helpers.
-- `input.js` – Converts keyboard events into normalized intents and action messages.
+- `input.js` – Converts keyboard/mouse events into normalized intents, action messages, and click-to-move path requests.
 - `render.js` – Performs `<canvas>` drawing, lerps network state to display positions, and renders effects/obstacles.
 - `styles.css` – Minimal styling for layout and diagnostics readouts.
 
@@ -29,6 +29,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 ## Networking Details
 - **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, and keeps diagnostics fresh.
 - **Intents:** `sendCurrentIntent` serializes `{ type: "input", dx, dy, facing }` whenever movement or facing changes.
+- **Paths:** `sendPathTarget` issues `{ type: "path", x, y }` when the player left-clicks the canvas to request A* navigation.
 - **Actions:** `sendAction` is used by `input.js` for melee and fireball triggers.
 - **Heartbeats:** `startHeartbeat` sets an interval that calls `sendHeartbeat`; acknowledgements update latency displays.
 - **Reconnects:** Socket closure funnels through `handleConnectionLoss`, which resets state and schedules `joinGame` again.

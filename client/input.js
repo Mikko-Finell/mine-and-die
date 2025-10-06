@@ -1,4 +1,4 @@
-import { sendAction, sendCurrentIntent } from "./network.js";
+import { sendAction, sendCurrentIntent, sendPathTarget } from "./network.js";
 
 const DEFAULT_FACING = "down";
 const KEY_TO_FACING = {
@@ -39,6 +39,10 @@ export function registerInputHandlers(store) {
 
     event.preventDefault();
     if (isPressed) {
+      if (store.pathFollowing) {
+        store.pathFollowing = false;
+        store.pendingPathTarget = null;
+      }
       if (!store.keys.has(key)) {
         store.directionOrder = store.directionOrder.filter((entry) => entry !== key);
         store.directionOrder.push(key);
@@ -110,4 +114,39 @@ export function registerInputHandlers(store) {
 
   document.addEventListener("keydown", (event) => handleKey(event, true));
   document.addEventListener("keyup", (event) => handleKey(event, false));
+
+  function handleCanvasClick(event) {
+    if (event.button !== 0) {
+      return;
+    }
+    const canvas = store.canvas;
+    if (!canvas) {
+      return;
+    }
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return;
+    }
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const rawX = (event.clientX - rect.left) * scaleX;
+    const rawY = (event.clientY - rect.top) * scaleY;
+    const clampedX = Math.max(store.PLAYER_HALF, Math.min(rawX, canvas.width - store.PLAYER_HALF));
+    const clampedY = Math.max(store.PLAYER_HALF, Math.min(rawY, canvas.height - store.PLAYER_HALF));
+
+    if (store.keys.size > 0) {
+      store.keys.clear();
+      store.directionOrder = [];
+      updateIntentFromKeys();
+    }
+
+    store.pendingPathTarget = { x: clampedX, y: clampedY };
+    store.pathFollowing = true;
+    sendPathTarget(store, clampedX, clampedY);
+  }
+
+  if (store.canvas) {
+    store.canvas.addEventListener("mousedown", handleCanvasClick);
+  }
 }

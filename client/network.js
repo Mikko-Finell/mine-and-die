@@ -97,7 +97,7 @@ export async function joinGame(store) {
     store.currentFacing = normalizeFacing(store.players[store.playerId].facing);
     store.directionOrder = [];
     store.setLatency(null);
-    store.setStatusBase(`Connected as ${store.playerId}. Use WASD to move.`);
+    store.setStatusBase(`Connected as ${store.playerId}. Use WASD or left click to move.`);
     connectEvents(store);
     store.updateDiagnostics();
     if (store.renderInventory) {
@@ -133,7 +133,7 @@ export function connectEvents(store) {
   store.updateDiagnostics();
 
   store.socket.onopen = () => {
-    store.setStatusBase(`Connected as ${store.playerId}. Use WASD to move.`);
+    store.setStatusBase(`Connected as ${store.playerId}. Use WASD or left click to move.`);
     store.setLatency(null);
     sendCurrentIntent(store);
     startHeartbeat(store);
@@ -267,6 +267,18 @@ export function sendAction(store, action, params = undefined) {
   if (params && typeof params === "object" && Object.keys(params).length > 0) {
     payload.params = params;
   }
+  sendMessage(store, payload);
+}
+
+// sendPathTarget requests the server to compute a path toward a clicked location.
+export function sendPathTarget(store, x, y) {
+  if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return;
+  }
+  const payload = { type: "path", x, y };
   sendMessage(store, payload);
 }
 

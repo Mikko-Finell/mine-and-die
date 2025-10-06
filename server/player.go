@@ -139,8 +139,19 @@ type playerState struct {
 	lastHeartbeat time.Time
 	lastRTT       time.Duration
 	cooldowns     map[string]time.Time
+	path          playerPathState
 }
 
 func (s *playerState) snapshot() Player {
 	return Player{Actor: s.snapshotActor()}
+}
+
+type playerPathState struct {
+	Path             []vec2
+	PathIndex        int
+	PathTarget       vec2
+	PathGoal         vec2
+	PathLastDistance float64
+	PathStallTicks   uint16
+	PathRecalcTick   uint64
 }
