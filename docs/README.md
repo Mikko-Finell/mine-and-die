@@ -17,9 +17,9 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 ## Runtime Flow
 1. The browser POSTs `/join` to create a player record and fetch the world snapshot.
 2. The client immediately connects to `/ws?id=<player-id>` and receives a real-time `state` payload.
-3. Keyboard changes emit `input` messages, while combat keys send `action` messages.
-4. The Go hub advances the world ~15 times per second, resolves collisions, applies effects, and broadcasts the latest `state`.
-5. Both sides exchange heartbeats every ~2 seconds so idle sockets are cleaned up and latency is reported to the HUD.
+3. Keyboard changes emit `input` messages, while combat keys send `action` messages. Each inbound message becomes a typed command queued for the next tick.
+4. The Go hub advances the world ~15 times per second by draining queued commands, resolving collisions, applying effects, updating hazards, and broadcasting the latest `state`.
+5. Both sides exchange heartbeats every ~2 seconds; the acknowledgements update latency diagnostics and missed heartbeats enqueue disconnect commands.
 
 ## Simulation Quick Facts
 - World bounds: 800×600 pixels with randomly seeded obstacles and ore nodes.

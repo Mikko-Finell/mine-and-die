@@ -20,8 +20,8 @@ type Hub struct {
 	nextID atomic.Uint64
 	tick   atomic.Uint64
 
-	commandsMu      sync.Mutex
-	pendingCommands []Command
+	commandsMu      sync.Mutex // protects pendingCommands between network handlers and the tick loop
+	pendingCommands []Command  // staged commands applied in order at the next simulation step
 }
 
 type subscriber struct {
