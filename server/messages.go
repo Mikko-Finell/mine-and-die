@@ -1,22 +1,26 @@
 package main
 
 type joinResponse struct {
-	ID        string      `json:"id"`
-	Players   []Player    `json:"players"`
-	NPCs      []NPC       `json:"npcs"`
-	Obstacles []Obstacle  `json:"obstacles"`
-	Effects   []Effect    `json:"effects"`
-	Config    worldConfig `json:"config"`
+	ID          string      `json:"id"`
+	Players     []Player    `json:"players"`
+	NPCs        []NPC       `json:"npcs"`
+	Obstacles   []Obstacle  `json:"obstacles"`
+	Effects     []Effect    `json:"effects"`
+	Config      worldConfig `json:"config"`
+	WorldWidth  float64     `json:"worldWidth"`
+	WorldHeight float64     `json:"worldHeight"`
 }
 
 type stateMessage struct {
-	Type       string      `json:"type"`
-	Players    []Player    `json:"players"`
-	NPCs       []NPC       `json:"npcs"`
-	Obstacles  []Obstacle  `json:"obstacles"`
-	Effects    []Effect    `json:"effects"`
-	ServerTime int64       `json:"serverTime"`
-	Config     worldConfig `json:"config"`
+	Type        string      `json:"type"`
+	Players     []Player    `json:"players"`
+	NPCs        []NPC       `json:"npcs"`
+	Obstacles   []Obstacle  `json:"obstacles"`
+	Effects     []Effect    `json:"effects"`
+	ServerTime  int64       `json:"serverTime"`
+	Config      worldConfig `json:"config"`
+	WorldWidth  float64     `json:"worldWidth"`
+	WorldHeight float64     `json:"worldHeight"`
 }
 
 type clientMessage struct {

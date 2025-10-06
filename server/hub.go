@@ -85,7 +85,16 @@ func (h *Hub) Join() joinResponse {
 
 	go h.broadcastState(players, npcs, effects)
 
-	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, Config: cfg}
+	return joinResponse{
+		ID:          playerID,
+		Players:     players,
+		NPCs:        npcs,
+		Obstacles:   obstacles,
+		Effects:     effects,
+		Config:      cfg,
+		WorldWidth:  worldWidth,
+		WorldHeight: worldHeight,
+	}
 }
 
 // ResetWorld replaces the current world with a freshly generated instance.
@@ -370,13 +379,15 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect) {
 	h.mu.Unlock()
 
 	msg := stateMessage{
-		Type:       "state",
-		Players:    players,
-		NPCs:       npcs,
-		Obstacles:  obstacles,
-		Effects:    effects,
-		ServerTime: time.Now().UnixMilli(),
-		Config:     cfg,
+		Type:        "state",
+		Players:     players,
+		NPCs:        npcs,
+		Obstacles:   obstacles,
+		Effects:     effects,
+		ServerTime:  time.Now().UnixMilli(),
+		Config:      cfg,
+		WorldWidth:  worldWidth,
+		WorldHeight: worldHeight,
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {

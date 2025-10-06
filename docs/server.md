@@ -81,9 +81,9 @@ Players track `Health` and `MaxHealth`. Effect helpers share the `Effect` struct
 - `DiagnosticsSnapshot` returns minimal player heartbeat info for the `/diagnostics` endpoint.
 
 ### HTTP Endpoints
-- `POST /join` – allocate a player, return `{ id, players, obstacles, effects }` snapshot.
+- `POST /join` – allocate a player, return `{ id, players, obstacles, effects, worldWidth, worldHeight, config }` snapshot.
 - `POST /world/reset` – rebuild the world using the supplied `{ obstacles, npcs, lava, seed }` toggles and broadcast the new snapshot to all players. Leaving `seed` blank falls back to the default deterministic seed.
-- `GET /ws?id=...` – upgrade to WebSocket; first message is an immediate state snapshot.
+- `GET /ws?id=...` – upgrade to WebSocket; first message is an immediate state snapshot including `worldWidth` and `worldHeight`.
 - `GET /diagnostics` – JSON payload with tick rate, heartbeat interval, and per-player metrics.
 - `GET /health` – simple liveness string.
 - `GET /` – static file server rooted at `client/`.

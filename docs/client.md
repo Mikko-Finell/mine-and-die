@@ -19,6 +19,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - NPC dictionaries: `npcs` mirrors neutral enemies from the server, `displayNPCs` lerps their positions for rendering.
 - Arrays for `obstacles` and `effects` mirrored from server payloads.
 - `worldConfig` mirrors the server's toggles along with the deterministic `seed` string used when restarting the world from the debug panel.
+- `WORLD_WIDTH`/`WORLD_HEIGHT` mirror the authoritative world dimensions from the server so the renderer can center or clamp the camera correctly.
 
 ## Initialization Sequence
 1. `main.js` prepares UI helpers, attaches diagnostics toggles, and registers the latency override input.
