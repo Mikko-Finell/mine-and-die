@@ -16,107 +16,157 @@
           <div id="inventory-grid" class="inventory-grid" role="list"></div>
         </aside>
       </div>
-      <section class="control-row">
-        <label for="latency-input">Simulated latency (ms)</label>
-        <input
-          type="number"
-          id="latency-input"
-          min="0"
-          step="10"
-          value="0"
-        />
-      </section>
-      <section id="status"></section>
-      <button
-        id="diagnostics-toggle"
-        type="button"
-        aria-controls="diagnostics"
-        aria-expanded="false"
-      >
-        Show diagnostics
-      </button>
       <section
-        id="world-reset-panel"
-        class="world-reset-panel"
-        aria-labelledby="world-reset-heading"
+        id="debug-panel"
+        class="debug-panel"
+        aria-label="Testing and debug tools"
+        data-collapsed="false"
       >
-        <h2 id="world-reset-heading">World setup</h2>
-        <form id="world-reset-form">
-          <div class="world-reset-options">
-            <label class="world-reset-option" for="world-reset-obstacles">
-              <input
-                type="checkbox"
-                id="world-reset-obstacles"
-                name="obstacles"
-                checked
-              />
-              <span>Enable obstacles</span>
-            </label>
-            <label class="world-reset-option" for="world-reset-npcs">
-              <input
-                type="checkbox"
-                id="world-reset-npcs"
-                name="npcs"
-                checked
-              />
-              <span>Enable NPCs</span>
-            </label>
-            <label class="world-reset-option" for="world-reset-lava">
-              <input
-                type="checkbox"
-                id="world-reset-lava"
-                name="lava"
-                checked
-              />
-              <span>Enable lava</span>
-            </label>
+        <header class="debug-panel__header">
+          <div class="debug-panel__heading">
+            <h2 class="debug-panel__title">Testing &amp; Debug</h2>
+            <p class="debug-panel__subtitle">
+              Inspect the simulation, tweak latency, and manage the world state while you test.
+            </p>
           </div>
-          <button type="submit" class="world-reset-button">Restart world</button>
-          <p
-            id="world-reset-status"
-            class="world-reset-status"
-            role="status"
-            aria-live="polite"
-          ></p>
-        </form>
-      </section>
-      <section id="diagnostics" hidden>
-        <h2>Diagnostics</h2>
-        <div class="diagnostic-line">
-          <span class="label">Connection</span>
-          <span id="diag-connection" class="value">—</span>
-        </div>
-        <div class="diagnostic-line">
-          <span class="label">Players tracked</span>
-          <span id="diag-players" class="value">—</span>
-        </div>
-        <div class="diagnostic-line">
-          <span class="label">Last state update</span>
-          <span id="diag-state-age" class="value">—</span>
-        </div>
-        <div class="diagnostic-line">
-          <span class="label">Input vector</span>
-          <span id="diag-intent" class="value">—</span>
-        </div>
-        <div class="diagnostic-line">
-          <span class="label">Last input send</span>
-          <span id="diag-intent-age" class="value">—</span>
-        </div>
-        <div class="diagnostic-line">
-          <span class="label">Heartbeat</span>
-          <span id="diag-heartbeat" class="value">—</span>
-        </div>
-        <div class="diagnostic-line">
-          <span class="label">Latency (observed)</span>
-          <span id="diag-latency" class="value">—</span>
-        </div>
-        <div class="diagnostic-line">
-          <span class="label">Simulated latency</span>
-          <span id="diag-sim-latency" class="value">—</span>
-        </div>
-        <div class="diagnostic-line">
-          <span class="label">Messages sent</span>
-          <span id="diag-messages" class="value">—</span>
+          <button
+            id="debug-panel-toggle"
+            type="button"
+            class="debug-panel__toggle"
+            aria-controls="debug-panel-body"
+            aria-expanded="true"
+          >
+            Hide panel
+          </button>
+        </header>
+        <div id="debug-panel-body" class="debug-panel__body">
+          <div class="debug-panel__summary">
+            <div class="debug-panel__status">
+              <span class="debug-panel__status-label">Session status</span>
+              <span id="status" class="debug-panel__status-text" aria-live="polite"
+                >Preparing session…</span
+              >
+            </div>
+            <div class="debug-panel__metrics">
+              <div class="debug-metric">
+                <span class="debug-metric__label">Observed latency</span>
+                <span id="latency-display" class="debug-metric__value" aria-live="polite">—</span>
+              </div>
+              <label class="debug-metric debug-metric--input" for="latency-input">
+                <span class="debug-metric__label">Simulated latency</span>
+                <div class="debug-metric__input">
+                  <input
+                    type="number"
+                    id="latency-input"
+                    min="0"
+                    step="10"
+                    value="0"
+                    inputmode="numeric"
+                    aria-describedby="latency-input-hint"
+                  />
+                  <span class="debug-metric__suffix">ms</span>
+                </div>
+                <span id="latency-input-hint" class="debug-metric__hint"
+                  >Inject artificial delay to mimic slower connections.</span
+                >
+              </label>
+            </div>
+          </div>
+          <div class="debug-panel__sections">
+            <details class="debug-section" open>
+              <summary class="debug-section__summary">World controls</summary>
+              <div class="debug-section__content">
+                <form id="world-reset-form" class="world-reset-form">
+                  <div class="world-reset-grid">
+                    <label class="world-reset-toggle" for="world-reset-obstacles">
+                      <input
+                        type="checkbox"
+                        id="world-reset-obstacles"
+                        name="obstacles"
+                        checked
+                      />
+                      <span class="world-reset-toggle__body">
+                        <span class="world-reset-toggle__title">Enable obstacles</span>
+                        <span class="world-reset-toggle__hint"
+                          >Spawn rocks, ore veins, and collision geometry.</span
+                        >
+                      </span>
+                    </label>
+                    <label class="world-reset-toggle" for="world-reset-npcs">
+                      <input type="checkbox" id="world-reset-npcs" name="npcs" checked />
+                      <span class="world-reset-toggle__body">
+                        <span class="world-reset-toggle__title">Enable NPCs</span>
+                        <span class="world-reset-toggle__hint"
+                          >Populate the mine with neutral enemies.</span
+                        >
+                      </span>
+                    </label>
+                    <label class="world-reset-toggle" for="world-reset-lava">
+                      <input type="checkbox" id="world-reset-lava" name="lava" checked />
+                      <span class="world-reset-toggle__body">
+                        <span class="world-reset-toggle__title">Enable lava</span>
+                        <span class="world-reset-toggle__hint"
+                          >Include flowing lava pools and hazards.</span
+                        >
+                      </span>
+                    </label>
+                  </div>
+                  <div class="world-reset-actions">
+                    <button type="submit" class="world-reset-button">Restart world</button>
+                    <p
+                      id="world-reset-status"
+                      class="world-reset-status"
+                      role="status"
+                      aria-live="polite"
+                    ></p>
+                  </div>
+                </form>
+              </div>
+            </details>
+            <details class="debug-section" open>
+              <summary class="debug-section__summary">Live diagnostics</summary>
+              <div class="debug-section__content">
+                <div id="diagnostics" class="diagnostics-grid">
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Connection</span>
+                    <span id="diag-connection" class="diagnostic-stat__value">—</span>
+                  </div>
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Players tracked</span>
+                    <span id="diag-players" class="diagnostic-stat__value">—</span>
+                  </div>
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Last state update</span>
+                    <span id="diag-state-age" class="diagnostic-stat__value">—</span>
+                  </div>
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Input vector</span>
+                    <span id="diag-intent" class="diagnostic-stat__value">—</span>
+                  </div>
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Last input send</span>
+                    <span id="diag-intent-age" class="diagnostic-stat__value">—</span>
+                  </div>
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Heartbeat</span>
+                    <span id="diag-heartbeat" class="diagnostic-stat__value">—</span>
+                  </div>
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Latency (observed)</span>
+                    <span id="diag-latency" class="diagnostic-stat__value">—</span>
+                  </div>
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Simulated latency</span>
+                    <span id="diag-sim-latency" class="diagnostic-stat__value">—</span>
+                  </div>
+                  <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Messages sent</span>
+                    <span id="diag-messages" class="diagnostic-stat__value">—</span>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
         </div>
       </section>
     </main>
