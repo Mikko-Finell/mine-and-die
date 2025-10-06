@@ -13,7 +13,7 @@ const (
 	lavaDamagePerSecond   = 20.0
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
-	obstacleCount         = 6
+	obstacleCount         = 2
 	obstacleMinWidth      = 60.0
 	obstacleMaxWidth      = 140.0
 	obstacleMinHeight     = 60.0

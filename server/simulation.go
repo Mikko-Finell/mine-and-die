@@ -154,6 +154,41 @@ func (w *World) RemovePlayer(id string) bool {
 	return true
 }
 
+func (w *World) handleNPCDefeat(npc *npcState, tick uint64, output *StepOutput) {
+	if npc == nil {
+		return
+	}
+	if _, ok := w.npcs[npc.ID]; !ok {
+		return
+	}
+	delete(w.npcs, npc.ID)
+	if output == nil {
+		return
+	}
+	payload := map[string]any{"reason": "defeated"}
+	output.Events = append(output.Events, Event{
+		Tick:     tick,
+		EntityID: npc.ID,
+		Type:     EventActorDespawned,
+		Payload:  payload,
+	})
+}
+
+func (w *World) pruneDefeatedNPCs(tick uint64, output *StepOutput) {
+	if len(w.npcs) == 0 {
+		return
+	}
+	defeated := make([]*npcState, 0)
+	for _, npc := range w.npcs {
+		if npc.Health <= 0 {
+			defeated = append(defeated, npc)
+		}
+	}
+	for _, npc := range defeated {
+		w.handleNPCDefeat(npc, tick, output)
+	}
+}
+
 // Step advances the simulation by a single tick applying all staged commands.
 func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command) StepOutput {
 	if dt <= 0 {
@@ -325,6 +360,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 
 	w.advanceEffects(now, dt, tick, &output)
 	w.pruneEffects(now)
+	w.pruneDefeatedNPCs(tick, &output)
 
 	// Lifecycle system: remove stale players.
 	cutoff := now.Add(-disconnectAfter)

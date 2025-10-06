@@ -30,12 +30,12 @@ type effectState struct {
 }
 
 type effectBehavior interface {
-	OnHit(w *World, eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput)
+	OnHit(w *World, eff *effectState, target *actorState, now time.Time, tick uint64, output *StepOutput)
 }
 
-type effectBehaviorFunc func(w *World, eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput)
+type effectBehaviorFunc func(w *World, eff *effectState, target *actorState, now time.Time, tick uint64, output *StepOutput)
 
-func (f effectBehaviorFunc) OnHit(w *World, eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput) {
+func (f effectBehaviorFunc) OnHit(w *World, eff *effectState, target *actorState, now time.Time, tick uint64, output *StepOutput) {
 	f(w, eff, target, now, tick, output)
 }
 
@@ -67,7 +67,7 @@ func newEffectBehaviors() map[string]effectBehavior {
 }
 
 func healthDeltaBehavior(param string, fallback float64) effectBehavior {
-	return effectBehaviorFunc(func(w *World, eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput) {
+	return effectBehaviorFunc(func(w *World, eff *effectState, target *actorState, now time.Time, tick uint64, output *StepOutput) {
 		delta := fallback
 		if eff != nil && eff.Params != nil {
 			if value, ok := eff.Params[param]; ok {
@@ -188,19 +188,33 @@ func (w *World) triggerMeleeAttack(actorID string, now time.Time, tick uint64, o
 		break
 	}
 
-	hitIDs := make([]string, 0)
+	hitPlayerIDs := make([]string, 0)
 	for id, target := range w.players {
 		if id == actorID {
 			continue
 		}
 		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
-			hitIDs = append(hitIDs, id)
-			w.applyEffectHit(effect, target, now, tick, output)
+			hitPlayerIDs = append(hitPlayerIDs, id)
+			w.applyEffectHitPlayer(effect, target, now, tick, output)
 		}
 	}
 
-	if len(hitIDs) > 0 {
-		log.Printf("%s %s overlaps players %v", actorID, effectTypeAttack, hitIDs)
+	hitNPCIDs := make([]string, 0)
+	for id, target := range w.npcs {
+		if id == actorID {
+			continue
+		}
+		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
+			hitNPCIDs = append(hitNPCIDs, id)
+			w.applyEffectHitNPC(effect, target, now, tick, output)
+		}
+	}
+
+	if len(hitPlayerIDs) > 0 {
+		log.Printf("%s %s overlaps players %v", actorID, effectTypeAttack, hitPlayerIDs)
+	}
+	if len(hitNPCIDs) > 0 {
+		log.Printf("%s %s overlaps NPCs %v", actorID, effectTypeAttack, hitNPCIDs)
 	}
 
 	return true
@@ -356,22 +370,37 @@ func (w *World) advanceEffects(now time.Time, dt float64, tick uint64, output *S
 			continue
 		}
 
-		hitTargets := make([]string, 0)
+		hitPlayers := make([]string, 0)
 		for id, target := range w.players {
 			if id == eff.Owner {
 				continue
 			}
 			if circleRectOverlap(target.X, target.Y, playerHalf, area) {
 				collided = true
-				hitTargets = append(hitTargets, id)
-				w.applyEffectHit(eff, target, now, tick, output)
+				hitPlayers = append(hitPlayers, id)
+				w.applyEffectHitPlayer(eff, target, now, tick, output)
+			}
+		}
+
+		hitNPCs := make([]string, 0)
+		for id, target := range w.npcs {
+			if id == eff.Owner {
+				continue
+			}
+			if circleRectOverlap(target.X, target.Y, playerHalf, area) {
+				collided = true
+				hitNPCs = append(hitNPCs, id)
+				w.applyEffectHitNPC(eff, target, now, tick, output)
 			}
 		}
 
 		if collided {
 			eff.expiresAt = now
-			if len(hitTargets) > 0 {
-				log.Printf("%s %s hit players %v", eff.Owner, eff.Type, hitTargets)
+			if len(hitPlayers) > 0 {
+				log.Printf("%s %s hit players %v", eff.Owner, eff.Type, hitPlayers)
+			}
+			if len(hitNPCs) > 0 {
+				log.Printf("%s %s hit NPCs %v", eff.Owner, eff.Type, hitNPCs)
 			}
 		}
 	}
@@ -391,7 +420,25 @@ func (w *World) pruneEffects(now time.Time) {
 	w.effects = filtered
 }
 
-func (w *World) applyEffectHit(eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput) {
+func (w *World) applyEffectHitPlayer(eff *effectState, target *playerState, now time.Time, tick uint64, output *StepOutput) {
+	if target == nil {
+		return
+	}
+	w.applyEffectHitActor(eff, &target.actorState, now, tick, output)
+}
+
+func (w *World) applyEffectHitNPC(eff *effectState, target *npcState, now time.Time, tick uint64, output *StepOutput) {
+	if target == nil {
+		return
+	}
+	wasAlive := target.Health > 0
+	w.applyEffectHitActor(eff, &target.actorState, now, tick, output)
+	if wasAlive && target.Health <= 0 {
+		w.handleNPCDefeat(target, tick, output)
+	}
+}
+
+func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now time.Time, tick uint64, output *StepOutput) {
 	if eff == nil || target == nil {
 		return
 	}
