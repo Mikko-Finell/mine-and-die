@@ -19,6 +19,10 @@ type npcState struct {
 	actorState
 	Type             NPCType
 	ExperienceReward int
+	AIState          uint8
+	AIConfigID       uint16
+	Blackboard       npcBlackboard
+	Waypoints        []vec2
 }
 
 func (s *npcState) snapshot() NPC {

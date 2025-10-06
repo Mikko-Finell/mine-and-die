@@ -55,6 +55,7 @@ const (
 	EventEffectSpawned  EventType = "EffectSpawned"
 	EventItemAdded      EventType = "ItemAdded"
 	EventActorDespawned EventType = "ActorDespawned"
+	EventAIStateChanged EventType = "AIStateChanged"
 )
 
 // Event describes a state change emitted during a tick.
@@ -80,6 +81,7 @@ type World struct {
 	effectBehaviors map[string]effectBehavior
 	nextEffectID    uint64
 	nextNPCID       uint64
+	aiLibrary       *aiLibrary
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
@@ -89,6 +91,7 @@ func newWorld() *World {
 		npcs:            make(map[string]*npcState),
 		effects:         make([]*effectState, 0),
 		effectBehaviors: newEffectBehaviors(),
+		aiLibrary:       globalAILibrary,
 	}
 	w.obstacles = w.generateObstacles(obstacleCount)
 	w.spawnInitialNPCs()
@@ -144,6 +147,17 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 	output := StepOutput{Events: make([]Event, 0)}
 
+	aiCommands, aiEvents := w.runAI(tick, now)
+	if len(aiEvents) > 0 {
+		output.Events = append(output.Events, aiEvents...)
+	}
+	if len(aiCommands) > 0 {
+		combined := make([]Command, 0, len(aiCommands)+len(commands))
+		combined = append(combined, aiCommands...)
+		combined = append(combined, commands...)
+		commands = combined
+	}
+
 	type stagedAction struct {
 		actorID string
 		command *ActionCommand
@@ -177,6 +191,22 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 					player.lastInput = cmd.IssuedAt
 				} else {
 					player.lastInput = now
+				}
+			} else if npc, ok := w.npcs[cmd.ActorID]; ok {
+				dx := cmd.Move.DX
+				dy := cmd.Move.DY
+				length := math.Hypot(dx, dy)
+				if length > 1 {
+					dx /= length
+					dy /= length
+				}
+				npc.intentX = dx
+				npc.intentY = dy
+				npc.Facing = deriveFacing(dx, dy, npc.Facing)
+				if dx == 0 && dy == 0 {
+					if cmd.Move.Facing != "" {
+						npc.Facing = cmd.Move.Facing
+					}
 				}
 			}
 		case CommandAction:
@@ -298,8 +328,34 @@ func (w *World) spawnInitialNPCs() {
 		},
 		Type:             NPCTypeGoblin,
 		ExperienceReward: 25,
+		Waypoints: []vec2{
+			{X: 360, Y: 260},
+			{X: 480, Y: 260},
+		},
 	}
 
+	if w.aiLibrary != nil {
+		if cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin); cfg != nil {
+			goblin.AIConfigID = cfg.id
+			goblin.AIState = cfg.initialState
+			cfg.applyDefaults(&goblin.Blackboard)
+		}
+	}
+	if goblin.Blackboard.ArriveRadius <= 0 {
+		goblin.Blackboard.ArriveRadius = 16
+	}
+	if goblin.Blackboard.PauseTicks == 0 {
+		goblin.Blackboard.PauseTicks = 30
+	}
+	if goblin.Blackboard.StuckEpsilon <= 0 {
+		goblin.Blackboard.StuckEpsilon = 0.5
+	}
+	if goblin.Blackboard.WaypointIndex < 0 || goblin.Blackboard.WaypointIndex >= len(goblin.Waypoints) {
+		goblin.Blackboard.WaypointIndex = 0
+	}
+	goblin.Blackboard.NextDecisionAt = 0
+
 	resolveObstaclePenetration(&goblin.actorState, w.obstacles)
+	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
 	w.npcs[id] = goblin
 }

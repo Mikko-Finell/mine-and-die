@@ -1,0 +1,33 @@
+{
+  "npc_type": "goblin",
+  "blackboard_defaults": {
+    "arrive_radius": 16,
+    "pause_ticks": 30,
+    "stuck_epsilon": 0.5
+  },
+  "states": [
+    {
+      "id": "Patrol",
+      "tick_every": 5,
+      "actions": [
+        { "name": "moveToward", "target": "waypoint" }
+      ],
+      "transitions": [
+        { "if": "reachedWaypoint", "to": "Wait" }
+      ]
+    },
+    {
+      "id": "Wait",
+      "tick_every": 1,
+      "duration_ticks": 30,
+      "actions": [
+        { "name": "stop" },
+        { "name": "setTimer", "duration_ticks": 30 },
+        { "name": "setWaypoint", "advance": true }
+      ],
+      "transitions": [
+        { "if": "timerExpired", "to": "Patrol" }
+      ]
+    }
+  ]
+}
