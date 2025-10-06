@@ -82,16 +82,18 @@ type World struct {
 	nextEffectID    uint64
 	nextNPCID       uint64
 	aiLibrary       *aiLibrary
+	config          worldConfig
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
-func newWorld() *World {
+func newWorld(cfg worldConfig) *World {
 	w := &World{
 		players:         make(map[string]*playerState),
 		npcs:            make(map[string]*npcState),
 		effects:         make([]*effectState, 0),
 		effectBehaviors: newEffectBehaviors(),
 		aiLibrary:       globalAILibrary,
+		config:          cfg,
 	}
 	w.obstacles = w.generateObstacles(obstacleCount)
 	w.spawnInitialNPCs()
@@ -304,6 +306,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 }
 
 func (w *World) spawnInitialNPCs() {
+	if !w.config.NPCs {
+		return
+	}
 	inventory := NewInventory()
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
 		log.Printf("failed to seed goblin gold: %v", err)

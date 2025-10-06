@@ -22,19 +22,24 @@ type Obstacle struct {
 
 // generateObstacles scatters blocking rectangles and ore deposits around the map.
 func (w *World) generateObstacles(count int) []Obstacle {
-	if count <= 0 {
-		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-		obstacles := w.generateGoldOreNodes(goldOreCount, nil, rng)
-		lavaPools := w.generateLavaPools(obstacles)
-		return append(obstacles, lavaPools...)
+	if !w.config.Obstacles {
+		if w.config.Lava {
+			return w.generateLavaPools(nil)
+		}
+		return nil
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	obstacles := make([]Obstacle, 0, count)
-	attempts := 0
-	maxAttempts := count * 20
+	baseCount := count
+	if baseCount < 0 {
+		baseCount = 0
+	}
 
-	for len(obstacles) < count && attempts < maxAttempts {
+	obstacles := make([]Obstacle, 0, baseCount)
+	attempts := 0
+	maxAttempts := baseCount * 20
+
+	for len(obstacles) < baseCount && attempts < maxAttempts {
 		attempts++
 
 		width := obstacleMinWidth + rng.Float64()*(obstacleMaxWidth-obstacleMinWidth)
@@ -79,8 +84,12 @@ func (w *World) generateObstacles(count int) []Obstacle {
 	goldOre := w.generateGoldOreNodes(goldOreCount, obstacles, rng)
 	obstacles = append(obstacles, goldOre...)
 
-	lavaPools := w.generateLavaPools(obstacles)
-	return append(obstacles, lavaPools...)
+	if w.config.Lava {
+		lavaPools := w.generateLavaPools(obstacles)
+		obstacles = append(obstacles, lavaPools...)
+	}
+
+	return obstacles
 }
 
 // generateGoldOreNodes places ore obstacles while avoiding overlaps.

@@ -16,6 +16,7 @@ type Hub struct {
 	mu          sync.Mutex
 	world       *World
 	subscribers map[string]*subscriber
+	config      worldConfig
 
 	nextID atomic.Uint64
 	tick   atomic.Uint64
@@ -31,19 +32,16 @@ type subscriber struct {
 
 // newHub creates a hub with empty maps and a freshly generated world.
 func newHub() *Hub {
+	cfg := defaultWorldConfig()
 	return &Hub{
-		world:           newWorld(),
+		world:           newWorld(cfg),
 		subscribers:     make(map[string]*subscriber),
 		pendingCommands: make([]Command, 0),
+		config:          cfg,
 	}
 }
 
-// Join registers a new player and returns the latest snapshot.
-func (h *Hub) Join() joinResponse {
-	id := h.nextID.Add(1)
-	playerID := fmt.Sprintf("player-%d", id)
-	now := time.Now()
-
+func seedPlayerState(playerID string, now time.Time) *playerState {
 	inventory := NewInventory()
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
 		log.Printf("failed to seed gold for %s: %v", playerID, err)
@@ -52,7 +50,7 @@ func (h *Hub) Join() joinResponse {
 		log.Printf("failed to seed potions for %s: %v", playerID, err)
 	}
 
-	player := &playerState{
+	return &playerState{
 		actorState: actorState{
 			Actor: Actor{
 				ID:        playerID,
@@ -67,16 +65,61 @@ func (h *Hub) Join() joinResponse {
 		lastHeartbeat: now,
 		cooldowns:     make(map[string]time.Time),
 	}
+}
+
+// Join registers a new player and returns the latest snapshot.
+func (h *Hub) Join() joinResponse {
+	id := h.nextID.Add(1)
+	playerID := fmt.Sprintf("player-%d", id)
+	now := time.Now()
+
+	player := seedPlayerState(playerID, now)
 
 	h.mu.Lock()
 	h.world.AddPlayer(player)
 	players, npcs, effects := h.world.Snapshot(now)
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
+	cfg := h.config
 	h.mu.Unlock()
 
 	go h.broadcastState(players, npcs, effects)
 
-	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects}
+	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, Config: cfg}
+}
+
+// ResetWorld replaces the current world with a freshly generated instance.
+func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
+	now := time.Now()
+
+	h.commandsMu.Lock()
+	h.pendingCommands = nil
+	h.commandsMu.Unlock()
+
+	h.mu.Lock()
+	playerIDs := make([]string, 0, len(h.world.players))
+	for id := range h.world.players {
+		playerIDs = append(playerIDs, id)
+	}
+
+	newW := newWorld(cfg)
+	for _, id := range playerIDs {
+		newW.AddPlayer(seedPlayerState(id, now))
+	}
+	h.world = newW
+	h.config = cfg
+	players, npcs, effects := h.world.Snapshot(now)
+	h.mu.Unlock()
+
+	h.tick.Store(0)
+
+	return players, npcs, effects
+}
+
+// CurrentConfig returns a copy of the active world configuration.
+func (h *Hub) CurrentConfig() worldConfig {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.config
 }
 
 // Subscribe associates a WebSocket connection with an existing player.
@@ -287,6 +330,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect) {
 		}
 	}
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
+	cfg := h.config
 	h.mu.Unlock()
 
 	msg := stateMessage{
@@ -296,6 +340,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect) {
 		Obstacles:  obstacles,
 		Effects:    effects,
 		ServerTime: time.Now().UnixMilli(),
+		Config:     cfg,
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {

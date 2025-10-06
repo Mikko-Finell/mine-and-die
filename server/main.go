@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -38,6 +39,60 @@ func main() {
 		}
 
 		data, err := json.Marshal(payload)
+		if err != nil {
+			http.Error(w, "failed to encode", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+	})
+
+	http.HandleFunc("/world/reset", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		cfg := hub.CurrentConfig()
+
+		type resetRequest struct {
+			Obstacles *bool `json:"obstacles"`
+			NPCs      *bool `json:"npcs"`
+			Lava      *bool `json:"lava"`
+		}
+
+		if r.Body != nil {
+			defer r.Body.Close()
+			var req resetRequest
+			decoder := json.NewDecoder(r.Body)
+			if err := decoder.Decode(&req); err != nil && err != io.EOF {
+				http.Error(w, "invalid payload", http.StatusBadRequest)
+				return
+			}
+			if req.Obstacles != nil {
+				cfg.Obstacles = *req.Obstacles
+			}
+			if req.NPCs != nil {
+				cfg.NPCs = *req.NPCs
+			}
+			if req.Lava != nil {
+				cfg.Lava = *req.Lava
+			}
+		}
+
+		players, npcs, effects := hub.ResetWorld(cfg)
+		go hub.broadcastState(players, npcs, effects)
+
+		response := struct {
+			Status string      `json:"status"`
+			Config worldConfig `json:"config"`
+		}{
+			Status: "ok",
+			Config: cfg,
+		}
+
+		data, err := json.Marshal(response)
 		if err != nil {
 			http.Error(w, "failed to encode", http.StatusInternalServerError)
 			return
@@ -92,6 +147,8 @@ func main() {
 			return
 		}
 
+		cfg := hub.CurrentConfig()
+
 		initial := stateMessage{
 			Type:       "state",
 			Players:    snapshotPlayers,
@@ -99,6 +156,7 @@ func main() {
 			Obstacles:  append([]Obstacle(nil), hub.world.obstacles...),
 			Effects:    snapshotEffects,
 			ServerTime: time.Now().UnixMilli(),
+			Config:     cfg,
 		}
 		data, err := json.Marshal(initial)
 		if err != nil {
