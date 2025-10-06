@@ -33,6 +33,8 @@ func newStaticAIWorld() (*World, *npcState) {
 		Waypoints: []vec2{
 			{X: 360, Y: 260},
 			{X: 480, Y: 260},
+			{X: 480, Y: 380},
+			{X: 360, Y: 380},
 		},
 	}
 
@@ -85,7 +87,8 @@ func TestGoblinPatrolsBetweenWaypoints(t *testing.T) {
 
 	dt := 1.0 / float64(tickRate)
 	now := time.Unix(0, 0)
-	reachedSecond := false
+	visited := map[int]bool{}
+	leftStart := false
 	returned := false
 
 	for tick := uint64(1); tick <= 400; tick++ {
@@ -93,21 +96,26 @@ func TestGoblinPatrolsBetweenWaypoints(t *testing.T) {
 		now = now.Add(time.Second / tickRate)
 
 		if npc.AIState == waitStateID {
-			if tick > 20 && npc.Blackboard.WaypointIndex%len(npc.Waypoints) == 0 {
-				reachedSecond = true
+			idx := int(npc.Blackboard.WaypointIndex % len(npc.Waypoints))
+			visited[idx] = true
+			if idx != 0 {
+				leftStart = true
 			}
-			if reachedSecond && npc.Blackboard.WaypointIndex%len(npc.Waypoints) == 1 {
+			if idx == 0 && leftStart && len(visited) >= 3 {
 				returned = true
 				break
 			}
 		}
 	}
 
-	if !reachedSecond {
-		t.Fatalf("expected goblin to reach second waypoint")
+	if !leftStart {
+		t.Fatalf("expected goblin to leave starting waypoint")
+	}
+	if len(visited) < 3 {
+		t.Fatalf("expected goblin to visit at least 3 waypoints, visited %d", len(visited))
 	}
 	if !returned {
-		t.Fatalf("expected goblin to return to first waypoint after waiting")
+		t.Fatalf("expected goblin to return to first waypoint after visiting patrol route")
 	}
 }
 
