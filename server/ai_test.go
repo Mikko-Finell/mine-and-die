@@ -46,6 +46,9 @@ func newStaticAIWorld() (*World, *npcState) {
 	if npc.Blackboard.ArriveRadius <= 0 {
 		npc.Blackboard.ArriveRadius = 16
 	}
+	if npc.Blackboard.BaseArriveRadius <= 0 {
+		npc.Blackboard.BaseArriveRadius = npc.Blackboard.ArriveRadius
+	}
 	if npc.Blackboard.PauseTicks == 0 {
 		npc.Blackboard.PauseTicks = 30
 	}
@@ -56,6 +59,7 @@ func newStaticAIWorld() (*World, *npcState) {
 	npc.Blackboard.NextDecisionAt = 0
 	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
 	npc.Blackboard.LastWaypointIndex = -1
+	npc.Blackboard.WaypointArrivedIndex = -1
 
 	w.npcs[npc.ID] = npc
 	return w, npc
@@ -180,5 +184,68 @@ func TestAISimulationDeterminism(t *testing.T) {
 		if math.Abs(npc1.X-npc2.X) > 1e-6 || math.Abs(npc1.Y-npc2.Y) > 1e-6 {
 			t.Fatalf("npc positions diverged at tick %d", tick)
 		}
+	}
+}
+
+func TestReachedWaypointArrivalConditions(t *testing.T) {
+	w, npc := newStaticAIWorld()
+	if npc == nil {
+		t.Fatalf("expected goblin NPC")
+	}
+	cfg := w.aiLibrary.ConfigByID(npc.AIConfigID)
+	if cfg == nil {
+		t.Fatalf("expected compiled AI config")
+	}
+	if len(npc.Waypoints) == 0 {
+		t.Fatalf("expected at least one waypoint")
+	}
+	transition := aiCompiledTransition{conditionID: aiConditionReachedWaypoint}
+	if len(cfg.reachedWaypointParams) > 0 {
+		transition.paramIndex = 0
+	}
+
+	waypoint := npc.Waypoints[0]
+	npc.Blackboard.WaypointIndex = 0
+	npc.Blackboard.LastWaypointIndex = 0
+	npc.X = waypoint.X + npc.Blackboard.ArriveRadius - 1
+	npc.Y = waypoint.Y
+	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
+	npc.Blackboard.LastMoveDelta = moveSpeed / float64(tickRate)
+	npc.intentX = -1
+	npc.intentY = 0
+	npc.Facing = FacingLeft
+
+	if w.evaluateCondition(cfg, npc, &transition, 1, time.Unix(0, 0)) {
+		t.Fatalf("expected arrival check to fail while moving quickly")
+	}
+
+	npc.Blackboard.LastMoveDelta = 0.05
+	npc.intentX = 0
+	npc.intentY = 0
+
+	if !w.evaluateCondition(cfg, npc, &transition, 2, time.Unix(0, 0)) {
+		t.Fatalf("expected arrival check to pass when slow and close")
+	}
+	if !npc.Blackboard.WaypointArrived {
+		t.Fatalf("expected waypoint to be marked as arrived")
+	}
+
+	npc.X = waypoint.X + npc.Blackboard.ArriveRadius*1.4
+	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
+	npc.Blackboard.LastMoveDelta = 0
+
+	if !w.evaluateCondition(cfg, npc, &transition, 3, time.Unix(0, 0)) {
+		t.Fatalf("expected arrival to persist within hysteresis window")
+	}
+
+	npc.X = waypoint.X + npc.Blackboard.ArriveRadius*1.6
+	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
+	npc.Blackboard.LastMoveDelta = 0
+
+	if w.evaluateCondition(cfg, npc, &transition, 4, time.Unix(0, 0)) {
+		t.Fatalf("expected arrival to clear once outside hysteresis window")
+	}
+	if npc.Blackboard.WaypointArrived {
+		t.Fatalf("expected waypoint arrival state to clear after leaving radius")
 	}
 }

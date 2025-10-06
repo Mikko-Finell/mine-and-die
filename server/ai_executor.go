@@ -7,10 +7,15 @@ import (
 )
 
 const (
-	maxAIDecisionsPerTick   = 64
-	waypointProgressEpsilon = 0.5
-	waypointStallThreshold  = 30
-	maxWaypointStall        = ^uint16(0)
+	maxAIDecisionsPerTick         = 64
+	waypointProgressEpsilon       = 0.5
+	waypointStallThreshold        = 30
+	maxWaypointStall              = ^uint16(0)
+	waypointArrivalSpeedThreshold = 0.3
+	waypointArrivalHysteresis     = 1.5
+	waypointNoProgressWindow      = 5
+	waypointIntentEpsilon         = 1e-3
+	waypointOrbitTolerance        = 0.25
 )
 
 var abilityIDToCommand = map[aiAbilityID]string{
@@ -114,12 +119,27 @@ func (w *World) evaluateCondition(cfg *aiCompiledConfig, npc *npcState, transiti
 		if int(transition.paramIndex) < len(cfg.reachedWaypointParams) {
 			params = cfg.reachedWaypointParams[transition.paramIndex]
 		}
-		radius := params.ArriveRadius
-		if radius <= 0 {
-			radius = npc.Blackboard.ArriveRadius
+		baseRadius := params.ArriveRadius
+		if baseRadius <= 0 {
+			baseRadius = npc.Blackboard.BaseArriveRadius
+			if baseRadius <= 0 {
+				baseRadius = npc.Blackboard.ArriveRadius
+			}
 		}
+		if baseRadius <= 0 {
+			baseRadius = 12
+		}
+		if npc.Blackboard.BaseArriveRadius <= 0 {
+			npc.Blackboard.BaseArriveRadius = baseRadius
+		}
+		radius := npc.Blackboard.ArriveRadius
 		if radius <= 0 {
-			radius = 12
+			radius = baseRadius
+		}
+		relaxedCap := math.Min(baseRadius*3, 32)
+		if radius > relaxedCap {
+			radius = relaxedCap
+			npc.Blackboard.ArriveRadius = radius
 		}
 		if len(npc.Waypoints) == 0 {
 			return false
@@ -132,40 +152,60 @@ func (w *World) evaluateCondition(cfg *aiCompiledConfig, npc *npcState, transiti
 			idx = idx % len(npc.Waypoints)
 		}
 		waypoint := npc.Waypoints[idx]
-		dx := npc.X - waypoint.X
-		dy := npc.Y - waypoint.Y
-		dist := math.Hypot(dx, dy)
-		if dist <= radius {
-			return true
+		toTargetX := waypoint.X - npc.X
+		toTargetY := waypoint.Y - npc.Y
+		dist := math.Hypot(toTargetX, toTargetY)
+
+		if npc.Blackboard.WaypointArrived && npc.Blackboard.WaypointArrivedIndex == idx {
+			hysteresisRadius := npc.Blackboard.WaypointArriveRadius
+			if hysteresisRadius <= 0 {
+				hysteresisRadius = radius
+			}
+			if dist <= hysteresisRadius*waypointArrivalHysteresis {
+				return true
+			}
+			w.clearWaypointArrival(npc, dist)
 		}
 
-		// If we've been circling the waypoint without making progress,
-		// gradually relax the arrival radius so patrols don't stall on
-		// geometry seams.
-		stall := npc.Blackboard.WaypointStall
-		if stall == 0 {
+		if dist > radius {
 			return false
 		}
-		steps := int(stall / waypointStallThreshold)
-		if steps <= 0 {
+
+		maxStep := moveSpeed / float64(tickRate)
+		if maxStep > 0 {
+			speedFraction := npc.Blackboard.LastMoveDelta / maxStep
+			if speedFraction > waypointArrivalSpeedThreshold {
+				if npc.Blackboard.HoldPositionUntil < tick+1 {
+					npc.Blackboard.HoldPositionUntil = tick + 1
+				}
+				return false
+			}
+		}
+
+		if !w.hasLineOfSight(npc.X, npc.Y, waypoint.X, waypoint.Y) {
 			return false
 		}
-		baseRelax := math.Max(radius*0.5, 12)
-		relaxed := radius + float64(steps)*baseRelax
-		best := npc.Blackboard.WaypointBestDist
-		if best <= 0 {
-			best = dist
+
+		intentLength := math.Hypot(npc.intentX, npc.intentY)
+		if intentLength > waypointIntentEpsilon {
+			intentDot := npc.intentX*toTargetX + npc.intentY*toTargetY
+			if intentDot < 0 {
+				return false
+			}
 		}
-		if dist <= relaxed || best <= relaxed {
-			return true
+
+		facingOK := true
+		if dist > waypointIntentEpsilon {
+			fx, fy := facingToVector(npc.Facing)
+			dotFacing := (fx*toTargetX + fy*toTargetY) / dist
+			facingOK = dotFacing >= 0
 		}
-		// As a final fallback, treat the waypoint as reached if we
-		// haven't improved for multiple windows and are effectively
-		// stuck near an obstacle.
-		if steps > 3 {
-			return true
+		if !facingOK {
+			return false
 		}
-		return false
+
+		w.markWaypointArrived(npc, idx, radius, waypoint, tick, dist)
+		return true
 	case aiConditionTimerExpired:
 		wait := npc.Blackboard.WaitUntil
 		return wait > 0 && tick >= wait
@@ -246,7 +286,12 @@ func (w *World) executeActions(cfg *aiCompiledConfig, npc *npcState, state *aiCo
 	for _, action := range state.actions {
 		switch action.id {
 		case aiActionMoveToward:
-			w.actionMoveToward(cfg, npc, action)
+			if npc.Blackboard.HoldPositionUntil > 0 && tick < npc.Blackboard.HoldPositionUntil {
+				npc.intentX = 0
+				npc.intentY = 0
+			} else {
+				w.actionMoveToward(cfg, npc, action)
+			}
 			if cmd := buildMoveCommand(npc, tick, now); cmd != nil {
 				*commands = append(*commands, *cmd)
 			}
@@ -482,12 +527,8 @@ func (w *World) actionSetWaypoint(cfg *aiCompiledConfig, npc *npcState, action a
 		idx = idx % len(npc.Waypoints)
 	}
 	waypoint := npc.Waypoints[idx]
-	dx := npc.X - waypoint.X
-	dy := npc.Y - waypoint.Y
-	npc.Blackboard.LastWaypointIndex = idx
-	npc.Blackboard.WaypointBestDist = math.Hypot(dx, dy)
-	npc.Blackboard.WaypointLastDist = npc.Blackboard.WaypointBestDist
-	npc.Blackboard.WaypointStall = 0
+	dist := math.Hypot(npc.X-waypoint.X, npc.Y-waypoint.Y)
+	w.resetWaypointProgress(npc, idx, dist)
 }
 
 func (w *World) updateBlackboard(npc *npcState) {
@@ -511,11 +552,32 @@ func (w *World) updateBlackboard(npc *npcState) {
 	}
 	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
 
+	baseRadius := npc.Blackboard.BaseArriveRadius
+	if baseRadius <= 0 {
+		baseRadius = npc.Blackboard.ArriveRadius
+		if baseRadius <= 0 {
+			baseRadius = 12
+		}
+		npc.Blackboard.BaseArriveRadius = baseRadius
+	}
+	if npc.Blackboard.ArriveRadius < baseRadius {
+		npc.Blackboard.ArriveRadius = baseRadius
+	}
+	relaxedCap := math.Min(baseRadius*3, 32)
+	if npc.Blackboard.ArriveRadius > relaxedCap {
+		npc.Blackboard.ArriveRadius = relaxedCap
+	}
+
 	if len(npc.Waypoints) == 0 {
 		npc.Blackboard.LastWaypointIndex = -1
 		npc.Blackboard.WaypointBestDist = 0
 		npc.Blackboard.WaypointLastDist = 0
 		npc.Blackboard.WaypointStall = 0
+		npc.Blackboard.WaypointNoProgress = 0
+		npc.Blackboard.WaypointArrived = false
+		npc.Blackboard.WaypointArrivedIndex = -1
+		npc.Blackboard.WaypointArriveRadius = 0
+		npc.Blackboard.HoldPositionUntil = 0
 		return
 	}
 
@@ -530,20 +592,242 @@ func (w *World) updateBlackboard(npc *npcState) {
 	dist := math.Hypot(npc.X-waypoint.X, npc.Y-waypoint.Y)
 
 	if npc.Blackboard.LastWaypointIndex != idx {
-		npc.Blackboard.LastWaypointIndex = idx
-		npc.Blackboard.WaypointBestDist = dist
+		w.resetWaypointProgress(npc, idx, dist)
+		return
+	}
+
+	if npc.Blackboard.WaypointArrived && npc.Blackboard.WaypointArrivedIndex == idx {
 		npc.Blackboard.WaypointLastDist = dist
-		npc.Blackboard.WaypointStall = 0
 		return
 	}
 
 	if npc.Blackboard.WaypointBestDist == 0 || dist+waypointProgressEpsilon < npc.Blackboard.WaypointBestDist {
 		npc.Blackboard.WaypointBestDist = dist
 		npc.Blackboard.WaypointStall = 0
-	} else if npc.Blackboard.WaypointStall < maxWaypointStall {
-		npc.Blackboard.WaypointStall++
+		npc.Blackboard.WaypointNoProgress = 0
+		npc.Blackboard.ArriveRadius = baseRadius
+	} else if delta > epsilon {
+		npc.Blackboard.WaypointNoProgress++
+		if math.Abs(dist-npc.Blackboard.WaypointLastDist) <= waypointOrbitTolerance {
+			bumpWaypointStall(&npc.Blackboard, uint16(waypointStallThreshold))
+		} else if npc.Blackboard.WaypointNoProgress >= waypointNoProgressWindow {
+			bumpWaypointStall(&npc.Blackboard, 1)
+		}
+	} else {
+		npc.Blackboard.WaypointNoProgress = 0
 	}
+
 	npc.Blackboard.WaypointLastDist = dist
+
+	if npc.Blackboard.StuckCounter >= uint8(waypointStallThreshold) && npc.Blackboard.WaypointBestDist > 0 && dist+waypointProgressEpsilon >= npc.Blackboard.WaypointBestDist {
+		bumpWaypointStall(&npc.Blackboard, uint16(waypointStallThreshold))
+	}
+
+	if npc.Blackboard.WaypointStall > 0 {
+		steps := int(npc.Blackboard.WaypointStall) / waypointStallThreshold
+		if steps > 0 {
+			increment := math.Max(baseRadius*0.5, 12)
+			widened := baseRadius + float64(steps)*increment
+			if widened > relaxedCap {
+				widened = relaxedCap
+			}
+			npc.Blackboard.ArriveRadius = widened
+		}
+	}
+
+	if int(npc.Blackboard.WaypointStall) > waypointStallThreshold*4 {
+		w.advanceWaypoint(npc)
+	}
+}
+
+func bumpWaypointStall(bb *npcBlackboard, amount uint16) {
+	if bb == nil || amount == 0 {
+		return
+	}
+	if bb.WaypointStall > maxWaypointStall-amount {
+		bb.WaypointStall = maxWaypointStall
+		return
+	}
+	bb.WaypointStall += amount
+}
+
+func (w *World) resetWaypointProgress(npc *npcState, idx int, dist float64) {
+	if npc == nil {
+		return
+	}
+	if npc.Blackboard.BaseArriveRadius <= 0 {
+		if npc.Blackboard.ArriveRadius > 0 {
+			npc.Blackboard.BaseArriveRadius = npc.Blackboard.ArriveRadius
+		} else {
+			npc.Blackboard.BaseArriveRadius = 12
+		}
+	}
+	base := npc.Blackboard.BaseArriveRadius
+	if base <= 0 {
+		base = 12
+	}
+	npc.Blackboard.LastWaypointIndex = idx
+	npc.Blackboard.WaypointBestDist = dist
+	npc.Blackboard.WaypointLastDist = dist
+	npc.Blackboard.WaypointStall = 0
+	npc.Blackboard.WaypointNoProgress = 0
+	npc.Blackboard.WaypointArrived = false
+	npc.Blackboard.WaypointArrivedIndex = -1
+	npc.Blackboard.WaypointArriveRadius = 0
+	npc.Blackboard.HoldPositionUntil = 0
+	npc.Blackboard.ArriveRadius = base
+}
+
+func (w *World) advanceWaypoint(npc *npcState) {
+	if npc == nil || len(npc.Waypoints) == 0 {
+		return
+	}
+	npc.Blackboard.WaypointIndex = (npc.Blackboard.WaypointIndex + 1) % len(npc.Waypoints)
+	idx := npc.Blackboard.WaypointIndex
+	if idx < 0 {
+		idx = 0
+	}
+	waypoint := npc.Waypoints[idx]
+	dist := math.Hypot(npc.X-waypoint.X, npc.Y-waypoint.Y)
+	w.resetWaypointProgress(npc, idx, dist)
+}
+
+func (w *World) markWaypointArrived(npc *npcState, idx int, radius float64, waypoint vec2, tick uint64, dist float64) {
+	if npc == nil {
+		return
+	}
+	base := npc.Blackboard.BaseArriveRadius
+	if base <= 0 {
+		if radius > 0 {
+			base = radius
+		} else {
+			base = 12
+		}
+		npc.Blackboard.BaseArriveRadius = base
+	}
+	npc.Blackboard.WaypointArrived = true
+	npc.Blackboard.WaypointArrivedIndex = idx
+	npc.Blackboard.WaypointArriveRadius = radius
+	npc.Blackboard.WaypointStall = 0
+	npc.Blackboard.WaypointBestDist = 0
+	npc.Blackboard.WaypointLastDist = 0
+	npc.Blackboard.WaypointNoProgress = 0
+	npc.Blackboard.ArriveRadius = base
+	npc.Blackboard.LastWaypointIndex = idx
+	npc.Blackboard.HoldPositionUntil = 0
+	if npc.Blackboard.PauseTicks > 0 {
+		npc.Blackboard.HoldPositionUntil = tick + npc.Blackboard.PauseTicks
+	}
+	npc.intentX = 0
+	npc.intentY = 0
+	if dist <= 1 {
+		npc.X = waypoint.X
+		npc.Y = waypoint.Y
+	}
+	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
+}
+
+func (w *World) clearWaypointArrival(npc *npcState, dist float64) {
+	if npc == nil {
+		return
+	}
+	npc.Blackboard.WaypointArrived = false
+	npc.Blackboard.WaypointArrivedIndex = -1
+	npc.Blackboard.WaypointArriveRadius = 0
+	npc.Blackboard.HoldPositionUntil = 0
+	npc.Blackboard.WaypointStall = 0
+	npc.Blackboard.WaypointNoProgress = 0
+	npc.Blackboard.WaypointBestDist = dist
+	npc.Blackboard.WaypointLastDist = dist
+	base := npc.Blackboard.BaseArriveRadius
+	if base > 0 {
+		npc.Blackboard.ArriveRadius = base
+	}
+}
+
+func (w *World) hasLineOfSight(ax, ay, bx, by float64) bool {
+	if w == nil {
+		return true
+	}
+	for _, obs := range w.obstacles {
+		if segmentIntersectsRect(ax, ay, bx, by, obs) {
+			return false
+		}
+	}
+	return true
+}
+
+func segmentIntersectsRect(ax, ay, bx, by float64, obs Obstacle) bool {
+	minX := obs.X
+	maxX := obs.X + obs.Width
+	minY := obs.Y
+	maxY := obs.Y + obs.Height
+
+	if ax >= minX && ax <= maxX && ay >= minY && ay <= maxY {
+		return true
+	}
+	if bx >= minX && bx <= maxX && by >= minY && by <= maxY {
+		return true
+	}
+
+	segMinX := math.Min(ax, bx)
+	segMaxX := math.Max(ax, bx)
+	segMinY := math.Min(ay, by)
+	segMaxY := math.Max(ay, by)
+
+	if segMaxX < minX || segMinX > maxX || segMaxY < minY || segMinY > maxY {
+		return false
+	}
+
+	edges := [4][4]float64{
+		{minX, minY, maxX, minY},
+		{maxX, minY, maxX, maxY},
+		{maxX, maxY, minX, maxY},
+		{minX, maxY, minX, minY},
+	}
+	for _, edge := range edges {
+		if segmentsIntersect(ax, ay, bx, by, edge[0], edge[1], edge[2], edge[3]) {
+			return true
+		}
+	}
+	return false
+}
+
+func segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy float64) bool {
+	o1 := orientation(ax, ay, bx, by, cx, cy)
+	o2 := orientation(ax, ay, bx, by, dx, dy)
+	o3 := orientation(cx, cy, dx, dy, ax, ay)
+	o4 := orientation(cx, cy, dx, dy, bx, by)
+
+	if o1*o2 < 0 && o3*o4 < 0 {
+		return true
+	}
+
+	if math.Abs(o1) < 1e-6 && onSegment(ax, ay, bx, by, cx, cy) {
+		return true
+	}
+	if math.Abs(o2) < 1e-6 && onSegment(ax, ay, bx, by, dx, dy) {
+		return true
+	}
+	if math.Abs(o3) < 1e-6 && onSegment(cx, cy, dx, dy, ax, ay) {
+		return true
+	}
+	if math.Abs(o4) < 1e-6 && onSegment(cx, cy, dx, dy, bx, by) {
+		return true
+	}
+	return false
+}
+
+func onSegment(ax, ay, bx, by, px, py float64) bool {
+	minX := math.Min(ax, bx) - 1e-6
+	maxX := math.Max(ax, bx) + 1e-6
+	minY := math.Min(ay, by) - 1e-6
+	maxY := math.Max(ay, by) + 1e-6
+	return px >= minX && px <= maxX && py >= minY && py <= maxY
+}
+
+func orientation(ax, ay, bx, by, cx, cy float64) float64 {
+	return (bx-ax)*(cy-ay) - (by-ay)*(cx-ax)
 }
 
 func (w *World) closestPlayer(x, y float64) (string, float64, bool) {
