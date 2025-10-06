@@ -35,6 +35,8 @@ const ITEM_METADATA = {
   health_potion: { name: "Lesser Healing Potion", icon: "🧪" },
 };
 
+const WORLD_RESET_KEYS = ["obstacles", "npcs", "lava"];
+
 const store = {
   statusEl,
   canvas,
@@ -52,6 +54,7 @@ const store = {
     npcs: worldResetNPCs,
     lava: worldResetLava,
   },
+  worldResetDirtyFields: { obstacles: false, npcs: false, lava: false },
   TILE_SIZE: 40,
   GRID_WIDTH: canvas.width / 40,
   GRID_HEIGHT: canvas.height / 40,
@@ -228,15 +231,25 @@ function updateDiagnostics() {
 
 function syncWorldResetControls() {
   const cfg = store.worldConfig || {};
-  if (store.worldResetInputs.obstacles) {
-    store.worldResetInputs.obstacles.checked = cfg.obstacles !== false;
+  if (!store.worldResetDirtyFields) {
+    store.worldResetDirtyFields = { obstacles: false, npcs: false, lava: false };
   }
-  if (store.worldResetInputs.npcs) {
-    store.worldResetInputs.npcs.checked = cfg.npcs !== false;
-  }
-  if (store.worldResetInputs.lava) {
-    store.worldResetInputs.lava.checked = cfg.lava !== false;
-  }
+
+  WORLD_RESET_KEYS.forEach((key) => {
+    const input = store.worldResetInputs[key];
+    if (!input) {
+      return;
+    }
+
+    const desired = cfg[key] !== false;
+    if (input.checked === desired) {
+      store.worldResetDirtyFields[key] = false;
+    }
+
+    if (!store.worldResetDirtyFields[key]) {
+      input.checked = desired;
+    }
+  });
 }
 
 function setWorldResetPending(pending) {
@@ -265,6 +278,27 @@ function initializeWorldResetControls() {
     return;
   }
 
+  if (!store.worldResetDirtyFields) {
+    store.worldResetDirtyFields = { obstacles: false, npcs: false, lava: false };
+  }
+
+  const registerDirtyTracking = (key) => {
+    const input = store.worldResetInputs[key];
+    if (!input) {
+      return;
+    }
+
+    const updateDirtyState = () => {
+      const expected = store.worldConfig ? store.worldConfig[key] !== false : true;
+      store.worldResetDirtyFields[key] = input.checked !== expected;
+    };
+
+    input.addEventListener("change", updateDirtyState);
+    input.addEventListener("input", updateDirtyState);
+  };
+
+  WORLD_RESET_KEYS.forEach(registerDirtyTracking);
+
   store.worldResetForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (store.isResettingWorld) {
@@ -281,6 +315,10 @@ function initializeWorldResetControls() {
     showWorldResetStatus("Restarting world...");
     try {
       await resetWorld(store, desiredConfig);
+      WORLD_RESET_KEYS.forEach((key) => {
+        store.worldResetDirtyFields[key] = false;
+      });
+      syncWorldResetControls();
       store.lastWorldResetAt = Date.now();
       const timestamp = new Date(store.lastWorldResetAt).toLocaleTimeString();
       showWorldResetStatus(`World restarted at ${timestamp}.`);
