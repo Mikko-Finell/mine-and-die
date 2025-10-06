@@ -55,6 +55,7 @@ func newStaticAIWorld() (*World, *npcState) {
 	npc.Blackboard.WaypointIndex = 0
 	npc.Blackboard.NextDecisionAt = 0
 	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
+	npc.Blackboard.LastWaypointIndex = -1
 
 	w.npcs[npc.ID] = npc
 	return w, npc
@@ -107,6 +108,54 @@ func TestGoblinPatrolsBetweenWaypoints(t *testing.T) {
 	}
 	if !returned {
 		t.Fatalf("expected goblin to return to first waypoint after waiting")
+	}
+}
+
+func TestGoblinAdvancesWhenWaypointBlocked(t *testing.T) {
+	w, npc := newStaticAIWorld()
+	if npc == nil {
+		t.Fatalf("expected goblin NPC")
+	}
+	if len(npc.Waypoints) < 2 {
+		t.Fatalf("expected patrol with at least two waypoints")
+	}
+
+	second := npc.Waypoints[1]
+	w.obstacles = append(w.obstacles, Obstacle{
+		ID:     "blocker",
+		X:      second.X - 30,
+		Y:      second.Y - 30,
+		Width:  60,
+		Height: 60,
+	})
+
+	dt := 1.0 / float64(tickRate)
+	now := time.Unix(0, 0)
+
+	// Allow the goblin to advance to the second waypoint index before blocking behaviour kicks in.
+	for tick := uint64(1); tick <= 40; tick++ {
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+	}
+
+	blockedIndex := npc.Blackboard.WaypointIndex
+	if blockedIndex != 1 {
+		t.Fatalf("expected goblin to target second waypoint, got %d", blockedIndex)
+	}
+
+	advanced := false
+	for tick := uint64(41); tick <= 600; tick++ {
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+		if npc.Blackboard.WaypointIndex != blockedIndex {
+			advanced = true
+			break
+		}
+	}
+
+	if !advanced {
+		t.Fatalf("expected goblin to advance past blocked waypoint; stall counter=%d best=%.2f dist=%.2f",
+			npc.Blackboard.WaypointStall, npc.Blackboard.WaypointBestDist, npc.Blackboard.WaypointLastDist)
 	}
 }
 

@@ -359,6 +359,7 @@ func (w *World) spawnInitialNPCs() {
 		goblin.Blackboard.WaypointIndex = 0
 	}
 	goblin.Blackboard.NextDecisionAt = 0
+	goblin.Blackboard.LastWaypointIndex = -1
 
 	resolveObstaclePenetration(&goblin.actorState, w.obstacles)
 	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
