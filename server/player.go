@@ -100,6 +100,17 @@ type actorState struct {
 	intentY float64
 }
 
+type playerPathState struct {
+	Path             []vec2
+	PathIndex        int
+	PathTarget       vec2
+	PathGoal         vec2
+	PathLastDistance float64
+	PathStallTicks   int
+	PathRecalcTick   uint64
+	ArriveRadius     float64
+}
+
 func (s *actorState) snapshotActor() Actor {
 	actor := s.Actor
 	if actor.Facing == "" {
@@ -139,6 +150,7 @@ type playerState struct {
 	lastHeartbeat time.Time
 	lastRTT       time.Duration
 	cooldowns     map[string]time.Time
+	path          playerPathState
 }
 
 func (s *playerState) snapshot() Player {

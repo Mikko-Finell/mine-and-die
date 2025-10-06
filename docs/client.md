@@ -29,6 +29,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 ## Networking Details
 - **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, and keeps diagnostics fresh.
 - **Intents:** `sendCurrentIntent` serializes `{ type: "input", dx, dy, facing }` whenever movement or facing changes.
+- **Path navigation:** `sendMoveTo` sends `{ type: "path", x, y }` for click-to-move requests while `sendCancelPath` clears the server-driven route when WASD input resumes.
 - **Actions:** `sendAction` is used by `input.js` for melee and fireball triggers.
 - **Heartbeats:** `startHeartbeat` sets an interval that calls `sendHeartbeat`; acknowledgements update latency displays.
 - **Reconnects:** Socket closure funnels through `handleConnectionLoss`, which resets state and schedules `joinGame` again.

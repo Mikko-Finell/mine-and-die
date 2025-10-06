@@ -14,6 +14,8 @@ const (
 	CommandMove      CommandType = "Move"
 	CommandAction    CommandType = "Action"
 	CommandHeartbeat CommandType = "Heartbeat"
+	CommandSetPath   CommandType = "SetPath"
+	CommandClearPath CommandType = "ClearPath"
 )
 
 // Command represents an intent captured for processing on the next tick.
@@ -25,6 +27,7 @@ type Command struct {
 	Move       *MoveCommand
 	Action     *ActionCommand
 	Heartbeat  *HeartbeatCommand
+	Path       *PathCommand
 }
 
 // MoveCommand carries the desired movement vector and facing.
@@ -37,6 +40,12 @@ type MoveCommand struct {
 // ActionCommand identifies an ability or interaction trigger.
 type ActionCommand struct {
 	Name string
+}
+
+// PathCommand identifies a navigation target for A* pathfinding.
+type PathCommand struct {
+	TargetX float64
+	TargetY float64
 }
 
 // HeartbeatCommand updates connectivity metadata for an actor.
@@ -181,6 +190,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 					dx /= length
 					dy /= length
 				}
+				if dx != 0 || dy != 0 {
+					w.clearPlayerPath(player)
+				}
 				player.intentX = dx
 				player.intentY = dy
 				player.Facing = deriveFacing(dx, dy, player.Facing)
@@ -224,9 +236,34 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 				player.lastHeartbeat = cmd.Heartbeat.ReceivedAt
 				player.lastRTT = cmd.Heartbeat.RTT
 			}
+		case CommandSetPath:
+			if cmd.Path == nil {
+				continue
+			}
+			if player, ok := w.players[cmd.ActorID]; ok {
+				target := vec2{X: cmd.Path.TargetX, Y: cmd.Path.TargetY}
+				w.ensurePlayerPath(player, target, tick)
+				if !cmd.IssuedAt.IsZero() {
+					player.lastInput = cmd.IssuedAt
+				} else {
+					player.lastInput = now
+				}
+			}
+		case CommandClearPath:
+			if player, ok := w.players[cmd.ActorID]; ok {
+				w.clearPlayerPath(player)
+				player.intentX = 0
+				player.intentY = 0
+				if !cmd.IssuedAt.IsZero() {
+					player.lastInput = cmd.IssuedAt
+				} else {
+					player.lastInput = now
+				}
+			}
 		}
 	}
 
+	w.advancePlayerPaths(tick)
 	w.advanceNPCPaths(tick)
 
 	actors := make([]*actorState, 0, len(w.players)+len(w.npcs))

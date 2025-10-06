@@ -24,6 +24,8 @@ type clientMessage struct {
 	DX     float64 `json:"dx"`
 	DY     float64 `json:"dy"`
 	Facing string  `json:"facing"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
 	SentAt int64   `json:"sentAt"`
 	Action string  `json:"action"`
 }

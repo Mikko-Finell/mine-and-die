@@ -64,6 +64,7 @@ func seedPlayerState(playerID string, now time.Time) *playerState {
 		},
 		lastHeartbeat: now,
 		cooldowns:     make(map[string]time.Time),
+		path:          playerPathState{ArriveRadius: defaultPlayerArriveRadius},
 	}
 }
 
@@ -197,6 +198,40 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool 
 			DY:     dy,
 			Facing: parsedFacing,
 		},
+	}
+	h.enqueueCommand(cmd)
+	return true
+}
+
+// SetPlayerPath queues a command that asks the server to navigate the player toward a point.
+func (h *Hub) SetPlayerPath(playerID string, x, y float64) bool {
+	if !h.playerExists(playerID) {
+		return false
+	}
+	cmd := Command{
+		OriginTick: h.tick.Load(),
+		ActorID:    playerID,
+		Type:       CommandSetPath,
+		IssuedAt:   time.Now(),
+		Path: &PathCommand{
+			TargetX: x,
+			TargetY: y,
+		},
+	}
+	h.enqueueCommand(cmd)
+	return true
+}
+
+// ClearPlayerPath stops any server-driven navigation for the player.
+func (h *Hub) ClearPlayerPath(playerID string) bool {
+	if !h.playerExists(playerID) {
+		return false
+	}
+	cmd := Command{
+		OriginTick: h.tick.Load(),
+		ActorID:    playerID,
+		Type:       CommandClearPath,
+		IssuedAt:   time.Now(),
 	}
 	h.enqueueCommand(cmd)
 	return true

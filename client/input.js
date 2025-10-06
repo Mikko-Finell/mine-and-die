@@ -1,4 +1,4 @@
-import { sendAction, sendCurrentIntent } from "./network.js";
+import { sendAction, sendCancelPath, sendCurrentIntent } from "./network.js";
 
 const DEFAULT_FACING = "down";
 const KEY_TO_FACING = {
@@ -39,6 +39,9 @@ export function registerInputHandlers(store) {
 
     event.preventDefault();
     if (isPressed) {
+      if (!event.repeat && store.isPathActive) {
+        sendCancelPath(store);
+      }
       if (!store.keys.has(key)) {
         store.directionOrder = store.directionOrder.filter((entry) => entry !== key);
         store.directionOrder.push(key);

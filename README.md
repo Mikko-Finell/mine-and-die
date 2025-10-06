@@ -40,7 +40,7 @@ The Go module under `server/` is now split by responsibility so contributors can
 ## Runtime Contract
 1. Clients `POST /join` to receive a snapshot containing their player ID, all known players, obstacles, and active effects.
 2. A WebSocket connection (`/ws?id=<player-id>`) delivers `state` messages ~15× per second.
-3. Clients send `{ type: "input", dx, dy, facing }` whenever movement intent changes and `{ type: "action", action }` for abilities. The hub stages these as simulation commands.
+3. Clients send `{ type: "input", dx, dy, facing }` whenever movement intent changes, `{ type: "path", x, y }` for click-to-move navigation, `{ type: "cancelPath" }` when manual control resumes, and `{ type: "action", action }` for abilities. The hub stages these as simulation commands.
 4. Heartbeats (`{ type: "heartbeat", sentAt }`) flow every ~2 seconds; the hub records the timing as a command and missing three in a row disconnects the session.
 5. `/diagnostics` exposes a JSON summary of tick rate, heartbeat interval, and per-player timing data.
 
