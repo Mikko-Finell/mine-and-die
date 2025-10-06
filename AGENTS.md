@@ -22,11 +22,26 @@ Mine & Die is a small realtime prototype:
 - `messages.go` – JSON payload contracts shared across HTTP and WebSocket endpoints.
 - `main_test.go` – Behavioural tests covering joins, intents, effects, and heartbeats.
 - `client/` – Static assets served by the Go process.
-  - `main.js` – Builds the shared state store, hooks up diagnostics UI, and kicks off input/render/network flows.
-  - `network.js` – `/join` handshake, WebSocket management, outbound message helpers, heartbeats, and reconnect logic.
-  - `input.js` – Keyboard handling that normalizes movement vectors and triggers actions.
-  - `render.js` – Canvas drawing, interpolation, obstacle/effect rendering helpers.
-  - `styles.css` & `index.html` – Minimal layout and markup.
+  - `main.js`
+    - Owns the cross-module `store` describing DOM references, simulation state, network metadata, and diagnostics counters.
+    - Boots the client by wiring diagnostics toggles, inventory UI, and world reset form interactions.
+    - Coordinates startup sequencing: registers input handlers, initiates the WebSocket join handshake, starts render and heartbeat loops, and publishes latency/status updates.
+    - Provides shared helpers (`setStatusBase`, `setLatency`, `updateDiagnostics`, etc.) consumed by other modules to mutate HUD copy and telemetry readouts.
+  - `network.js`
+    - Exposes `joinGame` / `resetWorld` entry points that orchestrate the `/join` fetch, instantiate the WebSocket, and request server-side world regenerations.
+    - Maintains connection lifecycle: listens for open/message/close events, retries with exponential backoff, surfaces reconnect state to the `store`, and clears timers on shutdown.
+    - Serializes outbound messages (intents, heartbeats, latency probes) while tracking bytes/messages sent for diagnostics.
+    - Parses authoritative snapshots into the shared `store`, updates latency/heartbeat metrics, and mirrors NPC/effect/player payloads for rendering.
+  - `input.js`
+    - Subscribes to keyboard events, maintaining the active key set and most recent directional ordering to resolve diagonals deterministically.
+    - Normalizes directional intent vectors, derives facing information, and notifies `network.js` when movement or action input changes.
+    - Exposes helpers for simulated latency controls so QA can inject delays via the diagnostics panel.
+  - `render.js`
+    - Runs the animation frame loop, interpolating between authoritative snapshots and previous frame data for smooth motion.
+    - Renders tile grid, players, NPCs, obstacles, and transient effects to the `<canvas>` using the dimensions from the shared `store`.
+    - Draws HUD overlays such as player names, cooldown indicators, and inventory slots, and reconciles `store.display*` caches with real state to minimize allocations.
+  - `styles.css` – Layout rules for the canvas, diagnostics drawer, and inventory controls.
+  - `index.html` – Minimal markup bootstrapping the diagnostics panel, world reset form, canvas element, and ES module script tags.
 - `docs/` – Living documentation for architecture, modules, and testing.
 - `README.md` – Quick pitch, documentation map, and setup guide.
 
