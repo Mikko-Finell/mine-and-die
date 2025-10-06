@@ -1,13 +1,30 @@
 const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
 export const DEFAULT_WORLD_SEED = "prototype";
+const DEFAULT_OBSTACLE_COUNT = 2;
+const DEFAULT_GOLD_MINE_COUNT = 1;
+const DEFAULT_NPC_COUNT = 3;
+const DEFAULT_LAVA_COUNT = 3;
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
+
+function normalizeCount(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
 
 function normalizeWorldConfig(config) {
   const normalized = {
     obstacles: true,
+    obstaclesCount: DEFAULT_OBSTACLE_COUNT,
+    goldMines: true,
+    goldMineCount: DEFAULT_GOLD_MINE_COUNT,
     npcs: true,
+    npcCount: DEFAULT_NPC_COUNT,
     lava: true,
+    lavaCount: DEFAULT_LAVA_COUNT,
     seed: DEFAULT_WORLD_SEED,
   };
 
@@ -18,11 +35,41 @@ function normalizeWorldConfig(config) {
   if (config.obstacles === false) {
     normalized.obstacles = false;
   }
+  if (Object.prototype.hasOwnProperty.call(config, "obstaclesCount")) {
+    normalized.obstaclesCount = normalizeCount(
+      config.obstaclesCount,
+      normalized.obstaclesCount,
+    );
+  }
+  if (config.goldMines === false) {
+    normalized.goldMines = false;
+  }
+  if (config.goldMines === true) {
+    normalized.goldMines = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(config, "goldMineCount")) {
+    normalized.goldMineCount = normalizeCount(
+      config.goldMineCount,
+      normalized.goldMineCount,
+    );
+  }
   if (config.npcs === false) {
     normalized.npcs = false;
   }
+  if (config.npcs === true) {
+    normalized.npcs = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(config, "npcCount")) {
+    normalized.npcCount = normalizeCount(config.npcCount, normalized.npcCount);
+  }
   if (config.lava === false) {
     normalized.lava = false;
+  }
+  if (config.lava === true) {
+    normalized.lava = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(config, "lavaCount")) {
+    normalized.lavaCount = normalizeCount(config.lavaCount, normalized.lavaCount);
   }
 
   if (Object.prototype.hasOwnProperty.call(config, "seed")) {
@@ -453,10 +500,22 @@ export async function resetWorld(store, config) {
   } else if (rawSeed != null) {
     seed = String(rawSeed).trim();
   }
+  const parseCount = (value, fallback) => normalizeCount(value, fallback);
   const payload = {
     obstacles: !!config?.obstacles,
+    obstaclesCount: parseCount(
+      config?.obstaclesCount,
+      DEFAULT_OBSTACLE_COUNT,
+    ),
+    goldMines: !!config?.goldMines,
+    goldMineCount: parseCount(
+      config?.goldMineCount,
+      DEFAULT_GOLD_MINE_COUNT,
+    ),
     npcs: !!config?.npcs,
+    npcCount: parseCount(config?.npcCount, DEFAULT_NPC_COUNT),
     lava: !!config?.lava,
+    lavaCount: parseCount(config?.lavaCount, DEFAULT_LAVA_COUNT),
     seed,
   };
 

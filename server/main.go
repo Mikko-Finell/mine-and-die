@@ -57,10 +57,15 @@ func main() {
 		cfg := hub.CurrentConfig()
 
 		type resetRequest struct {
-			Obstacles *bool   `json:"obstacles"`
-			NPCs      *bool   `json:"npcs"`
-			Lava      *bool   `json:"lava"`
-			Seed      *string `json:"seed"`
+			Obstacles      *bool   `json:"obstacles"`
+			ObstaclesCount *int    `json:"obstaclesCount"`
+			GoldMines      *bool   `json:"goldMines"`
+			GoldMineCount  *int    `json:"goldMineCount"`
+			NPCs           *bool   `json:"npcs"`
+			NPCCount       *int    `json:"npcCount"`
+			Lava           *bool   `json:"lava"`
+			LavaCount      *int    `json:"lavaCount"`
+			Seed           *string `json:"seed"`
 		}
 
 		if r.Body != nil {
@@ -74,11 +79,26 @@ func main() {
 			if req.Obstacles != nil {
 				cfg.Obstacles = *req.Obstacles
 			}
+			if req.ObstaclesCount != nil {
+				cfg.ObstaclesCount = *req.ObstaclesCount
+			}
+			if req.GoldMines != nil {
+				cfg.GoldMines = *req.GoldMines
+			}
+			if req.GoldMineCount != nil {
+				cfg.GoldMineCount = *req.GoldMineCount
+			}
 			if req.NPCs != nil {
 				cfg.NPCs = *req.NPCs
 			}
+			if req.NPCCount != nil {
+				cfg.NPCCount = *req.NPCCount
+			}
 			if req.Lava != nil {
 				cfg.Lava = *req.Lava
+			}
+			if req.LavaCount != nil {
+				cfg.LavaCount = *req.LavaCount
 			}
 			if req.Seed != nil {
 				cfg.Seed = *req.Seed
