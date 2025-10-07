@@ -54,6 +54,19 @@ const effectControls: Record<string, OptionConfig[]> = {
     { key: "maxStainRadius", label: "Max Pool Radius", step: 1 },
     { key: "drag", label: "Drag", step: 0.01 },
   ],
+  fire: [
+    { key: "spawnInterval", label: "Spawn Interval (s)", step: 0.01 },
+    { key: "embersPerBurst", label: "Embers per Burst", step: 1 },
+    { key: "flamesPerBurst", label: "Flames per Burst", step: 1 },
+    { key: "riseSpeed", label: "Rise Speed", step: 1 },
+    { key: "windX", label: "Wind X", step: 0.5 },
+    { key: "swirl", label: "Swirl", step: 0.5 },
+    { key: "jitter", label: "Jitter", step: 0.5 },
+    { key: "sizeScale", label: "Size Scale", step: 0.1 },
+    { key: "lifeScale", label: "Life Scale", step: 0.1 },
+    { key: "gradientBias", label: "Gradient Bias", step: 0.05 },
+    { key: "emberAlpha", label: "Ember Alpha", step: 0.05 },
+  ],
 };
 
 const isCanvasTexture = (value: unknown): value is HTMLCanvasElement =>
