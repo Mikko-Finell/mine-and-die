@@ -1,5 +1,6 @@
 import {
   BloodSplatterDefinition,
+  FireEffectDefinition,
   ImpactBurstDefinition,
   MeleeSwingEffectDefinition,
   PlaceholderAuraDefinition,
@@ -31,6 +32,14 @@ export const availableEffects: AnyEffectCatalogEntry[] = [
       "The red melee hitbox used in-game; fades quickly after spawning.",
     definition: MeleeSwingEffectDefinition,
     definitionName: "MeleeSwingEffectDefinition",
+  },
+  {
+    id: FireEffectDefinition.type,
+    name: "Fire",
+    description:
+      "A looping campfire with swirling embers and tongues of flame.",
+    definition: FireEffectDefinition,
+    definitionName: "FireEffectDefinition",
   },
   {
     id: ImpactBurstDefinition.type,
