@@ -21,6 +21,20 @@ type Effect struct {
 	Params   map[string]float64 `json:"params,omitempty"`
 }
 
+// EffectTrigger represents a one-shot visual instruction that the client may
+// execute without additional server updates.
+type EffectTrigger struct {
+	ID       string             `json:"id"`
+	Type     string             `json:"type"`
+	Start    int64              `json:"start,omitempty"`
+	Duration int64              `json:"duration,omitempty"`
+	X        float64            `json:"x,omitempty"`
+	Y        float64            `json:"y,omitempty"`
+	Width    float64            `json:"width,omitempty"`
+	Height   float64            `json:"height,omitempty"`
+	Params   map[string]float64 `json:"params,omitempty"`
+}
+
 type effectState struct {
 	Effect
 	expiresAt  time.Time
@@ -185,6 +199,26 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 			}
 		}
 	})
+}
+
+// QueueEffectTrigger appends a fire-and-forget trigger for clients. The caller
+// must hold the world mutex.
+func (w *World) QueueEffectTrigger(trigger EffectTrigger, now time.Time) EffectTrigger {
+	if w == nil {
+		return EffectTrigger{}
+	}
+	if trigger.Type == "" {
+		return EffectTrigger{}
+	}
+	if trigger.ID == "" {
+		w.nextEffectID++
+		trigger.ID = fmt.Sprintf("effect-%d", w.nextEffectID)
+	}
+	if trigger.Start == 0 {
+		trigger.Start = now.UnixMilli()
+	}
+	w.effectTriggers = append(w.effectTriggers, trigger)
+	return trigger
 }
 
 func (w *World) abilityOwner(actorID string) (*actorState, *map[string]time.Time) {

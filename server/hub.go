@@ -83,7 +83,7 @@ func (h *Hub) Join() joinResponse {
 	cfg := h.config
 	h.mu.Unlock()
 
-	go h.broadcastState(players, npcs, effects)
+	go h.broadcastState(players, npcs, effects, nil)
 
 	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, Config: cfg}
 }
@@ -295,13 +295,14 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 }
 
 // advance runs a single simulation step and returns updated snapshots plus stale subscribers.
-func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []*subscriber) {
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []EffectTrigger, []*subscriber) {
 	tick := h.tick.Add(1)
 	commands := h.drainCommands()
 
 	h.mu.Lock()
 	removed := h.world.Step(tick, now, dt, commands)
 	players, npcs, effects := h.world.Snapshot(now)
+	triggers := h.world.flushEffectTriggersLocked()
 	toClose := make([]*subscriber, 0, len(removed))
 	for _, id := range removed {
 		if sub, ok := h.subscribers[id]; ok {
@@ -311,7 +312,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []*
 	}
 	h.mu.Unlock()
 
-	return players, npcs, effects, toClose
+	return players, npcs, effects, triggers, toClose
 }
 
 // RunSimulation drives the fixed-rate tick loop until the stop channel closes.
@@ -331,11 +332,11 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 			}
 			last = now
 
-			players, npcs, effects, toClose := h.advance(now, dt)
+			players, npcs, effects, triggers, toClose := h.advance(now, dt)
 			for _, sub := range toClose {
 				sub.conn.Close()
 			}
-			h.broadcastState(players, npcs, effects)
+			h.broadcastState(players, npcs, effects, triggers)
 		}
 	}
 }
@@ -357,26 +358,32 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 }
 
 // broadcastState sends the latest world snapshot to every subscriber.
-func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect) {
+func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger) {
 	h.mu.Lock()
+	shouldFlushTriggers := false
 	if players == nil || npcs == nil || effects == nil {
 		now := time.Now()
 		if players == nil || npcs == nil || effects == nil {
 			players, npcs, effects = h.world.Snapshot(now)
 		}
+		shouldFlushTriggers = true
+	}
+	if shouldFlushTriggers && triggers == nil {
+		triggers = h.world.flushEffectTriggersLocked()
 	}
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
 	h.mu.Unlock()
 
 	msg := stateMessage{
-		Type:       "state",
-		Players:    players,
-		NPCs:       npcs,
-		Obstacles:  obstacles,
-		Effects:    effects,
-		ServerTime: time.Now().UnixMilli(),
-		Config:     cfg,
+		Type:           "state",
+		Players:        players,
+		NPCs:           npcs,
+		Obstacles:      obstacles,
+		Effects:        effects,
+		EffectTriggers: triggers,
+		ServerTime:     time.Now().UnixMilli(),
+		Config:         cfg,
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -400,7 +407,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect) {
 			log.Printf("failed to send update to %s: %v", id, err)
 			players, npcs, effects := h.Disconnect(id)
 			if players != nil {
-				go h.broadcastState(players, npcs, effects)
+				go h.broadcastState(players, npcs, effects, nil)
 			}
 		}
 	}

@@ -21,6 +21,18 @@ const EFFECT_STYLES = {
   },
 };
 
+const fireAndForgetHandlers = new Map();
+
+export function registerFireAndForgetHandler(type, handler) {
+  if (typeof type !== "string" || type.length === 0) {
+    return;
+  }
+  if (typeof handler !== "function") {
+    return;
+  }
+  fireAndForgetHandlers.set(type, handler);
+}
+
 function ensureEffectRuntime(store) {
   if (!store.effectManager) {
     store.effectManager = new EffectManager();
@@ -42,11 +54,11 @@ function ensureBloodEffectStore(store) {
   return store.bloodEffectInstances;
 }
 
-function syncMeleeSwingEffects(store) {
+function syncMeleeSwingEffects(store, existingManager = null) {
   const effects = Array.isArray(store.effects) ? store.effects : [];
   const tracked = ensureMeleeEffectStore(store);
   const seen = new Set();
-  let manager = store.effectManager || null;
+  let manager = existingManager || store.effectManager || null;
 
   for (const effect of effects) {
     if (!effect || typeof effect !== "object") {
@@ -444,7 +456,8 @@ function drawHealthBar(ctx, store, position, player, id) {
 // drawEffects renders js-effects-driven melee swings plus legacy rectangle effects.
 function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
   const { ctx } = store;
-  let manager = syncMeleeSwingEffects(store);
+  let manager = processFireAndForgetTriggers(store, store.effectManager || null);
+  manager = syncMeleeSwingEffects(store, manager);
   manager = syncBloodSplatterEffects(store, manager);
   const effectEntries = Object.entries(store.displayEffects || {});
 
@@ -509,6 +522,58 @@ function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
     ctx.strokeRect(x, y, width, height);
     ctx.restore();
   });
+}
+
+function drainPendingEffectTriggers(store) {
+  if (!Array.isArray(store.pendingEffectTriggers) || store.pendingEffectTriggers.length === 0) {
+    return [];
+  }
+  const drained = store.pendingEffectTriggers.slice();
+  store.pendingEffectTriggers.length = 0;
+  return drained;
+}
+
+function processFireAndForgetTriggers(store, manager) {
+  const triggers = drainPendingEffectTriggers(store);
+  if (triggers.length === 0) {
+    return manager;
+  }
+
+  let effectManager = manager || store.effectManager || null;
+  for (const trigger of triggers) {
+    if (!trigger || typeof trigger !== "object") {
+      continue;
+    }
+    const type = typeof trigger.type === "string" ? trigger.type : "";
+    if (!type) {
+      continue;
+    }
+    const handler = fireAndForgetHandlers.get(type);
+    if (!handler) {
+      continue;
+    }
+    try {
+      const maybeManager = handler({
+        store,
+        trigger,
+        manager: effectManager,
+        ensureEffectManager: () => ensureEffectRuntime(store),
+      });
+      if (
+        maybeManager &&
+        typeof maybeManager === "object" &&
+        typeof maybeManager.spawn === "function"
+      ) {
+        effectManager = maybeManager;
+      } else if (!effectManager && store.effectManager) {
+        effectManager = store.effectManager;
+      }
+    } catch (err) {
+      console.error("failed to process effect trigger", err);
+    }
+  }
+
+  return effectManager;
 }
 
 // drawObstacle picks the correct renderer for each obstacle type.
