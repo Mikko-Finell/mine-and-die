@@ -71,7 +71,8 @@ Mine & Die is a small realtime prototype:
   - Keep diagnostics (`/diagnostics`, HUD) in sync with new fields or metrics you add.
 - **Effects:**
   - Prefer the js-effects `EffectManager` for new or updated combat visuals. Melee swings already use the shared manager via the
-    custom `MeleeSwingEffectDefinition`; mirror that pattern when introducing new definitions.
+    `MeleeSwingEffectDefinition` sourced from `tools/js-effects/packages/effects-lib` (synced into `client/js-effects/` by `npm run build`).
+    Mirror that pattern when introducing new definitions so the playground and client stay in lockstep.
   - Cleanup helper maps (`store.meleeEffectInstances`, etc.) when tearing down state so reconnects and world resets do not leak
     canvas instances.
   - When porting additional effects, document any new presets or helpers in `docs/client.md`.

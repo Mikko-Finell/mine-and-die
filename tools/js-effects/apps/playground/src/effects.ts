@@ -1,6 +1,7 @@
 import {
   BloodSplatterDefinition,
   ImpactBurstDefinition,
+  MeleeSwingEffectDefinition,
   PlaceholderAuraDefinition,
   type EffectDefinition,
 } from "@js-effects/effects-lib";
@@ -20,6 +21,13 @@ export const availableEffects: AnyEffectCatalogEntry[] = [
     name: "Placeholder Aura",
     description: "A pulsing glow that orbits the selected origin.",
     definition: PlaceholderAuraDefinition,
+  },
+  {
+    id: MeleeSwingEffectDefinition.type,
+    name: "Melee Swing",
+    description:
+      "The red melee hitbox used in-game; fades quickly after spawning.",
+    definition: MeleeSwingEffectDefinition,
   },
   {
     id: ImpactBurstDefinition.type,
