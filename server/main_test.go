@@ -722,12 +722,15 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	if eff.Type != effectTypeFireball {
 		t.Fatalf("expected effect type %q, got %q", effectTypeFireball, eff.Type)
 	}
-	expectedRange := fireballRange - fireballSpeed/float64(tickRate)
-	if math.Abs(eff.remainingRange-expectedRange) > 1e-6 {
-		t.Fatalf("expected remaining range %.2f, got %.2f", expectedRange, eff.remainingRange)
+	if eff.Projectile == nil {
+		t.Fatalf("expected projectile state to be populated")
 	}
-	if eff.velocityX <= 0 || eff.velocityY != 0 {
-		t.Fatalf("expected projectile to move right, got velocity (%.2f, %.2f)", eff.velocityX, eff.velocityY)
+	expectedRange := fireballRange - fireballSpeed/float64(tickRate)
+	if math.Abs(eff.Projectile.RemainingRange-expectedRange) > 1e-6 {
+		t.Fatalf("expected remaining range %.2f, got %.2f", expectedRange, eff.Projectile.RemainingRange)
+	}
+	if eff.Projectile.VelocityUnitX <= 0 || eff.Projectile.VelocityUnitY != 0 {
+		t.Fatalf("expected projectile to move right, got velocity (%.2f, %.2f)", eff.Projectile.VelocityUnitX, eff.Projectile.VelocityUnitY)
 	}
 }
 
@@ -820,6 +823,160 @@ func TestHealthDamageClampsToZero(t *testing.T) {
 
 	if state.Health != 0 {
 		t.Fatalf("expected damage to clamp to zero health, got %.1f", state.Health)
+	}
+}
+
+func TestProjectileExplodeOnImpactSpawnsAreaEffect(t *testing.T) {
+	hub := newHub()
+	hub.world.obstacles = nil
+	now := time.Now()
+
+	shooterID := "impact-shooter"
+	shooter := newTestPlayerState(shooterID)
+	shooter.X = 200
+	shooter.Y = 200
+	shooter.Facing = FacingRight
+	shooter.lastHeartbeat = now
+	shooter.cooldowns = make(map[string]time.Time)
+	hub.world.players[shooterID] = shooter
+
+	targetID := "impact-target"
+	target := newTestPlayerState(targetID)
+	target.X = shooter.X + playerHalf + 4 + 10
+	target.Y = shooter.Y
+	target.lastHeartbeat = now
+	hub.world.players[targetID] = target
+
+	tpl := &ProjectileTemplate{
+		Type:        "test-impact",
+		Speed:       160,
+		MaxDistance: 200,
+		SpawnRadius: 4,
+		SpawnOffset: playerHalf + 4,
+		TravelMode:  TravelModeConfig{StraightLine: true},
+		ImpactRules: ImpactRuleConfig{
+			StopOnHit: true,
+			ExplodeOnImpact: &ExplosionSpec{
+				EffectType: "impact-aoe",
+				Radius:     12,
+				Duration:   500 * time.Millisecond,
+				Params:     map[string]float64{"healthDelta": -5},
+			},
+		},
+		Params: map[string]float64{"healthDelta": -5},
+	}
+	hub.world.projectileTemplates[tpl.Type] = tpl
+
+	eff, ok := hub.world.spawnProjectile(shooterID, tpl.Type, now)
+	if !ok || eff == nil {
+		t.Fatalf("expected projectile spawn to succeed")
+	}
+
+	dt := 1.0 / float64(tickRate)
+	step := time.Second / time.Duration(tickRate)
+	current := now
+	for i := 0; i < 5; i++ {
+		hub.world.advanceEffects(current, dt)
+		hub.world.pruneEffects(current)
+		current = current.Add(step)
+	}
+
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	var aoe *effectState
+	for _, active := range hub.world.effects {
+		if active.Type == "impact-aoe" {
+			aoe = active
+			break
+		}
+	}
+	if aoe == nil {
+		t.Fatalf("expected impact explosion to spawn area effect")
+	}
+	if len(hub.world.effects) != 1 {
+		t.Fatalf("expected only the area effect to remain, found %d", len(hub.world.effects))
+	}
+	expectedWidth := tpl.ImpactRules.ExplodeOnImpact.Radius * 2
+	if math.Abs(aoe.Width-expectedWidth) > 1e-6 {
+		t.Fatalf("expected area width %.1f, got %.1f", expectedWidth, aoe.Width)
+	}
+	if aoe.Duration != tpl.ImpactRules.ExplodeOnImpact.Duration.Milliseconds() {
+		t.Fatalf("expected duration %d ms, got %d", tpl.ImpactRules.ExplodeOnImpact.Duration.Milliseconds(), aoe.Duration)
+	}
+	radiusParam := aoe.Params["radius"]
+	if math.Abs(radiusParam-tpl.ImpactRules.ExplodeOnImpact.Radius) > 1e-6 {
+		t.Fatalf("expected radius param %.1f, got %.1f", tpl.ImpactRules.ExplodeOnImpact.Radius, radiusParam)
+	}
+}
+
+func TestProjectileExplodeOnExpirySpawnsAreaEffect(t *testing.T) {
+	hub := newHub()
+	hub.world.obstacles = nil
+	now := time.Now()
+
+	shooterID := "expiry-shooter"
+	shooter := newTestPlayerState(shooterID)
+	shooter.X = 180
+	shooter.Y = 220
+	shooter.Facing = FacingRight
+	shooter.lastHeartbeat = now
+	shooter.cooldowns = make(map[string]time.Time)
+	hub.world.players[shooterID] = shooter
+
+	tpl := &ProjectileTemplate{
+		Type:        "test-expiry",
+		Speed:       120,
+		MaxDistance: 60,
+		SpawnRadius: 6,
+		SpawnOffset: playerHalf + 6,
+		TravelMode:  TravelModeConfig{StraightLine: true},
+		ImpactRules: ImpactRuleConfig{
+			StopOnHit:       true,
+			ExplodeOnExpiry: &ExplosionSpec{EffectType: "expiry-aoe", Radius: 18, Duration: 400 * time.Millisecond},
+		},
+	}
+	hub.world.projectileTemplates[tpl.Type] = tpl
+
+	eff, ok := hub.world.spawnProjectile(shooterID, tpl.Type, now)
+	if !ok || eff == nil {
+		t.Fatalf("expected projectile spawn to succeed")
+	}
+
+	dt := 1.0 / float64(tickRate)
+	step := time.Second / time.Duration(tickRate)
+	current := now
+	for i := 0; i < 10; i++ {
+		hub.world.advanceEffects(current, dt)
+		hub.world.pruneEffects(current)
+		current = current.Add(step)
+	}
+
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	var aoe *effectState
+	for _, active := range hub.world.effects {
+		if active.Type == "expiry-aoe" {
+			aoe = active
+			break
+		}
+	}
+	if aoe == nil {
+		t.Fatalf("expected expiry explosion to spawn area effect")
+	}
+	if len(hub.world.effects) != 1 {
+		t.Fatalf("expected only expiry area effect to remain, found %d", len(hub.world.effects))
+	}
+	expectedX := shooter.X + tpl.SpawnOffset + tpl.MaxDistance - tpl.ImpactRules.ExplodeOnExpiry.Radius
+	if math.Abs(aoe.X-expectedX) > 1 {
+		t.Fatalf("expected expiry effect near %.1f, got %.1f", expectedX, aoe.X)
+	}
+	if aoe.Duration != tpl.ImpactRules.ExplodeOnExpiry.Duration.Milliseconds() {
+		t.Fatalf("expected duration %d ms, got %d", tpl.ImpactRules.ExplodeOnExpiry.Duration.Milliseconds(), aoe.Duration)
+	}
+	if math.Abs(aoe.Params["radius"]-tpl.ImpactRules.ExplodeOnExpiry.Radius) > 1e-6 {
+		t.Fatalf("expected radius param %.1f, got %.1f", tpl.ImpactRules.ExplodeOnExpiry.Radius, aoe.Params["radius"])
 	}
 }
 
