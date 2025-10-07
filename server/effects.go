@@ -20,13 +20,58 @@ type Effect struct {
 	Params   map[string]float64 `json:"params,omitempty"`
 }
 
+type ProjectileTemplate struct {
+	Type           string
+	Cooldown       time.Duration
+	Speed          float64
+	MaxDistance    float64
+	Lifetime       time.Duration
+	SpawnRadius    float64
+	SpawnOffset    float64
+	CollisionShape CollisionShapeConfig
+	TravelMode     TravelModeConfig
+	ImpactRules    ImpactRuleConfig
+	Params         map[string]float64
+}
+
+type CollisionShapeConfig struct {
+	RectWidth  float64
+	RectHeight float64
+	UseRect    bool
+}
+
+type TravelModeConfig struct {
+	StraightLine bool
+}
+
+type ImpactRuleConfig struct {
+	StopOnHit       bool
+	MaxTargets      int
+	AffectsOwner    bool
+	ExplodeOnImpact *ExplosionSpec
+	ExplodeOnExpiry *ExplosionSpec
+}
+
+type ExplosionSpec struct {
+	EffectType string
+	Radius     float64
+	Duration   time.Duration
+	Params     map[string]float64
+}
+
+type ProjectileState struct {
+	Template       *ProjectileTemplate
+	VelocityUnitX  float64
+	VelocityUnitY  float64
+	RemainingRange float64
+	HitCount       int
+	Expired        bool
+}
+
 type effectState struct {
 	Effect
-	expiresAt      time.Time
-	velocityX      float64
-	velocityY      float64
-	remainingRange float64
-	projectile     bool
+	expiresAt  time.Time
+	Projectile *ProjectileState
 }
 
 type effectBehavior interface {
@@ -66,6 +111,77 @@ func newEffectBehaviors() map[string]effectBehavior {
 	}
 }
 
+func newProjectileTemplates() map[string]*ProjectileTemplate {
+	return map[string]*ProjectileTemplate{
+		effectTypeFireball: {
+			Type:        effectTypeFireball,
+			Cooldown:    fireballCooldown,
+			Speed:       fireballSpeed,
+			MaxDistance: fireballRange,
+			Lifetime:    fireballLifetime,
+			SpawnRadius: fireballSize / 2,
+			SpawnOffset: playerHalf + fireballSpawnGap + fireballSize/2,
+			TravelMode: TravelModeConfig{
+				StraightLine: true,
+			},
+			ImpactRules: ImpactRuleConfig{
+				StopOnHit:  true,
+				MaxTargets: 1,
+			},
+			Params: map[string]float64{
+				"healthDelta": -fireballDamage,
+				"range":       fireballRange,
+			},
+		},
+	}
+}
+
+func mergeParams(base map[string]float64, overrides map[string]float64) map[string]float64 {
+	if len(base) == 0 && len(overrides) == 0 {
+		return nil
+	}
+	merged := make(map[string]float64, len(base)+len(overrides))
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range overrides {
+		merged[k] = v
+	}
+	return merged
+}
+
+func effectLifetime(tpl *ProjectileTemplate) time.Duration {
+	if tpl == nil {
+		return 0
+	}
+	if tpl.Lifetime > 0 {
+		return tpl.Lifetime
+	}
+	if tpl.Speed <= 0 || tpl.MaxDistance <= 0 {
+		return 0
+	}
+	seconds := tpl.MaxDistance / tpl.Speed
+	if seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds * float64(time.Second))
+}
+
+func spawnSizeFromShape(tpl *ProjectileTemplate) (float64, float64) {
+	if tpl == nil {
+		return 0, 0
+	}
+	if tpl.CollisionShape.UseRect {
+		return tpl.CollisionShape.RectWidth, tpl.CollisionShape.RectHeight
+	}
+	radius := tpl.SpawnRadius
+	if radius <= 0 {
+		return 0, 0
+	}
+	diameter := radius * 2
+	return diameter, diameter
+}
+
 func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 	return effectBehaviorFunc(func(w *World, eff *effectState, target *actorState, now time.Time) {
 		delta := fallback
@@ -95,6 +211,22 @@ func (w *World) abilityOwner(actorID string) (*actorState, *map[string]time.Time
 	return nil, nil
 }
 
+func (w *World) cooldownReady(cooldowns *map[string]time.Time, ability string, cooldown time.Duration, now time.Time) bool {
+	if cooldowns == nil {
+		return false
+	}
+	if *cooldowns == nil {
+		*cooldowns = make(map[string]time.Time)
+	}
+	if last, ok := (*cooldowns)[ability]; ok {
+		if now.Sub(last) < cooldown {
+			return false
+		}
+	}
+	(*cooldowns)[ability] = now
+	return true
+}
+
 // triggerMeleeAttack spawns a short-lived melee hitbox if the cooldown allows it.
 func (w *World) triggerMeleeAttack(actorID string, now time.Time) bool {
 	state, cooldowns := w.abilityOwner(actorID)
@@ -102,17 +234,9 @@ func (w *World) triggerMeleeAttack(actorID string, now time.Time) bool {
 		return false
 	}
 
-	if *cooldowns == nil {
-		*cooldowns = make(map[string]time.Time)
+	if !w.cooldownReady(cooldowns, effectTypeAttack, meleeAttackCooldown, now) {
+		return false
 	}
-
-	if last, ok := (*cooldowns)[effectTypeAttack]; ok {
-		if now.Sub(last) < meleeAttackCooldown {
-			return false
-		}
-	}
-
-	(*cooldowns)[effectTypeAttack] = now
 
 	facing := state.Facing
 	if facing == "" {
@@ -191,71 +315,84 @@ func (w *World) triggerMeleeAttack(actorID string, now time.Time) bool {
 	return true
 }
 
-// triggerFireball launches a projectile effect when the player is ready.
-func (w *World) triggerFireball(actorID string, now time.Time) bool {
-	state, cooldowns := w.abilityOwner(actorID)
-	if state == nil || cooldowns == nil {
-		return false
+func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (*effectState, bool) {
+	if w.projectileTemplates == nil {
+		return nil, false
+	}
+	tpl, ok := w.projectileTemplates[projectileType]
+	if !ok || tpl == nil {
+		return nil, false
 	}
 
-	if *cooldowns == nil {
-		*cooldowns = make(map[string]time.Time)
+	owner, cooldowns := w.abilityOwner(actorID)
+	if owner == nil || cooldowns == nil {
+		return nil, false
 	}
 
-	if last, ok := (*cooldowns)[effectTypeFireball]; ok {
-		if now.Sub(last) < fireballCooldown {
-			return false
-		}
+	if !w.cooldownReady(cooldowns, tpl.Type, tpl.Cooldown, now) {
+		return nil, false
 	}
 
-	(*cooldowns)[effectTypeFireball] = now
-
-	facing := state.Facing
+	facing := owner.Facing
 	if facing == "" {
 		facing = defaultFacing
 	}
 
-	dirX, dirY := facingToVector(facing)
-	if dirX == 0 && dirY == 0 {
-		dirX, dirY = 0, 1
+	dx, dy := facingToVector(facing)
+	if dx == 0 && dy == 0 {
+		dx, dy = 0, 1
 	}
 
-	radius := fireballSize / 2
-	spawnOffset := playerHalf + fireballSpawnGap + radius
-	centerX := state.X + dirX*spawnOffset
-	centerY := state.Y + dirY*spawnOffset
+	width, height := spawnSizeFromShape(tpl)
+	radius := tpl.SpawnRadius
+	offset := tpl.SpawnOffset
+	if offset == 0 {
+		// default to placing the projectile just outside the owner's bounds
+		offset = playerHalf + radius
+	}
 
-	w.pruneEffects(now)
+	centerX := owner.X + dx*offset
+	centerY := owner.Y + dy*offset
+
+	lifetime := effectLifetime(tpl)
 	w.nextEffectID++
 	effect := &effectState{
 		Effect: Effect{
 			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
-			Type:     effectTypeFireball,
+			Type:     tpl.Type,
 			Owner:    actorID,
 			Start:    now.UnixMilli(),
-			Duration: fireballLifetime.Milliseconds(),
-			X:        centerX - radius,
-			Y:        centerY - radius,
-			Width:    fireballSize,
-			Height:   fireballSize,
-			Params: map[string]float64{
-				"radius":      radius,
-				"speed":       fireballSpeed,
-				"range":       fireballRange,
-				"dx":          dirX,
-				"dy":          dirY,
-				"healthDelta": -fireballDamage,
-			},
+			Duration: lifetime.Milliseconds(),
+			X:        centerX - width/2,
+			Y:        centerY - height/2,
+			Width:    width,
+			Height:   height,
+			Params: mergeParams(tpl.Params, map[string]float64{
+				"radius": radius,
+				"speed":  tpl.Speed,
+				"range":  tpl.MaxDistance,
+				"dx":     dx,
+				"dy":     dy,
+			}),
 		},
-		expiresAt:      now.Add(fireballLifetime),
-		velocityX:      dirX,
-		velocityY:      dirY,
-		remainingRange: fireballRange,
-		projectile:     true,
+		expiresAt: now.Add(lifetime),
+		Projectile: &ProjectileState{
+			Template:       tpl,
+			VelocityUnitX:  dx,
+			VelocityUnitY:  dy,
+			RemainingRange: tpl.MaxDistance,
+		},
 	}
 
 	w.effects = append(w.effects, effect)
-	return true
+	return effect, true
+}
+
+// triggerFireball launches a projectile effect when the player is ready.
+func (w *World) triggerFireball(actorID string, now time.Time) bool {
+	w.pruneEffects(now)
+	_, spawned := w.spawnProjectile(actorID, effectTypeFireball, now)
+	return spawned
 }
 
 // meleeAttackRectangle builds the hitbox in front of a player for a melee swing.
@@ -284,88 +421,230 @@ func (w *World) advanceEffects(now time.Time, dt float64) {
 	}
 
 	for _, eff := range w.effects {
-		if !eff.projectile || !now.Before(eff.expiresAt) {
+		projectile := eff.Projectile
+		if projectile == nil {
 			continue
 		}
-
-		distance := fireballSpeed * dt
-		if distance <= 0 {
-			continue
-		}
-		if distance > eff.remainingRange {
-			distance = eff.remainingRange
-		}
-
-		eff.Effect.X += eff.velocityX * distance
-		eff.Effect.Y += eff.velocityY * distance
-		eff.remainingRange -= distance
-		if eff.Params == nil {
-			eff.Params = make(map[string]float64)
-		}
-		eff.Params["remainingRange"] = eff.remainingRange
-
-		if eff.remainingRange <= 0 {
-			eff.expiresAt = now
-			continue
-		}
-
-		if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldWidth || eff.Effect.Y+eff.Effect.Height > worldHeight {
-			eff.expiresAt = now
-			continue
-		}
-
-		area := Obstacle{X: eff.Effect.X, Y: eff.Effect.Y, Width: eff.Effect.Width, Height: eff.Effect.Height}
-
-		collided := false
-		for _, obs := range w.obstacles {
-			if obs.Type == obstacleTypeLava {
-				continue
+		if !now.Before(eff.expiresAt) {
+			if !projectile.Expired {
+				w.maybeExplodeOnExpiry(eff, now)
+				projectile.Expired = true
 			}
-			if obstaclesOverlap(area, obs, 0) {
-				collided = true
+			continue
+		}
+		w.advanceProjectile(eff, now, dt)
+	}
+}
+
+func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
+	projectile := eff.Projectile
+	if projectile == nil || projectile.Expired || dt <= 0 {
+		return
+	}
+
+	tpl := projectile.Template
+	if tpl == nil {
+		projectile.Expired = true
+		eff.expiresAt = now
+		return
+	}
+
+	distance := tpl.Speed * dt
+	if distance <= 0 {
+		return
+	}
+	if distance > projectile.RemainingRange {
+		distance = projectile.RemainingRange
+	}
+
+	eff.Effect.X += projectile.VelocityUnitX * distance
+	eff.Effect.Y += projectile.VelocityUnitY * distance
+	projectile.RemainingRange -= distance
+	if eff.Params == nil {
+		eff.Params = make(map[string]float64)
+	}
+	eff.Params["remainingRange"] = projectile.RemainingRange
+
+	if projectile.RemainingRange <= 0 {
+		projectile.Expired = true
+		eff.expiresAt = now
+		w.maybeExplodeOnExpiry(eff, now)
+		return
+	}
+
+	if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldWidth || eff.Effect.Y+eff.Effect.Height > worldHeight {
+		projectile.Expired = true
+		eff.expiresAt = now
+		w.maybeExplodeOnExpiry(eff, now)
+		return
+	}
+
+	w.resolveProjectileImpacts(eff, now)
+}
+
+func (w *World) resolveProjectileImpacts(eff *effectState, now time.Time) {
+	projectile := eff.Projectile
+	if projectile == nil || projectile.Expired {
+		return
+	}
+	tpl := projectile.Template
+	if tpl == nil {
+		return
+	}
+
+	area := effectAABB(eff)
+	hitObstacle := w.projectileHitsObstacle(area)
+
+	initialHits := projectile.HitCount
+	hitPlayers := make([]string, 0)
+	hitNPCs := make([]string, 0)
+
+	allowOwnerHit := tpl.ImpactRules.AffectsOwner
+	maxTargets := tpl.ImpactRules.MaxTargets
+
+	for id, target := range w.players {
+		if target == nil {
+			continue
+		}
+		if !allowOwnerHit && id == eff.Owner {
+			continue
+		}
+		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
+			if maxTargets > 0 && projectile.HitCount >= maxTargets {
+				break
+			}
+			hitPlayers = append(hitPlayers, id)
+			w.applyEffectHitPlayer(eff, target, now)
+			projectile.HitCount++
+			if maxTargets > 0 && projectile.HitCount >= maxTargets {
 				break
 			}
 		}
+	}
 
-		if collided {
-			eff.expiresAt = now
-			continue
-		}
-
-		hitPlayers := make([]string, 0)
-		for id, target := range w.players {
-			if id == eff.Owner {
-				continue
-			}
-			if circleRectOverlap(target.X, target.Y, playerHalf, area) {
-				collided = true
-				hitPlayers = append(hitPlayers, id)
-				w.applyEffectHitPlayer(eff, target, now)
-			}
-		}
-
-		hitNPCs := make([]string, 0)
+	if maxTargets == 0 || projectile.HitCount < maxTargets {
 		for id, target := range w.npcs {
-			if id == eff.Owner {
+			if target == nil {
+				continue
+			}
+			if !allowOwnerHit && id == eff.Owner {
 				continue
 			}
 			if circleRectOverlap(target.X, target.Y, playerHalf, area) {
-				collided = true
+				if maxTargets > 0 && projectile.HitCount >= maxTargets {
+					break
+				}
 				hitNPCs = append(hitNPCs, id)
 				w.applyEffectHitNPC(eff, target, now)
-			}
-		}
-
-		if collided {
-			eff.expiresAt = now
-			if len(hitPlayers) > 0 {
-				log.Printf("%s %s hit players %v", eff.Owner, eff.Type, hitPlayers)
-			}
-			if len(hitNPCs) > 0 {
-				log.Printf("%s %s hit NPCs %v", eff.Owner, eff.Type, hitNPCs)
+				projectile.HitCount++
+				if maxTargets > 0 && projectile.HitCount >= maxTargets {
+					break
+				}
 			}
 		}
 	}
+
+	hitsApplied := projectile.HitCount - initialHits
+	if hitsApplied > 0 {
+		if len(hitPlayers) > 0 {
+			log.Printf("%s %s hit players %v", eff.Owner, eff.Type, hitPlayers)
+		}
+		if len(hitNPCs) > 0 {
+			log.Printf("%s %s hit NPCs %v", eff.Owner, eff.Type, hitNPCs)
+		}
+	}
+
+	exploded := false
+	if hitsApplied > 0 && tpl.ImpactRules.ExplodeOnImpact != nil {
+		w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
+		exploded = true
+	}
+
+	stopAfterTargets := tpl.ImpactRules.StopOnHit || (maxTargets > 0 && projectile.HitCount >= maxTargets)
+	if hitsApplied > 0 && (stopAfterTargets || hitObstacle) {
+		projectile.RemainingRange = 0
+		projectile.Expired = true
+		eff.expiresAt = now
+		return
+	}
+
+	if hitObstacle {
+		if tpl.ImpactRules.ExplodeOnImpact != nil && !exploded {
+			w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
+		}
+		projectile.RemainingRange = 0
+		projectile.Expired = true
+		eff.expiresAt = now
+	}
+}
+
+func (w *World) projectileHitsObstacle(area Obstacle) bool {
+	for _, obs := range w.obstacles {
+		if obs.Type == obstacleTypeLava {
+			continue
+		}
+		if obstaclesOverlap(area, obs, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *ExplosionSpec) {
+	if eff == nil || spec == nil {
+		return
+	}
+
+	radius := spec.Radius
+	size := radius * 2
+	cx, cy := effectCenter(eff)
+
+	duration := spec.Duration
+	w.nextEffectID++
+	areaEffect := &effectState{
+		Effect: Effect{
+			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
+			Type:     spec.EffectType,
+			Owner:    eff.Owner,
+			Start:    now.UnixMilli(),
+			Duration: duration.Milliseconds(),
+			X:        cx - radius,
+			Y:        cy - radius,
+			Width:    size,
+			Height:   size,
+			Params: mergeParams(spec.Params, map[string]float64{
+				"radius":      radius,
+				"duration_ms": float64(duration.Milliseconds()),
+			}),
+		},
+		expiresAt: now.Add(duration),
+	}
+
+	w.effects = append(w.effects, areaEffect)
+}
+
+func (w *World) maybeExplodeOnExpiry(eff *effectState, now time.Time) {
+	if eff == nil || eff.Projectile == nil {
+		return
+	}
+	tpl := eff.Projectile.Template
+	if tpl == nil || eff.Projectile.HitCount > 0 {
+		return
+	}
+	if spec := tpl.ImpactRules.ExplodeOnExpiry; spec != nil {
+		w.spawnAreaEffectAt(eff, now, spec)
+	}
+}
+
+func effectAABB(eff *effectState) Obstacle {
+	return Obstacle{X: eff.Effect.X, Y: eff.Effect.Y, Width: eff.Effect.Width, Height: eff.Effect.Height}
+}
+
+func effectCenter(eff *effectState) (float64, float64) {
+	if eff == nil {
+		return 0, 0
+	}
+	return eff.Effect.X + eff.Effect.Width/2, eff.Effect.Y + eff.Effect.Height/2
 }
 
 // pruneEffects drops expired effects from the in-memory list.

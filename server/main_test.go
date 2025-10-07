@@ -722,12 +722,15 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	if eff.Type != effectTypeFireball {
 		t.Fatalf("expected effect type %q, got %q", effectTypeFireball, eff.Type)
 	}
-	expectedRange := fireballRange - fireballSpeed/float64(tickRate)
-	if math.Abs(eff.remainingRange-expectedRange) > 1e-6 {
-		t.Fatalf("expected remaining range %.2f, got %.2f", expectedRange, eff.remainingRange)
+	if eff.Projectile == nil {
+		t.Fatalf("expected projectile state to be populated")
 	}
-	if eff.velocityX <= 0 || eff.velocityY != 0 {
-		t.Fatalf("expected projectile to move right, got velocity (%.2f, %.2f)", eff.velocityX, eff.velocityY)
+	expectedRange := fireballRange - fireballSpeed/float64(tickRate)
+	if math.Abs(eff.Projectile.RemainingRange-expectedRange) > 1e-6 {
+		t.Fatalf("expected remaining range %.2f, got %.2f", expectedRange, eff.Projectile.RemainingRange)
+	}
+	if eff.Projectile.VelocityUnitX <= 0 || eff.Projectile.VelocityUnitY != 0 {
+		t.Fatalf("expected projectile to move right, got velocity (%.2f, %.2f)", eff.Projectile.VelocityUnitX, eff.Projectile.VelocityUnitY)
 	}
 }
 
