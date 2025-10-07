@@ -4,7 +4,7 @@ import {
   EffectInstance,
   EffectLayer,
   type EffectPreset,
-} from "../types";
+} from "../types.js";
 
 const TAU = Math.PI * 2;
 

@@ -5,7 +5,7 @@ import {
   EffectLayer,
   type DecalSpec,
   type EffectPreset,
-} from "../types";
+} from "../types.js";
 
 const DEFAULT_MID = "#7a0e12";
 const DEFAULT_DARK = "#4a090b";

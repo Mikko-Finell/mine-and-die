@@ -1,4 +1,4 @@
-import { EffectLayer, } from "../types";
+import { EffectLayer, } from "../types.js";
 const TAU = Math.PI * 2;
 class PlaceholderAuraInstance {
     constructor(opts) {

@@ -1,4 +1,4 @@
-import type { RandomGenerator } from "./types";
+import type { RandomGenerator } from "./types.js";
 /**
  * Creates a deterministic pseudo-random generator that can be reseeded from
  * stable string ids at runtime. The generator is intentionally lightweight so

@@ -1,4 +1,4 @@
-import { type EffectDefinition } from "../types";
+import { type EffectDefinition } from "../types.js";
 export interface MeleeSwingOptions {
     duration: number;
     width: number;

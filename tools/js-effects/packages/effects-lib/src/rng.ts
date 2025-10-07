@@ -1,4 +1,4 @@
-import type { RandomGenerator } from "./types";
+import type { RandomGenerator } from "./types.js";
 
 const xmur3 = (str: string) => {
   let h = 1779033703 ^ str.length;
