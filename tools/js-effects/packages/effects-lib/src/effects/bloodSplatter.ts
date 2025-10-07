@@ -3,6 +3,7 @@ import {
   EffectFrameContext,
   EffectInstance,
   EffectLayer,
+  type DecalSpec,
   type EffectPreset,
 } from "../types";
 
@@ -45,6 +46,7 @@ export interface BloodSplatterOptions {
   speed: number;
   colors: [string, string];
   maxStains: number;
+  maxBursts: number;
 }
 
 const randomRange = (rand: RandomSource, min: number, max: number): number =>
@@ -71,7 +73,7 @@ class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
   readonly type = BloodSplatterDefinition.type;
   layer = EffectLayer.GroundDecal;
   sublayer = 0;
-  kind: "loop" = "loop";
+  kind: "loop" | "once" = "loop";
 
   private readonly opts: BloodSplatterOptions;
   private readonly origin: { x: number; y: number };
@@ -80,19 +82,30 @@ class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
   private spawnTimer = 0;
   private readonly aabb = { x: 0, y: 0, w: 0, h: 0 };
   private stainCursor = 0;
+  private burstCount = 0;
+  private readonly maxBurstCount: number;
+  private finished = false;
+  private finalDecal: DecalSpec | null = null;
 
   constructor(opts: Partial<BloodSplatterOptions> & { x: number; y: number }) {
     this.opts = { ...BloodSplatterDefinition.defaults, ...opts };
     this.origin = { x: opts.x, y: opts.y };
 
+    const maxBursts = Number.isFinite(this.opts.maxBursts)
+      ? Math.max(1, Math.floor(this.opts.maxBursts))
+      : Number.POSITIVE_INFINITY;
+    this.maxBurstCount = maxBursts;
+    this.kind = Number.isFinite(maxBursts) ? "once" : "loop";
+
     // Seed with an initial burst so the effect is visible immediately.
     const rand = Math.random;
     this.spawnBurst(rand, this.origin.x, this.origin.y);
+    this.burstCount = 1;
     this.recalculateAABB();
   }
 
   isAlive(): boolean {
-    return true;
+    return !this.finished;
   }
 
   getAABB() {
@@ -100,6 +113,10 @@ class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
   }
 
   update(frame: EffectFrameContext): void {
+    if (this.finished) {
+      return;
+    }
+
     const rand = frame.rng?.next.bind(frame.rng) ?? Math.random;
     const dt = Math.max(0, frame.dt);
     if (dt <= 0) {
@@ -110,16 +127,29 @@ class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
     const interval = Math.max(0.016, this.opts.spawnInterval / speedMultiplier);
     this.spawnTimer += dt;
 
-    while (this.spawnTimer >= interval) {
+    while (
+      this.spawnTimer >= interval &&
+      this.burstCount < this.maxBurstCount
+    ) {
       this.spawnBurst(rand, this.origin.x, this.origin.y);
       this.spawnTimer -= interval;
+      this.burstCount += 1;
     }
 
     this.updateDroplets(dt, rand);
     this.recalculateAABB();
+
+    if (this.burstCount >= this.maxBurstCount && this.droplets.length === 0) {
+      this.captureFinalDecal();
+      this.finished = true;
+    }
   }
 
   draw(frame: EffectFrameContext): void {
+    if (this.finished) {
+      return;
+    }
+
     const { ctx, camera } = frame;
     const { dropletRadius, colors } = this.opts;
     const midColor = colors[0] ?? DEFAULT_MID;
@@ -180,6 +210,10 @@ class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
   dispose(): void {
     this.droplets.length = 0;
     this.stains.length = 0;
+  }
+
+  handoffToDecal(): DecalSpec | null {
+    return this.finalDecal;
   }
 
   private spawnBurst(rand: RandomSource, cx: number, cy: number): void {
@@ -333,6 +367,68 @@ class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
     this.aabb.w = maxX - minX;
     this.aabb.h = maxY - minY;
   }
+
+  private captureFinalDecal(): void {
+    if (this.finalDecal || typeof document === "undefined") {
+      return;
+    }
+
+    if (this.stains.length === 0) {
+      this.finalDecal = null;
+      return;
+    }
+
+    const bounds = this.aabb;
+    const width = Math.max(1, Math.ceil(bounds.w));
+    const height = Math.max(1, Math.ceil(bounds.h));
+    const canvas = document.createElement("canvas");
+    canvas.width = width + 8;
+    canvas.height = height + 8;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    const offsetX = bounds.x - 4;
+    const offsetY = bounds.y - 4;
+    ctx.translate(-offsetX, -offsetY);
+
+    for (const stain of this.stains) {
+      ctx.save();
+      ctx.translate(stain.x, stain.y);
+      ctx.rotate(stain.rotation);
+      ctx.scale(1, stain.squish);
+
+      ctx.beginPath();
+      const base = stain.basePath;
+      ctx.moveTo(base[0], base[1]);
+      for (let i = 2; i < base.length; i += 2) {
+        ctx.lineTo(base[i], base[i + 1]);
+      }
+      ctx.closePath();
+      ctx.fillStyle = stain.darkColor;
+      ctx.fill();
+
+      ctx.beginPath();
+      const mid = stain.midPath;
+      ctx.moveTo(mid[0], mid[1]);
+      for (let i = 2; i < mid.length; i += 2) {
+        ctx.lineTo(mid[i], mid[i + 1]);
+      }
+      ctx.closePath();
+      ctx.fillStyle = stain.midColor;
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    this.finalDecal = {
+      x: bounds.x + bounds.w / 2,
+      y: bounds.y + bounds.h / 2,
+      texture: canvas,
+      layerHint: "GroundDecal",
+    };
+  }
 }
 
 export const BloodSplatterDefinition: EffectDefinition<BloodSplatterOptions> = {
@@ -348,6 +444,7 @@ export const BloodSplatterDefinition: EffectDefinition<BloodSplatterOptions> = {
     speed: 1,
     colors: [DEFAULT_MID, DEFAULT_DARK],
     maxStains: 140,
+    maxBursts: Number.POSITIVE_INFINITY,
   },
   create: (opts) => new BloodSplatterInstance(opts),
   createFromPreset: (position, preset?: EffectPreset, overrides?) => {

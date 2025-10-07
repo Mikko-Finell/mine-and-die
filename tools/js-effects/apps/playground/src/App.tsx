@@ -19,40 +19,48 @@ type OptionValue = number;
 type OptionConfig = {
   key: string;
   label: string;
-  min?: number;
-  max?: number;
   step?: number;
+};
+
+type ResetOptions = {
+  preserveDecals?: boolean;
 };
 
 const effectControls: Record<string, OptionConfig[]> = {
   "placeholder-aura": [
-    { key: "particleCount", label: "Particles", min: 1, max: 64, step: 1 },
-    { key: "radius", label: "Radius", min: 10, max: 160, step: 1 },
-    { key: "pulseSpeed", label: "Pulse Speed", min: 0, max: 8, step: 0.1 },
+    { key: "particleCount", label: "Particles", step: 1 },
+    { key: "radius", label: "Radius", step: 1 },
+    { key: "pulseSpeed", label: "Pulse Speed", step: 0.1 },
   ],
   "melee-swing": [
-    { key: "width", label: "Width", min: 16, max: 160, step: 1 },
-    { key: "height", label: "Height", min: 16, max: 160, step: 1 },
-    { key: "duration", label: "Duration (s)", min: 0.05, max: 0.8, step: 0.01 },
-    { key: "fadeExponent", label: "Fade Power", min: 0.5, max: 3, step: 0.1 },
+    { key: "width", label: "Width", step: 1 },
+    { key: "height", label: "Height", step: 1 },
+    { key: "duration", label: "Duration (s)", step: 0.01 },
+    { key: "fadeExponent", label: "Fade Power", step: 0.1 },
   ],
   "impact-burst": [
-    { key: "ringRadius", label: "Ring Radius", min: 20, max: 140, step: 1 },
-    { key: "particleCount", label: "Particles", min: 3, max: 32, step: 1 },
-    { key: "duration", label: "Duration (s)", min: 0.2, max: 2, step: 0.05 },
-    { key: "decalTtl", label: "Decal TTL (s)", min: 1, max: 12, step: 0.5 },
+    { key: "ringRadius", label: "Ring Radius", step: 1 },
+    { key: "particleCount", label: "Particles", step: 1 },
+    { key: "duration", label: "Duration (s)", step: 0.05 },
+    { key: "decalTtl", label: "Decal TTL (s)", step: 0.5 },
   ],
   "blood-splatter": [
-    { key: "speed", label: "Speed", min: 0.2, max: 3, step: 0.1 },
-    { key: "spawnInterval", label: "Spawn Interval (s)", min: 0.2, max: 4, step: 0.1 },
-    { key: "minDroplets", label: "Min Droplets", min: 1, max: 60, step: 1 },
-    { key: "maxDroplets", label: "Max Droplets", min: 1, max: 80, step: 1 },
-    { key: "dropletRadius", label: "Droplet Radius", min: 1, max: 8, step: 0.1 },
-    { key: "minStainRadius", label: "Min Pool Radius", min: 4, max: 40, step: 1 },
-    { key: "maxStainRadius", label: "Max Pool Radius", min: 6, max: 60, step: 1 },
-    { key: "drag", label: "Drag", min: 0.7, max: 0.99, step: 0.01 },
+    { key: "speed", label: "Speed", step: 0.1 },
+    { key: "spawnInterval", label: "Spawn Interval (s)", step: 0.1 },
+    { key: "minDroplets", label: "Min Droplets", step: 1 },
+    { key: "maxDroplets", label: "Max Droplets", step: 1 },
+    { key: "dropletRadius", label: "Droplet Radius", step: 0.1 },
+    { key: "minStainRadius", label: "Min Pool Radius", step: 1 },
+    { key: "maxStainRadius", label: "Max Pool Radius", step: 1 },
+    { key: "drag", label: "Drag", step: 0.01 },
   ],
 };
+
+const isCanvasTexture = (value: unknown): value is HTMLCanvasElement =>
+  typeof HTMLCanvasElement !== "undefined" && value instanceof HTMLCanvasElement;
+
+const isImageBitmapTexture = (value: unknown): value is ImageBitmap =>
+  typeof ImageBitmap !== "undefined" && value instanceof ImageBitmap;
 
 const deriveDecimalPlaces = (step?: number): number => {
   if (typeof step !== "number") {
@@ -93,15 +101,8 @@ const formatNumber = (value: number): string => {
   return fixed.replace(/0+$/, "").replace(/\.$/, "");
 };
 
-const clampValueToConfig = (value: number, config: OptionConfig): number => {
+const normalizeValueForConfig = (value: number, config: OptionConfig): number => {
   let result = value;
-  if (typeof config.min === "number") {
-    result = Math.max(config.min, result);
-  }
-  if (typeof config.max === "number") {
-    result = Math.min(config.max, result);
-  }
-
   const decimals = deriveDecimalPlaces(config.step);
   if (decimals > 0) {
     const factor = 10 ** decimals;
@@ -228,7 +229,9 @@ const App: React.FC = () => {
   const frameIndexRef = useRef(0);
   const decalsRef = useRef<{ spec: DecalSpec; spawnedAt: number }[]>([]);
   const previousActiveRef = useRef(false);
-  const resetEffectRef = useRef<(() => void) | null>(null);
+  const resetEffectRef = useRef<((options?: ResetOptions) => void) | null>(
+    null
+  );
   const copyTimeoutRef = useRef<number | null>(null);
 
   const [selectedEffect, setSelectedEffect] = useState<AnyEffectCatalogEntry>(
@@ -298,6 +301,10 @@ const App: React.FC = () => {
     setCopyStatus("idle");
   }, [exampleCall]);
 
+  const requestReset = (options?: ResetOptions) => {
+    resetEffectRef.current?.(options);
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -316,19 +323,31 @@ const App: React.FC = () => {
 
     let lastTimestamp = performance.now();
 
-    const resetEffect = () => {
+    const resetEffect = ({ preserveDecals = false }: ResetOptions = {}) => {
       manager.clear();
-      decalsRef.current = [];
+      if (!preserveDecals) {
+        decalsRef.current = [];
+      }
       frameIndexRef.current = 0;
       previousActiveRef.current = false;
-      rngRef.current.seedFrom?.(`${selectedEffect.id}:reset`);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      rngRef.current.seedFrom?.(
+        `${selectedEffect.id}:reset:${isLooping ? "loop" : "single"}`
+      );
+      if (!preserveDecals) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
 
-      manager.spawn(selectedEffect.definition, {
+      const spawnOptions: Record<string, unknown> = {
         ...(options as Record<string, unknown>),
         x: ORIGIN_X,
         y: ORIGIN_Y,
-      });
+      };
+
+      if (selectedEffect.id === "blood-splatter" && !isLooping) {
+        spawnOptions.maxBursts = 1;
+      }
+
+      manager.spawn(selectedEffect.definition, spawnOptions);
     };
 
     resetEffect();
@@ -358,29 +377,44 @@ const App: React.FC = () => {
         ctx.scale(camera.zoom, camera.zoom);
         ctx.rotate(spec.rotation ?? 0);
 
-        const color = spec.averageColor ?? "#ffffff";
-        ctx.fillStyle = color;
-
+        const texture = spec.texture;
         const shape = spec.shape;
+        const color = spec.averageColor ?? "#ffffff";
 
-        if (shape?.type === "rect") {
-          const { w, h } = shape;
-          ctx.fillRect(-w / 2, -h / 2, w, h);
-        } else if (shape?.type === "poly" && shape.points.length >= 4) {
-          const pts = shape.points;
-          ctx.beginPath();
-          ctx.moveTo(pts[0], pts[1]);
-          for (let i = 2; i < pts.length; i += 2) {
-            ctx.lineTo(pts[i], pts[i + 1]);
+        let handled = false;
+
+        if (texture) {
+          if (isCanvasTexture(texture)) {
+            ctx.drawImage(texture, -texture.width / 2, -texture.height / 2);
+            handled = true;
+          } else if (isImageBitmapTexture(texture)) {
+            ctx.drawImage(texture, -texture.width / 2, -texture.height / 2);
+            handled = true;
           }
-          ctx.closePath();
-          ctx.fill();
-        } else {
-          const rx = shape?.type === "oval" ? shape.rx : 32;
-          const ry = shape?.type === "oval" ? shape.ry : rx * 0.6;
-          ctx.beginPath();
-          ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-          ctx.fill();
+        }
+
+        if (!handled) {
+          ctx.fillStyle = color;
+
+          if (shape?.type === "rect") {
+            const { w, h } = shape;
+            ctx.fillRect(-w / 2, -h / 2, w, h);
+          } else if (shape?.type === "poly" && shape.points.length >= 4) {
+            const pts = shape.points;
+            ctx.beginPath();
+            ctx.moveTo(pts[0], pts[1]);
+            for (let i = 2; i < pts.length; i += 2) {
+              ctx.lineTo(pts[i], pts[i + 1]);
+            }
+            ctx.closePath();
+            ctx.fill();
+          } else {
+            const rx = shape?.type === "oval" ? shape.rx : 32;
+            const ry = shape?.type === "oval" ? shape.ry : rx * 0.6;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
 
         ctx.restore();
@@ -425,7 +459,7 @@ const App: React.FC = () => {
       const hasActive = metrics.updated > 0 || metrics.drawn > 0;
 
       if (isLooping && !hasActive && previousActiveRef.current) {
-        resetEffect();
+        resetEffect({ preserveDecals: true });
         lastTimestamp = timestamp;
       }
 
@@ -451,7 +485,9 @@ const App: React.FC = () => {
     };
   }, [selectedEffect, options, isLooping]);
 
-  const handleControlChange = (key: string, value: number) => {
+  const commitControlValue = (key: string, value: number) => {
+    let didChange = false;
+
     setOptionOverrides((prev) => {
       const defaults =
         (selectedEffect.definition.defaults as Record<string, OptionValue>) ?? {};
@@ -459,9 +495,17 @@ const App: React.FC = () => {
       const updated = { ...prev };
 
       if (typeof defaultValue === "number" && Math.abs(defaultValue - value) < 1e-6) {
-        delete updated[key];
-      } else {
+        if (key in updated) {
+          delete updated[key];
+          didChange = true;
+        } else {
+          return prev;
+        }
+      } else if (updated[key] !== value) {
         updated[key] = value;
+        didChange = true;
+      } else {
+        return prev;
       }
 
       const stored = { ...storedOverridesRef.current };
@@ -475,15 +519,19 @@ const App: React.FC = () => {
 
       return updated;
     });
+
+    if (didChange) {
+      requestReset();
+    }
   };
 
   const handleLoopChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setIsLooping(event.target.checked);
-    resetEffectRef.current?.();
+    requestReset();
   };
 
   const handleReset = () => {
-    resetEffectRef.current?.();
+    requestReset();
   };
 
   const scheduleCopyStatusReset = () => {
@@ -537,6 +585,16 @@ const App: React.FC = () => {
       ...prev,
       [control.key]: value,
     }));
+
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      return;
+    }
+
+    const parsed = Number(trimmed);
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      commitControlValue(control.key, parsed);
+    }
   };
 
   const handleInputBlur = (control: OptionConfig) => (
@@ -552,12 +610,12 @@ const App: React.FC = () => {
       return;
     }
 
-    const clamped = clampValueToConfig(parsed, control);
+    const clamped = normalizeValueForConfig(parsed, control);
     setInputValues((prev) => ({
       ...prev,
       [control.key]: formatInputValue(clamped, control),
     }));
-    handleControlChange(control.key, clamped);
+    commitControlValue(control.key, clamped);
   };
 
   return (
@@ -638,19 +696,10 @@ const App: React.FC = () => {
                 const numericValue = Number(resolvedOptions[control.key] ?? 0);
                 const displayValue =
                   inputValues[control.key] ?? formatInputValue(numericValue, control);
-                const rangeParts = [
-                  control.min !== undefined
-                    ? `min ${formatNumber(control.min)}`
-                    : null,
-                  control.max !== undefined
-                    ? `max ${formatNumber(control.max)}`
-                    : null,
-                ].filter(Boolean);
-                const stepPart =
+                const hint =
                   control.step !== undefined
                     ? `step ${formatNumber(control.step)}`
                     : null;
-                const metaParts = [...rangeParts, stepPart].filter(Boolean);
 
                 return (
                   <label key={control.key} className="controls__item">
@@ -659,15 +708,13 @@ const App: React.FC = () => {
                       <input
                         type="number"
                         inputMode="decimal"
-                        min={control.min ?? undefined}
-                        max={control.max ?? undefined}
-                        step={control.step ?? 1}
+                        step={control.step ?? "any"}
                         value={displayValue}
                         onChange={handleInputChange(control)}
                         onBlur={handleInputBlur(control)}
                       />
-                      {metaParts.length > 0 ? (
-                        <span className="controls__hint">{metaParts.join(" · ")}</span>
+                      {hint ? (
+                        <span className="controls__hint">{hint}</span>
                       ) : null}
                     </div>
                   </label>
