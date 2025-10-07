@@ -1,4 +1,4 @@
-import { EffectLayer, } from "../types";
+import { EffectLayer, } from "../types.js";
 const DEFAULT_MID = "#7a0e12";
 const DEFAULT_DARK = "#4a090b";
 const TAU = Math.PI * 2;
@@ -27,7 +27,6 @@ class BloodSplatterInstance {
         this.aabb = { x: 0, y: 0, w: 0, h: 0 };
         this.stainCursor = 0;
         this.burstCount = 0;
-        this.maxBurstCount = Number.POSITIVE_INFINITY;
         this.finished = false;
         this.finalDecal = null;
         this.opts = { ...BloodSplatterDefinition.defaults, ...opts };
@@ -62,7 +61,8 @@ class BloodSplatterInstance {
         const speedMultiplier = Math.max(this.opts.speed, 0.0001);
         const interval = Math.max(0.016, this.opts.spawnInterval / speedMultiplier);
         this.spawnTimer += dt;
-        while (this.spawnTimer >= interval && this.burstCount < this.maxBurstCount) {
+        while (this.spawnTimer >= interval &&
+            this.burstCount < this.maxBurstCount) {
             this.spawnBurst(rand, this.origin.x, this.origin.y);
             this.spawnTimer -= interval;
             this.burstCount += 1;

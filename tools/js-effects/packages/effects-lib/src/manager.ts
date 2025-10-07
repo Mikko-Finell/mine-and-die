@@ -5,7 +5,7 @@ import {
   type EffectInstance,
   EffectLayer,
   type EffectPreset,
-} from "./types";
+} from "./types.js";
 
 interface ManagedEffect {
   instance: EffectInstance<any>;

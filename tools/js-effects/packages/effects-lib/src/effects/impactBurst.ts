@@ -5,7 +5,7 @@ import {
   EffectLayer,
   type EffectPreset,
   type DecalSpec,
-} from "../types";
+} from "../types.js";
 
 const TAU = Math.PI * 2;
 

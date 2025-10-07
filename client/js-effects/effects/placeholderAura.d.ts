@@ -1,4 +1,4 @@
-import { EffectDefinition } from "../types";
+import { EffectDefinition } from "../types.js";
 export interface PlaceholderAuraOptions {
     radius: number;
     pulseSpeed: number;

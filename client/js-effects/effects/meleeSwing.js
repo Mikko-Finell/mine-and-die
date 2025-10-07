@@ -1,4 +1,4 @@
-import { EffectLayer } from "../types";
+import { EffectLayer } from "../types.js";
 class MeleeSwingInstance {
     constructor(opts) {
         this.type = MeleeSwingEffectDefinition.type;

@@ -3,7 +3,7 @@ import {
   type EffectFrameContext,
   type EffectInstance,
   EffectLayer
-} from "../types";
+} from "../types.js";
 
 export interface MeleeSwingOptions {
   duration: number;

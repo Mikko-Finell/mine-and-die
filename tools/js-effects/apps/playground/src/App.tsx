@@ -337,8 +337,11 @@ const App: React.FC = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
 
-      const spawnOptions: Record<string, unknown> = {
-        ...(options as Record<string, unknown>),
+      const spawnOptions: Partial<typeof selectedEffect.definition.defaults> & {
+        x: number;
+        y: number;
+      } = {
+        ...(options as Partial<typeof selectedEffect.definition.defaults>),
         x: ORIGIN_X,
         y: ORIGIN_Y,
       };

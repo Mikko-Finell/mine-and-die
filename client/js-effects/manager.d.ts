@@ -1,4 +1,4 @@
-import { type DecalSpec, type EffectDefinition, type EffectFrameContext, type EffectInstance, type EffectPreset } from "./types";
+import { type DecalSpec, type EffectDefinition, type EffectFrameContext, type EffectInstance, type EffectPreset } from "./types.js";
 interface ViewBounds {
     x: number;
     y: number;
