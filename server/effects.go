@@ -37,8 +37,9 @@ type EffectTrigger struct {
 
 type effectState struct {
 	Effect
-	expiresAt  time.Time
-	Projectile *ProjectileState
+	expiresAt     time.Time
+	Projectile    *ProjectileState
+	FollowActorID string
 }
 
 type ProjectileTemplate struct {
@@ -131,6 +132,7 @@ const (
 	effectTypeAttack        = "attack"
 	effectTypeFireball      = "fireball"
 	effectTypeBloodSplatter = "blood-splatter"
+	effectTypeBurningTick   = "burning-tick"
 
 	bloodSplatterDuration = 1200 * time.Millisecond
 
@@ -177,8 +179,9 @@ func newProjectileTemplates() map[string]*ProjectileTemplate {
 
 func newEffectBehaviors() map[string]effectBehavior {
 	return map[string]effectBehavior{
-		effectTypeAttack:   healthDeltaBehavior("healthDelta", 0),
-		effectTypeFireball: healthDeltaBehavior("healthDelta", 0),
+		effectTypeAttack:      healthDeltaBehavior("healthDelta", 0),
+		effectTypeFireball:    healthDeltaBehavior("healthDelta", 0),
+		effectTypeBurningTick: healthDeltaBehavior("healthDelta", 0),
 	}
 }
 
@@ -645,8 +648,51 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
 }
 
 func (w *World) advanceNonProjectiles(now time.Time, dt float64) {
-	_ = now
 	_ = dt
+	if len(w.effects) == 0 {
+		return
+	}
+	for _, eff := range w.effects {
+		w.updateFollowEffect(eff, now)
+	}
+}
+
+func (w *World) updateFollowEffect(eff *effectState, now time.Time) {
+	if eff == nil {
+		return
+	}
+	if eff.FollowActorID == "" {
+		return
+	}
+	actor := w.actorByID(eff.FollowActorID)
+	if actor == nil {
+		w.expireAttachedEffect(eff, now)
+		eff.FollowActorID = ""
+		return
+	}
+	width := eff.Effect.Width
+	height := eff.Effect.Height
+	if width <= 0 {
+		width = playerHalf * 2
+	}
+	if height <= 0 {
+		height = playerHalf * 2
+	}
+	eff.Effect.X = actor.X - width/2
+	eff.Effect.Y = actor.Y - height/2
+}
+
+func (w *World) actorByID(id string) *actorState {
+	if w == nil || id == "" {
+		return nil
+	}
+	if player, ok := w.players[id]; ok && player != nil {
+		return &player.actorState
+	}
+	if npc, ok := w.npcs[id]; ok && npc != nil {
+		return &npc.actorState
+	}
+	return nil
 }
 
 func (w *World) stopProjectile(eff *effectState, now time.Time, opts projectileStopOptions) {
@@ -844,23 +890,21 @@ func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now ti
 	behavior.OnHit(w, eff, target, now)
 }
 
-// applyEnvironmentalDamage processes hazard areas that deal damage over time.
-func (w *World) applyEnvironmentalDamage(states []*actorState, dt float64) {
-	if dt <= 0 || len(states) == 0 {
-		return
-	}
-	damage := lavaDamagePerSecond * dt
-	if damage <= 0 {
+// applyEnvironmentalConditions applies persistent effects triggered by hazards.
+func (w *World) applyEnvironmentalConditions(states []*actorState, now time.Time) {
+	if len(states) == 0 {
 		return
 	}
 	for _, state := range states {
+		if state == nil {
+			continue
+		}
 		for _, obs := range w.obstacles {
 			if obs.Type != obstacleTypeLava {
 				continue
 			}
 			if circleRectOverlap(state.X, state.Y, playerHalf, obs) {
-				if state.applyHealthDelta(-damage) {
-				}
+				w.applyCondition(state, ConditionBurning, obs.ID, now)
 				break
 			}
 		}

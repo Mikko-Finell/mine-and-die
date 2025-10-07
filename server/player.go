@@ -96,8 +96,9 @@ func facingToVector(facing FacingDirection) (float64, float64) {
 
 type actorState struct {
 	Actor
-	intentX float64
-	intentY float64
+	intentX    float64
+	intentY    float64
+	conditions map[ConditionType]*conditionInstance
 }
 
 type playerPathState struct {

@@ -1,16 +1,16 @@
-# Visual Effects System Review
+# Effect and condition integration
 
-## Dedicated decal support
-The runtime ships with a `DecalSpec` concept inside the shared `EffectManager`; finished instances can expose `handoffToDecal()` and the manager returns those specs from `collectDecals()`.【F:client/js-effects/manager.js†L130-L144】【F:client/js-effects/effects/bloodSplatter.js†L134-L135】【F:client/js-effects/effects/bloodSplatter.js†L275-L326】 The client now consumes that pipeline by collecting finished decals each frame, queueing them in `store.activeDecals`, and redrawing them before updating transient effects so stains and scorch marks persist independently of their parent animations.【F:client/render.js†L40-L213】【F:client/render.js†L456-L609】
+**Question.** Is the engine already equipped with RPG-style "conditions" (poisoned, burning, etc.) so that an entity like a goblin could be set on fire, take ongoing damage, and have a `FireEffectDefinition` animation anchored to it?
 
-## Animation-to-decal handoff
-Blood splatter instances continue to convert their final state into a decal canvas, but the render loop now promotes that handoff into a long-lived ground mark. Finished splatters yield a decal through `EffectManager.collectDecals()`, and `queueDecals` adds the spec to the local cache so it can be drawn every frame until its optional `ttl` expires.【F:client/js-effects/effects/bloodSplatter.js†L275-L326】【F:client/render.js†L40-L213】【F:client/render.js†L456-L609】
+## Server-side capabilities
+- Actors now carry a dedicated condition map (`actorState.conditions`). Condition lifecycles are defined in `server/conditions.go`, which registers behaviours such as duration, tick cadence, and optional follow-on visuals.
+- `World.applyCondition` instantiates a `conditionInstance`, schedules its ticks, and lets the instance drive existing effect behaviours. Damage-over-time is dealt by spawning lightweight `effectState`s that call `healthDeltaBehavior`, so conditions reuse the effect system for health changes.
+- `advanceConditions` evaluates active instances each tick, invoking `OnTick` and `OnExpire` handlers while keeping any attached effects in sync. `effectState` gained a `FollowActorID` that `advanceNonProjectiles` uses to snap visuals to the owning actor every frame.
 
-## Animation completion signalling
-The effect manager still drives lifecycle via `isAlive()`, but fire-and-forget triggers have replaced the bespoke `syncBloodSplatterEffects` bookkeeping. A dedicated handler spawns the blood splatter animation, lets it run to completion, and then relies on the shared decal queue to keep the resulting stain visible with no ad-hoc state mirrors.【F:client/render.js†L40-L213】【F:client/render.js†L456-L609】
+## Lava burning condition
+- Entering a lava obstacle calls `applyCondition` with `ConditionBurning`. The definition applies immediately, ticking every `200ms` for three seconds and refreshing while the actor remains in lava.
+- Each tick spawns a `burning-tick` effect that delivers damage through the existing `healthDeltaBehavior`. The condition also creates a looping `fire` effect instance that follows the actor until the timer expires, so the client renders the `FireEffectDefinition` without bespoke code.
+- Leaving lava no longer stops the damage instantly; the condition persists until its timer completes, at which point the helper expires the attached effect and the burning stops.
 
-## Server fire-and-forget capability
-When melee attacks land on goblins or rats the simulation now enqueues a blood-splatter `EffectTrigger` instead of adding a long-lived effect record. The helper still records the hit position and duration, but it passes that context through `QueueEffectTrigger`, letting clients render the animation immediately and manage its decal locally.【F:server/effects.go†L211-L336】
-
-## Server-triggered fire-and-forget events
-Clients continue to mirror the `effects` array from each snapshot,【F:client/network.js†L200-L296】 but fire-and-forget triggers are drained separately. `processFireAndForgetTriggers` forwards each trigger to registered handlers—such as the new blood splatter hook—which create animations on demand through the shared `EffectManager`. Once those animations finish they hand off decals that the renderer stores and replays without further network input.【F:client/render.js†L1-L213】【F:client/render.js†L456-L609】
+## Conclusion
+The condition system now sits alongside the effect pipeline and provides the missing persistence layer. Status-style behaviours (burning, poison, etc.) can be authored as new `ConditionDefinition`s without duplicating damage or rendering code, so the current infrastructure is sufficient for the scenarios described.

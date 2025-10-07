@@ -15,6 +15,18 @@ func findPlayer(players []Player, id string) *Player {
 	return nil
 }
 
+func hasFollowEffect(effects []*effectState, effectType, actorID string) bool {
+	for _, eff := range effects {
+		if eff == nil {
+			continue
+		}
+		if eff.Type == effectType && eff.FollowActorID == actorID {
+			return true
+		}
+	}
+	return false
+}
+
 func newTestPlayerState(id string) *playerState {
 	return &playerState{
 		actorState: actorState{
@@ -673,7 +685,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	}
 }
 
-func TestLavaDamagesPlayer(t *testing.T) {
+func TestLavaAppliesBurningCondition(t *testing.T) {
 	hub := newHub()
 	now := time.Now()
 
@@ -693,17 +705,47 @@ func TestLavaDamagesPlayer(t *testing.T) {
 	walkerState.lastHeartbeat = now
 	hub.world.players[playerID] = walkerState
 
-	dt := 1.0
-	players, _, _, _, _ := hub.advance(now, dt)
+	players, _, _, _, _ := hub.advance(now, 1.0)
 
 	damaged := findPlayer(players, playerID)
 	if damaged == nil {
 		t.Fatalf("expected player snapshot")
 	}
 
-	expected := playerMaxHealth - lavaDamagePerSecond*dt
+	expected := playerMaxHealth - lavaDamagePerSecond*burningTickInterval.Seconds()
 	if math.Abs(damaged.Health-expected) > 1e-6 {
-		t.Fatalf("expected lava to deal %.1f damage, got health %.1f", lavaDamagePerSecond*dt, damaged.Health)
+		t.Fatalf("expected burning to deal %.2f damage, got health %.2f", lavaDamagePerSecond*burningTickInterval.Seconds(), damaged.Health)
+	}
+
+	state := hub.world.players[playerID]
+	if state == nil {
+		t.Fatalf("expected player state tracked")
+	}
+	if len(state.conditions) == 0 {
+		t.Fatalf("expected burning condition to be applied")
+	}
+
+	if !hasFollowEffect(hub.world.effects, "fire", playerID) {
+		t.Fatalf("expected fire effect following player")
+	}
+
+	// Move the player out of lava and ensure burning persists.
+	state.X = 40
+	state.Y = 40
+
+	healthAfterFirstTick := damaged.Health
+	stepNow := now
+	for i := 0; i < 3; i++ {
+		stepNow = stepNow.Add(burningTickInterval)
+		players, _, _, _, _ = hub.advance(stepNow, burningTickInterval.Seconds())
+	}
+
+	cooled := findPlayer(players, playerID)
+	if cooled == nil {
+		t.Fatalf("expected updated player snapshot")
+	}
+	if cooled.Health >= healthAfterFirstTick {
+		t.Fatalf("expected burning to continue after leaving lava, health %.2f vs %.2f", cooled.Health, healthAfterFirstTick)
 	}
 }
 

@@ -65,6 +65,7 @@ type World struct {
 	obstacles           []Obstacle
 	effectBehaviors     map[string]effectBehavior
 	projectileTemplates map[string]*ProjectileTemplate
+	conditionDefs       map[ConditionType]*ConditionDefinition
 	nextEffectID        uint64
 	nextNPCID           uint64
 	aiLibrary           *aiLibrary
@@ -84,6 +85,7 @@ func newWorld(cfg worldConfig) *World {
 		effectTriggers:      make([]EffectTrigger, 0),
 		effectBehaviors:     newEffectBehaviors(),
 		projectileTemplates: newProjectileTemplates(),
+		conditionDefs:       newConditionDefinitions(),
 		aiLibrary:           globalAILibrary,
 		config:              normalized,
 		rng:                 newDeterministicRNG(normalized.Seed, "world"),
@@ -312,8 +314,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 
 	// Environmental systems.
-	w.applyEnvironmentalDamage(actors, dt)
+	w.applyEnvironmentalConditions(actors, now)
 
+	w.advanceConditions(now)
 	w.advanceEffects(now, dt)
 	w.pruneEffects(now)
 	w.pruneDefeatedNPCs()
