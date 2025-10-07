@@ -9,6 +9,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - `input.js` – Converts keyboard events into normalized intents and action messages.
 - `render.js` – Performs `<canvas>` drawing, lerps network state to display positions, and renders effects/obstacles.
 - `styles.css` – Minimal styling for layout and diagnostics readouts.
+- `vendor/` – Drop-in ES modules for third-party helpers. Import them from client code via `import … from "./vendor/<file>.js"`.
 
 ## Store Shape
 `main.js` creates a plain object (`store`) shared across modules. Key fields:
