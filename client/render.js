@@ -1,3 +1,5 @@
+import { EffectManager, ImpactBurstDefinition } from "./js-effects/index.js";
+
 const DEFAULT_FACING = "down";
 const FACING_OFFSETS = {
   up: { x: 0, y: -1 },
@@ -7,15 +9,15 @@ const FACING_OFFSETS = {
 };
 
 const EFFECT_STYLES = {
-  attack: {
-    fill: "rgba(239, 68, 68, 0.25)",
-    stroke: "rgba(239, 68, 68, 0.8)",
-  },
   fireball: {
     fill: "rgba(251, 191, 36, 0.35)",
     stroke: "rgba(251, 146, 60, 0.95)",
   },
 };
+
+const ATTACK_EFFECT_PRIMARY = "#ef4444";
+const ATTACK_EFFECT_SECONDARY = "#f87171";
+const MIN_ATTACK_EFFECT_DURATION = 0.1;
 
 function getWorldDimensions(store) {
   const fallbackWidth = store.canvas?.width || store.GRID_WIDTH * store.TILE_SIZE;
@@ -56,6 +58,7 @@ export function startRenderLoop(store) {
 
   function gameLoop(now) {
     const dt = Math.min((now - store.lastTimestamp) / 1000, 0.2);
+    const nowSeconds = now / 1000;
     store.lastTimestamp = now;
 
     const lerpAmount = Math.min(1, dt * store.LERP_RATE);
@@ -90,6 +93,7 @@ export function startRenderLoop(store) {
     });
 
     const activeEffectIds = new Set();
+    const activeAttackIds = new Set();
     if (Array.isArray(store.effects)) {
       store.effects.forEach((effect) => {
         if (!effect || typeof effect !== "object") {
@@ -102,29 +106,48 @@ export function startRenderLoop(store) {
         activeEffectIds.add(id);
         const targetX = typeof effect.x === "number" ? effect.x : 0;
         const targetY = typeof effect.y === "number" ? effect.y : 0;
+        const width =
+          typeof effect.width === "number" ? effect.width : store.TILE_SIZE;
+        const height =
+          typeof effect.height === "number" ? effect.height : store.TILE_SIZE;
+        const type = typeof effect.type === "string" ? effect.type : "";
+
+        if (type === "attack") {
+          activeAttackIds.add(id);
+          if (store.displayEffects[id]) {
+            delete store.displayEffects[id];
+          }
+          spawnAttackEffect(store, {
+            id,
+            x: targetX,
+            y: targetY,
+            width,
+            height,
+            durationMs:
+              typeof effect.duration === "number"
+                ? effect.duration
+                : typeof effect.Duration === "number"
+                ? effect.Duration
+                : null,
+          });
+          return;
+        }
+
         if (!store.displayEffects[id]) {
           store.displayEffects[id] = {
             x: targetX,
             y: targetY,
-            width:
-              typeof effect.width === "number" ? effect.width : store.TILE_SIZE,
-            height:
-              typeof effect.height === "number" ? effect.height : store.TILE_SIZE,
-            type: typeof effect.type === "string" ? effect.type : "",
+            width,
+            height,
+            type,
           };
         }
         const display = store.displayEffects[id];
         display.x += (targetX - display.x) * lerpAmount;
         display.y += (targetY - display.y) * lerpAmount;
-        if (typeof effect.width === "number") {
-          display.width = effect.width;
-        }
-        if (typeof effect.height === "number") {
-          display.height = effect.height;
-        }
-        if (typeof effect.type === "string") {
-          display.type = effect.type;
-        }
+        display.width = width;
+        display.height = height;
+        display.type = type;
       });
     }
 
@@ -134,7 +157,14 @@ export function startRenderLoop(store) {
       }
     });
 
+    cleanupAttackEffects(store, activeAttackIds);
+
+    store.lastFrameDt = dt;
+    store.lastFrameNow = nowSeconds;
+
     updateCamera(store);
+
+    updateEffectManager(store, dt, nowSeconds);
 
     drawScene(store);
     requestAnimationFrame(gameLoop);
@@ -291,8 +321,13 @@ function drawHealthBar(ctx, store, position, player, id) {
   ctx.restore();
 }
 
-// drawEffects renders translucent rectangles for every active effect.
+// drawEffects renders legacy rectangles and managed js-effects overlays.
 function drawEffects(store) {
+  drawLegacyEffects(store);
+  drawManagedAttackEffects(store);
+}
+
+function drawLegacyEffects(store) {
   const { ctx } = store;
   const effectEntries = Object.entries(store.displayEffects || {});
   if (effectEntries.length === 0) {
@@ -323,6 +358,128 @@ function drawEffects(store) {
     ctx.strokeRect(x, y, width, height);
     ctx.restore();
   });
+}
+
+function drawManagedAttackEffects(store) {
+  const manager = store.effectManager;
+  if (!manager) {
+    return;
+  }
+  const frame = createEffectFrameContext(
+    store,
+    store.lastFrameDt || 0,
+    store.lastFrameNow || performance.now() / 1000
+  );
+  const { ctx } = store;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  manager.drawAll(frame);
+  ctx.restore();
+}
+
+function spawnAttackEffect(store, spec) {
+  if (!spec || typeof spec !== "object" || !spec.id) {
+    return;
+  }
+  if (!store.attackEffectInstances || typeof store.attackEffectInstances.has !== "function") {
+    store.attackEffectInstances = new Map();
+  }
+  if (store.attackEffectInstances.has(spec.id)) {
+    return;
+  }
+  if (
+    !Number.isFinite(spec.x) ||
+    !Number.isFinite(spec.y) ||
+    !Number.isFinite(spec.width) ||
+    !Number.isFinite(spec.height)
+  ) {
+    return;
+  }
+  const width = Math.max(1, spec.width);
+  const height = Math.max(1, spec.height);
+  const manager = ensureEffectManager(store);
+  if (!manager) {
+    return;
+  }
+  const centerX = spec.x + width / 2;
+  const centerY = spec.y + height / 2;
+  const hasDuration =
+    typeof spec.durationMs === "number" && Number.isFinite(spec.durationMs);
+  const durationSeconds = Math.max(
+    MIN_ATTACK_EFFECT_DURATION,
+    hasDuration ? spec.durationMs / 1000 : MIN_ATTACK_EFFECT_DURATION
+  );
+  const reach = Math.max(width, height);
+  const instance = manager.spawn(ImpactBurstDefinition, {
+    x: centerX,
+    y: centerY,
+    duration: durationSeconds,
+    ringRadius: reach * 0.6,
+    particleCount: 8,
+    color: ATTACK_EFFECT_PRIMARY,
+    secondaryColor: ATTACK_EFFECT_SECONDARY,
+    decalRadius: reach * 0.35,
+    decalTtl: Math.max(MIN_ATTACK_EFFECT_DURATION, durationSeconds * 0.6),
+  });
+  store.attackEffectInstances.set(spec.id, instance);
+}
+
+function cleanupAttackEffects(store, activeAttackIds) {
+  if (!store.attackEffectInstances || typeof store.attackEffectInstances.forEach !== "function") {
+    store.attackEffectInstances = new Map();
+    return;
+  }
+  const activeIds = activeAttackIds instanceof Set ? activeAttackIds : new Set();
+  store.attackEffectInstances.forEach((instance, id) => {
+    const isAlive = typeof instance?.isAlive === "function" ? instance.isAlive() : false;
+    if (!activeIds.has(id) || !isAlive) {
+      store.attackEffectInstances.delete(id);
+    }
+  });
+}
+
+function updateEffectManager(store, dt, nowSeconds) {
+  const manager = store.effectManager;
+  if (!manager) {
+    return;
+  }
+  const camera = store.camera || { x: 0, y: 0 };
+  const { width: worldWidth, height: worldHeight } = getWorldDimensions(store);
+  const viewportWidth = store.canvas?.width || worldWidth;
+  const viewportHeight = store.canvas?.height || worldHeight;
+  manager.cullByAABB({
+    x: camera.x,
+    y: camera.y,
+    w: viewportWidth,
+    h: viewportHeight,
+  });
+  const frame = createEffectFrameContext(store, dt, nowSeconds);
+  manager.updateAll(frame);
+  manager.collectDecals();
+}
+
+function createEffectFrameContext(store, dt, nowSeconds) {
+  const camera = store.camera || { x: 0, y: 0 };
+  return {
+    ctx: store.ctx,
+    dt,
+    now: nowSeconds,
+    camera: {
+      toScreenX: (value) => value - camera.x,
+      toScreenY: (value) => value - camera.y,
+      zoom: 1,
+    },
+  };
+}
+
+function ensureEffectManager(store) {
+  if (!store.effectManager) {
+    store.effectManager = new EffectManager();
+  }
+  if (!store.attackEffectInstances || typeof store.attackEffectInstances.set !== "function") {
+    store.attackEffectInstances = new Map();
+  }
+  return store.effectManager;
 }
 
 // drawObstacle picks the correct renderer for each obstacle type.

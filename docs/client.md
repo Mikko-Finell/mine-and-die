@@ -41,13 +41,18 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Players are drawn as colored squares with a facing indicator line; the local player uses cyan/white, others orange/cream.
 - NPCs are drawn in violet with their facing indicator and optional type label.
 - Obstacles use either a stone block style or a gold ore treatment with deterministic pseudo-random nuggets.
-- Effects are translucent rectangles whose styles map to effect `type` strings.
+- Fireball projectiles still use translucent rectangles mapped from effect `type` strings, while melee attack swings are now
+  driven by the shared `js-effects` runtime for richer motion and layering.
 
 ## Extending the Client
 - Add new HUD elements to `index.html`, register them in the `store`, and update `main.js` diagnostics helpers.
 - Mirror new server fields by adjusting the payload handling inside `network.js` (state, actions, heartbeat logic).
 - Expand rendering logic by extending `render.js`; prefer pure functions that read from the `store` to keep coordination simple.
 - New input bindings belong in `input.js`; keep the derived intent normalized before sending.
+- Visual effects should go through the `EffectManager` provided by `client/js-effects`. Spawn instances for new server effect
+  types rather than hand-drawing shapes so they benefit from built-in culling and layering. When editing the TypeScript source
+  under `tools/js-effects`, rebuild with `npm --prefix tools/js-effects run build` and sync the dist files into `client/js-eff
+  ects` via `node tools/js-effects/scripts/sync-dist-to-client.mjs`.
 
 ## Troubleshooting Tips
 - Use the diagnostics panel toggle to watch connection state, latency, and outbound message counts.

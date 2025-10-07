@@ -16,8 +16,7 @@ client/.cache/
 client/.parcel-cache/
 client/dist/
 client/build/
-client/js-effects/
-!client/js-effects/.gitkeep
+# JS effects runtime outputs live in client/js-effects and are tracked alongside the client bundle.
 
 # General artifacts
 .DS_Store

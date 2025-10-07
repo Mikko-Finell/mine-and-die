@@ -68,6 +68,11 @@ Mine & Die is a small realtime prototype:
   - Update the relevant markdown in `docs/` when changing behaviour that affects contributors or runtime assumptions.
   - Keep diagnostics (`/diagnostics`, HUD) in sync with new fields or metrics you add.
 
+## JS Effects Runtime
+- Use the `client/js-effects` runtime (mirrored from `tools/js-effects`) for new or updated client-side visual effects.
+- Spawn effects via the shared `EffectManager` rather than drawing ad-hoc canvas primitives so layering and culling stay consistent.
+- After editing the TypeScript source under `tools/js-effects`, rebuild with `npm --prefix tools/js-effects run build` and sync the output via `node tools/js-effects/scripts/sync-dist-to-client.mjs`.
+
 ## AI System Notes
 - NPC behaviours live in JSON configs under `server/ai_configs/`. Run `gofmt` after touching any Go helpers and keep configs free of trailing comments so the embed loader stays simple.
 - The runtime compiles configs into ID-based tables (`ai_library.go`) and evaluates them in `ai_executor.go`. Avoid reintroducing string lookups or dynamic dispatch inside the tick loop.
