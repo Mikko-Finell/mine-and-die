@@ -136,6 +136,7 @@ const store = {
   npcs: {},
   displayNPCs: {},
   obstacles: [],
+  displayEffects: {},
   socket: null,
   reconnectTimeout: null,
   isJoining: false,
