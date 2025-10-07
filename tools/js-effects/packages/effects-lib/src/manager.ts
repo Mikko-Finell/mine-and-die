@@ -49,6 +49,10 @@ export class EffectManager {
 
   private finished: EffectInstance[] = [];
 
+  private pendingRemovals: Set<EffectInstance<any>> = new Set();
+
+  private iterating = false;
+
   private creationCounter = 0;
 
   private viewBounds: ViewBounds | null = null;
@@ -113,8 +117,18 @@ export class EffectManager {
   updateAll(frame: EffectFrameContext): void {
     this.stats.updated = 0;
     this.stats.culled = 0;
+    this.iterating = true;
+
     for (let i = 0; i < this.effects.length; ) {
       const managed = this.effects[i];
+
+      if (this.pendingRemovals.has(managed.instance)) {
+        this.pendingRemovals.delete(managed.instance);
+        managed.instance.dispose?.();
+        this.effects.splice(i, 1);
+        continue;
+      }
+
       if (managed.culled) {
         this.stats.culled += 1;
         i += 1;
@@ -126,6 +140,7 @@ export class EffectManager {
 
       if (!managed.instance.isAlive()) {
         this.finished.push(managed.instance);
+        this.pendingRemovals.delete(managed.instance);
         this.effects.splice(i, 1);
         continue;
       }
@@ -133,6 +148,17 @@ export class EffectManager {
       managed.layer = managed.instance.layer;
       managed.sublayer = managed.instance.sublayer ?? 0;
       i += 1;
+    }
+
+    this.iterating = false;
+
+    if (this.pendingRemovals.size > 0) {
+      for (const instance of this.pendingRemovals) {
+        if (this.removeActiveInstance(instance)) {
+          instance.dispose?.();
+        }
+      }
+      this.pendingRemovals.clear();
     }
   }
 
@@ -189,27 +215,34 @@ export class EffectManager {
       return false;
     }
 
-    let removed = false;
-
-    for (let index = this.effects.length - 1; index >= 0; index -= 1) {
-      const managed = this.effects[index];
-      if (managed.instance === instance) {
-        this.effects.splice(index, 1);
-        removed = true;
-      }
-    }
+    let disposed = false;
 
     const finishedIndex = this.finished.indexOf(instance);
     if (finishedIndex !== -1) {
       this.finished.splice(finishedIndex, 1);
-      removed = true;
-    }
-
-    if (removed) {
       instance.dispose?.();
+      disposed = true;
     }
 
-    return removed;
+    let foundActive = false;
+
+    if (this.iterating) {
+      for (const managed of this.effects) {
+        if (managed.instance === instance) {
+          this.pendingRemovals.add(instance);
+          foundActive = true;
+          break;
+        }
+      }
+    } else {
+      foundActive = this.removeActiveInstance(instance);
+      if (foundActive && !disposed) {
+        instance.dispose?.();
+        disposed = true;
+      }
+    }
+
+    return disposed || foundActive;
   }
 
   private track<TOptions>(
@@ -223,5 +256,16 @@ export class EffectManager {
       culled: false,
     });
     return instance;
+  }
+
+  private removeActiveInstance(instance: EffectInstance<any>): boolean {
+    let removed = false;
+    for (let index = this.effects.length - 1; index >= 0; index -= 1) {
+      if (this.effects[index].instance === instance) {
+        this.effects.splice(index, 1);
+        removed = true;
+      }
+    }
+    return removed;
   }
 }

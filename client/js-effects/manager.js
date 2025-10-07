@@ -13,6 +13,8 @@ export class EffectManager {
     constructor() {
         this.effects = [];
         this.finished = [];
+        this.pendingRemovals = new Set();
+        this.iterating = false;
         this.creationCounter = 0;
         this.viewBounds = null;
         this.stats = { updated: 0, drawn: 0, culled: 0 };
@@ -60,11 +62,18 @@ export class EffectManager {
         }
     }
     updateAll(frame) {
-        var _a;
+        var _a, _b, _c, _d;
         this.stats.updated = 0;
         this.stats.culled = 0;
+        this.iterating = true;
         for (let i = 0; i < this.effects.length;) {
             const managed = this.effects[i];
+            if (this.pendingRemovals.has(managed.instance)) {
+                this.pendingRemovals.delete(managed.instance);
+                (_b = (_a = managed.instance).dispose) === null || _b === void 0 ? void 0 : _b.call(_a);
+                this.effects.splice(i, 1);
+                continue;
+            }
             if (managed.culled) {
                 this.stats.culled += 1;
                 i += 1;
@@ -74,12 +83,22 @@ export class EffectManager {
             this.stats.updated += 1;
             if (!managed.instance.isAlive()) {
                 this.finished.push(managed.instance);
+                this.pendingRemovals.delete(managed.instance);
                 this.effects.splice(i, 1);
                 continue;
             }
             managed.layer = managed.instance.layer;
-            managed.sublayer = (_a = managed.instance.sublayer) !== null && _a !== void 0 ? _a : 0;
+            managed.sublayer = (_c = managed.instance.sublayer) !== null && _c !== void 0 ? _c : 0;
             i += 1;
+        }
+        this.iterating = false;
+        if (this.pendingRemovals.size > 0) {
+            for (const instance of this.pendingRemovals) {
+                if (this.removeActiveInstance(instance)) {
+                    (_d = instance.dispose) === null || _d === void 0 ? void 0 : _d.call(instance);
+                }
+            }
+            this.pendingRemovals.clear();
         }
     }
     drawAll(frame) {
@@ -128,27 +147,35 @@ export class EffectManager {
         return { ...this.stats };
     }
     removeInstance(instance) {
-        var _a;
+        var _a, _b;
         if (!instance) {
             return false;
         }
-        let removed = false;
-        for (let index = this.effects.length - 1; index >= 0; index -= 1) {
-            const managed = this.effects[index];
-            if (managed.instance === instance) {
-                this.effects.splice(index, 1);
-                removed = true;
-            }
-        }
+        let disposed = false;
         const finishedIndex = this.finished.indexOf(instance);
         if (finishedIndex !== -1) {
             this.finished.splice(finishedIndex, 1);
-            removed = true;
-        }
-        if (removed) {
             (_a = instance.dispose) === null || _a === void 0 ? void 0 : _a.call(instance);
+            disposed = true;
         }
-        return removed;
+        let foundActive = false;
+        if (this.iterating) {
+            for (const managed of this.effects) {
+                if (managed.instance === instance) {
+                    this.pendingRemovals.add(instance);
+                    foundActive = true;
+                    break;
+                }
+            }
+        }
+        else {
+            foundActive = this.removeActiveInstance(instance);
+            if (foundActive && !disposed) {
+                (_b = instance.dispose) === null || _b === void 0 ? void 0 : _b.call(instance);
+                disposed = true;
+            }
+        }
+        return disposed || foundActive;
     }
     track(instance) {
         var _a;
@@ -160,5 +187,15 @@ export class EffectManager {
             culled: false,
         });
         return instance;
+    }
+    removeActiveInstance(instance) {
+        let removed = false;
+        for (let index = this.effects.length - 1; index >= 0; index -= 1) {
+            if (this.effects[index].instance === instance) {
+                this.effects.splice(index, 1);
+                removed = true;
+            }
+        }
+        return removed;
     }
 }
