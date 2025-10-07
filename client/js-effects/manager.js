@@ -128,11 +128,12 @@ export class EffectManager {
         return { ...this.stats };
     }
     removeInstance(instance) {
+        var _a;
         if (!instance) {
             return false;
         }
         let removed = false;
-        for (let index = this.effects.length - 1; index >= 0; index--) {
+        for (let index = this.effects.length - 1; index >= 0; index -= 1) {
             const managed = this.effects[index];
             if (managed.instance === instance) {
                 this.effects.splice(index, 1);
@@ -145,7 +146,6 @@ export class EffectManager {
             removed = true;
         }
         if (removed) {
-            var _a;
             (_a = instance.dispose) === null || _a === void 0 ? void 0 : _a.call(instance);
         }
         return removed;
