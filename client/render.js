@@ -47,11 +47,134 @@ function ensureMeleeEffectStore(store) {
   return store.meleeEffectInstances;
 }
 
-function ensureBloodEffectStore(store) {
-  if (!(store.bloodEffectInstances instanceof Map)) {
-    store.bloodEffectInstances = new Map();
+function ensureDecalStore(store) {
+  if (!Array.isArray(store.activeDecals)) {
+    store.activeDecals = [];
   }
-  return store.bloodEffectInstances;
+  return store.activeDecals;
+}
+
+function queueDecals(store, specs, nowSeconds) {
+  if (!Array.isArray(specs) || specs.length === 0) {
+    return;
+  }
+  const decals = ensureDecalStore(store);
+  const timestamp = Number.isFinite(nowSeconds) ? nowSeconds : Date.now() / 1000;
+  for (const spec of specs) {
+    if (!spec || typeof spec !== "object") {
+      continue;
+    }
+    const ttl =
+      typeof spec.ttl === "number" && Number.isFinite(spec.ttl)
+        ? Math.max(0, spec.ttl)
+        : null;
+    decals.push({
+      spec,
+      spawnedAt: timestamp,
+      expiresAt: ttl === null ? Number.POSITIVE_INFINITY : timestamp + ttl,
+    });
+  }
+}
+
+function drawStoredDecals(store, nowSeconds) {
+  const decals = Array.isArray(store.activeDecals) ? store.activeDecals : null;
+  if (!decals || decals.length === 0) {
+    return;
+  }
+  const ctx = store?.ctx;
+  if (!ctx) {
+    store.activeDecals = [];
+    return;
+  }
+  const timestamp = Number.isFinite(nowSeconds) ? nowSeconds : Date.now() / 1000;
+  let writeIndex = 0;
+  for (let i = 0; i < decals.length; i += 1) {
+    const entry = decals[i];
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const { spec, expiresAt } = entry;
+    if (!spec || typeof spec !== "object") {
+      continue;
+    }
+    if (timestamp >= (Number.isFinite(expiresAt) ? expiresAt : Number.POSITIVE_INFINITY)) {
+      continue;
+    }
+    drawDecalSpec(ctx, spec);
+    decals[writeIndex] = entry;
+    writeIndex += 1;
+  }
+  decals.length = writeIndex;
+}
+
+function drawDecalSpec(ctx, spec) {
+  if (!ctx || !spec) {
+    return;
+  }
+  const x = Number.isFinite(spec.x) ? spec.x : 0;
+  const y = Number.isFinite(spec.y) ? spec.y : 0;
+  const rotation = Number.isFinite(spec.rotation) ? spec.rotation : 0;
+  const texture = spec.texture;
+  const shape = spec.shape;
+  const defaultColor = typeof spec.averageColor === "string" ? spec.averageColor : "rgba(127, 29, 29, 0.85)";
+
+  ctx.save();
+  ctx.translate(x, y);
+  if (rotation !== 0) {
+    ctx.rotate(rotation);
+  }
+
+  const hasCanvas =
+    typeof HTMLCanvasElement !== "undefined" && texture instanceof HTMLCanvasElement;
+  const hasBitmap = typeof ImageBitmap !== "undefined" && texture instanceof ImageBitmap;
+
+  if (hasCanvas || hasBitmap) {
+    const width = Number.isFinite(texture.width) ? texture.width : 0;
+    const height = Number.isFinite(texture.height) ? texture.height : 0;
+    ctx.drawImage(texture, -width / 2, -height / 2, width, height);
+    ctx.restore();
+    return;
+  }
+
+  if (shape && typeof shape === "object") {
+    ctx.fillStyle = defaultColor;
+    if (shape.type === "oval") {
+      const rx = Number.isFinite(shape.rx) ? shape.rx : 0;
+      const ry = Number.isFinite(shape.ry) ? shape.ry : 0;
+      if (rx > 0 && ry > 0) {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (shape.type === "rect") {
+      const w = Number.isFinite(shape.w) ? shape.w : 0;
+      const h = Number.isFinite(shape.h) ? shape.h : 0;
+      if (w > 0 && h > 0) {
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+      }
+    } else if (shape.type === "poly" && Array.isArray(shape.points)) {
+      const points = shape.points;
+      if (points.length >= 4 && points.length % 2 === 0) {
+        ctx.beginPath();
+        ctx.moveTo(points[0], points[1]);
+        for (let i = 2; i < points.length; i += 2) {
+          ctx.lineTo(points[i], points[i + 1]);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (typeof texture === "string" && texture) {
+    ctx.fillStyle = texture;
+    const size = 12;
+    ctx.fillRect(-size / 2, -size / 2, size, size);
+  }
+
+  ctx.restore();
 }
 
 function syncMeleeSwingEffects(store, existingManager = null) {
@@ -112,69 +235,6 @@ function syncMeleeSwingEffects(store, existingManager = null) {
   }
 
   return manager;
-}
-
-function syncBloodSplatterEffects(store, manager) {
-  const effects = Array.isArray(store.effects) ? store.effects : [];
-  const tracked = ensureBloodEffectStore(store);
-  const seen = new Set();
-  let effectManager = manager || store.effectManager || null;
-
-  for (const effect of effects) {
-    if (!effect || typeof effect !== "object") {
-      continue;
-    }
-    if (effect.type !== "blood-splatter") {
-      continue;
-    }
-    const id = typeof effect.id === "string" ? effect.id : null;
-    if (!id) {
-      continue;
-    }
-    seen.add(id);
-    if (tracked.has(id)) {
-      continue;
-    }
-    const x = Number.isFinite(effect.x) ? effect.x : 0;
-    const y = Number.isFinite(effect.y) ? effect.y : 0;
-    const width = Number.isFinite(effect.width) ? effect.width : 0;
-    const height = Number.isFinite(effect.height) ? effect.height : 0;
-    const centerX = x + width / 2;
-    const centerY = y + height / 2;
-
-    if (!effectManager) {
-      effectManager = ensureEffectRuntime(store);
-    }
-
-    const instance = effectManager.spawn(BloodSplatterDefinition, {
-      x: centerX,
-      y: centerY,
-      colors: ["#7a0e12", "#4a090b"],
-      drag: 0.92,
-      dropletRadius: 3,
-      maxBursts: 0,
-      maxDroplets: 33,
-      maxStainRadius: 6,
-      maxStains: 140,
-      minDroplets: 4,
-      minStainRadius: 4,
-      spawnInterval: 1.1,
-      speed: 3,
-    });
-    tracked.set(id, instance);
-  }
-
-  for (const [id, instance] of tracked.entries()) {
-    const isAlive = instance && typeof instance.isAlive === "function" ? instance.isAlive() : false;
-    if (!seen.has(id) || !isAlive) {
-      if (effectManager && typeof effectManager.removeInstance === "function") {
-        effectManager.removeInstance(instance);
-      }
-      tracked.delete(id);
-    }
-  }
-
-  return effectManager;
 }
 
 function getWorldDimensions(store) {
@@ -456,12 +516,15 @@ function drawHealthBar(ctx, store, position, player, id) {
 // drawEffects renders js-effects-driven melee swings plus legacy rectangle effects.
 function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
   const { ctx } = store;
+  const nowSeconds = Number.isFinite(frameNow) ? frameNow / 1000 : Date.now() / 1000;
+  drawStoredDecals(store, nowSeconds);
+
   let manager = processFireAndForgetTriggers(store, store.effectManager || null);
   manager = syncMeleeSwingEffects(store, manager);
-  manager = syncBloodSplatterEffects(store, manager);
   const effectEntries = Object.entries(store.displayEffects || {});
+  const hasActiveDecals = Array.isArray(store.activeDecals) && store.activeDecals.length > 0;
 
-  if (!manager && effectEntries.length === 0) {
+  if (!manager && effectEntries.length === 0 && !hasActiveDecals) {
     return;
   }
 
@@ -492,6 +555,12 @@ function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
     });
     manager.updateAll(frameContext);
     manager.drawAll(frameContext);
+    if (typeof manager.collectDecals === "function") {
+      const newDecals = manager.collectDecals();
+      if (Array.isArray(newDecals) && newDecals.length > 0) {
+        queueDecals(store, newDecals, frameContext.now);
+      }
+    }
   }
 
   effectEntries.forEach(([, effect]) => {
@@ -575,6 +644,75 @@ function processFireAndForgetTriggers(store, manager) {
 
   return effectManager;
 }
+
+function handleBloodSplatterTrigger({ store, trigger, manager, ensureEffectManager }) {
+  if (!store || !trigger) {
+    return manager;
+  }
+  const effectManager = manager || ensureEffectManager();
+  if (!effectManager) {
+    return manager;
+  }
+
+  const width = Number.isFinite(trigger.width) ? trigger.width : store.TILE_SIZE || 40;
+  const height = Number.isFinite(trigger.height) ? trigger.height : store.TILE_SIZE || 40;
+  const baseX = Number.isFinite(trigger.x) ? trigger.x : 0;
+  const baseY = Number.isFinite(trigger.y) ? trigger.y : 0;
+  const centerX = baseX + width / 2;
+  const centerY = baseY + height / 2;
+
+  const params =
+    trigger && typeof trigger === "object" && typeof trigger.params === "object"
+      ? trigger.params
+      : null;
+  const readNumber = (key, fallback) => {
+    if (!params || typeof params !== "object") {
+      return fallback;
+    }
+    const value = params[key];
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const readColor = (key, fallback) => {
+    if (!params || typeof params !== "object") {
+      return fallback;
+    }
+    const value = params[key];
+    return typeof value === "string" && value ? value : fallback;
+  };
+
+  const dropletRadius = readNumber("dropletRadius", 3);
+  const drag = readNumber("drag", 0.92);
+  const speed = readNumber("speed", 3);
+  const spawnInterval = readNumber("spawnInterval", 1.1);
+  const minDroplets = readNumber("minDroplets", 4);
+  const maxDroplets = readNumber("maxDroplets", 33);
+  const minStainRadius = readNumber("minStainRadius", 4);
+  const maxStainRadius = readNumber("maxStainRadius", 6);
+  const maxStains = readNumber("maxStains", 140);
+  const maxBursts = readNumber("maxBursts", 0);
+  const midColor = readColor("midColor", "#7a0e12");
+  const darkColor = readColor("darkColor", "#4a090b");
+
+  effectManager.spawn(BloodSplatterDefinition, {
+    x: centerX,
+    y: centerY,
+    colors: [midColor, darkColor],
+    drag,
+    dropletRadius,
+    maxBursts,
+    maxDroplets,
+    maxStainRadius,
+    maxStains,
+    minDroplets,
+    minStainRadius,
+    spawnInterval,
+    speed,
+  });
+
+  return effectManager;
+}
+
+registerFireAndForgetHandler("blood-splatter", handleBloodSplatterTrigger);
 
 // drawObstacle picks the correct renderer for each obstacle type.
 function drawObstacle(ctx, obstacle) {

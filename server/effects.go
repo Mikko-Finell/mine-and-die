@@ -820,23 +820,17 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 	}
 
 	w.pruneEffects(now)
-	w.nextEffectID++
-	effect := &effectState{
-		Effect: Effect{
-			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
-			Type:     effectTypeBloodSplatter,
-			Owner:    eff.Owner,
-			Start:    now.UnixMilli(),
-			Duration: bloodSplatterDuration.Milliseconds(),
-			X:        target.X - playerHalf,
-			Y:        target.Y - playerHalf,
-			Width:    playerHalf * 2,
-			Height:   playerHalf * 2,
-		},
-		expiresAt: now.Add(bloodSplatterDuration),
+	trigger := EffectTrigger{
+		Type:     effectTypeBloodSplatter,
+		Start:    now.UnixMilli(),
+		Duration: bloodSplatterDuration.Milliseconds(),
+		X:        target.X - playerHalf,
+		Y:        target.Y - playerHalf,
+		Width:    playerHalf * 2,
+		Height:   playerHalf * 2,
 	}
 
-	w.effects = append(w.effects, effect)
+	w.QueueEffectTrigger(trigger, now)
 }
 
 func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now time.Time) {
