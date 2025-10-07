@@ -26,21 +26,34 @@ class BloodSplatterInstance {
         this.spawnTimer = 0;
         this.aabb = { x: 0, y: 0, w: 0, h: 0 };
         this.stainCursor = 0;
+        this.burstCount = 0;
+        this.maxBurstCount = Number.POSITIVE_INFINITY;
+        this.finished = false;
+        this.finalDecal = null;
         this.opts = { ...BloodSplatterDefinition.defaults, ...opts };
         this.origin = { x: opts.x, y: opts.y };
+        const maxBursts = Number.isFinite(this.opts.maxBursts)
+            ? Math.max(1, Math.floor(this.opts.maxBursts))
+            : Number.POSITIVE_INFINITY;
+        this.maxBurstCount = maxBursts;
+        this.kind = Number.isFinite(maxBursts) ? "once" : "loop";
         // Seed with an initial burst so the effect is visible immediately.
         const rand = Math.random;
         this.spawnBurst(rand, this.origin.x, this.origin.y);
+        this.burstCount = 1;
         this.recalculateAABB();
     }
     isAlive() {
-        return true;
+        return !this.finished;
     }
     getAABB() {
         return this.aabb;
     }
     update(frame) {
         var _a, _b;
+        if (this.finished) {
+            return;
+        }
         const rand = (_b = (_a = frame.rng) === null || _a === void 0 ? void 0 : _a.next.bind(frame.rng)) !== null && _b !== void 0 ? _b : Math.random;
         const dt = Math.max(0, frame.dt);
         if (dt <= 0) {
@@ -49,15 +62,23 @@ class BloodSplatterInstance {
         const speedMultiplier = Math.max(this.opts.speed, 0.0001);
         const interval = Math.max(0.016, this.opts.spawnInterval / speedMultiplier);
         this.spawnTimer += dt;
-        while (this.spawnTimer >= interval) {
+        while (this.spawnTimer >= interval && this.burstCount < this.maxBurstCount) {
             this.spawnBurst(rand, this.origin.x, this.origin.y);
             this.spawnTimer -= interval;
+            this.burstCount += 1;
         }
         this.updateDroplets(dt, rand);
         this.recalculateAABB();
+        if (this.burstCount >= this.maxBurstCount && this.droplets.length === 0) {
+            this.captureFinalDecal();
+            this.finished = true;
+        }
     }
     draw(frame) {
         var _a;
+        if (this.finished) {
+            return;
+        }
         const { ctx, camera } = frame;
         const { dropletRadius, colors } = this.opts;
         const midColor = (_a = colors[0]) !== null && _a !== void 0 ? _a : DEFAULT_MID;
@@ -109,6 +130,9 @@ class BloodSplatterInstance {
     dispose() {
         this.droplets.length = 0;
         this.stains.length = 0;
+    }
+    handoffToDecal() {
+        return this.finalDecal;
     }
     spawnBurst(rand, cx, cy) {
         const minCount = Math.min(this.opts.minDroplets, this.opts.maxDroplets);
@@ -248,6 +272,59 @@ class BloodSplatterInstance {
         this.aabb.w = maxX - minX;
         this.aabb.h = maxY - minY;
     }
+    captureFinalDecal() {
+        if (this.finalDecal || typeof document === "undefined") {
+            return;
+        }
+        if (this.stains.length === 0) {
+            this.finalDecal = null;
+            return;
+        }
+        const bounds = this.aabb;
+        const width = Math.max(1, Math.ceil(bounds.w));
+        const height = Math.max(1, Math.ceil(bounds.h));
+        const canvas = document.createElement("canvas");
+        canvas.width = width + 8;
+        canvas.height = height + 8;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+            return;
+        }
+        const offsetX = bounds.x - 4;
+        const offsetY = bounds.y - 4;
+        ctx.translate(-offsetX, -offsetY);
+        for (const stain of this.stains) {
+            ctx.save();
+            ctx.translate(stain.x, stain.y);
+            ctx.rotate(stain.rotation);
+            ctx.scale(1, stain.squish);
+            ctx.beginPath();
+            const base = stain.basePath;
+            ctx.moveTo(base[0], base[1]);
+            for (let i = 2; i < base.length; i += 2) {
+                ctx.lineTo(base[i], base[i + 1]);
+            }
+            ctx.closePath();
+            ctx.fillStyle = stain.darkColor;
+            ctx.fill();
+            ctx.beginPath();
+            const mid = stain.midPath;
+            ctx.moveTo(mid[0], mid[1]);
+            for (let i = 2; i < mid.length; i += 2) {
+                ctx.lineTo(mid[i], mid[i + 1]);
+            }
+            ctx.closePath();
+            ctx.fillStyle = stain.midColor;
+            ctx.fill();
+            ctx.restore();
+        }
+        this.finalDecal = {
+            x: bounds.x + bounds.w / 2,
+            y: bounds.y + bounds.h / 2,
+            texture: canvas,
+            layerHint: "GroundDecal",
+        };
+    }
 }
 export const BloodSplatterDefinition = {
     type: "blood-splatter",
@@ -262,6 +339,7 @@ export const BloodSplatterDefinition = {
         speed: 1,
         colors: [DEFAULT_MID, DEFAULT_DARK],
         maxStains: 140,
+        maxBursts: Number.POSITIVE_INFINITY,
     },
     create: (opts) => new BloodSplatterInstance(opts),
     createFromPreset: (position, preset, overrides) => {

@@ -10,5 +10,6 @@ export interface BloodSplatterOptions {
     speed: number;
     colors: [string, string];
     maxStains: number;
+    maxBursts: number;
 }
 export declare const BloodSplatterDefinition: EffectDefinition<BloodSplatterOptions>;
