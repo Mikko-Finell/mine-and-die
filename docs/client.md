@@ -19,6 +19,8 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Player dictionaries: `players` (authoritative) and `displayPlayers` (interpolated positions).
 - NPC dictionaries: `npcs` mirrors neutral enemies from the server, `displayNPCs` lerps their positions for rendering.
 - Arrays for `obstacles` and `effects` mirrored from server payloads.
+- Queues for `pendingEffectTriggers` plus `processedEffectTriggerIds` so fire-and-forget
+  events are applied exactly once on the client.
 - `worldConfig` mirrors the server's toggles along with the deterministic `seed` string used when restarting the world from the debug panel.
 
 ## Initialization Sequence
@@ -29,7 +31,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 5. `connectEvents(store)` sets up WebSocket callbacks and kicks off the heartbeat loop.
 
 ## Networking Details
-- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, and keeps diagnostics fresh.
+- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, fire-and-forget `effectTriggers`, and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, queues effect triggers, and keeps diagnostics fresh.
 - **Intents:** `sendCurrentIntent` serializes `{ type: "input", dx, dy, facing }` whenever movement or facing changes.
 - **Path navigation:** `sendMoveTo` sends `{ type: "path", x, y }` for click-to-move requests while `sendCancelPath` clears the server-driven route when WASD input resumes.
 - **Actions:** `sendAction` is used by `input.js` for melee and fireball triggers.
@@ -46,6 +48,9 @@ The client is a lightweight ES module bundle served directly from the Go server.
   TypeScript source in `tools/js-effects/packages/effects-lib`). This keeps the in-game red hitbox
   identical to the playground entry and lets contributors tweak it from a single definition while
   other effect types continue to fall back to simple rectangles.
+- Fire-and-forget triggers drain from `store.pendingEffectTriggers` each frame. Registered
+  handlers in `render.js` decide how to visualise the payload—spawning js-effects animations,
+  producing decals, or updating local-only state—without needing further server updates.
 - When extending the js-effects runtime (new definitions, manager helpers, etc.), make the changes
   in the TypeScript sources under `tools/js-effects/packages/effects-lib` and run `npm run build`
   from the repository root. This regenerates the vendored modules in `client/js-effects/`, so edits
