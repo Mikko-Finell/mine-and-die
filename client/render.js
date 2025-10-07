@@ -1,4 +1,5 @@
 import { EffectManager } from "./js-effects/manager.js";
+import { BloodSplatterDefinition } from "./js-effects/effects/bloodSplatter.js";
 import { MeleeSwingEffectDefinition } from "./js-effects/effects/meleeSwing.js";
 
 const DEFAULT_FACING = "down";
@@ -20,6 +21,8 @@ const EFFECT_STYLES = {
   },
 };
 
+const BLOOD_ELIGIBLE_NPCS = new Set(["rat", "goblin"]);
+
 function ensureEffectRuntime(store) {
   if (!store.effectManager) {
     store.effectManager = new EffectManager();
@@ -34,10 +37,112 @@ function ensureMeleeEffectStore(store) {
   return store.meleeEffectInstances;
 }
 
+function ensureMeleeBloodStore(store) {
+  if (!(store.meleeBloodHits instanceof Map)) {
+    store.meleeBloodHits = new Map();
+  }
+  return store.meleeBloodHits;
+}
+
+function circleRectOverlap(cx, cy, radius, rectX, rectY, rectW, rectH) {
+  if (
+    !Number.isFinite(cx) ||
+    !Number.isFinite(cy) ||
+    !Number.isFinite(radius) ||
+    !Number.isFinite(rectX) ||
+    !Number.isFinite(rectY) ||
+    !Number.isFinite(rectW) ||
+    !Number.isFinite(rectH)
+  ) {
+    return false;
+  }
+  const closestX = Math.max(rectX, Math.min(cx, rectX + rectW));
+  const closestY = Math.max(rectY, Math.min(cy, rectY + rectH));
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+function spawnBloodSplatter(manager, x, y) {
+  if (!manager) {
+    return;
+  }
+  manager.spawn(BloodSplatterDefinition, {
+    x,
+    y,
+    colors: ["#7a0e12", "#4a090b"],
+    drag: 0.92,
+    dropletRadius: 3,
+    maxBursts: 0,
+    maxDroplets: 33,
+    maxStainRadius: 6,
+    maxStains: 140,
+    minDroplets: 4,
+    minStainRadius: 4,
+    spawnInterval: 1.1,
+    speed: 3,
+  });
+}
+
+function maybeSpawnBloodSplatter(store, manager, effect) {
+  if (!effect || effect.type !== "attack" || !manager) {
+    return;
+  }
+
+  const bloodTracker = ensureMeleeBloodStore(store);
+  const effectId = typeof effect.id === "string" ? effect.id : null;
+  if (!effectId) {
+    return;
+  }
+
+  const rectX = Number.isFinite(effect.x) ? effect.x : 0;
+  const rectY = Number.isFinite(effect.y) ? effect.y : 0;
+  const rectW = Number.isFinite(effect.width)
+    ? effect.width
+    : store.TILE_SIZE || 40;
+  const rectH = Number.isFinite(effect.height)
+    ? effect.height
+    : store.TILE_SIZE || 40;
+
+  const playerHalf = Number.isFinite(store.PLAYER_HALF)
+    ? store.PLAYER_HALF
+    : Math.max(10, (store.PLAYER_SIZE || 28) / 2);
+
+  let hitSet = bloodTracker.get(effectId);
+  if (!(hitSet instanceof Set)) {
+    hitSet = new Set();
+    bloodTracker.set(effectId, hitSet);
+  }
+
+  Object.values(store.npcs || {}).forEach((npc) => {
+    if (!npc || typeof npc !== "object") {
+      return;
+    }
+    if (!BLOOD_ELIGIBLE_NPCS.has(npc.type)) {
+      return;
+    }
+    const npcId = typeof npc.id === "string" ? npc.id : null;
+    if (!npcId || hitSet.has(npcId)) {
+      return;
+    }
+    const cx = Number.isFinite(npc.x) ? npc.x : null;
+    const cy = Number.isFinite(npc.y) ? npc.y : null;
+    if (cx === null || cy === null) {
+      return;
+    }
+    if (!circleRectOverlap(cx, cy, playerHalf, rectX, rectY, rectW, rectH)) {
+      return;
+    }
+    spawnBloodSplatter(manager, cx, cy);
+    hitSet.add(npcId);
+  });
+}
+
 function syncMeleeSwingEffects(store) {
   const effects = Array.isArray(store.effects) ? store.effects : [];
   const tracked = ensureMeleeEffectStore(store);
   const seen = new Set();
+  const bloodTracker = ensureMeleeBloodStore(store);
   let manager = store.effectManager || null;
 
   for (const effect of effects) {
@@ -52,6 +157,10 @@ function syncMeleeSwingEffects(store) {
       continue;
     }
     seen.add(id);
+    if (!manager) {
+      manager = ensureEffectRuntime(store);
+    }
+    maybeSpawnBloodSplatter(store, manager, effect);
     if (tracked.has(id)) {
       continue;
     }
@@ -63,10 +172,6 @@ function syncMeleeSwingEffects(store) {
     const durationSeconds = Math.max(0.05, durationMs / 1000 + 0.05);
     const strokeWidth = Math.max(2, Math.min(4, Math.min(width, height) * 0.08));
     const innerInset = Math.max(3, Math.min(width, height) * 0.22);
-
-    if (!manager) {
-      manager = ensureEffectRuntime(store);
-    }
 
     const instance = manager.spawn(MeleeSwingEffectDefinition, {
       effectId: id,
@@ -88,6 +193,13 @@ function syncMeleeSwingEffects(store) {
         manager.removeInstance(instance);
       }
       tracked.delete(id);
+      bloodTracker.delete(id);
+    }
+  }
+
+  for (const effectId of Array.from(bloodTracker.keys())) {
+    if (!seen.has(effectId)) {
+      bloodTracker.delete(effectId);
     }
   }
 
