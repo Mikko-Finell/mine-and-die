@@ -38,6 +38,17 @@ h1 {
   gap: 1.25rem;
 }
 
+.play-area__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.play-area__main canvas {
+  display: block;
+}
+
 canvas {
   border: 2px solid #1e293b;
   border-radius: 12px;
@@ -114,8 +125,7 @@ canvas {
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 18px;
   box-shadow: 0 20px 45px rgba(2, 6, 23, 0.4);
-  width: min(800px, 100%);
-  align-self: center;
+  width: min(100%, 800px);
 }
 
 .world-controls__title {
