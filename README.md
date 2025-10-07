@@ -12,6 +12,15 @@ Mine & Die is an experimental browser-based arena where players race to extract 
 
 Use these documents as the primary reference when extending gameplay, networking, or presentation.
 
+## Effects Playground & Tooling
+
+The JavaScript effects library and its React playground now live under `tools/js-effects/`. Use the npm scripts at the reposito
+ry root to work with them:
+
+- `npm run dev` launches the playground for interactive effect iteration.
+- `npm run build` compiles all workspace packages and synchronises the ESM build output into `client/js-effects/` for consumpti
+on by the game client.
+
 ## Server Layout
 The Go module under `server/` is now split by responsibility so contributors can jump straight to the area they need:
 

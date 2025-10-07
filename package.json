@@ -1,0 +1,9 @@
+{
+  "name": "mine-and-die",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix tools/js-effects run dev",
+    "build": "npm --prefix tools/js-effects run build && node tools/js-effects/scripts/sync-dist-to-client.mjs"
+  }
+}
