@@ -127,6 +127,29 @@ export class EffectManager {
     getLastFrameStats() {
         return { ...this.stats };
     }
+    removeInstance(instance) {
+        if (!instance) {
+            return false;
+        }
+        let removed = false;
+        for (let index = this.effects.length - 1; index >= 0; index--) {
+            const managed = this.effects[index];
+            if (managed.instance === instance) {
+                this.effects.splice(index, 1);
+                removed = true;
+            }
+        }
+        const finishedIndex = this.finished.indexOf(instance);
+        if (finishedIndex !== -1) {
+            this.finished.splice(finishedIndex, 1);
+            removed = true;
+        }
+        if (removed) {
+            var _a;
+            (_a = instance.dispose) === null || _a === void 0 ? void 0 : _a.call(instance);
+        }
+        return removed;
+    }
     track(instance) {
         var _a;
         this.effects.push({
