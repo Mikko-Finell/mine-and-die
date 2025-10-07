@@ -11,6 +11,9 @@ const CANVAS_WIDTH = 480;
 const CANVAS_HEIGHT = 320;
 const STORAGE_KEY = "js-effects-playground:overrides";
 
+const ORIGIN_X = CANVAS_WIDTH / 2;
+const ORIGIN_Y = CANVAS_HEIGHT / 2;
+
 type OptionValue = number;
 
 type OptionConfig = {
@@ -49,6 +52,137 @@ const effectControls: Record<string, OptionConfig[]> = {
     { key: "maxStainRadius", label: "Max Pool Radius", min: 6, max: 60, step: 1 },
     { key: "drag", label: "Drag", min: 0.7, max: 0.99, step: 0.01 },
   ],
+};
+
+const deriveDecimalPlaces = (step?: number): number => {
+  if (typeof step !== "number") {
+    return 0;
+  }
+
+  const stepAsString = step.toString();
+  if (!stepAsString.includes(".")) {
+    return 0;
+  }
+
+  return stepAsString.split(".")[1]?.length ?? 0;
+};
+
+const formatInputValue = (value: number, config: OptionConfig): string => {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+
+  const decimals = deriveDecimalPlaces(config.step);
+  if (decimals <= 0) {
+    return Math.round(value).toString();
+  }
+
+  return value.toFixed(decimals);
+};
+
+const formatNumber = (value: number): string => {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+
+  if (Number.isInteger(value)) {
+    return value.toString();
+  }
+
+  const fixed = value.toFixed(4);
+  return fixed.replace(/0+$/, "").replace(/\.$/, "");
+};
+
+const clampValueToConfig = (value: number, config: OptionConfig): number => {
+  let result = value;
+  if (typeof config.min === "number") {
+    result = Math.max(config.min, result);
+  }
+  if (typeof config.max === "number") {
+    result = Math.min(config.max, result);
+  }
+
+  const decimals = deriveDecimalPlaces(config.step);
+  if (decimals > 0) {
+    const factor = 10 ** decimals;
+    result = Math.round(result * factor) / factor;
+  }
+
+  return result;
+};
+
+const formatValue = (value: unknown, indent: number): string => {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "[]";
+    }
+
+    const nextIndent = indent + 2;
+    const closingIndent = " ".repeat(indent);
+    const items = value.map((entry) => formatValue(entry, nextIndent));
+    const fitsInline =
+      items.every((entry) => !entry.includes("\n")) &&
+      items.join(", ").length <= 60;
+
+    if (fitsInline) {
+      return `[${items.join(", ")}]`;
+    }
+
+    const padding = " ".repeat(nextIndent);
+    return `[\n${items.map((entry) => `${padding}${entry}`).join(",\n")}\n${closingIndent}]`;
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return "{}";
+    }
+
+    const nextIndent = indent + 2;
+    const padding = " ".repeat(nextIndent);
+    const closingIndent = " ".repeat(indent);
+
+    return `{\n${entries
+      .map(([key, entry]) => `${padding}${key}: ${formatValue(entry, nextIndent)}`)
+      .join(",\n")}\n${closingIndent}}`;
+  }
+
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === "number") {
+    return formatNumber(value);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  return "null";
+};
+
+const createExampleCall = (
+  effect: AnyEffectCatalogEntry,
+  options: Record<string, unknown>,
+  origin: { x: number; y: number }
+): string => {
+  const mergedEntries: [string, unknown][] = [
+    ["x", origin.x],
+    ["y", origin.y],
+    ...Object.entries(options).sort(([a], [b]) => a.localeCompare(b)),
+  ];
+
+  const lines = mergedEntries.map(([key, value]) => {
+    const formatted = formatValue(value, 2);
+    if (formatted.includes("\n")) {
+      const [firstLine, ...rest] = formatted.split("\n");
+      return [`  ${key}: ${firstLine}`, ...rest].join("\n");
+    }
+    return `  ${key}: ${formatted}`;
+  });
+
+  return `effectManager.spawn(${effect.definitionName}, {\n${lines.join(",\n")}\n});`;
 };
 
 const mergeOptions = <T extends Record<string, any>>(
@@ -93,11 +227,9 @@ const App: React.FC = () => {
   const rngRef = useRef(createRandomGenerator());
   const frameIndexRef = useRef(0);
   const decalsRef = useRef<{ spec: DecalSpec; spawnedAt: number }[]>([]);
-  const statsRef = useRef({ updated: 0, drawn: 0, culled: 0 });
-  const decalCountRef = useRef(0);
-
-  const [stats, setStats] = useState(statsRef.current);
-  const [decalCount, setDecalCount] = useState(0);
+  const previousActiveRef = useRef(false);
+  const resetEffectRef = useRef<(() => void) | null>(null);
+  const copyTimeoutRef = useRef<number | null>(null);
 
   const [selectedEffect, setSelectedEffect] = useState<AnyEffectCatalogEntry>(
     () => availableEffects[0]
@@ -106,6 +238,11 @@ const App: React.FC = () => {
     const stored = storedOverridesRef.current[selectedEffect.id];
     return stored ? { ...stored } : {};
   });
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [isLooping, setIsLooping] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
+    "idle"
+  );
 
   const options = useMemo(
     () =>
@@ -116,10 +253,50 @@ const App: React.FC = () => {
     [selectedEffect, optionOverrides]
   );
 
+  const resolvedOptions = options as unknown as Record<string, OptionValue>;
+
+  const controls = useMemo(
+    () => effectControls[selectedEffect.id] ?? [],
+    [selectedEffect.id]
+  );
+
+  const exampleCall = useMemo(
+    () =>
+      createExampleCall(
+        selectedEffect,
+        options as unknown as Record<string, unknown>,
+        { x: ORIGIN_X, y: ORIGIN_Y }
+      ),
+    [selectedEffect, options]
+  );
+
   useEffect(() => {
     const stored = storedOverridesRef.current[selectedEffect.id];
     setOptionOverrides(stored ? { ...stored } : {});
   }, [selectedEffect.id]);
+
+  useEffect(() => {
+    const next: Record<string, string> = {};
+
+    for (const control of controls) {
+      const numericValue = Number(resolvedOptions[control.key] ?? 0);
+      next[control.key] = formatInputValue(numericValue, control);
+    }
+
+    setInputValues(next);
+  }, [controls, options]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current !== null) {
+        window.clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopyStatus("idle");
+  }, [exampleCall]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -128,21 +305,7 @@ const App: React.FC = () => {
     if (!canvas || !ctx) return undefined;
 
     const manager = effectManagerRef.current ?? new EffectManager();
-    manager.clear();
     effectManagerRef.current = manager;
-
-    decalsRef.current = [];
-    decalCountRef.current = 0;
-    frameIndexRef.current = 0;
-    rngRef.current.seedFrom?.(`${selectedEffect.id}:reset`);
-    setDecalCount(0);
-
-    const origin = { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
-    manager.spawn(selectedEffect.definition, {
-      ...(options as Record<string, unknown>),
-      x: origin.x,
-      y: origin.y,
-    });
 
     const view = { x: 0, y: 0, w: CANVAS_WIDTH, h: CANVAS_HEIGHT };
     const camera = {
@@ -152,6 +315,24 @@ const App: React.FC = () => {
     };
 
     let lastTimestamp = performance.now();
+
+    const resetEffect = () => {
+      manager.clear();
+      decalsRef.current = [];
+      frameIndexRef.current = 0;
+      previousActiveRef.current = false;
+      rngRef.current.seedFrom?.(`${selectedEffect.id}:reset`);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      manager.spawn(selectedEffect.definition, {
+        ...(options as Record<string, unknown>),
+        x: ORIGIN_X,
+        y: ORIGIN_Y,
+      });
+    };
+
+    resetEffect();
+    resetEffectRef.current = resetEffect;
 
     const drawDecals = (timestamp: number) => {
       const survivors: { spec: DecalSpec; spawnedAt: number }[] = [];
@@ -207,10 +388,6 @@ const App: React.FC = () => {
       }
 
       decalsRef.current = survivors;
-      if (decalCountRef.current !== survivors.length) {
-        decalCountRef.current = survivors.length;
-        setDecalCount(survivors.length);
-      }
     };
 
     const step = (timestamp: number) => {
@@ -239,20 +416,20 @@ const App: React.FC = () => {
         }
       }
 
-      const metrics = manager.getLastFrameStats();
-      if (
-        metrics.updated !== statsRef.current.updated ||
-        metrics.drawn !== statsRef.current.drawn ||
-        metrics.culled !== statsRef.current.culled
-      ) {
-        statsRef.current = metrics;
-        setStats(metrics);
-      }
-
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       drawDecals(timestamp);
       manager.drawAll(frame);
+
+      const metrics = manager.getLastFrameStats();
+      const hasActive = metrics.updated > 0 || metrics.drawn > 0;
+
+      if (isLooping && !hasActive && previousActiveRef.current) {
+        resetEffect();
+        lastTimestamp = timestamp;
+      }
+
+      previousActiveRef.current = hasActive;
 
       animationRef.current = requestAnimationFrame(step);
     };
@@ -268,26 +445,119 @@ const App: React.FC = () => {
       }
       manager.clear();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      decalsRef.current = [];
+      previousActiveRef.current = false;
+      resetEffectRef.current = null;
     };
-  }, [selectedEffect, options]);
-
-  const controls = effectControls[selectedEffect.id] ?? [];
+  }, [selectedEffect, options, isLooping]);
 
   const handleControlChange = (key: string, value: number) => {
     setOptionOverrides((prev) => {
-      const next = {
-        ...prev,
-        [key]: value,
-      };
+      const defaults =
+        (selectedEffect.definition.defaults as Record<string, OptionValue>) ?? {};
+      const defaultValue = defaults[key];
+      const updated = { ...prev };
 
-      storedOverridesRef.current = {
-        ...storedOverridesRef.current,
-        [selectedEffect.id]: next,
-      };
-      persistOverrides(storedOverridesRef.current);
+      if (typeof defaultValue === "number" && Math.abs(defaultValue - value) < 1e-6) {
+        delete updated[key];
+      } else {
+        updated[key] = value;
+      }
 
-      return next;
+      const stored = { ...storedOverridesRef.current };
+      if (Object.keys(updated).length === 0) {
+        delete stored[selectedEffect.id];
+      } else {
+        stored[selectedEffect.id] = updated;
+      }
+      storedOverridesRef.current = stored;
+      persistOverrides(stored);
+
+      return updated;
     });
+  };
+
+  const handleLoopChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setIsLooping(event.target.checked);
+    resetEffectRef.current?.();
+  };
+
+  const handleReset = () => {
+    resetEffectRef.current?.();
+  };
+
+  const scheduleCopyStatusReset = () => {
+    if (copyTimeoutRef.current !== null) {
+      window.clearTimeout(copyTimeoutRef.current);
+    }
+    copyTimeoutRef.current = window.setTimeout(() => {
+      setCopyStatus("idle");
+      copyTimeoutRef.current = null;
+    }, 2000);
+  };
+
+  const handleCopyCall = async () => {
+    const text = exampleCall;
+
+    try {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== "undefined") {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      } else {
+        throw new Error("Clipboard APIs are unavailable");
+      }
+
+      setCopyStatus("copied");
+      scheduleCopyStatusReset();
+    } catch (error) {
+      console.warn("Failed to copy example call", error);
+      setCopyStatus("error");
+      scheduleCopyStatusReset();
+    }
+  };
+
+  const handleInputChange = (control: OptionConfig) => (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const { value } = event.target;
+    setInputValues((prev) => ({
+      ...prev,
+      [control.key]: value,
+    }));
+  };
+
+  const handleInputBlur = (control: OptionConfig) => (
+    event: React.FocusEvent<HTMLInputElement>
+  ) => {
+    const parsed = Number(event.target.value);
+    if (Number.isNaN(parsed)) {
+      const fallback = Number(resolvedOptions[control.key] ?? 0);
+      setInputValues((prev) => ({
+        ...prev,
+        [control.key]: formatInputValue(fallback, control),
+      }));
+      return;
+    }
+
+    const clamped = clampValueToConfig(parsed, control);
+    setInputValues((prev) => ({
+      ...prev,
+      [control.key]: formatInputValue(clamped, control),
+    }));
+    handleControlChange(control.key, clamped);
   };
 
   return (
@@ -316,49 +586,94 @@ const App: React.FC = () => {
           </ul>
         </aside>
         <section className="app__canvas-area">
-          <div className="app__canvas-frame">
-            <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
-          </div>
-          <div className="app__metrics">
-            <p>
-              Frame stats – updated: {stats.updated}, drawn: {stats.drawn}, culled: {" "}
-              {stats.culled}
-            </p>
-            <p>Active decals: {decalCount}</p>
-            <p className="app__metrics-note">
-              Deterministic mode seeds the RNG with the effect id and frame index.
-            </p>
+          <div className="app__canvas-stack">
+            <div className="app__canvas-frame">
+              <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+            </div>
+            <div className="app__canvas-actions">
+              <label className="app__loop-toggle">
+                <input
+                  type="checkbox"
+                  checked={isLooping}
+                  onChange={handleLoopChange}
+                />
+                Loop animation
+              </label>
+              <button
+                type="button"
+                className="app__reset-button"
+                onClick={handleReset}
+              >
+                Reset
+              </button>
+            </div>
+            <div className="app__example">
+              <div className="app__example-header">
+                <h3>Effect call</h3>
+                <button
+                  type="button"
+                  className="app__copy-button"
+                  onClick={handleCopyCall}
+                >
+                  {copyStatus === "copied"
+                    ? "Copied!"
+                    : copyStatus === "error"
+                    ? "Copy failed"
+                    : "Copy call"}
+                </button>
+              </div>
+              <pre className="app__example-code">
+                <code>{exampleCall}</code>
+              </pre>
+            </div>
           </div>
         </section>
         <aside className="app__controls-panel">
           <h3 className="app__controls-title">Controls</h3>
           <div className="controls__list">
-            {controls.map((control) => {
-              const value = Number(
-                (options as Record<string, OptionValue>)[control.key] ?? 0
-              );
+            {controls.length === 0 ? (
+              <p className="controls__empty">No tunable parameters for this effect.</p>
+            ) : (
+              controls.map((control) => {
+                const numericValue = Number(resolvedOptions[control.key] ?? 0);
+                const displayValue =
+                  inputValues[control.key] ?? formatInputValue(numericValue, control);
+                const rangeParts = [
+                  control.min !== undefined
+                    ? `min ${formatNumber(control.min)}`
+                    : null,
+                  control.max !== undefined
+                    ? `max ${formatNumber(control.max)}`
+                    : null,
+                ].filter(Boolean);
+                const stepPart =
+                  control.step !== undefined
+                    ? `step ${formatNumber(control.step)}`
+                    : null;
+                const metaParts = [...rangeParts, stepPart].filter(Boolean);
 
-              return (
-                <label key={control.key} className="controls__item">
-                  <span className="controls__label">{control.label}</span>
-                  <div className="controls__slider">
-                    <input
-                      type="range"
-                      min={control.min ?? 0}
-                      max={control.max ?? 10}
-                      step={control.step ?? 1}
-                      value={value}
-                      onChange={(event) =>
-                        handleControlChange(control.key, Number(event.target.value))
-                      }
-                    />
-                    <output>
-                      {value.toFixed((control.step ?? 1) >= 1 ? 0 : 2)}
-                    </output>
-                  </div>
-                </label>
-              );
-            })}
+                return (
+                  <label key={control.key} className="controls__item">
+                    <span className="controls__label">{control.label}</span>
+                    <div className="controls__input-group">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={control.min ?? undefined}
+                        max={control.max ?? undefined}
+                        step={control.step ?? 1}
+                        value={displayValue}
+                        onChange={handleInputChange(control)}
+                        onBlur={handleInputBlur(control)}
+                      />
+                      {metaParts.length > 0 ? (
+                        <span className="controls__hint">{metaParts.join(" · ")}</span>
+                      ) : null}
+                    </div>
+                  </label>
+                );
+              })
+            )}
           </div>
         </aside>
       </main>
