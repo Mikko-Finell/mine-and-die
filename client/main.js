@@ -6,6 +6,9 @@ import {
 } from "./network.js";
 import { startRenderLoop } from "./render.js";
 import { registerInputHandlers } from "./input.js";
+import { createVendorBanner } from "./vendor/example-banner.js";
+
+console.debug(createVendorBanner("example-banner"));
 
 const statusEl = document.getElementById("status");
 const latencyDisplay = document.getElementById("latency-display");
