@@ -49,6 +49,8 @@ Mine & Die is a small realtime prototype:
 - Go 1.24 with the standard library and `github.com/gorilla/websocket`.
 - ES modules running directly in the browser (no bundler).
 - HTML/CSS for layout and diagnostics readouts.
+- The js-effects runtime (vendored under `client/js-effects/`) powers high-fidelity combat visuals. Run `npm run build` from the
+  repository root after changing anything in `tools/js-effects/` so the ESM build is synchronised into the client.
 
 ## Running & Testing
 - Start the server from `server/` with `go run .`; it serves both APIs and static files on `:8080`.
@@ -67,6 +69,12 @@ Mine & Die is a small realtime prototype:
 - **General:**
   - Update the relevant markdown in `docs/` when changing behaviour that affects contributors or runtime assumptions.
   - Keep diagnostics (`/diagnostics`, HUD) in sync with new fields or metrics you add.
+- **Effects:**
+  - Prefer the js-effects `EffectManager` for new or updated combat visuals. Melee swings already use the shared manager via the
+    custom `MeleeSwingEffectDefinition`; mirror that pattern when introducing new definitions.
+  - Cleanup helper maps (`store.meleeEffectInstances`, etc.) when tearing down state so reconnects and world resets do not leak
+    canvas instances.
+  - When porting additional effects, document any new presets or helpers in `docs/client.md`.
 
 ## AI System Notes
 - NPC behaviours live in JSON configs under `server/ai_configs/`. Run `gofmt` after touching any Go helpers and keep configs free of trailing comments so the embed loader stays simple.

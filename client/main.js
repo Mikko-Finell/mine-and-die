@@ -140,6 +140,8 @@ const store = {
   displayNPCs: {},
   obstacles: [],
   displayEffects: {},
+  effectManager: null,
+  meleeEffectInstances: new Map(),
   socket: null,
   reconnectTimeout: null,
   isJoining: false,
