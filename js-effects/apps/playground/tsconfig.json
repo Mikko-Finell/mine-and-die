@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": "./",
+    "noEmit": true,
+    "paths": {
+      "@js-effects/effects-lib": ["../../packages/effects-lib/src"]
+    }
+  },
+  "include": [
+    "src",
+    "vite.config.ts"
+  ]
+}
