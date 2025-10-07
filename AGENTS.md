@@ -67,6 +67,10 @@ Mine & Die is a small realtime prototype:
 - **General:**
   - Update the relevant markdown in `docs/` when changing behaviour that affects contributors or runtime assumptions.
   - Keep diagnostics (`/diagnostics`, HUD) in sync with new fields or metrics you add.
+  - Prefer the js-effects runtime for new client-side visuals: add definitions under
+    `client/effects/`, spawn them through the shared `EffectManager` in `render.js`,
+    and run `npm run build` when the library needs to be synced into
+    `client/js-effects/`.
 
 ## AI System Notes
 - NPC behaviours live in JSON configs under `server/ai_configs/`. Run `gofmt` after touching any Go helpers and keep configs free of trailing comments so the embed loader stays simple.

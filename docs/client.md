@@ -18,7 +18,10 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Connection state (`socket`, `playerId`, heartbeat timestamps).
 - Player dictionaries: `players` (authoritative) and `displayPlayers` (interpolated positions).
 - NPC dictionaries: `npcs` mirrors neutral enemies from the server, `displayNPCs` lerps their positions for rendering.
-- Arrays for `obstacles` and `effects` mirrored from server payloads.
+- Arrays for `obstacles` and `effects` mirrored from server payloads. The
+  shared `effectManager` hosts the js-effects runtime while
+  `managedEffects` tracks client-side instances for abilities that have been
+  migrated away from the legacy renderer.
 - `worldConfig` mirrors the server's toggles along with the deterministic `seed` string used when restarting the world from the debug panel.
 
 ## Initialization Sequence
@@ -41,7 +44,18 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Players are drawn as colored squares with a facing indicator line; the local player uses cyan/white, others orange/cream.
 - NPCs are drawn in violet with their facing indicator and optional type label.
 - Obstacles use either a stone block style or a gold ore treatment with deterministic pseudo-random nuggets.
-- Effects are translucent rectangles whose styles map to effect `type` strings.
+- Melee swings use the js-effects runtime via `render.js` and the
+  `MeleeAttackEffectDefinition`, while other effect types still render via
+  translucent rectangles until they are migrated.
+
+## Effects Runtime
+- The js-effects monorepo (`tools/js-effects/`) builds an ESM bundle under
+  `client/js-effects/` when `npm run build` is executed at the repository root.
+- `render.js` owns a shared `EffectManager` instance and spawns
+  `MeleeAttackEffectDefinition` when server snapshots report a melee attack.
+- New client-side effect definitions should live under `client/effects/` and be
+  registered via the manager; fall back to the legacy rectangle renderer only
+  for unmigrated types.
 
 ## Extending the Client
 - Add new HUD elements to `index.html`, register them in the `store`, and update `main.js` diagnostics helpers.

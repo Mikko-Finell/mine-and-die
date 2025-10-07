@@ -1,3 +1,6 @@
+import { EffectManager } from "./js-effects/index.js";
+import { MeleeAttackEffectDefinition } from "./effects/meleeAttackEffect.js";
+
 const DEFAULT_FACING = "down";
 const FACING_OFFSETS = {
   up: { x: 0, y: -1 },
@@ -6,11 +9,7 @@ const FACING_OFFSETS = {
   right: { x: 1, y: 0 },
 };
 
-const EFFECT_STYLES = {
-  attack: {
-    fill: "rgba(239, 68, 68, 0.25)",
-    stroke: "rgba(239, 68, 68, 0.8)",
-  },
+const FALLBACK_EFFECT_STYLES = {
   fireball: {
     fill: "rgba(251, 191, 36, 0.35)",
     stroke: "rgba(251, 146, 60, 0.95)",
@@ -48,6 +47,65 @@ function updateCamera(store) {
 
   camera.x = typeof camera.x === "number" ? camera.x : 0;
   camera.y = typeof camera.y === "number" ? camera.y : 0;
+}
+
+function ensureEffectManager(store) {
+  if (!store.effectManager) {
+    store.effectManager = new EffectManager();
+  }
+  return store.effectManager;
+}
+
+function getViewportSize(store) {
+  const canvas = store.canvas;
+  const fallbackWidth = canvas ? canvas.width : store.GRID_WIDTH * store.TILE_SIZE;
+  const fallbackHeight = canvas
+    ? canvas.height
+    : store.GRID_HEIGHT * store.TILE_SIZE;
+  const width =
+    typeof store.WORLD_WIDTH === "number" ? store.WORLD_WIDTH : fallbackWidth;
+  const height =
+    typeof store.WORLD_HEIGHT === "number" ? store.WORLD_HEIGHT : fallbackHeight;
+  return { width, height };
+}
+
+function createEffectFrame(store, dt, now) {
+  const { ctx } = store;
+  const camera = store.camera || { x: 0, y: 0 };
+  const frame = {
+    ctx,
+    dt,
+    now: now / 1000,
+    camera: {
+      toScreenX(x) {
+        return x - camera.x;
+      },
+      toScreenY(y) {
+        return y - camera.y;
+      },
+      zoom: 1,
+    },
+  };
+  return frame;
+}
+
+function updateManagedEffects(store, frame) {
+  const manager = store.effectManager;
+  if (!manager) {
+    return;
+  }
+  const camera = store.camera || { x: 0, y: 0 };
+  const { width, height } = getViewportSize(store);
+  manager.cullByAABB({ x: camera.x, y: camera.y, w: width, h: height });
+  manager.updateAll(frame);
+}
+
+function drawManagedEffects(store, frame) {
+  const manager = store.effectManager;
+  if (!manager) {
+    return;
+  }
+  manager.drawAll(frame);
 }
 
 // startRenderLoop animates interpolation and draws the scene each frame.
@@ -89,7 +147,9 @@ export function startRenderLoop(store) {
       }
     });
 
-    const activeEffectIds = new Set();
+    const fallbackEffectIds = new Set();
+    const managedEffectIds = new Set();
+    let manager = store.effectManager || null;
     if (Array.isArray(store.effects)) {
       store.effects.forEach((effect) => {
         if (!effect || typeof effect !== "object") {
@@ -99,7 +159,40 @@ export function startRenderLoop(store) {
         if (!id) {
           return;
         }
-        activeEffectIds.add(id);
+        const type = typeof effect.type === "string" ? effect.type : "";
+        if (type === "attack") {
+          managedEffectIds.add(id);
+          if (!manager) {
+            manager = ensureEffectManager(store);
+          }
+          if (manager && !store.managedEffects.has(id)) {
+            const width =
+              typeof effect.width === "number" ? effect.width : store.TILE_SIZE;
+            const height =
+              typeof effect.height === "number" ? effect.height : store.TILE_SIZE;
+            const instance = manager.spawn(MeleeAttackEffectDefinition, {
+              x: typeof effect.x === "number" ? effect.x : 0,
+              y: typeof effect.y === "number" ? effect.y : 0,
+              width,
+              height,
+              duration:
+                typeof effect.duration === "number"
+                  ? effect.duration / 1000
+                  : undefined,
+            });
+            if (instance) {
+              store.managedEffects.set(id, { instance, type });
+            }
+          }
+          return;
+        }
+
+        const style = FALLBACK_EFFECT_STYLES[type];
+        if (!style) {
+          return;
+        }
+
+        fallbackEffectIds.add(id);
         const targetX = typeof effect.x === "number" ? effect.x : 0;
         const targetY = typeof effect.y === "number" ? effect.y : 0;
         if (!store.displayEffects[id]) {
@@ -110,7 +203,7 @@ export function startRenderLoop(store) {
               typeof effect.width === "number" ? effect.width : store.TILE_SIZE,
             height:
               typeof effect.height === "number" ? effect.height : store.TILE_SIZE,
-            type: typeof effect.type === "string" ? effect.type : "",
+            type,
           };
         }
         const display = store.displayEffects[id];
@@ -122,21 +215,33 @@ export function startRenderLoop(store) {
         if (typeof effect.height === "number") {
           display.height = effect.height;
         }
-        if (typeof effect.type === "string") {
-          display.type = effect.type;
-        }
+        display.type = type;
       });
     }
 
     Object.keys(store.displayEffects).forEach((id) => {
-      if (!activeEffectIds.has(id)) {
+      if (!fallbackEffectIds.has(id)) {
         delete store.displayEffects[id];
       }
     });
 
+    if (store.managedEffects && store.managedEffects.size > 0) {
+      store.managedEffects.forEach((entry, id) => {
+        const isActive = managedEffectIds.has(id);
+        const instance = entry && entry.instance;
+        if (!isActive || !instance || !instance.isAlive?.()) {
+          store.managedEffects.delete(id);
+        }
+      });
+    }
+
     updateCamera(store);
 
+    const effectFrame = createEffectFrame(store, dt, now);
+    updateManagedEffects(store, effectFrame);
+
     drawScene(store);
+    drawManagedEffects(store, effectFrame);
     requestAnimationFrame(gameLoop);
   }
 
@@ -179,7 +284,7 @@ function drawScene(store) {
     drawObstacle(ctx, obstacle);
   });
 
-  drawEffects(store);
+  drawFallbackEffects(store);
 
   drawNPCs(store);
 
@@ -291,8 +396,8 @@ function drawHealthBar(ctx, store, position, player, id) {
   ctx.restore();
 }
 
-// drawEffects renders translucent rectangles for every active effect.
-function drawEffects(store) {
+// drawFallbackEffects renders simple rectangles for legacy effect types.
+function drawFallbackEffects(store) {
   const { ctx } = store;
   const effectEntries = Object.entries(store.displayEffects || {});
   if (effectEntries.length === 0) {
@@ -302,7 +407,7 @@ function drawEffects(store) {
     if (!effect || typeof effect !== "object") {
       return;
     }
-    const style = EFFECT_STYLES[effect.type];
+    const style = FALLBACK_EFFECT_STYLES[effect.type];
     if (!style) {
       return;
     }
