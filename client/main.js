@@ -48,7 +48,7 @@ const diagnosticsEls = {
   messages: document.getElementById("diag-messages"),
 };
 
-const DEFAULT_INVENTORY_SLOTS = 12;
+const DEFAULT_INVENTORY_SLOTS = 4;
 
 const ITEM_METADATA = {
   gold: { name: "Gold Coin", icon: "🪙" },
