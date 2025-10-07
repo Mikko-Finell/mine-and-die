@@ -27,6 +27,12 @@ const effectControls: Record<string, OptionConfig[]> = {
     { key: "radius", label: "Radius", min: 10, max: 160, step: 1 },
     { key: "pulseSpeed", label: "Pulse Speed", min: 0, max: 8, step: 0.1 },
   ],
+  "melee-swing": [
+    { key: "width", label: "Width", min: 16, max: 160, step: 1 },
+    { key: "height", label: "Height", min: 16, max: 160, step: 1 },
+    { key: "duration", label: "Duration (s)", min: 0.05, max: 0.8, step: 0.01 },
+    { key: "fadeExponent", label: "Fade Power", min: 0.5, max: 3, step: 0.1 },
+  ],
   "impact-burst": [
     { key: "ringRadius", label: "Ring Radius", min: 20, max: 140, step: 1 },
     { key: "particleCount", label: "Particles", min: 3, max: 32, step: 1 },
