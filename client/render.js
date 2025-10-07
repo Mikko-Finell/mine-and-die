@@ -89,6 +89,51 @@ export function startRenderLoop(store) {
       }
     });
 
+    const activeEffectIds = new Set();
+    if (Array.isArray(store.effects)) {
+      store.effects.forEach((effect) => {
+        if (!effect || typeof effect !== "object") {
+          return;
+        }
+        const id = typeof effect.id === "string" ? effect.id : null;
+        if (!id) {
+          return;
+        }
+        activeEffectIds.add(id);
+        const targetX = typeof effect.x === "number" ? effect.x : 0;
+        const targetY = typeof effect.y === "number" ? effect.y : 0;
+        if (!store.displayEffects[id]) {
+          store.displayEffects[id] = {
+            x: targetX,
+            y: targetY,
+            width:
+              typeof effect.width === "number" ? effect.width : store.TILE_SIZE,
+            height:
+              typeof effect.height === "number" ? effect.height : store.TILE_SIZE,
+            type: typeof effect.type === "string" ? effect.type : "",
+          };
+        }
+        const display = store.displayEffects[id];
+        display.x += (targetX - display.x) * lerpAmount;
+        display.y += (targetY - display.y) * lerpAmount;
+        if (typeof effect.width === "number") {
+          display.width = effect.width;
+        }
+        if (typeof effect.height === "number") {
+          display.height = effect.height;
+        }
+        if (typeof effect.type === "string") {
+          display.type = effect.type;
+        }
+      });
+    }
+
+    Object.keys(store.displayEffects).forEach((id) => {
+      if (!activeEffectIds.has(id)) {
+        delete store.displayEffects[id];
+      }
+    });
+
     updateCamera(store);
 
     drawScene(store);
@@ -249,10 +294,11 @@ function drawHealthBar(ctx, store, position, player, id) {
 // drawEffects renders translucent rectangles for every active effect.
 function drawEffects(store) {
   const { ctx } = store;
-  if (!Array.isArray(store.effects) || store.effects.length === 0) {
+  const effectEntries = Object.entries(store.displayEffects || {});
+  if (effectEntries.length === 0) {
     return;
   }
-  store.effects.forEach((effect) => {
+  effectEntries.forEach(([, effect]) => {
     if (!effect || typeof effect !== "object") {
       return;
     }
