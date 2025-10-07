@@ -24,7 +24,7 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 ## Simulation Quick Facts
 - World bounds: 800×600 pixels with obstacles and ore nodes generated from a configurable deterministic seed.
 - Player speed: ~160 px/s with server-side clamping and separation to avoid overlap.
-- Effects: Melee swings and fireballs live as time-bound rectangles; future abilities reuse the same structure.
+- Effects: Melee swings and fireballs live as time-bound rectangles; fire-and-forget triggers let the server hand off one-shot visuals without keeping placeholder effects alive.
 - Disconnect policy: three missed heartbeats (~6s) remove the player from the hub.
 
 ## Development Workflow
