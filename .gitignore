@@ -16,6 +16,8 @@ client/.cache/
 client/.parcel-cache/
 client/dist/
 client/build/
+client/js-effects/
+!client/js-effects/.gitkeep
 
 # General artifacts
 .DS_Store
