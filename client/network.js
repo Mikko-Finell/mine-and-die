@@ -145,6 +145,11 @@ export async function joinGame(store) {
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     store.effects = Array.isArray(payload.effects) ? payload.effects : [];
     store.worldConfig = normalizeWorldConfig(payload.config);
+    if (store.effectManager && typeof store.effectManager.clear === "function") {
+      store.effectManager.clear();
+    }
+    store.meleeEffectInstances = new Map();
+    store.displayEffects = {};
     if (typeof store.updateWorldConfigUI === "function") {
       store.updateWorldConfigUI();
     }
@@ -493,6 +498,11 @@ function handleConnectionLoss(store) {
   store.displayPlayers = {};
   store.npcs = {};
   store.displayNPCs = {};
+  if (store.effectManager && typeof store.effectManager.clear === "function") {
+    store.effectManager.clear();
+  }
+  store.meleeEffectInstances = new Map();
+  store.displayEffects = {};
   scheduleReconnect(store);
 }
 

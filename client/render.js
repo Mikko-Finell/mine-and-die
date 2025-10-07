@@ -1,3 +1,6 @@
+import { EffectManager } from "./js-effects/manager.js";
+import { MeleeSwingEffectDefinition } from "./effects/meleeSwing.js";
+
 const DEFAULT_FACING = "down";
 const FACING_OFFSETS = {
   up: { x: 0, y: -1 },
@@ -16,6 +19,77 @@ const EFFECT_STYLES = {
     stroke: "rgba(251, 146, 60, 0.95)",
   },
 };
+
+function ensureEffectRuntime(store) {
+  if (!store.effectManager) {
+    store.effectManager = new EffectManager();
+  }
+  return store.effectManager;
+}
+
+function ensureMeleeEffectStore(store) {
+  if (!(store.meleeEffectInstances instanceof Map)) {
+    store.meleeEffectInstances = new Map();
+  }
+  return store.meleeEffectInstances;
+}
+
+function syncMeleeSwingEffects(store) {
+  const effects = Array.isArray(store.effects) ? store.effects : [];
+  const tracked = ensureMeleeEffectStore(store);
+  const seen = new Set();
+  let manager = store.effectManager || null;
+
+  for (const effect of effects) {
+    if (!effect || typeof effect !== "object") {
+      continue;
+    }
+    if (effect.type !== "attack") {
+      continue;
+    }
+    const id = typeof effect.id === "string" ? effect.id : null;
+    if (!id) {
+      continue;
+    }
+    seen.add(id);
+    if (tracked.has(id)) {
+      continue;
+    }
+    const width = Number.isFinite(effect.width) ? effect.width : store.TILE_SIZE || 40;
+    const height = Number.isFinite(effect.height) ? effect.height : store.TILE_SIZE || 40;
+    const x = Number.isFinite(effect.x) ? effect.x : 0;
+    const y = Number.isFinite(effect.y) ? effect.y : 0;
+    const durationMs = Number.isFinite(effect.duration) ? effect.duration : 150;
+    const durationSeconds = Math.max(0.05, durationMs / 1000 + 0.05);
+    const strokeWidth = Math.max(2, Math.min(4, Math.min(width, height) * 0.08));
+    const innerInset = Math.max(3, Math.min(width, height) * 0.22);
+
+    if (!manager) {
+      manager = ensureEffectRuntime(store);
+    }
+
+    const instance = manager.spawn(MeleeSwingEffectDefinition, {
+      effectId: id,
+      x,
+      y,
+      width,
+      height,
+      duration: durationSeconds,
+      strokeWidth,
+      innerInset,
+    });
+    tracked.set(id, instance);
+  }
+
+  for (const [id, instance] of tracked.entries()) {
+    const isAlive = instance && typeof instance.isAlive === "function" ? instance.isAlive() : false;
+    if (!seen.has(id) || !isAlive) {
+      tracked.delete(id);
+    }
+  }
+
+  return manager;
+}
 
 function getWorldDimensions(store) {
   const fallbackWidth = store.canvas?.width || store.GRID_WIDTH * store.TILE_SIZE;
@@ -136,7 +210,7 @@ export function startRenderLoop(store) {
 
     updateCamera(store);
 
-    drawScene(store);
+    drawScene(store, dt, now);
     requestAnimationFrame(gameLoop);
   }
 
@@ -144,7 +218,7 @@ export function startRenderLoop(store) {
 }
 
 // drawScene paints the background, obstacles, effects, and players.
-function drawScene(store) {
+function drawScene(store, frameDt, frameNow) {
   const { ctx, canvas } = store;
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -152,6 +226,8 @@ function drawScene(store) {
   const camera = store.camera || { x: 0, y: 0 };
   const tileSize = store.TILE_SIZE || 40;
   const { width: worldWidth, height: worldHeight } = getWorldDimensions(store);
+  const viewportWidth = canvas?.width || worldWidth;
+  const viewportHeight = canvas?.height || worldHeight;
 
   ctx.save();
   ctx.translate(-camera.x, -camera.y);
@@ -179,7 +255,7 @@ function drawScene(store) {
     drawObstacle(ctx, obstacle);
   });
 
-  drawEffects(store);
+  drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight);
 
   drawNPCs(store);
 
@@ -291,15 +367,50 @@ function drawHealthBar(ctx, store, position, player, id) {
   ctx.restore();
 }
 
-// drawEffects renders translucent rectangles for every active effect.
-function drawEffects(store) {
+// drawEffects renders js-effects-driven melee swings plus legacy rectangle effects.
+function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
   const { ctx } = store;
+  const manager = syncMeleeSwingEffects(store);
   const effectEntries = Object.entries(store.displayEffects || {});
-  if (effectEntries.length === 0) {
+
+  if (!manager && effectEntries.length === 0) {
     return;
   }
+
+  if (manager) {
+    const camera = store.camera || { x: 0, y: 0 };
+    const safeWidth = Number.isFinite(viewportWidth)
+      ? viewportWidth
+      : store.canvas?.width || 0;
+    const safeHeight = Number.isFinite(viewportHeight)
+      ? viewportHeight
+      : store.canvas?.height || 0;
+    const frameContext = {
+      ctx,
+      dt: Math.max(0, frameDt || 0),
+      now: Number.isFinite(frameNow) ? frameNow / 1000 : Date.now() / 1000,
+      camera: {
+        toScreenX: (value) => value,
+        toScreenY: (value) => value,
+        zoom: 1,
+      },
+    };
+
+    manager.cullByAABB({
+      x: camera.x,
+      y: camera.y,
+      w: safeWidth,
+      h: safeHeight,
+    });
+    manager.updateAll(frameContext);
+    manager.drawAll(frameContext);
+  }
+
   effectEntries.forEach(([, effect]) => {
     if (!effect || typeof effect !== "object") {
+      return;
+    }
+    if (effect.type === "attack") {
       return;
     }
     const style = EFFECT_STYLES[effect.type];
