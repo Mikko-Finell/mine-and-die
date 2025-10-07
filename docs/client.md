@@ -41,9 +41,11 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Players are drawn as colored squares with a facing indicator line; the local player uses cyan/white, others orange/cream.
 - NPCs are drawn in violet with their facing indicator and optional type label.
 - Obstacles use either a stone block style or a gold ore treatment with deterministic pseudo-random nuggets.
-- Melee swings are rendered through the js-effects `EffectManager` using the client-side
-  `MeleeSwingEffectDefinition` (`client/effects/meleeSwing.js`), giving the red hitbox a quick fade while other
-  effect types continue to fall back to simple rectangles.
+- Melee swings are rendered through the js-effects `EffectManager` using the shared
+  `MeleeSwingEffectDefinition` (synced to `client/js-effects/effects/meleeSwing.js` from the
+  TypeScript source in `tools/js-effects/packages/effects-lib`). This keeps the in-game red hitbox
+  identical to the playground entry and lets contributors tweak it from a single definition while
+  other effect types continue to fall back to simple rectangles.
 
 ## Extending the Client
 - Add new HUD elements to `index.html`, register them in the `store`, and update `main.js` diagnostics helpers.

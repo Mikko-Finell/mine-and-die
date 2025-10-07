@@ -1,5 +1,5 @@
 import { EffectManager } from "./js-effects/manager.js";
-import { MeleeSwingEffectDefinition } from "./effects/meleeSwing.js";
+import { MeleeSwingEffectDefinition } from "./js-effects/effects/meleeSwing.js";
 
 const DEFAULT_FACING = "down";
 const FACING_OFFSETS = {
