@@ -84,6 +84,9 @@ function syncMeleeSwingEffects(store) {
   for (const [id, instance] of tracked.entries()) {
     const isAlive = instance && typeof instance.isAlive === "function" ? instance.isAlive() : false;
     if (!seen.has(id) || !isAlive) {
+      if (manager && typeof manager.removeInstance === "function") {
+        manager.removeInstance(instance);
+      }
       tracked.delete(id);
     }
   }
