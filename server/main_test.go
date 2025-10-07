@@ -36,6 +36,63 @@ func runAdvance(h *Hub, dt float64) ([]Player, []NPC, []Effect) {
 	return players, npcs, effects
 }
 
+func newProjectileTestTemplate(id string) *ProjectileTemplate {
+	return &ProjectileTemplate{
+		Type:        id,
+		Speed:       180,
+		MaxDistance: 240,
+		SpawnRadius: 0,
+		SpawnOffset: 0,
+		TravelMode:  TravelModeConfig{StraightLine: true},
+		ImpactRules: ImpactRuleConfig{
+			StopOnHit:    true,
+			MaxTargets:   1,
+			AffectsOwner: false,
+		},
+		Params: map[string]float64{
+			"healthDelta": -5,
+		},
+	}
+}
+
+func advanceProjectileTicks(w *World, start time.Time, ticks int, dt float64) {
+	current := start
+	step := time.Duration(float64(time.Second) * dt)
+	for i := 0; i < ticks; i++ {
+		w.advanceEffects(current, dt)
+		w.pruneEffects(current)
+		current = current.Add(step)
+	}
+}
+
+func advanceAndCollectEffectIDs(w *World, start time.Time, ticks int, dt float64, targetType string) map[string]struct{} {
+	current := start
+	step := time.Duration(float64(time.Second) * dt)
+	seen := make(map[string]struct{})
+	for i := 0; i < ticks; i++ {
+		w.advanceEffects(current, dt)
+		for _, eff := range w.effects {
+			if eff.Type == targetType {
+				seen[eff.ID] = struct{}{}
+			}
+		}
+		w.pruneEffects(current)
+		current = current.Add(step)
+	}
+	return seen
+}
+
+func registerTestProjectileTemplate(w *World, tpl *ProjectileTemplate) {
+	if w == nil || tpl == nil {
+		return
+	}
+	w.projectileTemplates[tpl.Type] = tpl
+	if w.effectBehaviors == nil {
+		w.effectBehaviors = make(map[string]effectBehavior)
+	}
+	w.effectBehaviors[tpl.Type] = healthDeltaBehavior("healthDelta", 0)
+}
+
 func TestHubJoinCreatesPlayer(t *testing.T) {
 	hub := newHub()
 
@@ -1024,4 +1081,505 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 	if !expired {
 		t.Fatalf("expected fireball to expire after hitting obstacle")
 	}
+}
+
+func TestProjectileStopPolicies(t *testing.T) {
+	t.Run("piercesWhenStopDisabled", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("piercer")
+		shooter.X = 150
+		shooter.Y = 200
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		first := newTestPlayerState("pierce-target-1")
+		first.X = shooter.X + 40
+		first.Y = shooter.Y
+		first.lastHeartbeat = now
+		hub.world.players[first.ID] = first
+
+		second := newTestPlayerState("pierce-target-2")
+		second.X = shooter.X + 80
+		second.Y = shooter.Y
+		second.lastHeartbeat = now
+		hub.world.players[second.ID] = second
+
+		tpl := newProjectileTestTemplate("pierce-stop")
+		tpl.ImpactRules.StopOnHit = false
+		tpl.ImpactRules.MaxTargets = 0
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned || eff == nil {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		advanceProjectileTicks(hub.world, now, 3, dt)
+
+		if eff.Projectile == nil {
+			t.Fatalf("expected projectile state to persist")
+		}
+		if eff.Projectile.ExpiryResolved {
+			t.Fatalf("expected projectile to remain active after first hit")
+		}
+		if eff.Projectile.HitCount == 0 {
+			t.Fatalf("expected projectile to record at least one hit")
+		}
+
+		advanceProjectileTicks(hub.world, now.Add(time.Duration(float64(time.Second)*dt)*3), 4, dt)
+
+		if eff.Projectile.HitCount < 2 {
+			t.Fatalf("expected projectile to hit multiple targets, got %d", eff.Projectile.HitCount)
+		}
+		if eff.Projectile.ExpiryResolved {
+			t.Fatalf("expected projectile to remain active after multiple hits")
+		}
+		if len(hub.world.effects) != 1 {
+			t.Fatalf("expected piercing projectile to remain in world, have %d effects", len(hub.world.effects))
+		}
+	})
+
+	t.Run("stopsWhenConfigured", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("stopper")
+		shooter.X = 220
+		shooter.Y = 220
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		victim := newTestPlayerState("stop-target")
+		victim.X = shooter.X + 36
+		victim.Y = shooter.Y
+		victim.lastHeartbeat = now
+		hub.world.players[victim.ID] = victim
+
+		tpl := newProjectileTestTemplate("stop-on-hit")
+		tpl.ImpactRules.StopOnHit = true
+		tpl.ImpactRules.MaxTargets = 0
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned || eff == nil {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		advanceProjectileTicks(hub.world, now, 2, dt)
+
+		if len(hub.world.effects) != 0 {
+			t.Fatalf("expected projectile to expire after first hit, have %d effects", len(hub.world.effects))
+		}
+		if eff.Projectile == nil || !eff.Projectile.ExpiryResolved {
+			t.Fatalf("expected projectile stop to mark expiry resolved")
+		}
+	})
+}
+
+func TestProjectileMaxTargetsLimit(t *testing.T) {
+	hub := newHub()
+	hub.world.obstacles = nil
+	now := time.Now()
+
+	shooter := newTestPlayerState("max-targets-shooter")
+	shooter.X = 180
+	shooter.Y = 180
+	shooter.Facing = FacingRight
+	shooter.lastHeartbeat = now
+	shooter.cooldowns = make(map[string]time.Time)
+	hub.world.players[shooter.ID] = shooter
+
+	first := newTestPlayerState("max-targets-1")
+	first.X = shooter.X + 36
+	first.Y = shooter.Y
+	first.lastHeartbeat = now
+	hub.world.players[first.ID] = first
+
+	second := newTestPlayerState("max-targets-2")
+	second.X = shooter.X + 72
+	second.Y = shooter.Y
+	second.lastHeartbeat = now
+	hub.world.players[second.ID] = second
+
+	third := newTestPlayerState("max-targets-3")
+	third.X = shooter.X + 108
+	third.Y = shooter.Y
+	third.lastHeartbeat = now
+	hub.world.players[third.ID] = third
+
+	tpl := newProjectileTestTemplate("max-targets")
+	tpl.ImpactRules.StopOnHit = false
+	tpl.ImpactRules.MaxTargets = 2
+	registerTestProjectileTemplate(hub.world, tpl)
+
+	eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+	if !spawned || eff == nil {
+		t.Fatalf("expected projectile spawn to succeed")
+	}
+
+	dt := 1.0 / float64(tickRate)
+	advanceProjectileTicks(hub.world, now, 10, dt)
+
+	if len(hub.world.effects) != 0 {
+		t.Fatalf("expected projectile to expire after reaching max targets, found %d effects", len(hub.world.effects))
+	}
+	if eff.Projectile == nil || eff.Projectile.HitCount != 2 {
+		t.Fatalf("expected projectile to record 2 hits, got %+v", eff.Projectile)
+	}
+
+	if !(first.Health < playerMaxHealth) {
+		t.Fatalf("expected first target health to drop below %.1f, got %.1f", playerMaxHealth, first.Health)
+	}
+	if !(second.Health < playerMaxHealth) {
+		t.Fatalf("expected second target health to drop below %.1f, got %.1f", playerMaxHealth, second.Health)
+	}
+	if math.Abs(third.Health-playerMaxHealth) > 1e-6 {
+		t.Fatalf("expected third target to remain unharmed at %.1f, got %.1f", playerMaxHealth, third.Health)
+	}
+}
+
+func TestProjectileObstacleImpactExplosion(t *testing.T) {
+	hub := newHub()
+	now := time.Now()
+
+	shooter := newTestPlayerState("impact-shooter")
+	shooter.X = 160
+	shooter.Y = 200
+	shooter.Facing = FacingRight
+	shooter.lastHeartbeat = now
+	shooter.cooldowns = make(map[string]time.Time)
+	hub.world.players[shooter.ID] = shooter
+
+	hub.world.obstacles = []Obstacle{{
+		ID:     "wall",
+		X:      shooter.X + 60,
+		Y:      shooter.Y - 20,
+		Width:  30,
+		Height: 40,
+	}}
+
+	tpl := newProjectileTestTemplate("impact-explosion")
+	tpl.ImpactRules.ExplodeOnImpact = &ExplosionSpec{EffectType: "impact-aoe", Radius: 10, Duration: 300 * time.Millisecond}
+	registerTestProjectileTemplate(hub.world, tpl)
+
+	eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+	if !spawned || eff == nil {
+		t.Fatalf("expected projectile spawn to succeed")
+	}
+
+	dt := 1.0 / float64(tickRate)
+	ids := advanceAndCollectEffectIDs(hub.world, now, 8, dt, "impact-aoe")
+	if len(ids) != 1 {
+		t.Fatalf("expected exactly one impact explosion id, got %d", len(ids))
+	}
+	if eff.Projectile == nil || !eff.Projectile.ExpiryResolved {
+		t.Fatalf("expected projectile to resolve after obstacle impact")
+	}
+}
+
+func TestProjectileExpiryExplosionPolicy(t *testing.T) {
+	t.Run("onlyOnWhiff", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("expiry-whiff")
+		shooter.X = 180
+		shooter.Y = 240
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		tpl := newProjectileTestTemplate("expiry-whiff-template")
+		tpl.ImpactRules.StopOnHit = false
+		tpl.ImpactRules.MaxTargets = 0
+		tpl.ImpactRules.ExplodeOnExpiry = &ExplosionSpec{EffectType: "expiry-aoe", Radius: 14, Duration: 400 * time.Millisecond}
+		tpl.ImpactRules.ExpiryOnlyIfNoHits = true
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned || eff == nil {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		ids := advanceAndCollectEffectIDs(hub.world, now, 25, dt, "expiry-aoe")
+		if len(ids) != 1 {
+			t.Fatalf("expected single expiry explosion on whiff, got %d", len(ids))
+		}
+		if eff.Projectile == nil || !eff.Projectile.ExpiryResolved {
+			t.Fatalf("expected projectile to resolve after range expiry")
+		}
+	})
+
+	t.Run("suppressedAfterHit", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("expiry-hit")
+		shooter.X = 140
+		shooter.Y = 200
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		target := newTestPlayerState("expiry-target")
+		target.X = shooter.X + 36
+		target.Y = shooter.Y
+		target.lastHeartbeat = now
+		hub.world.players[target.ID] = target
+
+		tpl := newProjectileTestTemplate("expiry-hit-template")
+		tpl.ImpactRules.StopOnHit = false
+		tpl.ImpactRules.MaxTargets = 0
+		tpl.ImpactRules.ExplodeOnExpiry = &ExplosionSpec{EffectType: "expiry-aoe", Radius: 12, Duration: 200 * time.Millisecond}
+		tpl.ImpactRules.ExpiryOnlyIfNoHits = true
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned || eff == nil {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		ids := advanceAndCollectEffectIDs(hub.world, now, 25, dt, "expiry-aoe")
+		if len(ids) != 0 {
+			t.Fatalf("did not expect expiry explosion after projectile hit, saw %d ids", len(ids))
+		}
+		if eff.Projectile == nil || eff.Projectile.HitCount == 0 {
+			t.Fatalf("expected projectile to have recorded a hit")
+		}
+	})
+
+	t.Run("alwaysOnExpiry", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("expiry-always")
+		shooter.X = 120
+		shooter.Y = 260
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		target := newTestPlayerState("expiry-always-target")
+		target.X = shooter.X + 48
+		target.Y = shooter.Y
+		target.lastHeartbeat = now
+		hub.world.players[target.ID] = target
+
+		tpl := newProjectileTestTemplate("expiry-always-template")
+		tpl.ImpactRules.StopOnHit = false
+		tpl.ImpactRules.MaxTargets = 0
+		tpl.ImpactRules.ExplodeOnExpiry = &ExplosionSpec{EffectType: "expiry-aoe", Radius: 16, Duration: 250 * time.Millisecond}
+		tpl.ImpactRules.ExpiryOnlyIfNoHits = false
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned || eff == nil {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		ids := advanceAndCollectEffectIDs(hub.world, now, 25, dt, "expiry-aoe")
+		if len(ids) != 1 {
+			t.Fatalf("expected expiry explosion regardless of hits, got %d", len(ids))
+		}
+		if eff.Projectile == nil || eff.Projectile.HitCount == 0 {
+			t.Fatalf("expected projectile to have hit before expiry")
+		}
+	})
+}
+
+func TestProjectileBoundsAndLifetimeExpiry(t *testing.T) {
+	t.Run("outOfBounds", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("bounds-shooter")
+		shooter.X = worldWidth - playerHalf - 30
+		shooter.Y = 300
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		tpl := newProjectileTestTemplate("bounds-expiry")
+		tpl.ImpactRules.StopOnHit = false
+		tpl.ImpactRules.MaxTargets = 0
+		tpl.ImpactRules.ExplodeOnExpiry = &ExplosionSpec{EffectType: "bounds-aoe", Radius: 18, Duration: 150 * time.Millisecond}
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		_, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		ids := advanceAndCollectEffectIDs(hub.world, now, 8, dt, "bounds-aoe")
+		if len(ids) != 1 {
+			t.Fatalf("expected boundary expiry explosion once, found %d", len(ids))
+		}
+	})
+
+	t.Run("lifetimeExpiry", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("lifetime-shooter")
+		shooter.X = 200
+		shooter.Y = 320
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		tpl := newProjectileTestTemplate("lifetime-expiry")
+		tpl.Lifetime = 200 * time.Millisecond
+		tpl.MaxDistance = 0
+		tpl.ImpactRules.StopOnHit = false
+		tpl.ImpactRules.MaxTargets = 0
+		tpl.ImpactRules.ExplodeOnExpiry = &ExplosionSpec{EffectType: "lifetime-aoe", Radius: 12, Duration: 120 * time.Millisecond}
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		_, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		ids := advanceAndCollectEffectIDs(hub.world, now, 8, dt, "lifetime-aoe")
+		if len(ids) != 1 {
+			t.Fatalf("expected lifetime expiry explosion once, found %d", len(ids))
+		}
+	})
+}
+
+func TestProjectileSpawnDefaults(t *testing.T) {
+	hub := newHub()
+	hub.world.obstacles = nil
+	now := time.Now()
+
+	shooter := newTestPlayerState("spawn-default")
+	shooter.X = 260
+	shooter.Y = 260
+	shooter.Facing = FacingRight
+	shooter.lastHeartbeat = now
+	shooter.cooldowns = make(map[string]time.Time)
+	hub.world.players[shooter.ID] = shooter
+
+	tpl := newProjectileTestTemplate("spawn-default-template")
+	tpl.SpawnRadius = 0
+	tpl.SpawnOffset = 0
+	tpl.CollisionShape = CollisionShapeConfig{UseRect: true, RectWidth: 0, RectHeight: 0}
+	registerTestProjectileTemplate(hub.world, tpl)
+
+	eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+	if !spawned || eff == nil {
+		t.Fatalf("expected projectile spawn to succeed")
+	}
+
+	if eff.Width < 1 || eff.Height < 1 {
+		t.Fatalf("expected projectile dimensions to be at least 1x1, got %.2fx%.2f", eff.Width, eff.Height)
+	}
+
+	expectedCenter := shooter.X + ownerHalfExtent(&shooter.actorState) + sanitizedSpawnRadius(tpl.SpawnRadius)
+	center := eff.X + eff.Width/2
+	if math.Abs(center-expectedCenter) > 1e-6 {
+		t.Fatalf("expected spawn center %.2f, got %.2f", expectedCenter, center)
+	}
+}
+
+func TestProjectileOwnerImmunity(t *testing.T) {
+	t.Run("selfHitsPrevented", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("self-safe")
+		shooter.X = 180
+		shooter.Y = 340
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		tpl := newProjectileTestTemplate("self-safe-template")
+		tpl.SpawnOffset = -4
+		tpl.ImpactRules.StopOnHit = true
+		tpl.ImpactRules.MaxTargets = 0
+		tpl.ImpactRules.AffectsOwner = false
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned || eff == nil {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		advanceProjectileTicks(hub.world, now, 2, dt)
+
+		if eff.Projectile == nil {
+			t.Fatalf("expected projectile state to exist")
+		}
+		if eff.Projectile.HitCount != 0 {
+			t.Fatalf("expected no self hits when owner immune, got %d", eff.Projectile.HitCount)
+		}
+		if math.Abs(shooter.Health-playerMaxHealth) > 1e-6 {
+			t.Fatalf("expected shooter health to remain %.1f, got %.1f", playerMaxHealth, shooter.Health)
+		}
+	})
+
+	t.Run("selfHitsAllowed", func(t *testing.T) {
+		hub := newHub()
+		hub.world.obstacles = nil
+		now := time.Now()
+
+		shooter := newTestPlayerState("self-hit")
+		shooter.X = 200
+		shooter.Y = 360
+		shooter.Facing = FacingRight
+		shooter.lastHeartbeat = now
+		shooter.cooldowns = make(map[string]time.Time)
+		hub.world.players[shooter.ID] = shooter
+
+		tpl := newProjectileTestTemplate("self-hit-template")
+		tpl.SpawnOffset = -4
+		tpl.ImpactRules.StopOnHit = true
+		tpl.ImpactRules.MaxTargets = 0
+		tpl.ImpactRules.AffectsOwner = true
+		registerTestProjectileTemplate(hub.world, tpl)
+
+		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		if !spawned || eff == nil {
+			t.Fatalf("expected projectile spawn to succeed")
+		}
+
+		dt := 1.0 / float64(tickRate)
+		advanceProjectileTicks(hub.world, now, 2, dt)
+
+		if eff.Projectile == nil || eff.Projectile.HitCount == 0 {
+			t.Fatalf("expected projectile to record self hit when allowed")
+		}
+		if !(shooter.Health < playerMaxHealth) {
+			t.Fatalf("expected shooter health to drop below %.1f after self hit, got %.1f", playerMaxHealth, shooter.Health)
+		}
+	})
 }
