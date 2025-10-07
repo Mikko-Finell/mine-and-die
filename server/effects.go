@@ -114,8 +114,11 @@ const (
 	meleeAttackWidth    = 40.0
 	meleeAttackDamage   = 10.0
 
-	effectTypeAttack   = "attack"
-	effectTypeFireball = "fireball"
+	effectTypeAttack        = "attack"
+	effectTypeFireball      = "fireball"
+	effectTypeBloodSplatter = "blood-splatter"
+
+	bloodSplatterDuration = 1200 * time.Millisecond
 
 	fireballCooldown = 650 * time.Millisecond
 	fireballSpeed    = 320.0
@@ -763,11 +766,43 @@ func (w *World) applyEffectHitNPC(eff *effectState, target *npcState, now time.T
 	if target == nil {
 		return
 	}
+	w.maybeSpawnBloodSplatter(eff, target, now)
 	wasAlive := target.Health > 0
 	w.applyEffectHitActor(eff, &target.actorState, now)
 	if wasAlive && target.Health <= 0 {
 		w.handleNPCDefeat(target)
 	}
+}
+
+func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now time.Time) {
+	if eff == nil || target == nil {
+		return
+	}
+	if eff.Type != effectTypeAttack {
+		return
+	}
+	if target.Type != NPCTypeGoblin && target.Type != NPCTypeRat {
+		return
+	}
+
+	w.pruneEffects(now)
+	w.nextEffectID++
+	effect := &effectState{
+		Effect: Effect{
+			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
+			Type:     effectTypeBloodSplatter,
+			Owner:    eff.Owner,
+			Start:    now.UnixMilli(),
+			Duration: bloodSplatterDuration.Milliseconds(),
+			X:        target.X - playerHalf,
+			Y:        target.Y - playerHalf,
+			Width:    playerHalf * 2,
+			Height:   playerHalf * 2,
+		},
+		expiresAt: now.Add(bloodSplatterDuration),
+	}
+
+	w.effects = append(w.effects, effect)
 }
 
 func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now time.Time) {

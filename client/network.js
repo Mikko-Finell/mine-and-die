@@ -149,6 +149,7 @@ export async function joinGame(store) {
       store.effectManager.clear();
     }
     store.meleeEffectInstances = new Map();
+    store.bloodEffectInstances = new Map();
     store.displayEffects = {};
     if (typeof store.updateWorldConfigUI === "function") {
       store.updateWorldConfigUI();
@@ -502,6 +503,7 @@ function handleConnectionLoss(store) {
     store.effectManager.clear();
   }
   store.meleeEffectInstances = new Map();
+  store.bloodEffectInstances = new Map();
   store.displayEffects = {};
   scheduleReconnect(store);
 }
