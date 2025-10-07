@@ -21,39 +21,22 @@ interface EmberParticle {
   life: number;
   age: number;
   size: number;
-}
-
-interface FlameTongue {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  age: number;
-  w: number;
-  h: number;
-  rot: number;
-  swaySeed: number;
-  curW?: number;
-  curH?: number;
+  color: string;
 }
 
 export interface FireOptions {
   spawnInterval: number;
   embersPerBurst: number;
-  flamesPerBurst: number;
   riseSpeed: number;
   windX: number;
   swirl: number;
   jitter: number;
-  sizeScale: number;
   lifeScale: number;
-  baseColor: string;
-  midColor: string;
-  hotColor: string;
-  emberColor: string;
+  sizeScale: number;
+  spawnRadius: number;
+  concentration: number;
+  emberPalette: string[];
   emberAlpha: number;
-  gradientBias: number;
   additive: boolean;
 }
 
@@ -70,20 +53,20 @@ class FireInstance implements EffectInstance<FireOptions> {
   private readonly aabb = { x: 0, y: 0, w: 0, h: 0 };
 
   private readonly embers: EmberParticle[] = [];
-  private readonly flames: FlameTongue[] = [];
 
   private spawnTimer = 0;
-  private flameTimer = 0;
 
   constructor(opts: Partial<FireOptions> & { x: number; y: number }) {
     this.opts = { ...FireEffectDefinition.defaults, ...opts };
     this.id = `fire-${Math.random().toString(36).slice(2)}`;
     this.origin = { x: opts.x, y: opts.y };
 
-    this.aabb.x = this.origin.x - 48;
-    this.aabb.y = this.origin.y - 64;
-    this.aabb.w = 96;
-    this.aabb.h = 96;
+    const rX = 56 * this.opts.sizeScale;
+    const rY = 84 * this.opts.sizeScale;
+    this.aabb.x = this.origin.x - rX;
+    this.aabb.y = this.origin.y - rY;
+    this.aabb.w = rX * 2;
+    this.aabb.h = rY * 2;
   }
 
   isAlive(): boolean {
@@ -96,7 +79,6 @@ class FireInstance implements EffectInstance<FireOptions> {
 
   dispose(): void {
     this.embers.length = 0;
-    this.flames.length = 0;
   }
 
   handoffToDecal(): null {
@@ -113,35 +95,45 @@ class FireInstance implements EffectInstance<FireOptions> {
       return;
     }
 
-    const rand =
-      frame.rng && typeof frame.rng.next === "function"
-        ? () => frame.rng!.next()
-        : Math.random;
+    const rand = frame.rng?.next?.bind(frame.rng) ?? Math.random;
     const {
       spawnInterval,
       embersPerBurst,
-      flamesPerBurst,
       riseSpeed,
+      windX,
       swirl,
+      jitter,
       lifeScale,
       sizeScale,
-      windX,
-      jitter,
+      spawnRadius,
+      concentration,
+      emberPalette,
     } = this.opts;
 
     this.spawnTimer += dt;
-    this.flameTimer += dt;
 
     while (this.spawnTimer >= spawnInterval) {
       this.spawnTimer -= spawnInterval;
       const n = randInt(rand, Math.max(1, embersPerBurst - 1), embersPerBurst + 1);
       for (let i = 0; i < n; i += 1) {
+        const biasPow = 1 + concentration * 6;
+        const r = spawnRadius * Math.pow(rand(), biasPow);
         const ang = randRange(rand, 0, TAU);
-        const r = randRange(rand, 0, 6 * sizeScale);
-        const px = this.origin.x + Math.cos(ang) * r;
-        const py = this.origin.y + Math.sin(ang) * (r * 0.35);
+
+        const px =
+          this.origin.x +
+          Math.cos(ang) * r * (0.9 + 0.2 * rand());
+        const py =
+          this.origin.y +
+          Math.sin(ang) * r * (0.35 + 0.15 * rand());
+
         const vx = windX + randRange(rand, -jitter, jitter);
-        const vy = -riseSpeed * randRange(rand, 0.75, 1.25);
+        const vy = -riseSpeed * randRange(rand, 0.8, 1.25);
+
+        const color = emberPalette.length
+          ? emberPalette[Math.floor(rand() * emberPalette.length) % emberPalette.length]
+          : "white";
+
         this.embers.push({
           x: px,
           y: py,
@@ -150,30 +142,7 @@ class FireInstance implements EffectInstance<FireOptions> {
           life: randRange(rand, 0.7, 1.2) * lifeScale,
           age: 0,
           size: randRange(rand, 1.25, 2.25) * sizeScale,
-        });
-      }
-    }
-
-    const flameInterval = spawnInterval * 0.5;
-    while (this.flameTimer >= flameInterval) {
-      this.flameTimer -= flameInterval;
-      const n = randInt(rand, Math.max(1, flamesPerBurst - 1), flamesPerBurst + 1);
-      for (let i = 0; i < n; i += 1) {
-        const baseW = randRange(rand, 6, 12) * sizeScale;
-        const baseH = randRange(rand, 18, 28) * sizeScale;
-        const px = this.origin.x + randRange(rand, -4, 4) * sizeScale;
-        const py = this.origin.y + randRange(rand, -2, 2) * sizeScale;
-        this.flames.push({
-          x: px,
-          y: py,
-          vx: windX * 0.5 + randRange(rand, -jitter * 0.5, jitter * 0.5),
-          vy: -riseSpeed * randRange(rand, 0.9, 1.1),
-          life: randRange(rand, 0.28, 0.45) * lifeScale,
-          age: 0,
-          w: baseW,
-          h: baseH,
-          rot: randRange(rand, -0.25, 0.25),
-          swaySeed: randRange(rand, 0, TAU),
+          color,
         });
       }
     }
@@ -193,36 +162,6 @@ class FireInstance implements EffectInstance<FireOptions> {
         }
       }
     }
-
-    for (let i = this.flames.length - 1; i >= 0; i -= 1) {
-      const f = this.flames[i];
-      f.age += dt;
-
-      const t = clamp01(f.age / f.life);
-      const grow = t < 0.4 ? t / 0.4 : 1 - (t - 0.4) / 0.6;
-      const sway = Math.sin(f.swaySeed + f.age * 10) * swirl * 0.5;
-
-      f.x += (f.vx + sway) * dt;
-      f.y += f.vy * dt;
-      f.rot += sway * 0.02;
-
-      f.curW = f.w * (0.65 + 0.35 * grow);
-      f.curH = f.h * (0.6 + 0.7 * grow);
-
-      if (f.age >= f.life) {
-        const last = this.flames.pop();
-        if (last && i < this.flames.length) {
-          this.flames[i] = last;
-        }
-      }
-    }
-
-    const rX = 56 * sizeScale;
-    const rY = 84 * sizeScale;
-    this.aabb.x = this.origin.x - rX;
-    this.aabb.y = this.origin.y - rY;
-    this.aabb.w = rX * 2;
-    this.aabb.h = rY * 2;
   }
 
   draw(frame: EffectFrameContext): void {
@@ -231,74 +170,25 @@ class FireInstance implements EffectInstance<FireOptions> {
     }
 
     const { ctx, camera } = frame;
-    const {
-      baseColor,
-      midColor,
-      hotColor,
-      emberColor,
-      emberAlpha,
-      additive,
-      gradientBias,
-    } = this.opts;
+    const { emberAlpha, additive } = this.opts;
 
     ctx.save();
     if (additive) {
       ctx.globalCompositeOperation = "lighter";
     }
 
-    for (const f of this.flames) {
-      const x = camera.toScreenX(f.x);
-      const y = camera.toScreenY(f.y);
-      const z = camera.zoom;
-
-      const w = (f.curW ?? f.w) * z;
-      const h = (f.curH ?? f.h) * z;
-
-      const t = clamp01(f.age / f.life);
-      const hotT = clamp01(1 - Math.pow(t, gradientBias));
-
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(f.rot);
-      ctx.scale(1, 1.1);
-      const g = ctx.createRadialGradient(0, h * -0.1, 1, 0, -h * 0.35, Math.max(w, h));
-      g.addColorStop(0, hotColor);
-      g.addColorStop(0.35, midColor);
-      g.addColorStop(1, baseColor);
-      ctx.globalAlpha = 0.55 + 0.25 * hotT;
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.ellipse(0, -h * 0.2, w, h, 0, 0, TAU);
-      ctx.fill();
-      ctx.restore();
-
-      ctx.save();
-      ctx.translate(x, y - h * 0.25);
-      ctx.rotate(f.rot * 0.6);
-      const innerRadius = Math.max(8, Math.min(w, h) * 0.6);
-      const g2 = ctx.createRadialGradient(0, 0, 1, 0, 0, innerRadius);
-      g2.addColorStop(0, hotColor);
-      g2.addColorStop(1, midColor);
-      ctx.globalAlpha = 0.45 + 0.4 * hotT;
-      ctx.fillStyle = g2;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, w * 0.45, h * 0.55, 0, 0, TAU);
-      ctx.fill();
-      ctx.restore();
-    }
-
     for (const p of this.embers) {
       const x = camera.toScreenX(p.x);
       const y = camera.toScreenY(p.y);
       const r = (p.size || 1.6) * camera.zoom;
-      const lifeT = clamp01(p.age / p.life);
-      const alpha = emberAlpha * (1 - lifeT) * (0.6 + 0.4 * Math.sin(p.age * 20));
+      const t = clamp01(p.age / p.life);
+      const alpha = emberAlpha * (1 - t) * (0.65 + 0.35 * Math.sin(p.age * 18));
 
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = emberColor;
+      ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.ellipse(x, y, r, r * 0.9, 0, 0, TAU);
+      ctx.arc(x, y, r, 0, TAU);
       ctx.fill();
       ctx.restore();
     }
@@ -312,19 +202,20 @@ export const FireEffectDefinition: EffectDefinition<FireOptions> = {
   defaults: {
     spawnInterval: 0.08,
     embersPerBurst: 6,
-    flamesPerBurst: 2,
     riseSpeed: 42,
     windX: 4,
     swirl: 6,
     jitter: 10,
-    sizeScale: 1,
     lifeScale: 1,
-    baseColor: "rgba(255,140,0,0.45)",
-    midColor: "rgba(255,180,60,0.65)",
-    hotColor: "rgba(255,255,200,0.95)",
-    emberColor: "rgba(255,220,150,1.0)",
-    emberAlpha: 0.8,
-    gradientBias: 0.65,
+    sizeScale: 1,
+    spawnRadius: 10,
+    concentration: 0.6,
+    emberPalette: [
+      "rgba(255, 220, 150, 1.0)",
+      "rgba(255, 180, 60, 1.0)",
+      "rgba(255, 245, 200, 1.0)",
+    ],
+    emberAlpha: 0.9,
     additive: true,
   },
   create: (opts: Partial<FireOptions> & { x: number; y: number }) =>

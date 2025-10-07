@@ -48,10 +48,10 @@ The client is a lightweight ES module bundle served directly from the Go server.
   TypeScript source in `tools/js-effects/packages/effects-lib`). This keeps the in-game red hitbox
   identical to the playground entry and lets contributors tweak it from a single definition while
   other effect types continue to fall back to simple rectangles.
-- Environmental fires use the looping `FireEffectDefinition`, which spawns drifting embers and
-  flame tongues that react to wind/swirl parameters. Tune the defaults via the TypeScript source in
-  `tools/js-effects/packages/effects-lib/src/effects/fire.ts` and run `npm run build` so the
-  regenerated modules land in `client/js-effects/`.
+- Environmental fires use the looping `FireEffectDefinition`, which now focuses on swirling embers
+  sampled from a configurable colour palette with adjustable spread controls. Tune the defaults via
+  the TypeScript source in `tools/js-effects/packages/effects-lib/src/effects/fire.ts` and run
+  `npm run build` so the regenerated modules land in `client/js-effects/`.
 - Fire-and-forget triggers drain from `store.pendingEffectTriggers` each frame. Registered
   handlers in `render.js` decide how to visualise the payload—spawning js-effects animations,
   producing decals, or updating local-only state—without needing further server updates.

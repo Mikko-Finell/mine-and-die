@@ -14,13 +14,33 @@ const STORAGE_KEY = "js-effects-playground:overrides";
 const ORIGIN_X = CANVAS_WIDTH / 2;
 const ORIGIN_Y = CANVAS_HEIGHT / 2;
 
-type OptionValue = number;
+type OptionValue = number | string | string[];
 
-type OptionConfig = {
+type NumberOptionConfig = {
   key: string;
   label: string;
   step?: number;
+  kind?: "number";
 };
+
+type PaletteOptionConfig = {
+  key: string;
+  label: string;
+  kind: "palette";
+  placeholder?: string;
+  hint?: string;
+};
+
+type OptionConfig = NumberOptionConfig | PaletteOptionConfig;
+
+const isNumberControl = (
+  control: OptionConfig
+): control is NumberOptionConfig =>
+  control.kind === undefined || control.kind === "number";
+
+const isPaletteControl = (
+  control: OptionConfig
+): control is PaletteOptionConfig => control.kind === "palette";
 
 type ResetOptions = {
   preserveDecals?: boolean;
@@ -57,15 +77,22 @@ const effectControls: Record<string, OptionConfig[]> = {
   fire: [
     { key: "spawnInterval", label: "Spawn Interval (s)", step: 0.01 },
     { key: "embersPerBurst", label: "Embers per Burst", step: 1 },
-    { key: "flamesPerBurst", label: "Flames per Burst", step: 1 },
     { key: "riseSpeed", label: "Rise Speed", step: 1 },
     { key: "windX", label: "Wind X", step: 0.5 },
     { key: "swirl", label: "Swirl", step: 0.5 },
     { key: "jitter", label: "Jitter", step: 0.5 },
     { key: "sizeScale", label: "Size Scale", step: 0.1 },
     { key: "lifeScale", label: "Life Scale", step: 0.1 },
-    { key: "gradientBias", label: "Gradient Bias", step: 0.05 },
+    { key: "spawnRadius", label: "Spawn Radius", step: 0.5 },
+    { key: "concentration", label: "Concentration", step: 0.05 },
     { key: "emberAlpha", label: "Ember Alpha", step: 0.05 },
+    {
+      key: "emberPalette",
+      label: "Ember Palette",
+      kind: "palette",
+      placeholder: "rgba(255, 220, 150, 1.0), rgba(255, 180, 60, 1.0)",
+      hint: "comma-separated colors",
+    },
   ],
 };
 
@@ -88,7 +115,10 @@ const deriveDecimalPlaces = (step?: number): number => {
   return stepAsString.split(".")[1]?.length ?? 0;
 };
 
-const formatInputValue = (value: number, config: OptionConfig): string => {
+const formatNumberInputValue = (
+  value: number,
+  config: NumberOptionConfig
+): string => {
   if (!Number.isFinite(value)) {
     return "0";
   }
@@ -114,7 +144,10 @@ const formatNumber = (value: number): string => {
   return fixed.replace(/0+$/, "").replace(/\.$/, "");
 };
 
-const normalizeValueForConfig = (value: number, config: OptionConfig): number => {
+const normalizeValueForConfig = (
+  value: number,
+  config: NumberOptionConfig
+): number => {
   let result = value;
   const decimals = deriveDecimalPlaces(config.step);
   if (decimals > 0) {
@@ -123,6 +156,50 @@ const normalizeValueForConfig = (value: number, config: OptionConfig): number =>
   }
 
   return result;
+};
+
+const formatControlDisplayValue = (
+  value: OptionValue | undefined,
+  control: OptionConfig
+): string => {
+  if (isPaletteControl(control)) {
+    if (Array.isArray(value)) {
+      return value.join(", ");
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    return "";
+  }
+
+  if (isNumberControl(control)) {
+    const numeric = Number(value ?? 0);
+    return formatNumberInputValue(numeric, control);
+  }
+
+  return typeof value === "string" ? value : "";
+};
+
+const areOptionValuesEqual = (
+  a: OptionValue | undefined,
+  b: OptionValue
+): boolean => {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    return a.every((value, index) => value === b[index]);
+  }
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return false;
+  }
+
+  if (typeof a === "number" && typeof b === "number") {
+    return Math.abs(a - b) < 1e-6;
+  }
+
+  return a === b;
 };
 
 const formatValue = (value: unknown, indent: number): string => {
@@ -295,8 +372,8 @@ const App: React.FC = () => {
     const next: Record<string, string> = {};
 
     for (const control of controls) {
-      const numericValue = Number(resolvedOptions[control.key] ?? 0);
-      next[control.key] = formatInputValue(numericValue, control);
+      const currentValue = resolvedOptions[control.key];
+      next[control.key] = formatControlDisplayValue(currentValue, control);
     }
 
     setInputValues(next);
@@ -501,7 +578,7 @@ const App: React.FC = () => {
     };
   }, [selectedEffect, options, isLooping]);
 
-  const commitControlValue = (key: string, value: number) => {
+  const commitControlValue = (key: string, value: OptionValue) => {
     let didChange = false;
 
     setOptionOverrides((prev) => {
@@ -510,15 +587,18 @@ const App: React.FC = () => {
       const defaultValue = defaults[key];
       const updated = { ...prev };
 
-      if (typeof defaultValue === "number" && Math.abs(defaultValue - value) < 1e-6) {
+      const shouldRemove =
+        defaultValue !== undefined && areOptionValuesEqual(defaultValue, value);
+
+      if (shouldRemove) {
         if (key in updated) {
           delete updated[key];
           didChange = true;
         } else {
           return prev;
         }
-      } else if (updated[key] !== value) {
-        updated[key] = value;
+      } else if (!areOptionValuesEqual(updated[key], value)) {
+        updated[key] = Array.isArray(value) ? [...value] : value;
         didChange = true;
       } else {
         return prev;
@@ -602,26 +682,41 @@ const App: React.FC = () => {
       [control.key]: value,
     }));
 
-    const trimmed = value.trim();
-    if (trimmed === "") {
+    if (isNumberControl(control)) {
+      const trimmed = value.trim();
+      if (trimmed === "") {
+        return;
+      }
+
+      const parsed = Number(trimmed);
+      if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+        commitControlValue(control.key, parsed);
+      }
       return;
     }
 
-    const parsed = Number(trimmed);
-    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
-      commitControlValue(control.key, parsed);
+    if (isPaletteControl(control)) {
+      const entries = value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+      commitControlValue(control.key, entries);
     }
   };
 
   const handleInputBlur = (control: OptionConfig) => (
     event: React.FocusEvent<HTMLInputElement>
   ) => {
+    if (!isNumberControl(control)) {
+      return;
+    }
+
     const parsed = Number(event.target.value);
     if (Number.isNaN(parsed)) {
       const fallback = Number(resolvedOptions[control.key] ?? 0);
       setInputValues((prev) => ({
         ...prev,
-        [control.key]: formatInputValue(fallback, control),
+        [control.key]: formatNumberInputValue(fallback, control),
       }));
       return;
     }
@@ -629,7 +724,7 @@ const App: React.FC = () => {
     const clamped = normalizeValueForConfig(parsed, control);
     setInputValues((prev) => ({
       ...prev,
-      [control.key]: formatInputValue(clamped, control),
+      [control.key]: formatNumberInputValue(clamped, control),
     }));
     commitControlValue(control.key, clamped);
   };
@@ -709,32 +804,60 @@ const App: React.FC = () => {
               <p className="controls__empty">No tunable parameters for this effect.</p>
             ) : (
               controls.map((control) => {
-                const numericValue = Number(resolvedOptions[control.key] ?? 0);
+                const currentValue = resolvedOptions[control.key];
                 const displayValue =
-                  inputValues[control.key] ?? formatInputValue(numericValue, control);
-                const hint =
-                  control.step !== undefined
-                    ? `step ${formatNumber(control.step)}`
-                    : null;
+                  inputValues[control.key] ??
+                  formatControlDisplayValue(currentValue, control);
 
-                return (
-                  <label key={control.key} className="controls__item">
-                    <span className="controls__label">{control.label}</span>
-                    <div className="controls__input-group">
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        step={control.step ?? "any"}
-                        value={displayValue}
-                        onChange={handleInputChange(control)}
-                        onBlur={handleInputBlur(control)}
-                      />
-                      {hint ? (
-                        <span className="controls__hint">{hint}</span>
-                      ) : null}
-                    </div>
-                  </label>
-                );
+                if (isNumberControl(control)) {
+                  const hint =
+                    control.step !== undefined
+                      ? `step ${formatNumber(control.step)}`
+                      : null;
+
+                  return (
+                    <label key={control.key} className="controls__item">
+                      <span className="controls__label">{control.label}</span>
+                      <div className="controls__input-group">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step={control.step ?? "any"}
+                          value={displayValue}
+                          onChange={handleInputChange(control)}
+                          onBlur={handleInputBlur(control)}
+                        />
+                        {hint ? (
+                          <span className="controls__hint">{hint}</span>
+                        ) : null}
+                      </div>
+                    </label>
+                  );
+                }
+
+                if (isPaletteControl(control)) {
+                  const hint = control.hint ?? null;
+                  return (
+                    <label key={control.key} className="controls__item">
+                      <span className="controls__label">{control.label}</span>
+                      <div className="controls__input-group">
+                        <input
+                          type="text"
+                          inputMode="text"
+                          placeholder={control.placeholder}
+                          value={displayValue}
+                          onChange={handleInputChange(control)}
+                          onBlur={handleInputBlur(control)}
+                        />
+                        {hint ? (
+                          <span className="controls__hint">{hint}</span>
+                        ) : null}
+                      </div>
+                    </label>
+                  );
+                }
+
+                return null;
               })
             )}
           </div>
