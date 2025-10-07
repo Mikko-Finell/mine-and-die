@@ -1,0 +1,14 @@
+{
+  "name": "js-effects-monorepo",
+  "private": true,
+  "version": "0.0.1",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "dev": "npm run dev --workspace playground",
+    "lint": "npm run lint --workspaces"
+  }
+}
