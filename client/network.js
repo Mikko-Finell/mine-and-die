@@ -91,6 +91,35 @@ function normalizeFacing(facing) {
     : DEFAULT_FACING;
 }
 
+function ensureEffectTriggerState(store) {
+  if (!Array.isArray(store.pendingEffectTriggers)) {
+    store.pendingEffectTriggers = [];
+  }
+  if (!(store.processedEffectTriggerIds instanceof Set)) {
+    store.processedEffectTriggerIds = new Set();
+  }
+}
+
+function queueEffectTriggers(store, triggers) {
+  if (!Array.isArray(triggers) || triggers.length === 0) {
+    return;
+  }
+  ensureEffectTriggerState(store);
+  for (const trigger of triggers) {
+    if (!trigger || typeof trigger !== "object") {
+      continue;
+    }
+    const id = typeof trigger.id === "string" ? trigger.id : null;
+    if (id && store.processedEffectTriggerIds.has(id)) {
+      continue;
+    }
+    store.pendingEffectTriggers.push(trigger);
+    if (id) {
+      store.processedEffectTriggerIds.add(id);
+    }
+  }
+}
+
 // sendMessage serializes payloads, applies simulated latency, and tracks stats.
 export function sendMessage(store, payload, { onSent } = {}) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
@@ -144,6 +173,9 @@ export async function joinGame(store) {
     );
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     store.effects = Array.isArray(payload.effects) ? payload.effects : [];
+    store.pendingEffectTriggers = [];
+    store.processedEffectTriggerIds = new Set();
+    queueEffectTriggers(store, payload.effectTriggers);
     store.worldConfig = normalizeWorldConfig(payload.config);
     if (store.effectManager && typeof store.effectManager.clear === "function") {
       store.effectManager.clear();
@@ -240,6 +272,7 @@ export function connectEvents(store) {
         } else {
           store.effects = [];
         }
+        queueEffectTriggers(store, payload.effectTriggers);
         if (payload.config) {
           store.worldConfig = normalizeWorldConfig(payload.config);
           if (typeof store.updateWorldConfigUI === "function") {

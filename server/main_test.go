@@ -32,7 +32,7 @@ func newTestPlayerState(id string) *playerState {
 }
 
 func runAdvance(h *Hub, dt float64) ([]Player, []NPC, []Effect) {
-	players, npcs, effects, _ := h.advance(time.Now(), dt)
+	players, npcs, effects, _, _ := h.advance(time.Now(), dt)
 	return players, npcs, effects
 }
 
@@ -272,7 +272,7 @@ func TestPlayerPathCommands(t *testing.T) {
 		t.Fatalf("expected SetPlayerPath to succeed")
 	}
 	now := time.Now()
-	hub.advance(now, 1.0/float64(tickRate))
+	_, _, _, _, _ = hub.advance(now, 1.0/float64(tickRate))
 
 	state := hub.world.players[playerID]
 	if state == nil {
@@ -291,7 +291,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.UpdateIntent(playerID, 1, 0, string(FacingRight)) {
 		t.Fatalf("expected UpdateIntent to succeed")
 	}
-	hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _ = hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
 
 	state = hub.world.players[playerID]
 	if len(state.path.Path) != 0 {
@@ -304,7 +304,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.SetPlayerPath(playerID, 200, 280) {
 		t.Fatalf("expected second SetPlayerPath to succeed")
 	}
-	hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _ = hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
 	state = hub.world.players[playerID]
 	if len(state.path.Path) == 0 {
 		t.Fatalf("expected path to be populated after second command")
@@ -313,7 +313,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.ClearPlayerPath(playerID) {
 		t.Fatalf("expected ClearPlayerPath to succeed")
 	}
-	hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _ = hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
 	state = hub.world.players[playerID]
 	if len(state.path.Path) != 0 {
 		t.Fatalf("expected player path to be cleared after explicit cancel")
@@ -346,7 +346,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	boundaryState.lastHeartbeat = now
 	hub.world.players[boundaryID] = boundaryState
 
-	players, _, _, toClose := hub.advance(now, 0.5)
+	players, _, _, _, toClose := hub.advance(now, 0.5)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers to close, got %d", len(toClose))
 	}
@@ -380,7 +380,7 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	staleState.lastHeartbeat = time.Now().Add(-disconnectAfter - time.Second)
 	hub.world.players[staleID] = staleState
 
-	players, _, _, toClose := hub.advance(time.Now(), 0)
+	players, _, _, _, toClose := hub.advance(time.Now(), 0)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers returned when none registered")
 	}
@@ -661,7 +661,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	blockState.lastHeartbeat = now
 	hub.world.players[playerID] = blockState
 
-	players, _, _, _ := hub.advance(now, 1)
+	players, _, _, _, _ := hub.advance(now, 1)
 	blocker := findPlayer(players, playerID)
 	if blocker == nil {
 		t.Fatalf("expected player in snapshot")
@@ -694,7 +694,7 @@ func TestLavaDamagesPlayer(t *testing.T) {
 	hub.world.players[playerID] = walkerState
 
 	dt := 1.0
-	players, _, _, _ := hub.advance(now, dt)
+	players, _, _, _, _ := hub.advance(now, dt)
 
 	damaged := findPlayer(players, playerID)
 	if damaged == nil {
@@ -731,7 +731,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	secondState.lastHeartbeat = now
 	hub.world.players[secondID] = secondState
 
-	players, _, _, _ := hub.advance(now, 1)
+	players, _, _, _, _ := hub.advance(now, 1)
 
 	first := findPlayer(players, firstID)
 	second := findPlayer(players, secondID)
@@ -827,7 +827,7 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 	step := time.Second / time.Duration(tickRate)
 	current := now
 	for i := 0; i < 3; i++ {
-		hub.advance(current, dt)
+		_, _, _, _, _ = hub.advance(current, dt)
 		current = current.Add(step)
 	}
 
@@ -1071,7 +1071,7 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 
 	for i := 0; i < tickRate*2; i++ {
 		current = current.Add(step)
-		hub.advance(current, dt)
+		_, _, _, _, _ = hub.advance(current, dt)
 		if len(hub.world.effects) == 0 {
 			expired = true
 			break

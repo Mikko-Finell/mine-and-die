@@ -58,35 +58,37 @@ type HeartbeatCommand struct {
 
 // World owns the authoritative simulation state.
 type World struct {
-        players         map[string]*playerState
-        npcs            map[string]*npcState
-        effects         []*effectState
-        obstacles       []Obstacle
-        effectBehaviors map[string]effectBehavior
-        projectileTemplates map[string]*ProjectileTemplate
-        nextEffectID    uint64
-        nextNPCID       uint64
-        aiLibrary       *aiLibrary
-        config          worldConfig
-        rng             *rand.Rand
-	seed            string
+	players             map[string]*playerState
+	npcs                map[string]*npcState
+	effects             []*effectState
+	effectTriggers      []EffectTrigger
+	obstacles           []Obstacle
+	effectBehaviors     map[string]effectBehavior
+	projectileTemplates map[string]*ProjectileTemplate
+	nextEffectID        uint64
+	nextNPCID           uint64
+	aiLibrary           *aiLibrary
+	config              worldConfig
+	rng                 *rand.Rand
+	seed                string
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
 func newWorld(cfg worldConfig) *World {
 	normalized := cfg.normalized()
 
-        w := &World{
-                players:         make(map[string]*playerState),
-                npcs:            make(map[string]*npcState),
-                effects:         make([]*effectState, 0),
-                effectBehaviors: newEffectBehaviors(),
-                projectileTemplates: newProjectileTemplates(),
-                aiLibrary:       globalAILibrary,
-                config:          normalized,
-                rng:             newDeterministicRNG(normalized.Seed, "world"),
-                seed:            normalized.Seed,
-        }
+	w := &World{
+		players:             make(map[string]*playerState),
+		npcs:                make(map[string]*npcState),
+		effects:             make([]*effectState, 0),
+		effectTriggers:      make([]EffectTrigger, 0),
+		effectBehaviors:     newEffectBehaviors(),
+		projectileTemplates: newProjectileTemplates(),
+		aiLibrary:           globalAILibrary,
+		config:              normalized,
+		rng:                 newDeterministicRNG(normalized.Seed, "world"),
+		seed:                normalized.Seed,
+	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
 	return w
@@ -109,6 +111,18 @@ func (w *World) Snapshot(now time.Time) ([]Player, []NPC, []Effect) {
 		}
 	}
 	return players, npcs, effects
+}
+
+// flushEffectTriggersLocked drains the queued fire-and-forget triggers. Callers
+// must hold the world mutex.
+func (w *World) flushEffectTriggersLocked() []EffectTrigger {
+	if len(w.effectTriggers) == 0 {
+		return nil
+	}
+	drained := make([]EffectTrigger, len(w.effectTriggers))
+	copy(drained, w.effectTriggers)
+	w.effectTriggers = w.effectTriggers[:0]
+	return drained
 }
 
 // HasPlayer reports whether the world currently tracks the given player.

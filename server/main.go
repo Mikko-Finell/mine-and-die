@@ -108,7 +108,7 @@ func main() {
 		cfg = cfg.normalized()
 
 		players, npcs, effects := hub.ResetWorld(cfg)
-		go hub.broadcastState(players, npcs, effects)
+		go hub.broadcastState(players, npcs, effects, nil)
 
 		response := struct {
 			Status string      `json:"status"`
@@ -189,7 +189,7 @@ func main() {
 			log.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players, npcs, effects)
+				go hub.broadcastState(players, npcs, effects, nil)
 			}
 			return
 		}
@@ -200,7 +200,7 @@ func main() {
 			sub.mu.Unlock()
 			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players, npcs, effects)
+				go hub.broadcastState(players, npcs, effects, nil)
 			}
 			return
 		}
@@ -211,7 +211,7 @@ func main() {
 			if err != nil {
 				players, npcs, effects := hub.Disconnect(playerID)
 				if players != nil {
-					go hub.broadcastState(players, npcs, effects)
+					go hub.broadcastState(players, npcs, effects, nil)
 				}
 				return
 			}
@@ -268,7 +268,7 @@ func main() {
 					sub.mu.Unlock()
 					players, npcs, effects := hub.Disconnect(playerID)
 					if players != nil {
-						go hub.broadcastState(players, npcs, effects)
+						go hub.broadcastState(players, npcs, effects, nil)
 					}
 					return
 				}

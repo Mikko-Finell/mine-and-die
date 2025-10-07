@@ -165,6 +165,8 @@ const store = {
   bytesSent: 0,
   lastPathRequestAt: null,
   effects: [],
+  pendingEffectTriggers: [],
+  processedEffectTriggerIds: new Set(),
   camera: {
     x: 0,
     y: 0,
