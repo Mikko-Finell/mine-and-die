@@ -1,5 +1,6 @@
 import { EffectManager } from "./js-effects/manager.js";
 import { MeleeSwingEffectDefinition } from "./js-effects/effects/meleeSwing.js";
+import { BloodSplatterDefinition } from "./js-effects/effects/bloodSplatter.js";
 
 const DEFAULT_FACING = "down";
 const FACING_OFFSETS = {
@@ -32,6 +33,13 @@ function ensureMeleeEffectStore(store) {
     store.meleeEffectInstances = new Map();
   }
   return store.meleeEffectInstances;
+}
+
+function ensureBloodEffectStore(store) {
+  if (!(store.bloodEffectInstances instanceof Map)) {
+    store.bloodEffectInstances = new Map();
+  }
+  return store.bloodEffectInstances;
 }
 
 function syncMeleeSwingEffects(store) {
@@ -92,6 +100,69 @@ function syncMeleeSwingEffects(store) {
   }
 
   return manager;
+}
+
+function syncBloodSplatterEffects(store, manager) {
+  const effects = Array.isArray(store.effects) ? store.effects : [];
+  const tracked = ensureBloodEffectStore(store);
+  const seen = new Set();
+  let effectManager = manager || store.effectManager || null;
+
+  for (const effect of effects) {
+    if (!effect || typeof effect !== "object") {
+      continue;
+    }
+    if (effect.type !== "blood-splatter") {
+      continue;
+    }
+    const id = typeof effect.id === "string" ? effect.id : null;
+    if (!id) {
+      continue;
+    }
+    seen.add(id);
+    if (tracked.has(id)) {
+      continue;
+    }
+    const x = Number.isFinite(effect.x) ? effect.x : 0;
+    const y = Number.isFinite(effect.y) ? effect.y : 0;
+    const width = Number.isFinite(effect.width) ? effect.width : 0;
+    const height = Number.isFinite(effect.height) ? effect.height : 0;
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+
+    if (!effectManager) {
+      effectManager = ensureEffectRuntime(store);
+    }
+
+    const instance = effectManager.spawn(BloodSplatterDefinition, {
+      x: centerX,
+      y: centerY,
+      colors: ["#7a0e12", "#4a090b"],
+      drag: 0.92,
+      dropletRadius: 3,
+      maxBursts: 0,
+      maxDroplets: 33,
+      maxStainRadius: 6,
+      maxStains: 140,
+      minDroplets: 4,
+      minStainRadius: 4,
+      spawnInterval: 1.1,
+      speed: 3,
+    });
+    tracked.set(id, instance);
+  }
+
+  for (const [id, instance] of tracked.entries()) {
+    const isAlive = instance && typeof instance.isAlive === "function" ? instance.isAlive() : false;
+    if (!seen.has(id) || !isAlive) {
+      if (effectManager && typeof effectManager.removeInstance === "function") {
+        effectManager.removeInstance(instance);
+      }
+      tracked.delete(id);
+    }
+  }
+
+  return effectManager;
 }
 
 function getWorldDimensions(store) {
@@ -373,7 +444,8 @@ function drawHealthBar(ctx, store, position, player, id) {
 // drawEffects renders js-effects-driven melee swings plus legacy rectangle effects.
 function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
   const { ctx } = store;
-  const manager = syncMeleeSwingEffects(store);
+  let manager = syncMeleeSwingEffects(store);
+  manager = syncBloodSplatterEffects(store, manager);
   const effectEntries = Object.entries(store.displayEffects || {});
 
   if (!manager && effectEntries.length === 0) {

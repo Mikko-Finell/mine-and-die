@@ -142,6 +142,7 @@ const store = {
   displayEffects: {},
   effectManager: null,
   meleeEffectInstances: new Map(),
+  bloodEffectInstances: new Map(),
   socket: null,
   reconnectTimeout: null,
   isJoining: false,
