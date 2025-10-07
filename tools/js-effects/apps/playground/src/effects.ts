@@ -37,7 +37,7 @@ export const availableEffects: AnyEffectCatalogEntry[] = [
     id: FireEffectDefinition.type,
     name: "Fire",
     description:
-      "A looping campfire with swirling embers and tongues of flame.",
+      "A looping fire column with swirling embers and drifting sparks.",
     definition: FireEffectDefinition,
     definitionName: "FireEffectDefinition",
   },
