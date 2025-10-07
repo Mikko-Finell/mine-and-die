@@ -13,6 +13,8 @@ interface FrameStats {
 export declare class EffectManager {
     private effects;
     private finished;
+    private pendingRemovals;
+    private iterating;
     private creationCounter;
     private viewBounds;
     private stats;
@@ -33,5 +35,6 @@ export declare class EffectManager {
     getLastFrameStats(): FrameStats;
     removeInstance<TOptions>(instance: EffectInstance<TOptions> | null | undefined): boolean;
     private track;
+    private removeActiveInstance;
 }
 export {};
