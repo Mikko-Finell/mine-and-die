@@ -10,186 +10,188 @@
     <main>
       <h1>Mine and Die Prototype</h1>
       <div class="play-area">
-        <canvas id="game-canvas" width="800" height="600"></canvas>
+        <div class="play-area__main">
+          <canvas id="game-canvas" width="800" height="600"></canvas>
+          <section class="world-controls" aria-label="World controls">
+            <h2 class="world-controls__title">World Controls</h2>
+            <form id="world-reset-form" class="world-reset-form">
+              <div class="world-reset-grid">
+                <div class="world-reset-option">
+                  <label class="world-reset-toggle" for="world-reset-obstacles">
+                    <input
+                      type="checkbox"
+                      id="world-reset-obstacles"
+                      name="obstacles"
+                      checked
+                    />
+                    <span class="world-reset-toggle__body">
+                      <span class="world-reset-toggle__title">Enable obstacles</span>
+                      <span class="world-reset-toggle__hint"
+                        >Spawn rocks, ore veins, and collision geometry.</span
+                      >
+                    </span>
+                  </label>
+                  <label
+                    class="world-reset-quantity"
+                    for="world-reset-obstacles-count"
+                  >
+                    <span class="world-reset-quantity__label">Count</span>
+                    <input
+                      id="world-reset-obstacles-count"
+                      name="obstaclesCount"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      value="2"
+                      class="world-reset-quantity__input"
+                      aria-label="Obstacle count"
+                    />
+                    <span class="world-reset-quantity__hint"
+                      >How many large rocks to scatter around the map.</span
+                    >
+                  </label>
+                </div>
+                <div class="world-reset-option">
+                  <label class="world-reset-toggle" for="world-reset-npcs">
+                    <input
+                      type="checkbox"
+                      id="world-reset-npcs"
+                      name="npcs"
+                      checked
+                    />
+                    <span class="world-reset-toggle__body">
+                      <span class="world-reset-toggle__title">Enable NPCs</span>
+                      <span class="world-reset-toggle__hint"
+                        >Populate the mine with neutral enemies.</span
+                      >
+                    </span>
+                  </label>
+                  <label
+                    class="world-reset-quantity"
+                    for="world-reset-npcs-count"
+                  >
+                    <span class="world-reset-quantity__label">Count</span>
+                    <input
+                      id="world-reset-npcs-count"
+                      name="npcCount"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      value="3"
+                      class="world-reset-quantity__input"
+                      aria-label="NPC count"
+                    />
+                    <span class="world-reset-quantity__hint"
+                      >How many neutral enemies should patrol.</span
+                    >
+                  </label>
+                </div>
+                <div class="world-reset-option">
+                  <label class="world-reset-toggle" for="world-reset-lava">
+                    <input type="checkbox" id="world-reset-lava" name="lava" checked />
+                    <span class="world-reset-toggle__body">
+                      <span class="world-reset-toggle__title">Enable lava</span>
+                      <span class="world-reset-toggle__hint"
+                        >Include flowing lava pools and hazards.</span
+                      >
+                    </span>
+                  </label>
+                  <label
+                    class="world-reset-quantity"
+                    for="world-reset-lava-count"
+                  >
+                    <span class="world-reset-quantity__label">Count</span>
+                    <input
+                      id="world-reset-lava-count"
+                      name="lavaCount"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      value="3"
+                      class="world-reset-quantity__input"
+                      aria-label="Lava pool count"
+                    />
+                    <span class="world-reset-quantity__hint"
+                      >Limit how many lava pools appear.</span
+                    >
+                  </label>
+                </div>
+                <div class="world-reset-option">
+                  <label class="world-reset-toggle" for="world-reset-gold-mines">
+                    <input
+                      type="checkbox"
+                      id="world-reset-gold-mines"
+                      name="goldMines"
+                      checked
+                    />
+                    <span class="world-reset-toggle__body">
+                      <span class="world-reset-toggle__title">Enable gold mines</span>
+                      <span class="world-reset-toggle__hint"
+                        >Scatter rich ore deposits for mining.</span
+                      >
+                    </span>
+                  </label>
+                  <label
+                    class="world-reset-quantity"
+                    for="world-reset-gold-mines-count"
+                  >
+                    <span class="world-reset-quantity__label">Count</span>
+                    <input
+                      id="world-reset-gold-mines-count"
+                      name="goldMineCount"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      value="1"
+                      class="world-reset-quantity__input"
+                      aria-label="Gold mine count"
+                    />
+                    <span class="world-reset-quantity__hint"
+                      >Choose how many ore veins are generated.</span
+                    >
+                  </label>
+                </div>
+              </div>
+              <div class="world-reset-field">
+                <label class="world-reset-field__label" for="world-reset-seed">
+                  World seed
+                </label>
+                <input
+                  id="world-reset-seed"
+                  name="seed"
+                  type="text"
+                  inputmode="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="prototype"
+                  class="world-reset-field__input"
+                  aria-describedby="world-reset-seed-hint"
+                />
+                <p id="world-reset-seed-hint" class="world-reset-field__hint">
+                  Runs with the same seed produce identical obstacle layouts and AI randomness.
+                </p>
+              </div>
+              <div class="world-reset-actions">
+                <button type="submit" class="world-reset-button">Restart world</button>
+                <p
+                  id="world-reset-status"
+                  class="world-reset-status"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
+            </form>
+          </section>
+        </div>
         <aside id="inventory-panel" aria-label="Inventory" class="inventory-panel">
           <h2>Inventory</h2>
           <div id="inventory-grid" class="inventory-grid" role="list"></div>
         </aside>
       </div>
-      <section class="world-controls" aria-label="World controls">
-        <h2 class="world-controls__title">World Controls</h2>
-        <form id="world-reset-form" class="world-reset-form">
-          <div class="world-reset-grid">
-            <div class="world-reset-option">
-              <label class="world-reset-toggle" for="world-reset-obstacles">
-                <input
-                  type="checkbox"
-                  id="world-reset-obstacles"
-                  name="obstacles"
-                  checked
-                />
-                <span class="world-reset-toggle__body">
-                  <span class="world-reset-toggle__title">Enable obstacles</span>
-                  <span class="world-reset-toggle__hint"
-                    >Spawn rocks, ore veins, and collision geometry.</span
-                  >
-                </span>
-              </label>
-              <label
-                class="world-reset-quantity"
-                for="world-reset-obstacles-count"
-              >
-                <span class="world-reset-quantity__label">Count</span>
-                <input
-                  id="world-reset-obstacles-count"
-                  name="obstaclesCount"
-                  type="number"
-                  inputmode="numeric"
-                  min="0"
-                  step="1"
-                  value="2"
-                  class="world-reset-quantity__input"
-                  aria-label="Obstacle count"
-                />
-                <span class="world-reset-quantity__hint"
-                  >How many large rocks to scatter around the map.</span
-                >
-              </label>
-            </div>
-            <div class="world-reset-option">
-              <label class="world-reset-toggle" for="world-reset-npcs">
-                <input
-                  type="checkbox"
-                  id="world-reset-npcs"
-                  name="npcs"
-                  checked
-                />
-                <span class="world-reset-toggle__body">
-                  <span class="world-reset-toggle__title">Enable NPCs</span>
-                  <span class="world-reset-toggle__hint"
-                    >Populate the mine with neutral enemies.</span
-                  >
-                </span>
-              </label>
-              <label
-                class="world-reset-quantity"
-                for="world-reset-npcs-count"
-              >
-                <span class="world-reset-quantity__label">Count</span>
-                <input
-                  id="world-reset-npcs-count"
-                  name="npcCount"
-                  type="number"
-                  inputmode="numeric"
-                  min="0"
-                  step="1"
-                  value="3"
-                  class="world-reset-quantity__input"
-                  aria-label="NPC count"
-                />
-                <span class="world-reset-quantity__hint"
-                  >How many neutral enemies should patrol.</span
-                >
-              </label>
-            </div>
-            <div class="world-reset-option">
-              <label class="world-reset-toggle" for="world-reset-lava">
-                <input type="checkbox" id="world-reset-lava" name="lava" checked />
-                <span class="world-reset-toggle__body">
-                  <span class="world-reset-toggle__title">Enable lava</span>
-                  <span class="world-reset-toggle__hint"
-                    >Include flowing lava pools and hazards.</span
-                  >
-                </span>
-              </label>
-              <label
-                class="world-reset-quantity"
-                for="world-reset-lava-count"
-              >
-                <span class="world-reset-quantity__label">Count</span>
-                <input
-                  id="world-reset-lava-count"
-                  name="lavaCount"
-                  type="number"
-                  inputmode="numeric"
-                  min="0"
-                  step="1"
-                  value="3"
-                  class="world-reset-quantity__input"
-                  aria-label="Lava pool count"
-                />
-                <span class="world-reset-quantity__hint"
-                  >Limit how many lava pools appear.</span
-                >
-              </label>
-            </div>
-            <div class="world-reset-option">
-              <label class="world-reset-toggle" for="world-reset-gold-mines">
-                <input
-                  type="checkbox"
-                  id="world-reset-gold-mines"
-                  name="goldMines"
-                  checked
-                />
-                <span class="world-reset-toggle__body">
-                  <span class="world-reset-toggle__title">Enable gold mines</span>
-                  <span class="world-reset-toggle__hint"
-                    >Scatter rich ore deposits for mining.</span
-                  >
-                </span>
-              </label>
-              <label
-                class="world-reset-quantity"
-                for="world-reset-gold-mines-count"
-              >
-                <span class="world-reset-quantity__label">Count</span>
-                <input
-                  id="world-reset-gold-mines-count"
-                  name="goldMineCount"
-                  type="number"
-                  inputmode="numeric"
-                  min="0"
-                  step="1"
-                  value="1"
-                  class="world-reset-quantity__input"
-                  aria-label="Gold mine count"
-                />
-                <span class="world-reset-quantity__hint"
-                  >Choose how many ore veins are generated.</span
-                >
-              </label>
-            </div>
-          </div>
-          <div class="world-reset-field">
-            <label class="world-reset-field__label" for="world-reset-seed">
-              World seed
-            </label>
-            <input
-              id="world-reset-seed"
-              name="seed"
-              type="text"
-              inputmode="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="prototype"
-              class="world-reset-field__input"
-              aria-describedby="world-reset-seed-hint"
-            />
-            <p id="world-reset-seed-hint" class="world-reset-field__hint">
-              Runs with the same seed produce identical obstacle layouts and AI randomness.
-            </p>
-          </div>
-          <div class="world-reset-actions">
-            <button type="submit" class="world-reset-button">Restart world</button>
-            <p
-              id="world-reset-status"
-              class="world-reset-status"
-              role="status"
-              aria-live="polite"
-            ></p>
-          </div>
-        </form>
-      </section>
       <section
         id="debug-panel"
         class="debug-panel"
