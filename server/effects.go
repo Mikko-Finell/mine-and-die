@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"time"
 )
 
@@ -51,11 +52,12 @@ type TravelModeConfig struct {
 }
 
 type ImpactRuleConfig struct {
-	StopOnHit       bool
-	MaxTargets      int
-	AffectsOwner    bool
-	ExplodeOnImpact *ExplosionSpec
-	ExplodeOnExpiry *ExplosionSpec
+	StopOnHit          bool
+	MaxTargets         int
+	AffectsOwner       bool
+	ExplodeOnImpact    *ExplosionSpec
+	ExplodeOnExpiry    *ExplosionSpec
+	ExpiryOnlyIfNoHits bool
 }
 
 type ExplosionSpec struct {
@@ -72,6 +74,27 @@ type ProjectileState struct {
 	RemainingRange float64
 	HitCount       int
 	ExpiryResolved bool
+	HitActors      map[string]struct{}
+}
+
+type projectileStopOptions struct {
+	triggerImpact bool
+	triggerExpiry bool
+}
+
+func (p *ProjectileState) markHit(id string) bool {
+	if p == nil || id == "" {
+		return false
+	}
+	if p.HitActors == nil {
+		p.HitActors = make(map[string]struct{})
+	}
+	if _, exists := p.HitActors[id]; exists {
+		return false
+	}
+	p.HitActors[id] = struct{}{}
+	p.HitCount++
+	return true
 }
 
 type effectBehavior interface {
@@ -307,14 +330,20 @@ func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (
 		dirX, dirY = 0, 1
 	}
 
-	centerX := owner.X + dirX*tpl.SpawnOffset
-	centerY := owner.Y + dirY*tpl.SpawnOffset
+	spawnRadius := sanitizedSpawnRadius(tpl.SpawnRadius)
+	spawnOffset := tpl.SpawnOffset
+	if spawnOffset == 0 {
+		spawnOffset = ownerHalfExtent(owner) + spawnRadius
+	}
+
+	centerX := owner.X + dirX*spawnOffset
+	centerY := owner.Y + dirY*spawnOffset
 	width, height := spawnSizeFromShape(tpl)
 
 	lifetime := effectLifetime(tpl)
 	params := mergeParams(tpl.Params, map[string]float64{
 		"speed":  tpl.Speed,
-		"radius": tpl.SpawnRadius,
+		"radius": spawnRadius,
 		"dx":     dirX,
 		"dy":     dirY,
 	})
@@ -352,27 +381,30 @@ func spawnSizeFromShape(tpl *ProjectileTemplate) (float64, float64) {
 		return 0, 0
 	}
 	if tpl.CollisionShape.UseRect {
-		width := tpl.CollisionShape.RectWidth
-		height := tpl.CollisionShape.RectHeight
-		if width <= 0 {
-			width = tpl.SpawnRadius * 2
-		}
-		if height <= 0 {
-			height = tpl.SpawnRadius * 2
-		}
-		if width <= 0 {
-			width = 1
-		}
-		if height <= 0 {
-			height = 1
-		}
+		spawnDiameter := sanitizedSpawnRadius(tpl.SpawnRadius) * 2
+		width := math.Max(tpl.CollisionShape.RectWidth, spawnDiameter)
+		height := math.Max(tpl.CollisionShape.RectHeight, spawnDiameter)
+		width = math.Max(width, 1)
+		height = math.Max(height, 1)
 		return width, height
 	}
-	diameter := tpl.SpawnRadius * 2
-	if diameter <= 0 {
-		diameter = 1
-	}
+	radius := sanitizedSpawnRadius(tpl.SpawnRadius)
+	diameter := radius * 2
 	return diameter, diameter
+}
+
+func sanitizedSpawnRadius(value float64) float64 {
+	if value < 1 {
+		return 1
+	}
+	return value
+}
+
+func ownerHalfExtent(owner *actorState) float64 {
+	if owner == nil {
+		return playerHalf
+	}
+	return playerHalf
 }
 
 func effectLifetime(tpl *ProjectileTemplate) time.Duration {
@@ -444,29 +476,39 @@ func (w *World) advanceProjectiles(now time.Time, dt float64) {
 			continue
 		}
 		if !now.Before(eff.expiresAt) {
-			if !p.ExpiryResolved {
-				w.maybeExplodeOnExpiry(eff, now)
-				p.ExpiryResolved = true
-			}
+			w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
 			continue
 		}
-		tpl := p.Template
-		if tpl == nil {
-			continue
+		w.advanceProjectile(eff, now, dt)
+	}
+}
+
+func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
+	if eff == nil || eff.Projectile == nil {
+		return
+	}
+	p := eff.Projectile
+	tpl := p.Template
+	if tpl == nil {
+		w.stopProjectile(eff, now, projectileStopOptions{})
+		return
+	}
+
+	if tpl.TravelMode.StraightLine && tpl.Speed > 0 && dt > 0 {
+		distance := tpl.Speed * dt
+		if p.RemainingRange > 0 && distance > p.RemainingRange {
+			distance = p.RemainingRange
 		}
-		if tpl.TravelMode.StraightLine && tpl.Speed > 0 && dt > 0 {
-			distance := tpl.Speed * dt
-			if p.RemainingRange > 0 && distance > p.RemainingRange {
-				distance = p.RemainingRange
-			}
-			if distance > 0 {
-				eff.Effect.X += p.VelocityUnitX * distance
-				eff.Effect.Y += p.VelocityUnitY * distance
-				if p.RemainingRange > 0 {
-					p.RemainingRange -= distance
-					if p.RemainingRange < 0 {
-						p.RemainingRange = 0
-					}
+		if distance > 0 {
+			eff.Effect.X += p.VelocityUnitX * distance
+			eff.Effect.Y += p.VelocityUnitY * distance
+			if p.RemainingRange > 0 {
+				previous := p.RemainingRange
+				p.RemainingRange -= distance
+				if p.RemainingRange < 0 {
+					p.RemainingRange = 0
+				}
+				if math.Abs(previous-p.RemainingRange) > 1e-9 {
 					if eff.Params == nil {
 						eff.Params = make(map[string]float64)
 					}
@@ -474,55 +516,29 @@ func (w *World) advanceProjectiles(now time.Time, dt float64) {
 				}
 			}
 		}
-		if p.RemainingRange <= 0 {
-			if !p.ExpiryResolved {
-				w.maybeExplodeOnExpiry(eff, now)
-				p.ExpiryResolved = true
-			}
-			eff.expiresAt = now
-			continue
-		}
-		if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldWidth || eff.Effect.Y+eff.Effect.Height > worldHeight {
-			if !p.ExpiryResolved {
-				w.maybeExplodeOnExpiry(eff, now)
-				p.ExpiryResolved = true
-			}
-			eff.expiresAt = now
-			continue
-		}
-		w.resolveProjectileImpacts(eff, now)
 	}
-}
 
-func (w *World) advanceNonProjectiles(now time.Time, dt float64) {
-	_ = now
-	_ = dt
-}
-
-func (w *World) resolveProjectileImpacts(eff *effectState, now time.Time) {
-	if eff == nil || eff.Projectile == nil {
+	if tpl.MaxDistance > 0 && p.RemainingRange <= 0 {
+		w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
 		return
 	}
-	p := eff.Projectile
-	tpl := p.Template
-	if tpl == nil {
+
+	if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldWidth || eff.Effect.Y+eff.Effect.Height > worldHeight {
+		w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
 		return
 	}
 
 	area := effectAABB(eff)
 	if w.anyObstacleOverlap(area) {
-		if tpl.ImpactRules.ExplodeOnImpact != nil {
-			w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
-		}
-		p.ExpiryResolved = true
-		eff.expiresAt = now
+		w.stopProjectile(eff, now, projectileStopOptions{triggerImpact: true})
 		return
 	}
 
 	hitPlayers := make([]string, 0)
 	hitNPCs := make([]string, 0)
-	shouldStop := false
 	maxTargets := tpl.ImpactRules.MaxTargets
+	shouldStop := false
+	hitCountAtStart := p.HitCount
 
 	for id, target := range w.players {
 		if target == nil {
@@ -534,13 +550,12 @@ func (w *World) resolveProjectileImpacts(eff *effectState, now time.Time) {
 		if !circleRectOverlap(target.X, target.Y, playerHalf, area) {
 			continue
 		}
+		if !p.markHit(id) {
+			continue
+		}
 		hitPlayers = append(hitPlayers, id)
 		w.applyEffectHitPlayer(eff, target, now)
-		p.HitCount++
-		if maxTargets > 0 && p.HitCount >= maxTargets {
-			shouldStop = true
-		}
-		if tpl.ImpactRules.StopOnHit {
+		if tpl.ImpactRules.StopOnHit || (maxTargets > 0 && p.HitCount >= maxTargets) {
 			shouldStop = true
 		}
 		if shouldStop {
@@ -559,13 +574,12 @@ func (w *World) resolveProjectileImpacts(eff *effectState, now time.Time) {
 			if !circleRectOverlap(target.X, target.Y, playerHalf, area) {
 				continue
 			}
+			if !p.markHit(id) {
+				continue
+			}
 			hitNPCs = append(hitNPCs, id)
 			w.applyEffectHitNPC(eff, target, now)
-			p.HitCount++
-			if maxTargets > 0 && p.HitCount >= maxTargets {
-				shouldStop = true
-			}
-			if tpl.ImpactRules.StopOnHit {
+			if tpl.ImpactRules.StopOnHit || (maxTargets > 0 && p.HitCount >= maxTargets) {
 				shouldStop = true
 			}
 			if shouldStop {
@@ -574,29 +588,78 @@ func (w *World) resolveProjectileImpacts(eff *effectState, now time.Time) {
 		}
 	}
 
-	if len(hitPlayers) > 0 {
-		log.Printf("%s %s hit players %v", eff.Owner, eff.Type, hitPlayers)
-	}
-	if len(hitNPCs) > 0 {
-		log.Printf("%s %s hit NPCs %v", eff.Owner, eff.Type, hitNPCs)
+	hitsApplied := p.HitCount - hitCountAtStart
+	if hitsApplied > 0 {
+		if tpl.ImpactRules.ExplodeOnImpact != nil {
+			w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
+		}
+		if len(hitPlayers) > 0 {
+			log.Printf("%s %s hit players %v", eff.Owner, eff.Type, hitPlayers)
+		}
+		if len(hitNPCs) > 0 {
+			log.Printf("%s %s hit NPCs %v", eff.Owner, eff.Type, hitNPCs)
+		}
 	}
 
-	if len(hitPlayers) == 0 && len(hitNPCs) == 0 {
+	if shouldStop {
+		w.stopProjectile(eff, now, projectileStopOptions{})
+		return
+	}
+}
+
+func (w *World) advanceNonProjectiles(now time.Time, dt float64) {
+	_ = now
+	_ = dt
+}
+
+func (w *World) stopProjectile(eff *effectState, now time.Time, opts projectileStopOptions) {
+	if eff == nil || eff.Projectile == nil {
 		return
 	}
 
-	if tpl.ImpactRules.ExplodeOnImpact != nil {
-		w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
+	p := eff.Projectile
+	if p.RemainingRange != 0 {
+		p.RemainingRange = 0
+		if eff.Params != nil {
+			eff.Params["remainingRange"] = 0
+		}
 	}
 
-	stop := tpl.ImpactRules.StopOnHit
-	if maxTargets > 0 && p.HitCount >= maxTargets {
-		stop = true
+	if p.ExpiryResolved {
+		if eff.expiresAt.After(now) {
+			eff.expiresAt = now
+		}
+		return
 	}
-	if stop {
-		p.ExpiryResolved = true
-		eff.expiresAt = now
+
+	tpl := p.Template
+	if opts.triggerImpact && tpl != nil && tpl.ImpactRules.ExplodeOnImpact != nil {
+		w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
 	}
+	if opts.triggerExpiry {
+		w.triggerExpiryExplosion(eff, now)
+	}
+
+	p.ExpiryResolved = true
+	eff.expiresAt = now
+}
+
+func (w *World) triggerExpiryExplosion(eff *effectState, now time.Time) {
+	if eff == nil || eff.Projectile == nil {
+		return
+	}
+	tpl := eff.Projectile.Template
+	if tpl == nil {
+		return
+	}
+	spec := tpl.ImpactRules.ExplodeOnExpiry
+	if spec == nil {
+		return
+	}
+	if tpl.ImpactRules.ExpiryOnlyIfNoHits && eff.Projectile.HitCount > 0 {
+		return
+	}
+	w.spawnAreaEffectAt(eff, now, spec)
 }
 
 func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *ExplosionSpec) {
@@ -641,18 +704,7 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 }
 
 func (w *World) maybeExplodeOnExpiry(eff *effectState, now time.Time) {
-	if eff == nil || eff.Projectile == nil {
-		return
-	}
-	tpl := eff.Projectile.Template
-	if tpl == nil {
-		eff.Projectile.ExpiryResolved = true
-		return
-	}
-	if tpl.ImpactRules.ExplodeOnExpiry != nil {
-		w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnExpiry)
-	}
-	eff.Projectile.ExpiryResolved = true
+	w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
 }
 
 func effectAABB(eff *effectState) Obstacle {
