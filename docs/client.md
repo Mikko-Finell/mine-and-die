@@ -46,6 +46,10 @@ The client is a lightweight ES module bundle served directly from the Go server.
   TypeScript source in `tools/js-effects/packages/effects-lib`). This keeps the in-game red hitbox
   identical to the playground entry and lets contributors tweak it from a single definition while
   other effect types continue to fall back to simple rectangles.
+- When extending the js-effects runtime (new definitions, manager helpers, etc.), make the changes
+  in the TypeScript sources under `tools/js-effects/packages/effects-lib` and run `npm run build`
+  from the repository root. This regenerates the vendored modules in `client/js-effects/`, so edits
+  made directly in the client copy will be overwritten.
 
 ## Extending the Client
 - Add new HUD elements to `index.html`, register them in the `store`, and update `main.js` diagnostics helpers.

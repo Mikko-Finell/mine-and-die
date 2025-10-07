@@ -184,6 +184,34 @@ export class EffectManager {
     return { ...this.stats };
   }
 
+  removeInstance<TOptions>(instance: EffectInstance<TOptions> | null | undefined): boolean {
+    if (!instance) {
+      return false;
+    }
+
+    let removed = false;
+
+    for (let index = this.effects.length - 1; index >= 0; index -= 1) {
+      const managed = this.effects[index];
+      if (managed.instance === instance) {
+        this.effects.splice(index, 1);
+        removed = true;
+      }
+    }
+
+    const finishedIndex = this.finished.indexOf(instance);
+    if (finishedIndex !== -1) {
+      this.finished.splice(finishedIndex, 1);
+      removed = true;
+    }
+
+    if (removed) {
+      instance.dispose?.();
+    }
+
+    return removed;
+  }
+
   private track<TOptions>(
     instance: EffectInstance<TOptions>
   ): EffectInstance<TOptions> {

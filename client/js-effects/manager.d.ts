@@ -31,6 +31,7 @@ export declare class EffectManager {
     drawAll(frame: EffectFrameContext): void;
     collectDecals(): DecalSpec[];
     getLastFrameStats(): FrameStats;
+    removeInstance<TOptions>(instance: EffectInstance<TOptions> | null | undefined): boolean;
     private track;
 }
 export {};
