@@ -6,17 +6,19 @@ const defaultWorldSeed = "prototype"
 
 // worldConfig captures the toggles used when generating a world.
 type worldConfig struct {
-	Obstacles      bool   `json:"obstacles"`
-	ObstaclesCount int    `json:"obstaclesCount"`
-	GoldMines      bool   `json:"goldMines"`
-	GoldMineCount  int    `json:"goldMineCount"`
-	NPCs           bool   `json:"npcs"`
-	GoblinCount    int    `json:"goblinCount"`
-	RatCount       int    `json:"ratCount"`
-	NPCCount       int    `json:"npcCount"`
-	Lava           bool   `json:"lava"`
-	LavaCount      int    `json:"lavaCount"`
-	Seed           string `json:"seed"`
+	Obstacles      bool    `json:"obstacles"`
+	ObstaclesCount int     `json:"obstaclesCount"`
+	GoldMines      bool    `json:"goldMines"`
+	GoldMineCount  int     `json:"goldMineCount"`
+	NPCs           bool    `json:"npcs"`
+	GoblinCount    int     `json:"goblinCount"`
+	RatCount       int     `json:"ratCount"`
+	NPCCount       int     `json:"npcCount"`
+	Lava           bool    `json:"lava"`
+	LavaCount      int     `json:"lavaCount"`
+	Seed           string  `json:"seed"`
+	Width          float64 `json:"width"`
+	Height         float64 `json:"height"`
 }
 
 // normalized returns a config with defaults applied.
@@ -45,6 +47,12 @@ func (cfg worldConfig) normalized() worldConfig {
 		normalized.LavaCount = 0
 	}
 	normalized.NPCCount = normalized.GoblinCount + normalized.RatCount
+	if normalized.Width <= 0 {
+		normalized.Width = worldWidth
+	}
+	if normalized.Height <= 0 {
+		normalized.Height = worldHeight
+	}
 	return normalized
 }
 
@@ -62,5 +70,7 @@ func defaultWorldConfig() worldConfig {
 		Lava:           true,
 		LavaCount:      defaultLavaCount,
 		Seed:           defaultWorldSeed,
+		Width:          worldWidth,
+		Height:         worldHeight,
 	}
 }

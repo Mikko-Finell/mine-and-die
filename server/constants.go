@@ -6,8 +6,10 @@ const (
 	writeWait             = 10 * time.Second
 	tickRate              = 15    // ticks per second (10–20 Hz)
 	moveSpeed             = 160.0 // pixels per second
-	worldWidth            = 800.0
-	worldHeight           = 600.0
+	worldWidth            = 2400.0
+	worldHeight           = 1800.0
+	defaultSpawnX         = worldWidth / 2
+	defaultSpawnY         = worldHeight / 2
 	playerHalf            = 14.0
 	playerMaxHealth       = 100.0
 	lavaDamagePerSecond   = 20.0
