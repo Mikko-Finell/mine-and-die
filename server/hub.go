@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	stdlog "log"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"mine-and-die/server/logging"
 )
 
 // Hub coordinates subscribers and orchestrates the deterministic world simulation.
@@ -17,6 +19,7 @@ type Hub struct {
 	world       *World
 	subscribers map[string]*subscriber
 	config      worldConfig
+	publisher   logging.Publisher
 
 	nextID atomic.Uint64
 	tick   atomic.Uint64
@@ -31,23 +34,31 @@ type subscriber struct {
 }
 
 // newHub creates a hub with empty maps and a freshly generated world.
-func newHub() *Hub {
+func newHub(pubs ...logging.Publisher) *Hub {
 	cfg := defaultWorldConfig().normalized()
+	var pub logging.Publisher
+	if len(pubs) > 0 && pubs[0] != nil {
+		pub = pubs[0]
+	}
+	if pub == nil {
+		pub = logging.NopPublisher{}
+	}
 	return &Hub{
-		world:           newWorld(cfg),
+		world:           newWorld(cfg, pub),
 		subscribers:     make(map[string]*subscriber),
 		pendingCommands: make([]Command, 0),
 		config:          cfg,
+		publisher:       pub,
 	}
 }
 
 func seedPlayerState(playerID string, now time.Time) *playerState {
 	inventory := NewInventory()
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
-		log.Printf("failed to seed gold for %s: %v", playerID, err)
+		stdlog.Printf("failed to seed gold for %s: %v", playerID, err)
 	}
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 2}); err != nil {
-		log.Printf("failed to seed potions for %s: %v", playerID, err)
+		stdlog.Printf("failed to seed potions for %s: %v", playerID, err)
 	}
 
 	return &playerState{
@@ -103,7 +114,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 		playerIDs = append(playerIDs, id)
 	}
 
-	newW := newWorld(cfg)
+	newW := newWorld(cfg, h.publisher)
 	for _, id := range playerIDs {
 		newW.AddPlayer(seedPlayerState(id, now))
 	}
@@ -387,7 +398,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("failed to marshal state message: %v", err)
+		stdlog.Printf("failed to marshal state message: %v", err)
 		return
 	}
 
@@ -404,7 +415,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 		err := sub.conn.WriteMessage(websocket.TextMessage, data)
 		sub.mu.Unlock()
 		if err != nil {
-			log.Printf("failed to send update to %s: %v", id, err)
+			stdlog.Printf("failed to send update to %s: %v", id, err)
 			players, npcs, effects := h.Disconnect(id)
 			if players != nil {
 				go h.broadcastState(players, npcs, effects, nil)

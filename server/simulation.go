@@ -6,6 +6,8 @@ import (
 	"math"
 	"math/rand"
 	"time"
+
+	"mine-and-die/server/logging"
 )
 
 // CommandType enumerates the supported simulation commands.
@@ -72,11 +74,16 @@ type World struct {
 	config              worldConfig
 	rng                 *rand.Rand
 	seed                string
+	publisher           logging.Publisher
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
-func newWorld(cfg worldConfig) *World {
+func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 	normalized := cfg.normalized()
+
+	if publisher == nil {
+		publisher = logging.NopPublisher{}
+	}
 
 	w := &World{
 		players:             make(map[string]*playerState),
@@ -90,6 +97,7 @@ func newWorld(cfg worldConfig) *World {
 		config:              normalized,
 		rng:                 newDeterministicRNG(normalized.Seed, "world"),
 		seed:                normalized.Seed,
+		publisher:           publisher,
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
@@ -307,7 +315,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	for _, action := range stagedActions {
 		switch action.command.Name {
 		case effectTypeAttack:
-			w.triggerMeleeAttack(action.actorID, now)
+			w.triggerMeleeAttack(action.actorID, tick, now)
 		case effectTypeFireball:
 			w.triggerFireball(action.actorID, now)
 		}

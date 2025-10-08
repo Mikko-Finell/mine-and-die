@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
 	"time"
+
+	"mine-and-die/server/logging"
+	loggingcombat "mine-and-die/server/logging/combat"
 )
 
 // Effect represents a time-limited gameplay artifact (attack swing, projectile, etc.).
@@ -251,6 +255,19 @@ func (w *World) abilityOwner(actorID string) (*actorState, *map[string]time.Time
 	return nil, nil
 }
 
+func (w *World) entityRef(actorID string) logging.EntityRef {
+	if actorID == "" {
+		return logging.EntityRef{}
+	}
+	if _, ok := w.players[actorID]; ok {
+		return logging.EntityRef{ID: actorID, Kind: logging.EntityKind("player")}
+	}
+	if _, ok := w.npcs[actorID]; ok {
+		return logging.EntityRef{ID: actorID, Kind: logging.EntityKind("npc")}
+	}
+	return logging.EntityRef{ID: actorID, Kind: logging.EntityKind("unknown")}
+}
+
 func (w *World) cooldownReady(cooldowns *map[string]time.Time, ability string, cooldown time.Duration, now time.Time) bool {
 	if cooldowns == nil {
 		return false
@@ -270,7 +287,7 @@ func (w *World) cooldownReady(cooldowns *map[string]time.Time, ability string, c
 }
 
 // triggerMeleeAttack spawns a short-lived melee hitbox if the cooldown allows it.
-func (w *World) triggerMeleeAttack(actorID string, now time.Time) bool {
+func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) bool {
 	state, cooldowns := w.abilityOwner(actorID)
 	if state == nil || cooldowns == nil {
 		return false
@@ -347,11 +364,30 @@ func (w *World) triggerMeleeAttack(actorID string, now time.Time) bool {
 		}
 	}
 
-	if len(hitPlayerIDs) > 0 {
-		log.Printf("%s %s overlaps players %v", actorID, effectTypeAttack, hitPlayerIDs)
-	}
-	if len(hitNPCIDs) > 0 {
-		log.Printf("%s %s overlaps NPCs %v", actorID, effectTypeAttack, hitNPCIDs)
+	if len(hitPlayerIDs) > 0 || len(hitNPCIDs) > 0 {
+		targets := make([]logging.EntityRef, 0, len(hitPlayerIDs)+len(hitNPCIDs))
+		for _, id := range hitPlayerIDs {
+			targets = append(targets, w.entityRef(id))
+		}
+		for _, id := range hitNPCIDs {
+			targets = append(targets, w.entityRef(id))
+		}
+		payload := loggingcombat.AttackOverlapPayload{Ability: effectTypeAttack}
+		if len(hitPlayerIDs) > 0 {
+			payload.PlayerHits = append(payload.PlayerHits, hitPlayerIDs...)
+		}
+		if len(hitNPCIDs) > 0 {
+			payload.NPCHits = append(payload.NPCHits, hitNPCIDs...)
+		}
+		loggingcombat.AttackOverlap(
+			context.Background(),
+			w.publisher,
+			tick,
+			w.entityRef(actorID),
+			targets,
+			payload,
+			nil,
+		)
 	}
 
 	return true

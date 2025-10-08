@@ -1,19 +1,38 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
-	"log"
+	stdlog "log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"mine-and-die/server/logging"
+	loggingSinks "mine-and-die/server/logging/sinks"
 )
 
 // main wires up HTTP handlers, starts the simulation, and serves the client.
 func main() {
-	hub := newHub()
+	logConfig := logging.DefaultConfig()
+	sinks := map[string]logging.Sink{
+		"console": loggingSinks.NewConsole(os.Stdout),
+	}
+	router, err := logging.NewRouter(logConfig, logging.SystemClock{}, stdlog.Default(), sinks)
+	if err != nil {
+		stdlog.Fatalf("failed to construct logging router: %v", err)
+	}
+	defer func() {
+		if cerr := router.Close(context.Background()); cerr != nil {
+			stdlog.Printf("failed to close logging router: %v", cerr)
+		}
+	}()
+
+	hub := newHub(router)
 	stop := make(chan struct{})
 	go hub.RunSimulation(stop)
 	defer close(stop)
@@ -184,7 +203,7 @@ func main() {
 
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("upgrade failed for %s: %v", playerID, err)
+			stdlog.Printf("upgrade failed for %s: %v", playerID, err)
 			return
 		}
 
@@ -209,7 +228,7 @@ func main() {
 		}
 		data, err := json.Marshal(initial)
 		if err != nil {
-			log.Printf("failed to marshal initial state for %s: %v", playerID, err)
+			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
 				go hub.broadcastState(players, npcs, effects, nil)
@@ -241,29 +260,29 @@ func main() {
 
 			var msg clientMessage
 			if err := json.Unmarshal(payload, &msg); err != nil {
-				log.Printf("discarding malformed message from %s: %v", playerID, err)
+				stdlog.Printf("discarding malformed message from %s: %v", playerID, err)
 				continue
 			}
 
 			switch msg.Type {
 			case "input":
 				if !hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing) {
-					log.Printf("input ignored for unknown player %s", playerID)
+					stdlog.Printf("input ignored for unknown player %s", playerID)
 				}
 			case "path":
 				if !hub.SetPlayerPath(playerID, msg.X, msg.Y) {
-					log.Printf("path request ignored for unknown player %s", playerID)
+					stdlog.Printf("path request ignored for unknown player %s", playerID)
 				}
 			case "cancelPath":
 				if !hub.ClearPlayerPath(playerID) {
-					log.Printf("cancelPath ignored for unknown player %s", playerID)
+					stdlog.Printf("cancelPath ignored for unknown player %s", playerID)
 				}
 			case "action":
 				if msg.Action == "" {
 					continue
 				}
 				if !hub.HandleAction(playerID, msg.Action) {
-					log.Printf("unknown action %q from %s", msg.Action, playerID)
+					stdlog.Printf("unknown action %q from %s", msg.Action, playerID)
 				}
 			case "heartbeat":
 				now := time.Now()
@@ -281,7 +300,7 @@ func main() {
 
 				data, err := json.Marshal(ack)
 				if err != nil {
-					log.Printf("failed to marshal heartbeat ack for %s: %v", playerID, err)
+					stdlog.Printf("failed to marshal heartbeat ack for %s: %v", playerID, err)
 					continue
 				}
 
@@ -297,7 +316,7 @@ func main() {
 				}
 				sub.mu.Unlock()
 			default:
-				log.Printf("unknown message type %q from %s", msg.Type, playerID)
+				stdlog.Printf("unknown message type %q from %s", msg.Type, playerID)
 			}
 		}
 	})
@@ -307,8 +326,8 @@ func main() {
 	http.Handle("/", fs)
 
 	addr := ":8080"
-	log.Printf("server listening on %s", addr)
+	stdlog.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("server failed: %v", err)
+		stdlog.Fatalf("server failed: %v", err)
 	}
 }
