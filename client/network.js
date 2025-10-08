@@ -453,6 +453,21 @@ export function applyStateSnapshot(prev, payload) {
     hasLocalPlayer: false,
   };
 
+  let lastTick = null;
+  if (Object.prototype.hasOwnProperty.call(snapshot, "t")) {
+    const tickValue = snapshot.t;
+    if (typeof tickValue === "number" && Number.isFinite(tickValue) && tickValue >= 0) {
+      lastTick = Math.floor(tickValue);
+    }
+  }
+  if (lastTick === null && previousState && typeof previousState === "object") {
+    const priorTick = previousState.lastTick;
+    if (typeof priorTick === "number" && Number.isFinite(priorTick) && priorTick >= 0) {
+      lastTick = Math.floor(priorTick);
+    }
+  }
+  result.lastTick = lastTick;
+
   if (snapshot.config) {
     result.worldConfig = normalizeWorldConfig(snapshot.config);
   }
@@ -749,6 +764,7 @@ export function connectEvents(store) {
   store.lastHeartbeatRoundTrip = null;
   store.lastIntentSentAt = null;
   store.lastStateReceivedAt = null;
+  store.lastTick = null;
   store.updateDiagnostics();
 
   store.socket.onopen = () => {
@@ -767,7 +783,7 @@ export function connectEvents(store) {
 
     const payload = parsed.data;
     if (parsed.type === "state") {
-        const snapshot = applyStateSnapshot({ playerId: store.playerId }, payload);
+        const snapshot = applyStateSnapshot(store, payload);
 
         store.players = snapshot.players;
         store.npcs = snapshot.npcs;
@@ -817,6 +833,7 @@ export function connectEvents(store) {
           }
         }
         store.lastStateReceivedAt = Date.now();
+        store.lastTick = snapshot.lastTick;
         store.updateDiagnostics();
         if (store.renderInventory) {
           store.renderInventory();
@@ -1033,6 +1050,7 @@ function handleConnectionLoss(store) {
   store.lastMessageSentAt = null;
   store.messagesSent = 0;
   store.bytesSent = 0;
+  store.lastTick = null;
   store.currentIntent = { dx: 0, dy: 0 };
   store.currentFacing = DEFAULT_FACING;
   store.directionOrder = [];

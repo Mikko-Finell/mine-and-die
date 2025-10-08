@@ -215,19 +215,7 @@ func main() {
 			return
 		}
 
-		cfg := hub.CurrentConfig()
-
-		initial := stateMessage{
-			Type:        "state",
-			Players:     snapshotPlayers,
-			NPCs:        snapshotNPCs,
-			Obstacles:   append([]Obstacle(nil), hub.world.obstacles...),
-			Effects:     snapshotEffects,
-			GroundItems: snapshotGroundItems,
-			ServerTime:  time.Now().UnixMilli(),
-			Config:      cfg,
-		}
-		data, err := json.Marshal(initial)
+		data, err := hub.marshalState(snapshotPlayers, snapshotNPCs, snapshotEffects, nil, snapshotGroundItems)
 		if err != nil {
 			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs, effects := hub.Disconnect(playerID)
