@@ -879,10 +879,14 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected target to remain in hub")
 	}
-	expected := playerMaxHealth - fireballDamage
+	expected := playerMaxHealth - fireballDamage - lavaDamagePerSecond*burningTickInterval.Seconds()
 	if math.Abs(target.Health-expected) > 1e-6 {
 		hub.mu.Unlock()
 		t.Fatalf("expected target health %.1f, got %.1f", expected, target.Health)
+	}
+	if target.conditions == nil || target.conditions[ConditionBurning] == nil {
+		hub.mu.Unlock()
+		t.Fatalf("expected fireball hit to apply burning condition")
 	}
 	hub.mu.Unlock()
 }

@@ -1,6 +1,7 @@
 import { EffectManager } from "./js-effects/manager.js";
 import { MeleeSwingEffectDefinition } from "./js-effects/effects/meleeSwing.js";
 import { BloodSplatterDefinition } from "./js-effects/effects/bloodSplatter.js";
+import { FireEffectDefinition } from "./js-effects/effects/fire.js";
 
 const DEFAULT_FACING = "down";
 const FACING_OFFSETS = {
@@ -52,6 +53,13 @@ function ensureDecalStore(store) {
     store.activeDecals = [];
   }
   return store.activeDecals;
+}
+
+function ensureFireEffectStore(store) {
+  if (!(store.fireEffectInstances instanceof Map)) {
+    store.fireEffectInstances = new Map();
+  }
+  return store.fireEffectInstances;
 }
 
 function queueDecals(store, specs, nowSeconds) {
@@ -222,6 +230,104 @@ function syncMeleeSwingEffects(store, existingManager = null) {
       innerInset,
     });
     tracked.set(id, instance);
+  }
+
+  for (const [id, instance] of tracked.entries()) {
+    const isAlive = instance && typeof instance.isAlive === "function" ? instance.isAlive() : false;
+    if (!seen.has(id) || !isAlive) {
+      if (manager && typeof manager.removeInstance === "function") {
+        manager.removeInstance(instance);
+      }
+      tracked.delete(id);
+    }
+  }
+
+  return manager;
+}
+
+function updateFireInstanceTransform(instance, centerX, centerY) {
+  if (!instance || typeof instance !== "object") {
+    return;
+  }
+  const origin = instance.origin;
+  if (origin && typeof origin === "object") {
+    origin.x = centerX;
+    origin.y = centerY;
+  }
+  const opts = instance.opts || {};
+  const sizeScale = Number.isFinite(opts.sizeScale) ? opts.sizeScale : 1;
+  const radiusX = 56 * sizeScale;
+  const radiusY = 84 * sizeScale;
+  const aabb = instance.aabb;
+  if (aabb && typeof aabb === "object") {
+    aabb.x = centerX - radiusX;
+    aabb.y = centerY - radiusY;
+    aabb.w = radiusX * 2;
+    aabb.h = radiusY * 2;
+  }
+}
+
+function syncFireEffects(store, existingManager = null) {
+  const effects = Array.isArray(store.effects) ? store.effects : [];
+  const tracked = ensureFireEffectStore(store);
+  const seen = new Set();
+  let manager = existingManager || store.effectManager || null;
+
+  for (const effect of effects) {
+    if (!effect || typeof effect !== "object") {
+      continue;
+    }
+    if (effect.type !== "fire") {
+      continue;
+    }
+    const id = typeof effect.id === "string" ? effect.id : null;
+    if (!id) {
+      continue;
+    }
+    const width = Number.isFinite(effect.width) ? effect.width : store.TILE_SIZE || 40;
+    const height = Number.isFinite(effect.height) ? effect.height : store.TILE_SIZE || 40;
+    const baseX = Number.isFinite(effect.x) ? effect.x : 0;
+    const baseY = Number.isFinite(effect.y) ? effect.y : 0;
+    const centerX = baseX + width / 2;
+    const centerY = baseY + height / 2;
+
+    seen.add(id);
+
+    let instance = tracked.get(id);
+    if (!instance) {
+      if (!manager) {
+        manager = ensureEffectRuntime(store);
+      }
+      if (!manager) {
+        continue;
+      }
+      instance = manager.spawn(FireEffectDefinition, {
+        x: centerX,
+        y: centerY,
+        additive: true,
+        concentration: 0.25,
+        emberAlpha: 1,
+        emberPalette: [
+          "rgba(255, 220, 150, 1.0)",
+          "rgba(255, 180, 60, 1.0)",
+          "rgba(255, 245, 200, 1.0)",
+        ],
+        embersPerBurst: 24,
+        flamesPerBurst: 1,
+        gradientBias: 1.65,
+        jitter: 22.5,
+        lifeScale: 1.1,
+        riseSpeed: 35,
+        sizeScale: 1.3,
+        spawnInterval: 0.06,
+        spawnRadius: 15.5,
+        swirl: 0.5,
+        windX: 0,
+      });
+      tracked.set(id, instance);
+    }
+
+    updateFireInstanceTransform(instance, centerX, centerY);
   }
 
   for (const [id, instance] of tracked.entries()) {
@@ -521,6 +627,7 @@ function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
 
   let manager = processFireAndForgetTriggers(store, store.effectManager || null);
   manager = syncMeleeSwingEffects(store, manager);
+  manager = syncFireEffects(store, manager);
   const effectEntries = Object.entries(store.displayEffects || {});
   const hasActiveDecals = Array.isArray(store.activeDecals) && store.activeDecals.length > 0;
 

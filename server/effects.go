@@ -180,7 +180,7 @@ func newProjectileTemplates() map[string]*ProjectileTemplate {
 func newEffectBehaviors() map[string]effectBehavior {
 	return map[string]effectBehavior{
 		effectTypeAttack:      healthDeltaBehavior("healthDelta", 0),
-		effectTypeFireball:    healthDeltaBehavior("healthDelta", 0),
+		effectTypeFireball:    damageAndConditionBehavior("healthDelta", 0, ConditionBurning),
 		effectTypeBurningTick: healthDeltaBehavior("healthDelta", 0),
 	}
 }
@@ -201,6 +201,23 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 				log.Printf("%s defeated %s with %s", eff.Owner, target.ID, eff.Type)
 			}
 		}
+	})
+}
+
+func damageAndConditionBehavior(param string, fallback float64, condition ConditionType) effectBehavior {
+	base := healthDeltaBehavior(param, fallback)
+	return effectBehaviorFunc(func(w *World, eff *effectState, target *actorState, now time.Time) {
+		if base != nil {
+			base.OnHit(w, eff, target, now)
+		}
+		if w == nil || target == nil || condition == "" {
+			return
+		}
+		source := ""
+		if eff != nil {
+			source = eff.Owner
+		}
+		w.applyCondition(target, condition, source, now)
 	})
 }
 
