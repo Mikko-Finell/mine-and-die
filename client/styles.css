@@ -23,11 +23,54 @@ main {
 
 h1 {
   margin: 0;
-  font-size: 2.25rem;
-  letter-spacing: 0.06em;
+  font-size: 1.75rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  text-align: center;
   color: #e2e8f0;
+  text-align: left;
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+}
+
+.page-header__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  flex: 1 1 320px;
+}
+
+.page-header__seed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
+.page-header__seed-label {
+  font-weight: 600;
+  color: #f8fafc;
+  font-size: 0.95rem;
+}
+
+.page-header__seed-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.page-header__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
 
 .play-area {
@@ -574,6 +617,19 @@ canvas {
   main {
     width: calc(100% - 2rem);
     margin: 2rem auto;
+  }
+
+  .page-header {
+    align-items: stretch;
+  }
+
+  .page-header__controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header__actions {
+    width: 100%;
   }
 
   .debug-panel__header {
