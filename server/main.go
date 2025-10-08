@@ -49,12 +49,14 @@ func main() {
 			Players    []diagnosticsPlayer `json:"players"`
 			TickRate   int                 `json:"tickRate"`
 			Heartbeat  int64               `json:"heartbeatMillis"`
+			Telemetry  telemetrySnapshot   `json:"telemetry"`
 		}{
 			Status:     "ok",
 			ServerTime: time.Now().UnixMilli(),
 			Players:    hub.DiagnosticsSnapshot(),
 			TickRate:   tickRate,
 			Heartbeat:  heartbeatInterval.Milliseconds(),
+			Telemetry:  hub.TelemetrySnapshot(),
 		}
 
 		data, err := json.Marshal(payload)
@@ -215,7 +217,7 @@ func main() {
 			return
 		}
 
-		data, err := hub.marshalState(snapshotPlayers, snapshotNPCs, snapshotEffects, nil, snapshotGroundItems)
+		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, snapshotEffects, nil, snapshotGroundItems)
 		if err != nil {
 			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs, effects := hub.Disconnect(playerID)
@@ -236,6 +238,9 @@ func main() {
 			return
 		}
 		sub.mu.Unlock()
+		if hub.telemetry != nil {
+			hub.telemetry.RecordBroadcast(len(data), entities)
+		}
 
 		for {
 			_, payload, err := conn.ReadMessage()
