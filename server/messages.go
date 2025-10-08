@@ -1,6 +1,7 @@
 package main
 
 type joinResponse struct {
+	Ver            int             `json:"ver"`
 	ID             string          `json:"id"`
 	Players        []Player        `json:"players"`
 	NPCs           []NPC           `json:"npcs"`
@@ -12,6 +13,7 @@ type joinResponse struct {
 }
 
 type stateMessage struct {
+	Ver            int             `json:"ver"`
 	Type           string          `json:"type"`
 	Players        []Player        `json:"players"`
 	NPCs           []NPC           `json:"npcs"`
@@ -25,6 +27,7 @@ type stateMessage struct {
 }
 
 type clientMessage struct {
+	Ver    int     `json:"ver,omitempty"`
 	Type   string  `json:"type"`
 	DX     float64 `json:"dx"`
 	DY     float64 `json:"dy"`
@@ -38,6 +41,7 @@ type clientMessage struct {
 }
 
 type consoleAckMessage struct {
+	Ver     int    `json:"ver"`
 	Type    string `json:"type"`
 	Cmd     string `json:"cmd"`
 	Status  string `json:"status"`
@@ -47,6 +51,7 @@ type consoleAckMessage struct {
 }
 
 type heartbeatMessage struct {
+	Ver        int    `json:"ver"`
 	Type       string `json:"type"`
 	ServerTime int64  `json:"serverTime"`
 	ClientTime int64  `json:"clientTime"`
@@ -54,6 +59,7 @@ type heartbeatMessage struct {
 }
 
 type diagnosticsPlayer struct {
+	Ver           int    `json:"ver"`
 	ID            string `json:"id"`
 	LastHeartbeat int64  `json:"lastHeartbeat"`
 	RTTMillis     int64  `json:"rttMillis"`

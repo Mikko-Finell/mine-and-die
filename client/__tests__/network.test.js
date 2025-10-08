@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { computeRtt } from "../heartbeat.js";
 import {
   buildActionPayload,
@@ -7,6 +7,7 @@ import {
   buildHeartbeatPayload,
   buildInputPayload,
   buildPathPayload,
+  handleProtocolVersion,
   DEFAULT_WORLD_HEIGHT,
   DEFAULT_WORLD_SEED,
   DEFAULT_WORLD_WIDTH,
@@ -15,6 +16,9 @@ import {
   deriveDisplayMaps,
   enqueueEffectTriggers,
   getWorldDims,
+  PROTOCOL_VERSION,
+  readProtocolVersion,
+  sendMessage,
   normalizeCount,
   normalizeGroundItems,
   normalizeWorldConfig,
@@ -599,6 +603,93 @@ describe("message payload builders", () => {
     },
   ])("buildConsolePayload $label", ({ params, expected }) => {
     expect(buildConsolePayload("spawn", params)).toEqual(expected);
+  });
+});
+
+describe("protocol version helpers", () => {
+  it("extracts version from numeric ver fields", () => {
+    expect(readProtocolVersion({ ver: 3 })).toBe(3);
+  });
+
+  it("coerces string versions and falls back to protocol field", () => {
+    expect(readProtocolVersion({ ver: "2" })).toBe(2);
+    expect(readProtocolVersion({ protocol: "5" })).toBe(5);
+  });
+
+  it("returns null when no version fields are present", () => {
+    expect(readProtocolVersion({})).toBeNull();
+    expect(readProtocolVersion(null)).toBeNull();
+  });
+
+  it("invokes mismatch handler when versions differ", () => {
+    const onMismatch = vi.fn();
+    const version = handleProtocolVersion(
+      { ver: PROTOCOL_VERSION + 2 },
+      "state update",
+      { onMismatch },
+    );
+
+    expect(version).toBe(PROTOCOL_VERSION + 2);
+    expect(onMismatch).toHaveBeenCalledTimes(1);
+    expect(onMismatch).toHaveBeenCalledWith({
+      expected: PROTOCOL_VERSION,
+      received: PROTOCOL_VERSION + 2,
+      context: "state update",
+      message: expect.stringContaining("Protocol version mismatch"),
+    });
+  });
+
+  it("does not invoke mismatch handler when versions match", () => {
+    const onMismatch = vi.fn();
+    const version = handleProtocolVersion(
+      { ver: PROTOCOL_VERSION },
+      "state update",
+      { onMismatch },
+    );
+
+    expect(version).toBe(PROTOCOL_VERSION);
+    expect(onMismatch).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke mismatch handler when version missing", () => {
+    const onMismatch = vi.fn();
+    const version = handleProtocolVersion({}, "join", { onMismatch });
+
+    expect(version).toBeNull();
+    expect(onMismatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendMessage", () => {
+  it("attaches protocol version to outbound payloads", () => {
+    const originalWebSocket = globalThis.WebSocket;
+    globalThis.WebSocket = { OPEN: 1 };
+
+    try {
+      const send = vi.fn();
+      const store = {
+        socket: { readyState: 1, send },
+        messagesSent: 0,
+        bytesSent: 0,
+        lastMessageSentAt: null,
+        updateDiagnostics: vi.fn(),
+      };
+
+      sendMessage(store, { type: "input", dx: 0, dy: 0, facing: "down" });
+
+      expect(send).toHaveBeenCalledTimes(1);
+      const encoded = send.mock.calls[0][0];
+      const decoded = JSON.parse(encoded);
+      expect(decoded).toEqual({
+        type: "input",
+        dx: 0,
+        dy: 0,
+        facing: "down",
+        ver: PROTOCOL_VERSION,
+      });
+    } finally {
+      globalThis.WebSocket = originalWebSocket;
+    }
   });
 });
 

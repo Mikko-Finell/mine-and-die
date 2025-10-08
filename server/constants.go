@@ -3,6 +3,7 @@ package main
 import "time"
 
 const (
+	ProtocolVersion       = 1
 	writeWait             = 10 * time.Second
 	tickRate              = 15    // ticks per second (10–20 Hz)
 	moveSpeed             = 160.0 // pixels per second
