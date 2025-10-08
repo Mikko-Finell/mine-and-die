@@ -293,6 +293,7 @@ function drawScene(store, frameDt, frameNow) {
     resetDrawn: true,
   });
 
+  drawGroundItems(store);
   drawNPCs(store);
 
   Object.entries(store.displayPlayers).forEach(([id, position]) => {
@@ -331,6 +332,44 @@ function drawScene(store, frameDt, frameNow) {
     resetDrawn: false,
   });
 
+  ctx.restore();
+
+  drawConsoleToast(store);
+}
+
+function drawGroundItems(store) {
+  const { ctx } = store;
+  if (!ctx || !Array.isArray(store.groundItems)) {
+    return;
+  }
+  const tileSize = Number.isFinite(store?.TILE_SIZE) ? store.TILE_SIZE : 40;
+  const radius = Math.max(4, Math.min(tileSize / 4, 8));
+  ctx.save();
+  for (const item of store.groundItems) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const x = Number(item.x);
+    const y = Number(item.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      continue;
+    }
+    const qty = Number.isFinite(item.qty) ? item.qty : 0;
+    ctx.fillStyle = "#facc15";
+    ctx.strokeStyle = "rgba(234, 179, 8, 0.6)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (qty > 0) {
+      ctx.fillStyle = "#fefce8";
+      ctx.font = "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(qty), x, y);
+    }
+  }
   ctx.restore();
 }
 
@@ -405,6 +444,43 @@ function drawHealthBar(ctx, store, position, player, id) {
 
   ctx.strokeStyle = "rgba(15, 23, 42, 0.9)";
   ctx.strokeRect(barX - 0.5, barY - 0.5, barWidth + 1, barHeight + 1);
+  ctx.restore();
+}
+
+function drawConsoleToast(store) {
+  if (!store || !store.ctx || !store.canvas) {
+    return;
+  }
+  const toast = store.consoleToast;
+  if (!toast || typeof toast.text !== "string" || toast.text.length === 0) {
+    return;
+  }
+  const now = Date.now();
+  if (typeof toast.expiresAt === "number" && toast.expiresAt <= now) {
+    store.consoleToast = null;
+    return;
+  }
+  const { ctx, canvas } = store;
+  ctx.save();
+  ctx.font = "14px sans-serif";
+  const paddingX = 12;
+  const paddingY = 6;
+  const metrics = ctx.measureText(toast.text);
+  const textWidth = metrics.width;
+  const boxWidth = textWidth + paddingX * 2;
+  const boxHeight = 14 + paddingY * 2;
+  const canvasWidth = typeof canvas.width === "number" ? canvas.width : 0;
+  const x = Math.max(0, (canvasWidth - boxWidth) / 2);
+  const y = 20;
+  ctx.fillStyle = "rgba(15, 23, 42, 0.8)";
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.85)";
+  ctx.lineWidth = 1;
+  ctx.fillRect(x, y, boxWidth, boxHeight);
+  ctx.strokeRect(x + 0.5, y + 0.5, boxWidth - 1, boxHeight - 1);
+  ctx.fillStyle = "#e2e8f0";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(toast.text, x + boxWidth / 2, y + boxHeight / 2);
   ctx.restore();
 }
 

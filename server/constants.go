@@ -8,6 +8,7 @@ const (
 	moveSpeed             = 160.0 // pixels per second
 	worldWidth            = 2400.0
 	worldHeight           = 1800.0
+	tileSize              = 40.0
 	defaultSpawnX         = worldWidth / 2
 	defaultSpawnY         = worldHeight / 2
 	playerHalf            = 14.0

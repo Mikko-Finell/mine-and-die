@@ -87,6 +87,17 @@ Players track `Health` and `MaxHealth`. Effect helpers share the `Effect` struct
 - `Inventory.MoveSlot` and `Inventory.RemoveQuantity` centralize reordering and stack splitting logic. Both operate while holding the hub mutex to keep state consistent.
 - `Inventory.Clone` is used when broadcasting player snapshots to avoid data races between the simulation and JSON encoding.
 
+### Ground Items & Console Commands
+- `World` maintains a `groundItems` map keyed by tile so dropped stacks merge deterministically. Snapshots include the
+  `groundItems` array alongside players/NPCs/effects so the client can render coins and stage pickups without bespoke RPCs.
+- Console interactions arrive as queued `CommandDropGold`/`CommandPickupGold` entries. Drops spawn a merged stack at the actor’s
+  tile while pickups locate the nearest stack within one tile, transfer its quantity into the inventory, and delete the ground
+  entity atomically.
+- When any actor hits zero health, `World.dropAllGold` converts their carried gold into a ground stack at the corpse location so
+  loot stays recoverable.
+- Economy logging now covers the flow end-to-end via `economy.gold_dropped`, `economy.gold_picked_up`, and
+  `economy.gold_pickup_failed` events.
+
 ### Heartbeats and Diagnostics
 - Clients send `{ type: "heartbeat", sentAt }` ~every 2 seconds.
 - `UpdateHeartbeat` enqueues a heartbeat command recording the receipt time and RTT so the simulation can update `playerState` records during the next tick.

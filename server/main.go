@@ -16,6 +16,8 @@ import (
 	loggingSinks "mine-and-die/server/logging/sinks"
 )
 
+const consoleCommandTimeout = 2 * time.Second
+
 // main wires up HTTP handlers, starts the simulation, and serves the client.
 func main() {
 	logConfig := logging.DefaultConfig()
@@ -149,8 +151,8 @@ func main() {
 
 		cfg = cfg.normalized()
 
-		players, npcs, effects := hub.ResetWorld(cfg)
-		go hub.broadcastState(players, npcs, effects, nil)
+		players, npcs, effects, groundItems := hub.ResetWorld(cfg)
+		go hub.broadcastState(players, npcs, effects, groundItems, nil)
 
 		response := struct {
 			Status string      `json:"status"`
@@ -207,7 +209,7 @@ func main() {
 			return
 		}
 
-		sub, snapshotPlayers, snapshotNPCs, snapshotEffects, ok := hub.Subscribe(playerID, conn)
+		sub, snapshotPlayers, snapshotNPCs, snapshotEffects, snapshotGroundItems, ok := hub.Subscribe(playerID, conn)
 		if !ok {
 			message := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unknown player")
 			conn.WriteMessage(websocket.CloseMessage, message)
@@ -218,20 +220,21 @@ func main() {
 		cfg := hub.CurrentConfig()
 
 		initial := stateMessage{
-			Type:       "state",
-			Players:    snapshotPlayers,
-			NPCs:       snapshotNPCs,
-			Obstacles:  append([]Obstacle(nil), hub.world.obstacles...),
-			Effects:    snapshotEffects,
-			ServerTime: time.Now().UnixMilli(),
-			Config:     cfg,
+			Type:        "state",
+			Players:     snapshotPlayers,
+			NPCs:        snapshotNPCs,
+			Obstacles:   append([]Obstacle(nil), hub.world.obstacles...),
+			Effects:     snapshotEffects,
+			GroundItems: snapshotGroundItems,
+			ServerTime:  time.Now().UnixMilli(),
+			Config:      cfg,
 		}
 		data, err := json.Marshal(initial)
 		if err != nil {
 			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
-			players, npcs, effects := hub.Disconnect(playerID)
+			players, npcs, effects, groundItems := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players, npcs, effects, nil)
+				go hub.broadcastState(players, npcs, effects, groundItems, nil)
 			}
 			return
 		}
@@ -240,9 +243,9 @@ func main() {
 		conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			sub.mu.Unlock()
-			players, npcs, effects := hub.Disconnect(playerID)
+			players, npcs, effects, groundItems := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players, npcs, effects, nil)
+				go hub.broadcastState(players, npcs, effects, groundItems, nil)
 			}
 			return
 		}
@@ -251,9 +254,9 @@ func main() {
 		for {
 			_, payload, err := conn.ReadMessage()
 			if err != nil {
-				players, npcs, effects := hub.Disconnect(playerID)
+				players, npcs, effects, groundItems := hub.Disconnect(playerID)
 				if players != nil {
-					go hub.broadcastState(players, npcs, effects, nil)
+					go hub.broadcastState(players, npcs, effects, groundItems, nil)
 				}
 				return
 			}
@@ -284,6 +287,93 @@ func main() {
 				if !hub.HandleAction(playerID, msg.Action) {
 					stdlog.Printf("unknown action %q from %s", msg.Action, playerID)
 				}
+			case "console":
+				if msg.Cmd == "" {
+					ack := consoleAckMessage{Type: "consoleAck", Cmd: msg.Cmd, Status: consoleStatusError, Reason: consoleReasonInvalidRequest}
+					data, err := json.Marshal(ack)
+					if err != nil {
+						stdlog.Printf("failed to marshal console ack for %s: %v", playerID, err)
+						continue
+					}
+					sub.mu.Lock()
+					conn.SetWriteDeadline(time.Now().Add(writeWait))
+					if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+						sub.mu.Unlock()
+						players, npcs, effects, groundItems := hub.Disconnect(playerID)
+						if players != nil {
+							go hub.broadcastState(players, npcs, effects, groundItems, nil)
+						}
+						return
+					}
+					sub.mu.Unlock()
+					continue
+				}
+				var (
+					response <-chan consoleCommandResult
+					queued   bool
+				)
+				switch msg.Cmd {
+				case "drop_gold":
+					response, queued = hub.QueueDropGold(playerID, msg.Qty)
+				case "pickup_gold":
+					response, queued = hub.QueuePickupGold(playerID)
+				default:
+					ack := consoleAckMessage{Type: "consoleAck", Cmd: msg.Cmd, Status: consoleStatusError, Reason: consoleReasonInvalidRequest}
+					data, err := json.Marshal(ack)
+					if err != nil {
+						stdlog.Printf("failed to marshal console ack for %s: %v", playerID, err)
+						continue
+					}
+					sub.mu.Lock()
+					conn.SetWriteDeadline(time.Now().Add(writeWait))
+					if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+						sub.mu.Unlock()
+						players, npcs, effects, groundItems := hub.Disconnect(playerID)
+						if players != nil {
+							go hub.broadcastState(players, npcs, effects, groundItems, nil)
+						}
+						return
+					}
+					sub.mu.Unlock()
+					continue
+				}
+				result := consoleCommandResult{Command: msg.Cmd, Status: consoleStatusError, Reason: consoleReasonInvalidRequest}
+				if response != nil {
+					if queued {
+						select {
+						case res, ok := <-response:
+							if ok {
+								result = res
+							}
+						case <-time.After(consoleCommandTimeout):
+							result = consoleCommandResult{Command: msg.Cmd, Status: consoleStatusError, Reason: consoleReasonTimeout}
+						}
+					} else {
+						if res, ok := <-response; ok {
+							result = res
+						}
+					}
+				}
+				if result.Command == "" {
+					result.Command = msg.Cmd
+				}
+				ack := consoleAckMessage{Type: "consoleAck", Cmd: result.Command, Status: result.Status, Reason: result.Reason, Qty: result.Quantity}
+				data, err := json.Marshal(ack)
+				if err != nil {
+					stdlog.Printf("failed to marshal console ack for %s: %v", playerID, err)
+					continue
+				}
+				sub.mu.Lock()
+				conn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+					sub.mu.Unlock()
+					players, npcs, effects, groundItems := hub.Disconnect(playerID)
+					if players != nil {
+						go hub.broadcastState(players, npcs, effects, groundItems, nil)
+					}
+					return
+				}
+				sub.mu.Unlock()
 			case "heartbeat":
 				now := time.Now()
 				rtt, ok := hub.UpdateHeartbeat(playerID, now, msg.SentAt)
@@ -308,9 +398,9 @@ func main() {
 				conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 					sub.mu.Unlock()
-					players, npcs, effects := hub.Disconnect(playerID)
+					players, npcs, effects, groundItems := hub.Disconnect(playerID)
 					if players != nil {
-						go hub.broadcastState(players, npcs, effects, nil)
+						go hub.broadcastState(players, npcs, effects, groundItems, nil)
 					}
 					return
 				}

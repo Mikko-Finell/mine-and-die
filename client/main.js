@@ -2,6 +2,8 @@ import {
   joinGame,
   resetWorld,
   sendMoveTo,
+  sendConsoleDropGold,
+  sendConsolePickupGold,
   DEFAULT_WORLD_SEED,
   DEFAULT_WORLD_WIDTH,
   DEFAULT_WORLD_HEIGHT,
@@ -174,8 +176,11 @@ const store = {
   bytesSent: 0,
   lastPathRequestAt: null,
   effects: [],
+  groundItems: [],
   pendingEffectTriggers: [],
   processedEffectTriggerIds: new Set(),
+  consoleToast: null,
+  lastConsoleAck: null,
   camera: {
     x: 0,
     y: 0,
@@ -757,6 +762,15 @@ store.renderInventory = renderInventory;
 store.updateWorldConfigUI = () => syncWorldResetControls();
 store.setCameraLock = setCameraLock;
 store.toggleCameraLock = toggleCameraLock;
+
+if (typeof window !== "undefined") {
+  window.debugDropGold = (quantity) => {
+    sendConsoleDropGold(store, quantity);
+  };
+  window.debugPickupGold = () => {
+    sendConsolePickupGold(store);
+  };
+}
 
 initializeDebugPanelToggle();
 attachLatencyInputListener();

@@ -106,7 +106,7 @@ func (h *Hub) Join() joinResponse {
 
 	h.mu.Lock()
 	h.world.AddPlayer(player)
-	players, npcs, effects := h.world.Snapshot(now)
+	players, npcs, effects, groundItems := h.world.Snapshot(now)
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
 	h.mu.Unlock()
@@ -120,13 +120,13 @@ func (h *Hub) Join() joinResponse {
 		nil,
 	)
 
-	go h.broadcastState(players, npcs, effects, nil)
+	go h.broadcastState(players, npcs, effects, groundItems, nil)
 
-	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, Config: cfg}
+	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, GroundItems: groundItems, Config: cfg}
 }
 
 // ResetWorld replaces the current world with a freshly generated instance.
-func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
+func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect, []GroundItem) {
 	cfg = cfg.normalized()
 	now := time.Now()
 
@@ -146,12 +146,12 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 	}
 	h.world = newW
 	h.config = cfg
-	players, npcs, effects := h.world.Snapshot(now)
+	players, npcs, effects, groundItems := h.world.Snapshot(now)
 	h.mu.Unlock()
 
 	h.tick.Store(0)
 
-	return players, npcs, effects
+	return players, npcs, effects, groundItems
 }
 
 // CurrentConfig returns a copy of the active world configuration.
@@ -162,13 +162,13 @@ func (h *Hub) CurrentConfig() worldConfig {
 }
 
 // Subscribe associates a WebSocket connection with an existing player.
-func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, []NPC, []Effect, bool) {
+func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, []NPC, []Effect, []GroundItem, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	state, ok := h.world.players[playerID]
 	if !ok {
-		return nil, nil, nil, nil, false
+		return nil, nil, nil, nil, nil, false
 	}
 
 	state.lastHeartbeat = time.Now()
@@ -180,12 +180,12 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 	sub := &subscriber{conn: conn}
 	h.subscribers[playerID] = sub
 	now := time.Now()
-	players, npcs, effects := h.world.Snapshot(now)
-	return sub, players, npcs, effects, true
+	players, npcs, effects, groundItems := h.world.Snapshot(now)
+	return sub, players, npcs, effects, groundItems, true
 }
 
 // Disconnect removes a player and closes any active subscriber connection.
-func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
+func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect, []GroundItem) {
 	h.mu.Lock()
 	sub, subOK := h.subscribers[playerID]
 	if subOK {
@@ -196,9 +196,10 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 	var players []Player
 	var npcs []NPC
 	var effects []Effect
+	var groundItems []GroundItem
 	if removed {
 		now := time.Now()
-		players, npcs, effects = h.world.Snapshot(now)
+		players, npcs, effects, groundItems = h.world.Snapshot(now)
 	}
 	h.mu.Unlock()
 
@@ -207,7 +208,7 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 	}
 
 	if !removed {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	logginglifecycle.PlayerDisconnected(
@@ -219,7 +220,7 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 		nil,
 	)
 
-	return players, npcs, effects
+	return players, npcs, effects, groundItems
 }
 
 // UpdateIntent stores the latest movement vector and facing for a player.
@@ -307,6 +308,44 @@ func (h *Hub) HandleAction(playerID, action string) bool {
 	return true
 }
 
+func (h *Hub) QueueDropGold(playerID string, qty int) (<-chan consoleCommandResult, bool) {
+	result := make(chan consoleCommandResult, 1)
+	if !h.playerExists(playerID) {
+		result <- consoleCommandResult{Command: "drop_gold", Status: consoleStatusError, Reason: consoleReasonActorMissing}
+		close(result)
+		return result, false
+	}
+	cmd := Command{
+		OriginTick:    h.tick.Load(),
+		ActorID:       playerID,
+		Type:          CommandDropGold,
+		IssuedAt:      time.Now(),
+		DropGold:      &DropGoldCommand{Quantity: qty},
+		ConsoleResult: result,
+	}
+	h.enqueueCommand(cmd)
+	return result, true
+}
+
+func (h *Hub) QueuePickupGold(playerID string) (<-chan consoleCommandResult, bool) {
+	result := make(chan consoleCommandResult, 1)
+	if !h.playerExists(playerID) {
+		result <- consoleCommandResult{Command: "pickup_gold", Status: consoleStatusError, Reason: consoleReasonActorMissing}
+		close(result)
+		return result, false
+	}
+	cmd := Command{
+		OriginTick:    h.tick.Load(),
+		ActorID:       playerID,
+		Type:          CommandPickupGold,
+		IssuedAt:      time.Now(),
+		PickupGold:    &PickupGoldCommand{},
+		ConsoleResult: result,
+	}
+	h.enqueueCommand(cmd)
+	return result, true
+}
+
 // UpdateHeartbeat records the most recent heartbeat time and RTT for a player.
 func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent int64) (time.Duration, bool) {
 	if !h.playerExists(playerID) {
@@ -341,13 +380,13 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 }
 
 // advance runs a single simulation step and returns updated snapshots plus stale subscribers.
-func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []EffectTrigger, []*subscriber) {
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []GroundItem, []EffectTrigger, []*subscriber) {
 	tick := h.tick.Add(1)
 	commands := h.drainCommands()
 
 	h.mu.Lock()
 	removed := h.world.Step(tick, now, dt, commands)
-	players, npcs, effects := h.world.Snapshot(now)
+	players, npcs, effects, groundItems := h.world.Snapshot(now)
 	triggers := h.world.flushEffectTriggersLocked()
 	toClose := make([]*subscriber, 0, len(removed))
 	for _, id := range removed {
@@ -358,7 +397,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []E
 	}
 	h.mu.Unlock()
 
-	return players, npcs, effects, triggers, toClose
+	return players, npcs, effects, groundItems, triggers, toClose
 }
 
 // RunSimulation drives the fixed-rate tick loop until the stop channel closes.
@@ -378,11 +417,11 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 			}
 			last = now
 
-			players, npcs, effects, triggers, toClose := h.advance(now, dt)
+			players, npcs, effects, groundItems, triggers, toClose := h.advance(now, dt)
 			for _, sub := range toClose {
 				sub.conn.Close()
 			}
-			h.broadcastState(players, npcs, effects, triggers)
+			h.broadcastState(players, npcs, effects, groundItems, triggers)
 		}
 	}
 }
@@ -404,14 +443,12 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 }
 
 // broadcastState sends the latest world snapshot to every subscriber.
-func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger) {
+func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, groundItems []GroundItem, triggers []EffectTrigger) {
 	h.mu.Lock()
 	shouldFlushTriggers := false
-	if players == nil || npcs == nil || effects == nil {
+	if players == nil || npcs == nil || effects == nil || groundItems == nil {
 		now := time.Now()
-		if players == nil || npcs == nil || effects == nil {
-			players, npcs, effects = h.world.Snapshot(now)
-		}
+		players, npcs, effects, groundItems = h.world.Snapshot(now)
 		shouldFlushTriggers = true
 	}
 	if shouldFlushTriggers && triggers == nil {
@@ -427,6 +464,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 		NPCs:           npcs,
 		Obstacles:      obstacles,
 		Effects:        effects,
+		GroundItems:    groundItems,
 		EffectTriggers: triggers,
 		ServerTime:     time.Now().UnixMilli(),
 		Config:         cfg,
@@ -451,9 +489,9 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 		sub.mu.Unlock()
 		if err != nil {
 			stdlog.Printf("failed to send update to %s: %v", id, err)
-			players, npcs, effects := h.Disconnect(id)
+			players, npcs, effects, groundItems := h.Disconnect(id)
 			if players != nil {
-				go h.broadcastState(players, npcs, effects, nil)
+				go h.broadcastState(players, npcs, effects, groundItems, nil)
 			}
 		}
 	}

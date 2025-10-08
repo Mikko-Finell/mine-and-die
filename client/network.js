@@ -169,6 +169,91 @@ function queueEffectTriggers(store, triggers) {
   }
 }
 
+const CONSOLE_REASON_MESSAGES = {
+  invalid_quantity: "Amount must be positive",
+  insufficient_quantity: "Not enough gold",
+  actor_missing: "Actor not available",
+  not_found: "No gold nearby",
+  out_of_range: "Too far from gold",
+  inventory_error: "Inventory full",
+  invalid_request: "Invalid console command",
+  timeout: "Command timed out",
+};
+
+function normalizeGroundItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+  const normalized = [];
+  for (const entry of items) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const rawId = entry.id;
+    const id =
+      typeof rawId === "string"
+        ? rawId
+        : rawId != null
+        ? String(rawId)
+        : "";
+    if (!id) {
+      continue;
+    }
+    const rawX = Number(entry.x);
+    const rawY = Number(entry.y);
+    const rawQty = Number(entry.qty);
+    const x = Number.isFinite(rawX) ? rawX : 0;
+    const y = Number.isFinite(rawY) ? rawY : 0;
+    const qty = Number.isFinite(rawQty) ? Math.max(0, Math.round(rawQty)) : 0;
+    normalized.push({ id, x, y, qty });
+  }
+  return normalized;
+}
+
+function formatConsoleAckMessage(ack) {
+  if (!ack || typeof ack !== "object") {
+    return null;
+  }
+  const cmd = typeof ack.cmd === "string" ? ack.cmd : "";
+  const status = typeof ack.status === "string" ? ack.status : "";
+  const qty = Number.isFinite(ack.qty) ? Math.max(0, Math.round(ack.qty)) : null;
+  if (status === "ok") {
+    if (cmd === "drop_gold" && qty !== null) {
+      return `Dropped ${qty} gold`;
+    }
+    if (cmd === "pickup_gold" && qty !== null) {
+      return qty > 0 ? `Picked up ${qty} gold` : "No gold collected";
+    }
+    return "Command succeeded";
+  }
+  const reason =
+    typeof ack.reason === "string" && ack.reason.length > 0
+      ? ack.reason
+      : "unknown";
+  const reasonCopy = CONSOLE_REASON_MESSAGES[reason] || reason;
+  if (cmd === "drop_gold") {
+    return `Drop failed: ${reasonCopy}`;
+  }
+  if (cmd === "pickup_gold") {
+    return `Pickup failed: ${reasonCopy}`;
+  }
+  return `Command failed: ${reasonCopy}`;
+}
+
+function applyConsoleAck(store, ack) {
+  if (!store) {
+    return;
+  }
+  const message = formatConsoleAckMessage(ack);
+  if (message) {
+    store.consoleToast = {
+      text: message,
+      expiresAt: Date.now() + 2000,
+    };
+  }
+  store.lastConsoleAck = ack;
+}
+
 // sendMessage serializes payloads, applies simulated latency, and tracks stats.
 export function sendMessage(store, payload, { onSent } = {}) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
@@ -222,6 +307,9 @@ export async function joinGame(store) {
     );
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     store.effects = Array.isArray(payload.effects) ? payload.effects : [];
+    store.groundItems = normalizeGroundItems(payload.groundItems);
+    store.consoleToast = null;
+    store.lastConsoleAck = null;
     store.pendingEffectTriggers = [];
     store.processedEffectTriggerIds = new Set();
     queueEffectTriggers(store, payload.effectTriggers);
@@ -328,6 +416,7 @@ export function connectEvents(store) {
         } else {
           store.effects = [];
         }
+        store.groundItems = normalizeGroundItems(payload.groundItems);
         queueEffectTriggers(store, payload.effectTriggers);
         if (payload.config) {
           store.worldConfig = normalizeWorldConfig(payload.config);
@@ -393,6 +482,8 @@ export function connectEvents(store) {
         if (store.renderInventory) {
           store.renderInventory();
         }
+      } else if (payload.type === "consoleAck") {
+        applyConsoleAck(store, payload);
       } else if (payload.type === "heartbeat") {
         if (typeof payload.rtt === "number") {
           const roundTrip = Math.max(0, payload.rtt);
@@ -502,6 +593,31 @@ export function sendAction(store, action, params = undefined) {
   sendMessage(store, payload);
 }
 
+function dispatchConsoleCommand(store, cmd, payload = {}) {
+  if (!store || typeof cmd !== "string" || cmd.length === 0) {
+    return;
+  }
+  const message = { type: "console", cmd };
+  if (payload && Number.isFinite(payload.qty)) {
+    message.qty = Math.round(payload.qty);
+  }
+  sendMessage(store, message);
+}
+
+export function sendConsoleDropGold(store, quantity) {
+  const parsed = Number(quantity);
+  if (!Number.isFinite(parsed)) {
+    console.warn("debugDropGold expects a numeric quantity");
+    return;
+  }
+  const normalized = Math.max(0, Math.floor(parsed));
+  dispatchConsoleCommand(store, "drop_gold", { qty: normalized });
+}
+
+export function sendConsolePickupGold(store) {
+  dispatchConsoleCommand(store, "pickup_gold");
+}
+
 // startHeartbeat kicks off the repeating heartbeat timer.
 export function startHeartbeat(store) {
   stopHeartbeat(store);
@@ -590,6 +706,9 @@ function handleConnectionLoss(store) {
   store.displayPlayers = {};
   store.npcs = {};
   store.displayNPCs = {};
+  store.groundItems = [];
+  store.consoleToast = null;
+  store.lastConsoleAck = null;
   if (store.effectManager && typeof store.effectManager.clear === "function") {
     store.effectManager.clear();
   }

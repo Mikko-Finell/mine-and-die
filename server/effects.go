@@ -201,6 +201,10 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 		if delta == 0 {
 			return
 		}
+		wasAlive := false
+		if target != nil {
+			wasAlive = target.Health > 0
+		}
 		if target.applyHealthDelta(delta) {
 			if w != nil && delta < 0 {
 				ability := ""
@@ -242,6 +246,9 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 						nil,
 					)
 				}
+			}
+			if w != nil && wasAlive && target.Health <= 0 {
+				w.dropAllGold(target, "death")
 			}
 		}
 	})

@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
+	"io"
+	stdlog "log"
 	"math"
 	"testing"
 	"time"
 
 	"mine-and-die/server/logging"
+	loggingeconomy "mine-and-die/server/logging/economy"
+	loggingSinks "mine-and-die/server/logging/sinks"
 )
 
 func findPlayer(players []Player, id string) *Player {
@@ -45,9 +50,24 @@ func newTestPlayerState(id string) *playerState {
 	}
 }
 
-func runAdvance(h *Hub, dt float64) ([]Player, []NPC, []Effect) {
-	players, npcs, effects, _, _ := h.advance(time.Now(), dt)
-	return players, npcs, effects
+func newLoggingHub(t *testing.T) (*Hub, *loggingSinks.Memory, func()) {
+	t.Helper()
+	memory := loggingSinks.NewMemory()
+	cfg := logging.DefaultConfig()
+	cfg.EnabledSinks = []string{"memory"}
+	router, err := logging.NewRouter(cfg, logging.SystemClock{}, stdlog.New(io.Discard, "", 0), map[string]logging.Sink{"memory": memory})
+	if err != nil {
+		t.Fatalf("failed to create logging router: %v", err)
+	}
+	cleanup := func() {
+		router.Close(context.Background())
+	}
+	return newHub(router), memory, cleanup
+}
+
+func runAdvance(h *Hub, dt float64) ([]Player, []NPC, []Effect, []GroundItem) {
+	players, npcs, effects, groundItems, _, _ := h.advance(time.Now(), dt)
+	return players, npcs, effects, groundItems
 }
 
 func newProjectileTestTemplate(id string) *ProjectileTemplate {
@@ -195,7 +215,7 @@ func TestUpdateIntentNormalizesVector(t *testing.T) {
 		t.Fatalf("expected UpdateIntent to succeed for existing player")
 	}
 
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 
 	state := hub.world.players[playerID]
 	if state.intentX <= 0 || state.intentX > 1 {
@@ -237,6 +257,107 @@ func TestDeriveFacingFromMovement(t *testing.T) {
 	}
 }
 
+func waitForEvent(memory *loggingSinks.Memory, eventType logging.EventType, timeout time.Duration) *logging.Event {
+	deadline := time.Now().Add(timeout)
+	for {
+		events := memory.Events()
+		for i := len(events) - 1; i >= 0; i-- {
+			if events[i].Type == eventType {
+				return &events[i]
+			}
+		}
+		if time.Now().After(deadline) {
+			return nil
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestConsoleDropAndPickupGoldSelf(t *testing.T) {
+	hub, memory, cleanup := newLoggingHub(t)
+	defer cleanup()
+
+	const playerID = "player-self"
+
+	hub.mu.Lock()
+	state := newTestPlayerState(playerID)
+	state.X = defaultSpawnX
+	state.Y = defaultSpawnY
+	if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 20}); err != nil {
+		hub.mu.Unlock()
+		t.Fatalf("failed to seed gold: %v", err)
+	}
+	hub.world.players[playerID] = state
+	hub.mu.Unlock()
+
+	dropCh, _ := hub.QueueDropGold(playerID, 10)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	dropResult := <-dropCh
+	if dropResult.Status != consoleStatusOK {
+		t.Fatalf("expected drop to succeed, got status %q (reason %q)", dropResult.Status, dropResult.Reason)
+	}
+	if dropResult.Quantity != 10 {
+		t.Fatalf("expected drop quantity 10, got %d", dropResult.Quantity)
+	}
+
+	hub.mu.Lock()
+	player := hub.world.players[playerID]
+	if len(player.Inventory.Slots) == 0 || player.Inventory.Slots[0].Item.Quantity != 10 {
+		t.Fatalf("expected inventory to retain 10 gold after drop, got %+v", player.Inventory.Slots)
+	}
+	if len(hub.world.groundItems) != 1 {
+		t.Fatalf("expected exactly one ground item after drop, got %d", len(hub.world.groundItems))
+	}
+	dropQty := 0
+	for _, item := range hub.world.groundItems {
+		dropQty = item.Qty
+	}
+	hub.mu.Unlock()
+	if dropQty != 10 {
+		t.Fatalf("expected ground item quantity 10, got %d", dropQty)
+	}
+
+	if ev := waitForEvent(memory, loggingeconomy.EventGoldDropped, 50*time.Millisecond); ev == nil {
+		t.Fatalf("expected economy.gold_dropped event")
+	} else if payload, ok := ev.Payload.(loggingeconomy.GoldDroppedPayload); !ok {
+		t.Fatalf("expected gold dropped payload, got %T", ev.Payload)
+	} else {
+		if payload.Quantity != 10 {
+			t.Fatalf("expected dropped quantity 10, got %d", payload.Quantity)
+		}
+		if payload.Reason != "manual" {
+			t.Fatalf("expected drop reason manual, got %q", payload.Reason)
+		}
+	}
+
+	pickupCh, _ := hub.QueuePickupGold(playerID)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	pickupResult := <-pickupCh
+	if pickupResult.Status != consoleStatusOK {
+		t.Fatalf("expected pickup to succeed, got status %q (reason %q)", pickupResult.Status, pickupResult.Reason)
+	}
+	if pickupResult.Quantity != 10 {
+		t.Fatalf("expected pickup quantity 10, got %d", pickupResult.Quantity)
+	}
+
+	hub.mu.Lock()
+	if len(player.Inventory.Slots) == 0 || player.Inventory.Slots[0].Item.Quantity != 20 {
+		t.Fatalf("expected inventory to restore 20 gold, got %+v", player.Inventory.Slots)
+	}
+	if len(hub.world.groundItems) != 0 {
+		t.Fatalf("expected ground items to be cleared, got %d", len(hub.world.groundItems))
+	}
+	hub.mu.Unlock()
+
+	if ev := waitForEvent(memory, loggingeconomy.EventGoldPickedUp, 50*time.Millisecond); ev == nil {
+		t.Fatalf("expected economy.gold_picked_up event")
+	} else if payload, ok := ev.Payload.(loggingeconomy.GoldPickedUpPayload); !ok {
+		t.Fatalf("expected gold picked up payload, got %T", ev.Payload)
+	} else if payload.Quantity != 10 {
+		t.Fatalf("expected picked up quantity 10, got %d", payload.Quantity)
+	}
+}
+
 func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 	hub := newHub()
 	playerID := "vector-facing"
@@ -259,7 +380,7 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 			if !hub.UpdateIntent(playerID, tc.dx, tc.dy, string(FacingRight)) {
 				t.Fatalf("UpdateIntent failed for player")
 			}
-			runAdvance(hub, 1.0/float64(tickRate))
+			_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 			state := hub.world.players[playerID]
 			if state.Facing != tc.want {
 				t.Fatalf("expected facing %q, got %q", tc.want, state.Facing)
@@ -270,7 +391,7 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 	if !hub.UpdateIntent(playerID, 0, 0, string(FacingLeft)) {
 		t.Fatalf("UpdateIntent failed for stationary update")
 	}
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 	if got := hub.world.players[playerID].Facing; got != FacingLeft {
 		t.Fatalf("expected stationary facing update to respect client facing, got %q", got)
 	}
@@ -286,7 +407,7 @@ func TestPlayerPathCommands(t *testing.T) {
 		t.Fatalf("expected SetPlayerPath to succeed")
 	}
 	now := time.Now()
-	_, _, _, _, _ = hub.advance(now, 1.0/float64(tickRate))
+	_, _, _, _, _, _ = hub.advance(now, 1.0/float64(tickRate))
 
 	state := hub.world.players[playerID]
 	if state == nil {
@@ -305,7 +426,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.UpdateIntent(playerID, 1, 0, string(FacingRight)) {
 		t.Fatalf("expected UpdateIntent to succeed")
 	}
-	_, _, _, _, _ = hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _, _ = hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
 
 	state = hub.world.players[playerID]
 	if len(state.path.Path) != 0 {
@@ -318,7 +439,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.SetPlayerPath(playerID, 200, 280) {
 		t.Fatalf("expected second SetPlayerPath to succeed")
 	}
-	_, _, _, _, _ = hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _, _ = hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
 	state = hub.world.players[playerID]
 	if len(state.path.Path) == 0 {
 		t.Fatalf("expected path to be populated after second command")
@@ -327,7 +448,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.ClearPlayerPath(playerID) {
 		t.Fatalf("expected ClearPlayerPath to succeed")
 	}
-	_, _, _, _, _ = hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _, _ = hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
 	state = hub.world.players[playerID]
 	if len(state.path.Path) != 0 {
 		t.Fatalf("expected player path to be cleared after explicit cancel")
@@ -360,7 +481,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	boundaryState.lastHeartbeat = now
 	hub.world.players[boundaryID] = boundaryState
 
-	players, _, _, _, toClose := hub.advance(now, 0.5)
+	players, _, _, _, _, toClose := hub.advance(now, 0.5)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers to close, got %d", len(toClose))
 	}
@@ -394,7 +515,7 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	staleState.lastHeartbeat = time.Now().Add(-disconnectAfter - time.Second)
 	hub.world.players[staleID] = staleState
 
-	players, _, _, _, toClose := hub.advance(time.Now(), 0)
+	players, _, _, _, _, toClose := hub.advance(time.Now(), 0)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers returned when none registered")
 	}
@@ -421,7 +542,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 		t.Fatalf("expected attack action to be recognized")
 	}
 
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 
 	hub.mu.Lock()
 	if len(hub.world.effects) != 1 {
@@ -441,7 +562,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	hub.mu.Unlock()
 
 	hub.HandleAction(attackerID, effectTypeAttack)
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
 	if len(hub.world.effects) != 1 {
 		hub.mu.Unlock()
@@ -451,7 +572,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	hub.mu.Unlock()
 
 	hub.HandleAction(attackerID, effectTypeAttack)
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
 	if len(hub.world.effects) != 2 {
 		hub.mu.Unlock()
@@ -493,7 +614,7 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 		t.Fatalf("expected melee attack to execute")
 	}
 
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 
 	hub.mu.Lock()
 	target := hub.world.players[targetID]
@@ -542,7 +663,7 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 		if !hub.HandleAction(attackerID, effectTypeAttack) {
 			t.Fatalf("expected melee attack to trigger")
 		}
-		runAdvance(hub, 1.0/float64(tickRate))
+		_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 		if i < 5 {
 			hub.mu.Lock()
 			hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
@@ -586,7 +707,7 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 		t.Fatalf("expected melee attack to trigger")
 	}
 
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
@@ -623,7 +744,7 @@ func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
 		t.Fatalf("expected positive RTT, got %s", rtt)
 	}
 
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 
 	state := hub.world.players[playerID]
 	if state.lastHeartbeat != received {
@@ -682,7 +803,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	blockState.lastHeartbeat = now
 	hub.world.players[playerID] = blockState
 
-	players, _, _, _, _ := hub.advance(now, 1)
+	players, _, _, _, _, _ := hub.advance(now, 1)
 	blocker := findPlayer(players, playerID)
 	if blocker == nil {
 		t.Fatalf("expected player in snapshot")
@@ -714,7 +835,7 @@ func TestLavaAppliesBurningCondition(t *testing.T) {
 	walkerState.lastHeartbeat = now
 	hub.world.players[playerID] = walkerState
 
-	players, _, _, _, _ := hub.advance(now, 1.0)
+	players, _, _, _, _, _ := hub.advance(now, 1.0)
 
 	damaged := findPlayer(players, playerID)
 	if damaged == nil {
@@ -746,7 +867,7 @@ func TestLavaAppliesBurningCondition(t *testing.T) {
 	stepNow := now
 	for i := 0; i < 3; i++ {
 		stepNow = stepNow.Add(burningTickInterval)
-		players, _, _, _, _ = hub.advance(stepNow, burningTickInterval.Seconds())
+		players, _, _, _, _, _ = hub.advance(stepNow, burningTickInterval.Seconds())
 	}
 
 	cooled := findPlayer(players, playerID)
@@ -782,7 +903,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	secondState.lastHeartbeat = now
 	hub.world.players[secondID] = secondState
 
-	players, _, _, _, _ := hub.advance(now, 1)
+	players, _, _, _, _, _ := hub.advance(now, 1)
 
 	first := findPlayer(players, firstID)
 	second := findPlayer(players, secondID)
@@ -817,7 +938,7 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 		t.Fatalf("expected fireball action to be recognized")
 	}
 
-	runAdvance(hub, 1.0/float64(tickRate))
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
 
 	hub.mu.Lock()
 	if len(hub.world.effects) != 1 {
@@ -878,7 +999,7 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 	step := time.Second / time.Duration(tickRate)
 	current := now
 	for i := 0; i < 3; i++ {
-		_, _, _, _, _ = hub.advance(current, dt)
+		_, _, _, _, _, _ = hub.advance(current, dt)
 		current = current.Add(step)
 	}
 
@@ -1122,11 +1243,11 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 	expired := false
 	current := now
 
-	runAdvance(hub, dt)
+	_, _, _, _ = runAdvance(hub, dt)
 
 	for i := 0; i < tickRate*2; i++ {
 		current = current.Add(step)
-		_, _, _, _, _ = hub.advance(current, dt)
+		_, _, _, _, _, _ = hub.advance(current, dt)
 		if len(hub.world.effects) == 0 {
 			expired = true
 			break
@@ -1637,4 +1758,324 @@ func TestProjectileOwnerImmunity(t *testing.T) {
 			t.Fatalf("expected shooter health to drop below %.1f after self hit, got %.1f", playerMaxHealth, shooter.Health)
 		}
 	})
+}
+
+func TestConsolePickupGoldByOtherActor(t *testing.T) {
+	hub := newHub()
+
+	const dropperID = "player-dropper"
+	const looterID = "player-looter"
+
+	hub.mu.Lock()
+	dropper := newTestPlayerState(dropperID)
+	dropper.X = defaultSpawnX
+	dropper.Y = defaultSpawnY
+	if _, err := dropper.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 15}); err != nil {
+		hub.mu.Unlock()
+		t.Fatalf("failed to seed dropper gold: %v", err)
+	}
+	looter := newTestPlayerState(looterID)
+	looter.X = defaultSpawnX
+	looter.Y = defaultSpawnY
+	hub.world.players[dropperID] = dropper
+	hub.world.players[looterID] = looter
+	hub.mu.Unlock()
+
+	dropCh, _ := hub.QueueDropGold(dropperID, 10)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	if res := <-dropCh; res.Status != consoleStatusOK {
+		t.Fatalf("expected drop to succeed, got status %q", res.Status)
+	}
+
+	pickupCh, _ := hub.QueuePickupGold(looterID)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	pickupResult := <-pickupCh
+	if pickupResult.Status != consoleStatusOK {
+		t.Fatalf("expected other actor pickup to succeed, got status %q (%s)", pickupResult.Status, pickupResult.Reason)
+	}
+	if pickupResult.Quantity != 10 {
+		t.Fatalf("expected pickup quantity 10, got %d", pickupResult.Quantity)
+	}
+
+	hub.mu.Lock()
+	if len(dropper.Inventory.Slots) == 0 || dropper.Inventory.Slots[0].Item.Quantity != 5 {
+		t.Fatalf("expected dropper inventory to retain 5 gold, got %+v", dropper.Inventory.Slots)
+	}
+	if len(looter.Inventory.Slots) == 0 || looter.Inventory.Slots[0].Item.Quantity != 10 {
+		t.Fatalf("expected looter inventory to acquire 10 gold, got %+v", looter.Inventory.Slots)
+	}
+	if len(hub.world.groundItems) != 0 {
+		t.Fatalf("expected ground items to be empty after pickup, got %d", len(hub.world.groundItems))
+	}
+	hub.mu.Unlock()
+}
+
+func TestConsolePickupGoldRace(t *testing.T) {
+	hub, memory, cleanup := newLoggingHub(t)
+	defer cleanup()
+
+	const dropperID = "player-race-1"
+	const rivalID = "player-race-2"
+
+	hub.mu.Lock()
+	dropper := newTestPlayerState(dropperID)
+	dropper.X = defaultSpawnX
+	dropper.Y = defaultSpawnY
+	if _, err := dropper.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 8}); err != nil {
+		hub.mu.Unlock()
+		t.Fatalf("failed to seed dropper gold: %v", err)
+	}
+	rival := newTestPlayerState(rivalID)
+	rival.X = defaultSpawnX
+	rival.Y = defaultSpawnY
+	hub.world.players[dropperID] = dropper
+	hub.world.players[rivalID] = rival
+	hub.mu.Unlock()
+
+	dropCh, _ := hub.QueueDropGold(dropperID, 5)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	if res := <-dropCh; res.Status != consoleStatusOK {
+		t.Fatalf("expected drop to succeed, got status %q", res.Status)
+	}
+
+	firstCh, _ := hub.QueuePickupGold(dropperID)
+	secondCh, _ := hub.QueuePickupGold(rivalID)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+
+	first := <-firstCh
+	second := <-secondCh
+	if first.Status != consoleStatusOK {
+		t.Fatalf("expected first pickup to succeed, got %q (%s)", first.Status, first.Reason)
+	}
+	if second.Status != consoleStatusError || second.Reason != consoleReasonNotFound {
+		t.Fatalf("expected second pickup to fail with not_found, got status=%q reason=%q", second.Status, second.Reason)
+	}
+
+	hub.mu.Lock()
+	if len(hub.world.groundItems) != 0 {
+		t.Fatalf("expected ground items cleared after race, got %d", len(hub.world.groundItems))
+	}
+	if len(dropper.Inventory.Slots) == 0 || dropper.Inventory.Slots[0].Item.Quantity != 8 {
+		t.Fatalf("expected dropper to reclaim gold, got %+v", dropper.Inventory.Slots)
+	}
+	if len(rival.Inventory.Slots) != 0 {
+		t.Fatalf("expected rival to have no gold, got %+v", rival.Inventory.Slots)
+	}
+	hub.mu.Unlock()
+
+	if ev := waitForEvent(memory, loggingeconomy.EventGoldPickupFailed, 50*time.Millisecond); ev == nil {
+		t.Fatalf("expected economy.gold_pickup_failed event")
+	} else if payload, ok := ev.Payload.(loggingeconomy.GoldPickupFailedPayload); !ok {
+		t.Fatalf("expected pickup failed payload, got %T", ev.Payload)
+	} else if payload.Reason != consoleReasonNotFound {
+		t.Fatalf("expected pickup failed reason not_found, got %q", payload.Reason)
+	}
+}
+
+func TestDeathDropsGoldForActors(t *testing.T) {
+	t.Run("player", func(t *testing.T) {
+		hub, memory, cleanup := newLoggingHub(t)
+		defer cleanup()
+
+		const playerID = "fallen-player"
+
+		hub.mu.Lock()
+		state := newTestPlayerState(playerID)
+		state.X = defaultSpawnX
+		state.Y = defaultSpawnY
+		if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 37}); err != nil {
+			hub.mu.Unlock()
+			t.Fatalf("failed to seed gold: %v", err)
+		}
+		hub.world.players[playerID] = state
+		now := time.Now()
+		eff := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "enemy", Params: map[string]float64{"healthDelta": -playerMaxHealth}}}
+		hub.world.applyEffectHitPlayer(eff, state, now)
+		groundCount := len(hub.world.groundItems)
+		groundQty := 0
+		for _, item := range hub.world.groundItems {
+			groundQty = item.Qty
+		}
+		invSlots := len(state.Inventory.Slots)
+		hub.mu.Unlock()
+
+		if invSlots != 0 {
+			t.Fatalf("expected player inventory to be emptied, got %d slots", invSlots)
+		}
+		if groundCount != 1 || groundQty != 37 {
+			t.Fatalf("expected one ground stack with 37 gold, got count=%d qty=%d", groundCount, groundQty)
+		}
+
+		if ev := waitForEvent(memory, loggingeconomy.EventGoldDropped, 50*time.Millisecond); ev == nil {
+			t.Fatalf("expected economy.gold_dropped event for player death")
+		} else if payload, ok := ev.Payload.(loggingeconomy.GoldDroppedPayload); !ok {
+			t.Fatalf("expected gold dropped payload, got %T", ev.Payload)
+		} else if payload.Reason != "death" || payload.Quantity != 37 {
+			t.Fatalf("expected death drop of 37 gold, got reason=%q qty=%d", payload.Reason, payload.Quantity)
+		}
+	})
+
+	t.Run("npc", func(t *testing.T) {
+		hub, memory, cleanup := newLoggingHub(t)
+		defer cleanup()
+
+		const npcID = "npc-fallen"
+
+		hub.mu.Lock()
+		npc := &npcState{actorState: actorState{Actor: Actor{ID: npcID, X: defaultSpawnX, Y: defaultSpawnY, Health: 12, MaxHealth: 12, Inventory: NewInventory()}}}
+		if _, err := npc.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
+			hub.mu.Unlock()
+			t.Fatalf("failed to seed npc gold: %v", err)
+		}
+		hub.world.npcs[npcID] = npc
+		now := time.Now()
+		eff := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "player", Params: map[string]float64{"healthDelta": -20}}}
+		hub.world.applyEffectHitNPC(eff, npc, now)
+		groundCount := len(hub.world.groundItems)
+		groundQty := 0
+		for _, item := range hub.world.groundItems {
+			groundQty = item.Qty
+		}
+		_, stillExists := hub.world.npcs[npcID]
+		hub.mu.Unlock()
+
+		if stillExists {
+			t.Fatalf("expected npc to be removed after death")
+		}
+		if groundCount != 1 || groundQty != 12 {
+			t.Fatalf("expected one ground stack with 12 gold, got count=%d qty=%d", groundCount, groundQty)
+		}
+
+		if ev := waitForEvent(memory, loggingeconomy.EventGoldDropped, 50*time.Millisecond); ev == nil {
+			t.Fatalf("expected economy.gold_dropped event for npc death")
+		} else if payload, ok := ev.Payload.(loggingeconomy.GoldDroppedPayload); !ok {
+			t.Fatalf("expected gold dropped payload, got %T", ev.Payload)
+		} else if payload.Reason != "death" || payload.Quantity != 12 {
+			t.Fatalf("expected npc death drop of 12 gold, got reason=%q qty=%d", payload.Reason, payload.Quantity)
+		}
+	})
+}
+
+func TestGroundDropMerge(t *testing.T) {
+	hub := newHub()
+
+	const playerID = "player-merge"
+
+	hub.mu.Lock()
+	state := newTestPlayerState(playerID)
+	state.X = defaultSpawnX
+	state.Y = defaultSpawnY
+	if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 20}); err != nil {
+		hub.mu.Unlock()
+		t.Fatalf("failed to seed gold: %v", err)
+	}
+	hub.world.players[playerID] = state
+	hub.mu.Unlock()
+
+	firstCh, _ := hub.QueueDropGold(playerID, 6)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	if res := <-firstCh; res.Status != consoleStatusOK {
+		t.Fatalf("expected first drop to succeed, got status %q", res.Status)
+	}
+
+	secondCh, _ := hub.QueueDropGold(playerID, 4)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	if res := <-secondCh; res.Status != consoleStatusOK {
+		t.Fatalf("expected second drop to succeed, got status %q", res.Status)
+	}
+
+	hub.mu.Lock()
+	if len(hub.world.groundItems) != 1 {
+		t.Fatalf("expected merged ground stack, got %d entries", len(hub.world.groundItems))
+	}
+	total := 0
+	for _, item := range hub.world.groundItems {
+		total = item.Qty
+	}
+	hub.mu.Unlock()
+	if total != 10 {
+		t.Fatalf("expected merged quantity 10, got %d", total)
+	}
+}
+
+func TestDropBounds(t *testing.T) {
+	hub := newHub()
+
+	const playerID = "player-bounds"
+
+	hub.mu.Lock()
+	state := newTestPlayerState(playerID)
+	state.X = defaultSpawnX
+	state.Y = defaultSpawnY
+	if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 5}); err != nil {
+		hub.mu.Unlock()
+		t.Fatalf("failed to seed gold: %v", err)
+	}
+	hub.world.players[playerID] = state
+	hub.mu.Unlock()
+
+	zeroCh, _ := hub.QueueDropGold(playerID, 0)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	if res := <-zeroCh; res.Status != consoleStatusError || res.Reason != consoleReasonInvalidQuantity {
+		t.Fatalf("expected zero drop to fail with invalid_quantity, got status=%q reason=%q", res.Status, res.Reason)
+	}
+
+	excessiveCh, _ := hub.QueueDropGold(playerID, 10)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	if res := <-excessiveCh; res.Status != consoleStatusError || res.Reason != consoleReasonInsufficientGold {
+		t.Fatalf("expected excessive drop to fail with insufficient_quantity, got status=%q reason=%q", res.Status, res.Reason)
+	}
+
+	hub.mu.Lock()
+	if len(state.Inventory.Slots) == 0 || state.Inventory.Slots[0].Item.Quantity != 5 {
+		t.Fatalf("expected inventory to remain unchanged, got %+v", state.Inventory.Slots)
+	}
+	if len(hub.world.groundItems) != 0 {
+		t.Fatalf("expected no ground items after invalid drops, got %d", len(hub.world.groundItems))
+	}
+	hub.mu.Unlock()
+}
+
+func TestSnapshotIncludesGroundItems(t *testing.T) {
+	hub := newHub()
+
+	const playerID = "player-snapshot"
+
+	hub.mu.Lock()
+	state := newTestPlayerState(playerID)
+	state.X = defaultSpawnX
+	state.Y = defaultSpawnY
+	if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 8}); err != nil {
+		hub.mu.Unlock()
+		t.Fatalf("failed to seed gold: %v", err)
+	}
+	hub.world.players[playerID] = state
+	hub.mu.Unlock()
+
+	dropCh, _ := hub.QueueDropGold(playerID, 8)
+	_, _, _, _ = runAdvance(hub, 1.0/float64(tickRate))
+	if res := <-dropCh; res.Status != consoleStatusOK {
+		t.Fatalf("expected drop to succeed, got status %q", res.Status)
+	}
+
+	hub.mu.Lock()
+	players, _, effects, groundItems := hub.world.Snapshot(time.Now())
+	hub.mu.Unlock()
+
+	if len(players) != 1 {
+		t.Fatalf("expected snapshot to contain one player, got %d", len(players))
+	}
+	if len(effects) != 0 {
+		t.Fatalf("expected snapshot to include no effects, got %d", len(effects))
+	}
+	if len(groundItems) != 1 {
+		t.Fatalf("expected snapshot to include one ground item, got %d", len(groundItems))
+	}
+	item := groundItems[0]
+	if item.ID == "" {
+		t.Fatalf("expected ground item to include an id")
+	}
+	if item.Qty != 8 {
+		t.Fatalf("expected snapshot quantity 8, got %d", item.Qty)
+	}
 }

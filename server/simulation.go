@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"time"
 
 	"mine-and-die/server/logging"
@@ -16,23 +17,28 @@ import (
 type CommandType string
 
 const (
-	CommandMove      CommandType = "Move"
-	CommandAction    CommandType = "Action"
-	CommandHeartbeat CommandType = "Heartbeat"
-	CommandSetPath   CommandType = "SetPath"
-	CommandClearPath CommandType = "ClearPath"
+	CommandMove       CommandType = "Move"
+	CommandAction     CommandType = "Action"
+	CommandHeartbeat  CommandType = "Heartbeat"
+	CommandSetPath    CommandType = "SetPath"
+	CommandClearPath  CommandType = "ClearPath"
+	CommandDropGold   CommandType = "DropGold"
+	CommandPickupGold CommandType = "PickupGold"
 )
 
 // Command represents an intent captured for processing on the next tick.
 type Command struct {
-	OriginTick uint64
-	ActorID    string
-	Type       CommandType
-	IssuedAt   time.Time
-	Move       *MoveCommand
-	Action     *ActionCommand
-	Heartbeat  *HeartbeatCommand
-	Path       *PathCommand
+	OriginTick    uint64
+	ActorID       string
+	Type          CommandType
+	IssuedAt      time.Time
+	Move          *MoveCommand
+	Action        *ActionCommand
+	Heartbeat     *HeartbeatCommand
+	Path          *PathCommand
+	DropGold      *DropGoldCommand
+	PickupGold    *PickupGoldCommand
+	ConsoleResult chan<- consoleCommandResult
 }
 
 // MoveCommand carries the desired movement vector and facing.
@@ -53,11 +59,50 @@ type PathCommand struct {
 	TargetY float64
 }
 
+// DropGoldCommand requests dropping a quantity of gold at the actor's position.
+type DropGoldCommand struct {
+	Quantity int
+}
+
+// PickupGoldCommand requests picking up nearby ground gold stacks.
+type PickupGoldCommand struct{}
+
 // HeartbeatCommand updates connectivity metadata for an actor.
 type HeartbeatCommand struct {
 	ReceivedAt time.Time
 	ClientSent int64
 	RTT        time.Duration
+}
+
+type consoleCommandResult struct {
+	Command  string
+	Status   string
+	Quantity int
+	Reason   string
+}
+
+const (
+	consoleStatusOK    = "ok"
+	consoleStatusError = "error"
+)
+
+const (
+	consoleReasonInvalidQuantity  = "invalid_quantity"
+	consoleReasonInsufficientGold = "insufficient_quantity"
+	consoleReasonActorMissing     = "actor_missing"
+	consoleReasonNotFound         = "not_found"
+	consoleReasonOutOfRange       = "out_of_range"
+	consoleReasonInventoryError   = "inventory_error"
+	consoleReasonInvalidRequest   = "invalid_request"
+	consoleReasonTimeout          = "timeout"
+)
+
+func sendConsoleResult(ch chan<- consoleCommandResult, result consoleCommandResult) {
+	if ch == nil {
+		return
+	}
+	ch <- result
+	close(ch)
 }
 
 // World owns the authoritative simulation state.
@@ -78,6 +123,9 @@ type World struct {
 	seed                string
 	publisher           logging.Publisher
 	currentTick         uint64
+	groundItems         map[string]*GroundItem
+	groundIndex         map[string]string
+	nextGroundItemID    uint64
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
@@ -101,14 +149,16 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		rng:                 newDeterministicRNG(normalized.Seed, "world"),
 		seed:                normalized.Seed,
 		publisher:           publisher,
+		groundItems:         make(map[string]*GroundItem),
+		groundIndex:         make(map[string]string),
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
 	return w
 }
 
-// Snapshot copies players, NPCs, and effects into broadcast-friendly structs.
-func (w *World) Snapshot(now time.Time) ([]Player, []NPC, []Effect) {
+// Snapshot copies players, NPCs, effects, and ground items into broadcast-friendly structs.
+func (w *World) Snapshot(now time.Time) ([]Player, []NPC, []Effect, []GroundItem) {
 	players := make([]Player, 0, len(w.players))
 	for _, player := range w.players {
 		players = append(players, player.snapshot())
@@ -123,7 +173,22 @@ func (w *World) Snapshot(now time.Time) ([]Player, []NPC, []Effect) {
 			effects = append(effects, eff.Effect)
 		}
 	}
-	return players, npcs, effects
+	groundItems := make([]GroundItem, 0, len(w.groundItems))
+	if len(w.groundItems) > 0 {
+		ids := make([]string, 0, len(w.groundItems))
+		for id := range w.groundItems {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			item := w.groundItems[id]
+			if item == nil || item.Qty <= 0 {
+				continue
+			}
+			groundItems = append(groundItems, GroundItem{ID: item.ID, X: item.X, Y: item.Y, Qty: item.Qty})
+		}
+	}
+	return players, npcs, effects, groundItems
 }
 
 // flushEffectTriggersLocked drains the queued fire-and-forget triggers. Callers
@@ -168,6 +233,7 @@ func (w *World) handleNPCDefeat(npc *npcState) {
 	if _, ok := w.npcs[npc.ID]; !ok {
 		return
 	}
+	w.dropAllGold(&npc.actorState, "death")
 	delete(w.npcs, npc.ID)
 }
 
@@ -293,6 +359,24 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 					player.lastInput = now
 				}
 			}
+		case CommandDropGold:
+			result := consoleCommandResult{Command: "drop_gold", Status: consoleStatusError}
+			if cmd.DropGold == nil {
+				result.Reason = consoleReasonInvalidRequest
+				sendConsoleResult(cmd.ConsoleResult, result)
+				continue
+			}
+			result = w.handleDropGoldCommand(cmd.ActorID, cmd.DropGold)
+			sendConsoleResult(cmd.ConsoleResult, result)
+		case CommandPickupGold:
+			result := consoleCommandResult{Command: "pickup_gold", Status: consoleStatusError}
+			if cmd.PickupGold == nil {
+				result.Reason = consoleReasonInvalidRequest
+				sendConsoleResult(cmd.ConsoleResult, result)
+				continue
+			}
+			result = w.handlePickupGoldCommand(cmd.ActorID, cmd.PickupGold)
+			sendConsoleResult(cmd.ConsoleResult, result)
 		}
 	}
 
@@ -358,6 +442,127 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 
 	return removedPlayers
+}
+
+func (w *World) handleDropGoldCommand(actorID string, cmd *DropGoldCommand) consoleCommandResult {
+	result := consoleCommandResult{Command: "drop_gold", Status: consoleStatusError}
+	if cmd == nil {
+		result.Reason = consoleReasonInvalidRequest
+		return result
+	}
+	quantity := cmd.Quantity
+	if quantity <= 0 {
+		result.Reason = consoleReasonInvalidQuantity
+		return result
+	}
+	player, ok := w.players[actorID]
+	if !ok {
+		result.Reason = consoleReasonActorMissing
+		return result
+	}
+	slotIndex := -1
+	for i := range player.Inventory.Slots {
+		if player.Inventory.Slots[i].Item.Type == ItemTypeGold {
+			slotIndex = i
+			break
+		}
+	}
+	if slotIndex == -1 || player.Inventory.Slots[slotIndex].Item.Quantity < quantity {
+		result.Reason = consoleReasonInsufficientGold
+		return result
+	}
+	if _, err := player.Inventory.RemoveQuantity(slotIndex, quantity); err != nil {
+		result.Reason = consoleReasonInsufficientGold
+		return result
+	}
+	w.spawnGroundGold(player.X, player.Y, quantity)
+	loggingeconomy.GoldDropped(
+		context.Background(),
+		w.publisher,
+		w.currentTick,
+		w.entityRef(actorID),
+		loggingeconomy.GoldDroppedPayload{Quantity: quantity, Reason: "manual"},
+		nil,
+	)
+	result.Status = consoleStatusOK
+	result.Quantity = quantity
+	return result
+}
+
+func (w *World) handlePickupGoldCommand(actorID string, cmd *PickupGoldCommand) consoleCommandResult {
+	result := consoleCommandResult{Command: "pickup_gold", Status: consoleStatusError}
+	if cmd == nil {
+		result.Reason = consoleReasonInvalidRequest
+		return result
+	}
+	player, ok := w.players[actorID]
+	if !ok {
+		result.Reason = consoleReasonActorMissing
+		return result
+	}
+	item, distance := w.closestGroundItem(player.X, player.Y)
+	if item == nil {
+		result.Reason = consoleReasonNotFound
+		loggingeconomy.GoldPickupFailed(
+			context.Background(),
+			w.publisher,
+			w.currentTick,
+			w.entityRef(actorID),
+			loggingeconomy.GoldPickupFailedPayload{Reason: consoleReasonNotFound},
+			nil,
+		)
+		return result
+	}
+	if distance > tileSize+1e-6 {
+		result.Reason = consoleReasonOutOfRange
+		loggingeconomy.GoldPickupFailed(
+			context.Background(),
+			w.publisher,
+			w.currentTick,
+			w.entityRef(actorID),
+			loggingeconomy.GoldPickupFailedPayload{Reason: consoleReasonOutOfRange},
+			nil,
+		)
+		return result
+	}
+	qty := item.Qty
+	if qty <= 0 {
+		result.Reason = consoleReasonNotFound
+		w.removeGroundItem(item.ID)
+		loggingeconomy.GoldPickupFailed(
+			context.Background(),
+			w.publisher,
+			w.currentTick,
+			w.entityRef(actorID),
+			loggingeconomy.GoldPickupFailedPayload{Reason: consoleReasonNotFound},
+			map[string]any{"itemId": item.ID},
+		)
+		return result
+	}
+	if _, err := player.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: qty}); err != nil {
+		result.Reason = consoleReasonInventoryError
+		loggingeconomy.GoldPickupFailed(
+			context.Background(),
+			w.publisher,
+			w.currentTick,
+			w.entityRef(actorID),
+			loggingeconomy.GoldPickupFailedPayload{Reason: consoleReasonInventoryError},
+			map[string]any{"error": err.Error()},
+		)
+		return result
+	}
+	w.removeGroundItem(item.ID)
+	loggingeconomy.GoldPickedUp(
+		context.Background(),
+		w.publisher,
+		w.currentTick,
+		w.entityRef(actorID),
+		loggingeconomy.GoldPickedUpPayload{Quantity: qty},
+		nil,
+	)
+	result.Status = consoleStatusOK
+	result.Quantity = qty
+	return result
 }
 
 func (w *World) spawnInitialNPCs() {
