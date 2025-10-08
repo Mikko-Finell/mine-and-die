@@ -532,6 +532,13 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 	hub.world.players[attackerID] = attackerState
 
 	for i := 0; i < 6; i++ {
+		hub.mu.Lock()
+		attacker := hub.world.players[attackerID]
+		attacker.X = goblin.X - playerHalf - meleeAttackReach/2
+		attacker.Y = goblin.Y
+		attacker.Facing = FacingRight
+		hub.mu.Unlock()
+
 		if !hub.HandleAction(attackerID, effectTypeAttack) {
 			t.Fatalf("expected melee attack to trigger")
 		}
