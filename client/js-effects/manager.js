@@ -285,7 +285,13 @@ export class EffectManager {
         }
     }
     drawAll(frame) {
-        this.stats.drawn = 0;
+        this.drawLayerRange(frame);
+    }
+    drawLayerRange(frame, minLayer = Number.NEGATIVE_INFINITY, maxLayer = Number.POSITIVE_INFINITY, options = {}) {
+        const { resetDrawn = true } = options;
+        if (resetDrawn) {
+            this.stats.drawn = 0;
+        }
         const view = this.viewBounds;
         const sorted = [...this.effects].sort((a, b) => {
             if (a.layer !== b.layer) {
@@ -296,6 +302,8 @@ export class EffectManager {
             }
             return a.creationIndex - b.creationIndex;
         });
+        const clampedMin = Number.isFinite(minLayer) ? minLayer : Number.NEGATIVE_INFINITY;
+        const clampedMax = Number.isFinite(maxLayer) ? maxLayer : Number.POSITIVE_INFINITY;
         for (const managed of sorted) {
             if (managed.culled) {
                 this.stats.culled += 1;
@@ -304,6 +312,10 @@ export class EffectManager {
             if (view && !intersects(managed.instance.getAABB(), view)) {
                 managed.culled = true;
                 this.stats.culled += 1;
+                continue;
+            }
+            const layerValue = managed.layer;
+            if (layerValue < clampedMin || layerValue > clampedMax) {
                 continue;
             }
             managed.instance.draw(frame);

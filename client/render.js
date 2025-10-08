@@ -6,6 +6,7 @@ import {
   makeRectZoneDefinition,
   updateRectZoneInstance,
 } from "./js-effects/effects/rectZone.js";
+import { EffectLayer } from "./js-effects/types.js";
 
 /**
  * render.js bridges authoritative simulation state to visuals: it lerps actors,
@@ -32,6 +33,12 @@ const FireballZoneEffectDefinition = makeRectZoneDefinition("fireball", {
   stroke: EFFECT_STYLES.fireball.stroke,
   lineWidth: 2,
 });
+
+if (typeof EffectLayer !== "object" || typeof EffectLayer.ActorOverlay !== "number") {
+  throw new Error("EffectLayer.ActorOverlay is not defined; rebuild js-effects to sync layers.");
+}
+const ACTOR_OVERLAY_LAYER = EffectLayer.ActorOverlay;
+const GROUND_EFFECT_MAX_LAYER = ACTOR_OVERLAY_LAYER - 1;
 
 function ensureEffectManager(store) {
   if (!(store.effectManager instanceof EffectManager)) {
@@ -240,7 +247,18 @@ function drawScene(store, frameDt, frameNow) {
     drawObstacle(ctx, obstacle);
   });
 
-  drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight);
+  const effectPass = prepareEffectPass(
+    store,
+    frameDt,
+    frameNow,
+    viewportWidth,
+    viewportHeight
+  );
+
+  drawEffectLayerRange(effectPass, {
+    maxLayer: GROUND_EFFECT_MAX_LAYER,
+    resetDrawn: true,
+  });
 
   drawNPCs(store);
 
@@ -273,6 +291,11 @@ function drawScene(store, frameDt, frameNow) {
     );
     ctx.stroke();
     ctx.restore();
+  });
+
+  drawEffectLayerRange(effectPass, {
+    minLayer: ACTOR_OVERLAY_LAYER,
+    resetDrawn: false,
   });
 
   ctx.restore();
@@ -352,20 +375,37 @@ function drawHealthBar(ctx, store, position, player, id) {
   ctx.restore();
 }
 
-// drawEffects delegates all effect lifecycle and rendering to the EffectManager.
-function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
+// prepareEffectPass syncs effect instances and returns the frame context.
+function prepareEffectPass(store, frameDt, frameNow, viewportWidth, viewportHeight) {
   if (!store || !store.ctx) {
-    return;
+    return null;
   }
 
   const manager = ensureEffectManager(store);
+  const normalizedFrameNow = Number.isFinite(frameNow) ? frameNow : null;
+  if (
+    normalizedFrameNow !== null &&
+    typeof store.__lastEffectFrameNow === "number" &&
+    store.__lastEffectFrameNow === normalizedFrameNow &&
+    store.__lastEffectPass &&
+    store.__lastEffectPass.manager === manager
+  ) {
+    return store.__lastEffectPass;
+  }
+
   const triggers = drainPendingEffectTriggers(store);
   if (triggers.length > 0) {
     manager.triggerAll(triggers, { store });
   }
 
   syncEffectsByType(store, manager, "attack", MeleeSwingEffectDefinition);
-  syncEffectsByType(store, manager, "fire", FireEffectDefinition, updateFireInstanceTransform);
+  syncEffectsByType(
+    store,
+    manager,
+    "fire",
+    FireEffectDefinition,
+    updateFireInstanceTransform
+  );
   syncEffectsByType(
     store,
     manager,
@@ -400,7 +440,38 @@ function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
   });
   manager.updateAll(frameContext);
   manager.collectDecals(frameContext.now);
-  manager.drawAll(frameContext);
+
+  const effectPass = { manager, frameContext };
+  if (normalizedFrameNow !== null) {
+    store.__lastEffectFrameNow = normalizedFrameNow;
+  } else {
+    delete store.__lastEffectFrameNow;
+  }
+  store.__lastEffectPass = effectPass;
+  return effectPass;
+}
+
+function drawEffectLayerRange(
+  effectPass,
+  {
+    minLayer = Number.NEGATIVE_INFINITY,
+    maxLayer = Number.POSITIVE_INFINITY,
+    resetDrawn = true,
+  } = {}
+) {
+  if (!effectPass || !effectPass.manager || !effectPass.frameContext) {
+    return;
+  }
+
+  const { manager, frameContext } = effectPass;
+  if (typeof manager.drawLayerRange === "function") {
+    manager.drawLayerRange(frameContext, minLayer, maxLayer, { resetDrawn });
+    return;
+  }
+
+  if (resetDrawn) {
+    manager.drawAll(frameContext);
+  }
 }
 
 function drainPendingEffectTriggers(store) {
