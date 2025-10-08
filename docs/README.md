@@ -37,6 +37,7 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 ## Additional References
 - [Server Architecture](./server.md) – Tick loop, data structures, actions, and diagnostics.
 - [Client Architecture](./client.md) – Store layout, rendering flow, and network helpers.
+- [Effects & Conditions](./effects.md) – How the authoritative effect pipeline maps to client visuals.
 - [Testing & Troubleshooting](./testing.md) – Available test suites and common debugging tips.
 
 Keep this folder updated as the simulation evolves so newcomers can get productive quickly.
