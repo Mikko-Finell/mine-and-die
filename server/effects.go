@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"math"
 	"time"
 
 	"mine-and-die/server/logging"
 	loggingcombat "mine-and-die/server/logging/combat"
+	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
 // Effect represents a time-limited gameplay artifact (attack swing, projectile, etc.).
@@ -44,6 +44,7 @@ type effectState struct {
 	expiresAt     time.Time
 	Projectile    *ProjectileState
 	FollowActorID string
+	Condition     ConditionType
 }
 
 type ProjectileTemplate struct {
@@ -201,8 +202,46 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 			return
 		}
 		if target.applyHealthDelta(delta) {
-			if delta < 0 && target.Health <= 0 {
-				log.Printf("%s defeated %s with %s", eff.Owner, target.ID, eff.Type)
+			if w != nil && delta < 0 {
+				ability := ""
+				actorRef := logging.EntityRef{}
+				conditionName := ""
+				if eff != nil {
+					ability = eff.Type
+					actorRef = w.entityRef(eff.Owner)
+					if eff.Condition != "" {
+						conditionName = string(eff.Condition)
+					}
+				}
+				targetRef := logging.EntityRef{}
+				if target != nil {
+					targetRef = w.entityRef(target.ID)
+				}
+				loggingcombat.Damage(
+					context.Background(),
+					w.publisher,
+					w.currentTick,
+					actorRef,
+					targetRef,
+					loggingcombat.DamagePayload{
+						Ability:      ability,
+						Amount:       -delta,
+						TargetHealth: target.Health,
+						Condition:    conditionName,
+					},
+					nil,
+				)
+				if target.Health <= 0 {
+					loggingcombat.Defeat(
+						context.Background(),
+						w.publisher,
+						w.currentTick,
+						actorRef,
+						targetRef,
+						loggingcombat.DefeatPayload{Ability: ability, Condition: conditionName},
+						nil,
+					)
+				}
 			}
 		}
 	})
@@ -337,7 +376,14 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 			continue
 		}
 		if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1}); err != nil {
-			log.Printf("failed to add mined gold for %s: %v", actorID, err)
+			loggingeconomy.ItemGrantFailed(
+				context.Background(),
+				w.publisher,
+				tick,
+				w.entityRef(actorID),
+				loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 1, Reason: "mine_gold"},
+				map[string]any{"error": err.Error(), "obstacle": obs.ID},
+			)
 		}
 		break
 	}
@@ -686,11 +732,30 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
 		if tpl.ImpactRules.ExplodeOnImpact != nil {
 			w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
 		}
-		if len(hitPlayers) > 0 {
-			log.Printf("%s %s hit players %v", eff.Owner, eff.Type, hitPlayers)
-		}
-		if len(hitNPCs) > 0 {
-			log.Printf("%s %s hit NPCs %v", eff.Owner, eff.Type, hitNPCs)
+		if len(hitPlayers) > 0 || len(hitNPCs) > 0 {
+			targets := make([]logging.EntityRef, 0, len(hitPlayers)+len(hitNPCs))
+			for _, id := range hitPlayers {
+				targets = append(targets, w.entityRef(id))
+			}
+			for _, id := range hitNPCs {
+				targets = append(targets, w.entityRef(id))
+			}
+			payload := loggingcombat.AttackOverlapPayload{Ability: eff.Type}
+			if len(hitPlayers) > 0 {
+				payload.PlayerHits = append(payload.PlayerHits, hitPlayers...)
+			}
+			if len(hitNPCs) > 0 {
+				payload.NPCHits = append(payload.NPCHits, hitNPCs...)
+			}
+			loggingcombat.AttackOverlap(
+				context.Background(),
+				w.publisher,
+				w.currentTick,
+				w.entityRef(eff.Owner),
+				targets,
+				payload,
+				map[string]any{"projectile": eff.Effect.Type},
+			)
 		}
 	}
 
