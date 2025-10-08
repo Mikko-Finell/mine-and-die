@@ -245,16 +245,39 @@ export function applyStateSnapshot(prev, payload) {
   return result;
 }
 
-export function deriveDisplayMaps(players, npcs) {
+export function deriveDisplayMaps(
+  players,
+  npcs,
+  previousDisplayPlayers = {},
+  previousDisplayNpcs = {},
+) {
   const normalizedPlayers = players && typeof players === "object" ? players : {};
   const normalizedNpcs = npcs && typeof npcs === "object" ? npcs : {};
+  const prevPlayers =
+    previousDisplayPlayers && typeof previousDisplayPlayers === "object"
+      ? previousDisplayPlayers
+      : {};
+  const prevNpcs =
+    previousDisplayNpcs && typeof previousDisplayNpcs === "object"
+      ? previousDisplayNpcs
+      : {};
 
   const displayPlayers = {};
   for (const player of Object.values(normalizedPlayers)) {
     if (!player || typeof player.id !== "string") {
       continue;
     }
-    displayPlayers[player.id] = { x: player.x, y: player.y };
+    const prev = prevPlayers[player.id];
+    if (
+      prev &&
+      typeof prev === "object" &&
+      Number.isFinite(prev.x) &&
+      Number.isFinite(prev.y)
+    ) {
+      displayPlayers[player.id] = prev;
+    } else {
+      displayPlayers[player.id] = { x: player.x, y: player.y };
+    }
   }
 
   const displayNPCs = {};
@@ -262,7 +285,17 @@ export function deriveDisplayMaps(players, npcs) {
     if (!npc || typeof npc.id !== "string") {
       continue;
     }
-    displayNPCs[npc.id] = { x: npc.x, y: npc.y };
+    const prev = prevNpcs[npc.id];
+    if (
+      prev &&
+      typeof prev === "object" &&
+      Number.isFinite(prev.x) &&
+      Number.isFinite(prev.y)
+    ) {
+      displayNPCs[npc.id] = prev;
+    } else {
+      displayNPCs[npc.id] = { x: npc.x, y: npc.y };
+    }
   }
 
   return { displayPlayers, displayNPCs };
@@ -538,6 +571,8 @@ export function connectEvents(store) {
         const { displayPlayers, displayNPCs } = deriveDisplayMaps(
           store.players,
           store.npcs,
+          store.displayPlayers,
+          store.displayNPCs,
         );
         store.displayPlayers = displayPlayers;
         store.displayNPCs = displayNPCs;
