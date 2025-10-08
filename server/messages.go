@@ -38,6 +38,7 @@ type clientMessage struct {
 	Action string  `json:"action"`
 	Cmd    string  `json:"cmd"`
 	Qty    int     `json:"qty"`
+	Ack    *uint64 `json:"ack"`
 }
 
 type consoleAckMessage struct {
@@ -63,4 +64,5 @@ type diagnosticsPlayer struct {
 	ID            string `json:"id"`
 	LastHeartbeat int64  `json:"lastHeartbeat"`
 	RTTMillis     int64  `json:"rttMillis"`
+	LastAck       uint64 `json:"lastAck"`
 }

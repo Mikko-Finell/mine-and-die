@@ -699,6 +699,11 @@ export function sendMessage(store, payload, { onSent } = {}) {
     ...basePayload,
     ver: PROTOCOL_VERSION,
   };
+
+  const lastTick = store.lastTick;
+  if (typeof lastTick === "number" && Number.isFinite(lastTick) && lastTick >= 0) {
+    message.ack = Math.floor(lastTick);
+  }
   const messageText = JSON.stringify(message);
   const dispatch = () => {
     if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {

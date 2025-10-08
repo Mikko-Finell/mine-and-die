@@ -691,6 +691,57 @@ describe("sendMessage", () => {
       globalThis.WebSocket = originalWebSocket;
     }
   });
+
+  it("includes the latest applied tick as ack when available", () => {
+    const originalWebSocket = globalThis.WebSocket;
+    globalThis.WebSocket = { OPEN: 1 };
+
+    try {
+      const send = vi.fn();
+      const store = {
+        socket: { readyState: 1, send },
+        messagesSent: 0,
+        bytesSent: 0,
+        lastMessageSentAt: null,
+        updateDiagnostics: vi.fn(),
+        lastTick: 73.8,
+      };
+
+      sendMessage(store, { type: "heartbeat", sentAt: 42 });
+
+      const encoded = send.mock.calls[0][0];
+      const decoded = JSON.parse(encoded);
+      expect(decoded.ack).toBe(73);
+      expect(decoded.ver).toBe(PROTOCOL_VERSION);
+    } finally {
+      globalThis.WebSocket = originalWebSocket;
+    }
+  });
+
+  it("omits ack when the last tick is unavailable", () => {
+    const originalWebSocket = globalThis.WebSocket;
+    globalThis.WebSocket = { OPEN: 1 };
+
+    try {
+      const send = vi.fn();
+      const store = {
+        socket: { readyState: 1, send },
+        messagesSent: 0,
+        bytesSent: 0,
+        lastMessageSentAt: null,
+        updateDiagnostics: vi.fn(),
+        lastTick: null,
+      };
+
+      sendMessage(store, { type: "action", action: "attack" });
+
+      const encoded = send.mock.calls[0][0];
+      const decoded = JSON.parse(encoded);
+      expect(decoded).not.toHaveProperty("ack");
+    } finally {
+      globalThis.WebSocket = originalWebSocket;
+    }
+  });
 });
 
 describe("parseServerEvent", () => {
