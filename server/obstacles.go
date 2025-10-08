@@ -56,7 +56,7 @@ func (w *World) generateObstacles(count int) []Obstacle {
 				Height: height,
 			}
 
-			if circleRectOverlap(80, 80, playerSpawnSafeRadius, candidate) {
+			if circleRectOverlap(defaultSpawnX, defaultSpawnY, playerSpawnSafeRadius, candidate) {
 				continue
 			}
 
@@ -124,7 +124,7 @@ func (w *World) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.R
 			Height: height,
 		}
 
-		if circleRectOverlap(80, 80, playerSpawnSafeRadius, candidate) {
+		if circleRectOverlap(defaultSpawnX, defaultSpawnY, playerSpawnSafeRadius, candidate) {
 			continue
 		}
 

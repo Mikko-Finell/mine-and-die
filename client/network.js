@@ -7,6 +7,8 @@ const DEFAULT_GOBLIN_COUNT = 2;
 const DEFAULT_RAT_COUNT = 1;
 const DEFAULT_NPC_COUNT = DEFAULT_GOBLIN_COUNT + DEFAULT_RAT_COUNT;
 const DEFAULT_LAVA_COUNT = 3;
+export const DEFAULT_WORLD_WIDTH = 2400;
+export const DEFAULT_WORLD_HEIGHT = 1800;
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 
 function normalizeCount(value, fallback) {
@@ -30,6 +32,8 @@ function normalizeWorldConfig(config) {
     lava: true,
     lavaCount: DEFAULT_LAVA_COUNT,
     seed: DEFAULT_WORLD_SEED,
+    width: DEFAULT_WORLD_WIDTH,
+    height: DEFAULT_WORLD_HEIGHT,
   };
 
   if (!config || typeof config !== "object") {
@@ -110,6 +114,19 @@ function normalizeWorldConfig(config) {
       normalized.seed = rawSeed.trim() || DEFAULT_WORLD_SEED;
     } else if (rawSeed != null) {
       normalized.seed = String(rawSeed).trim() || DEFAULT_WORLD_SEED;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(config, "width")) {
+    const widthValue = Number(config.width);
+    if (Number.isFinite(widthValue) && widthValue > 0) {
+      normalized.width = widthValue;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(config, "height")) {
+    const heightValue = Number(config.height);
+    if (Number.isFinite(heightValue) && heightValue > 0) {
+      normalized.height = heightValue;
     }
   }
 
@@ -209,17 +226,27 @@ export async function joinGame(store) {
     store.processedEffectTriggerIds = new Set();
     queueEffectTriggers(store, payload.effectTriggers);
     store.worldConfig = normalizeWorldConfig(payload.config);
+    store.WORLD_WIDTH = store.worldConfig.width;
+    store.WORLD_HEIGHT = store.worldConfig.height;
     if (store.effectManager && typeof store.effectManager.clear === "function") {
       store.effectManager.clear();
     }
     if (typeof store.updateWorldConfigUI === "function") {
       store.updateWorldConfigUI();
     }
+    const fallbackSpawnX =
+      typeof store.WORLD_WIDTH === "number"
+        ? store.WORLD_WIDTH / 2
+        : DEFAULT_WORLD_WIDTH / 2;
+    const fallbackSpawnY =
+      typeof store.WORLD_HEIGHT === "number"
+        ? store.WORLD_HEIGHT / 2
+        : DEFAULT_WORLD_HEIGHT / 2;
     if (!store.players[store.playerId]) {
       store.players[store.playerId] = {
         id: store.playerId,
-        x: 80,
-        y: 80,
+        x: fallbackSpawnX,
+        y: fallbackSpawnY,
         facing: DEFAULT_FACING,
       };
     }
@@ -304,6 +331,8 @@ export function connectEvents(store) {
         queueEffectTriggers(store, payload.effectTriggers);
         if (payload.config) {
           store.worldConfig = normalizeWorldConfig(payload.config);
+          store.WORLD_WIDTH = store.worldConfig.width;
+          store.WORLD_HEIGHT = store.worldConfig.height;
           if (typeof store.updateWorldConfigUI === "function") {
             store.updateWorldConfigUI();
           }

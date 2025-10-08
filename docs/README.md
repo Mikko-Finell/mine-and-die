@@ -22,7 +22,7 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 5. Both sides exchange heartbeats every ~2 seconds; the acknowledgements update latency diagnostics and missed heartbeats enqueue disconnect commands.
 
 ## Simulation Quick Facts
-- World bounds: 800×600 pixels with obstacles and ore nodes generated from a configurable deterministic seed.
+- World bounds: 2400×1800 pixels with obstacles and ore nodes generated from a configurable deterministic seed.
 - Player speed: ~160 px/s with server-side clamping and separation to avoid overlap.
 - Effects: Melee swings and fireballs live as time-bound rectangles; fire-and-forget triggers let the server hand off one-shot visuals without keeping placeholder effects alive.
 - Disconnect policy: three missed heartbeats (~6s) remove the player from the hub.

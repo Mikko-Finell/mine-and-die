@@ -3,6 +3,8 @@ import {
   resetWorld,
   sendMoveTo,
   DEFAULT_WORLD_SEED,
+  DEFAULT_WORLD_WIDTH,
+  DEFAULT_WORLD_HEIGHT,
 } from "./network.js";
 import { startRenderLoop } from "./render.js";
 import { registerInputHandlers } from "./input.js";
@@ -90,6 +92,8 @@ const DEFAULT_WORLD_CONFIG = {
   lava: true,
   lavaCount: 3,
   seed: DEFAULT_WORLD_SEED,
+  width: DEFAULT_WORLD_WIDTH,
+  height: DEFAULT_WORLD_HEIGHT,
 };
 
 const store = {
@@ -133,8 +137,8 @@ const store = {
   TILE_SIZE: 40,
   GRID_WIDTH: canvas.width / 40,
   GRID_HEIGHT: canvas.height / 40,
-  WORLD_WIDTH: canvas.width,
-  WORLD_HEIGHT: canvas.height,
+  WORLD_WIDTH: DEFAULT_WORLD_CONFIG.width,
+  WORLD_HEIGHT: DEFAULT_WORLD_CONFIG.height,
   PLAYER_SIZE: 28,
   PLAYER_HALF: 28 / 2,
   LERP_RATE: 12,

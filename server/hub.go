@@ -82,8 +82,8 @@ func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 		actorState: actorState{
 			Actor: Actor{
 				ID:        playerID,
-				X:         80,
-				Y:         80,
+				X:         defaultSpawnX,
+				Y:         defaultSpawnY,
 				Facing:    defaultFacing,
 				Health:    playerMaxHealth,
 				MaxHealth: playerMaxHealth,
