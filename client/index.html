@@ -8,7 +8,46 @@
   </head>
   <body>
     <main>
-      <h1>Mine and Die Prototype</h1>
+      <header class="page-header">
+        <h1 class="page-header__title">Mine and Die Prototype</h1>
+        <div class="page-header__controls">
+          <div class="page-header__seed">
+            <label class="page-header__seed-label" for="world-reset-seed">
+              World seed
+            </label>
+            <input
+              id="world-reset-seed"
+              name="seed"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="prototype"
+              class="world-reset-field__input"
+              aria-describedby="world-reset-seed-hint"
+              form="world-reset-form"
+            />
+            <p id="world-reset-seed-hint" class="page-header__seed-hint">
+              Runs with the same seed produce identical obstacle layouts and AI randomness.
+            </p>
+          </div>
+          <div class="page-header__actions">
+            <button
+              type="submit"
+              class="world-reset-button"
+              form="world-reset-form"
+            >
+              Restart world
+            </button>
+            <p
+              id="world-reset-status"
+              class="world-reset-status"
+              role="status"
+              aria-live="polite"
+            ></p>
+          </div>
+        </div>
+      </header>
       <div class="play-area">
         <div class="play-area__main">
           <canvas id="game-canvas" width="800" height="600"></canvas>
@@ -175,34 +214,6 @@
                     >
                   </label>
                 </div>
-              </div>
-              <div class="world-reset-field">
-                <label class="world-reset-field__label" for="world-reset-seed">
-                  World seed
-                </label>
-                <input
-                  id="world-reset-seed"
-                  name="seed"
-                  type="text"
-                  inputmode="text"
-                  autocomplete="off"
-                  spellcheck="false"
-                  placeholder="prototype"
-                  class="world-reset-field__input"
-                  aria-describedby="world-reset-seed-hint"
-                />
-                <p id="world-reset-seed-hint" class="world-reset-field__hint">
-                  Runs with the same seed produce identical obstacle layouts and AI randomness.
-                </p>
-              </div>
-              <div class="world-reset-actions">
-                <button type="submit" class="world-reset-button">Restart world</button>
-                <p
-                  id="world-reset-status"
-                  class="world-reset-status"
-                  role="status"
-                  aria-live="polite"
-                ></p>
               </div>
             </form>
           </section>
