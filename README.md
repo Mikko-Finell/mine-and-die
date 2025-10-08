@@ -6,6 +6,7 @@ Mine & Die is an experimental browser-based arena where players race to extract 
 - [Project Overview](docs/README.md)
 - [Server Architecture](docs/server.md)
 - [Client Architecture](docs/client.md)
+- [Effects & Conditions](docs/effects.md)
 - [Testing & Troubleshooting](docs/testing.md)
 - [Contributor Guidelines](AGENTS.md)
 - [AI System](docs/ai.md)
@@ -90,29 +91,24 @@ go test ./...
 The tests exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.
 
 ## Roadmap
-### Milestone 1 – Mines & resource extraction
-- **Server**
-  - Model mine nodes (location, remaining ore, respawn timers) and ship their state in authoritative broadcasts.
-  - Resolve mining intents server-side, awarding gold, depleting reserves, and scheduling respawns.
-- **Client**
-  - Render mines on the canvas, allow players to start/stop mining within range, and surface progress feedback.
-- **Systems & Economy**
-  - Wire mining payouts into player inventories and ensure depletion pacing supports contested hotspots.
-- **Documentation**
-  - Capture mining rules, depletion mechanics, and respawn cadence for contributors.
+The core mining loop, melee/projectile combat, and lava-driven conditions are already
+implemented (see the server, client, and effects documentation). The remaining
+milestones focus on systems that have not shipped yet.
 
-### Milestone 2 – Combat & permadeath
+### Milestone 1 – Permadeath & loot retention
 - **Server**
-  - Expand the player model with health, damage, equipment, and cooldown tracking, resolving combat in the tick loop.
-  - Handle permadeath cleanup, dropping inventories, and removing dead sessions.
+  - Finalize permadeath cleanup: drop inventories, remove defeated sessions, and
+    surface defeat events for clients.
 - **Client**
-  - Visualize HP, damage feedback, respawn/creation flows, and dropped loot within the HUD.
+  - Provide defeat/rejoin UX, surface dropped loot, and communicate death causes
+    through the HUD.
 - **Systems & Economy**
-  - Define loot tables and drop behaviour that reinforce risk/reward loops.
+  - Expand loot tables, ensure dropped items persist long enough to loot, and
+    balance recovery pacing.
 - **Documentation**
-  - Document combat rules, permadeath consequences, loot retrieval, and player re-entry expectations.
+  - Document permadeath rules, loot retrieval, and player re-entry expectations.
 
-### Milestone 3 – Guild hierarchy & taxation
+### Milestone 2 – Guild hierarchy & taxation
 - **Server**
   - Define guild data structures with tiered roles, relationships, and treasury balances backed by persistence-ready storage.
   - Expose APIs or WebSocket commands for creation, invites, promotions, demotions, and configurable taxes.
@@ -123,7 +119,7 @@ The tests exercise join flow, intent handling, collision resolution, effect life
 - **Documentation**
   - Expand contributor docs with guild roles, taxation mechanics, and guidance for guild-less players.
 
-### Milestone 4 – Persistent economy & item lifecycle
+### Milestone 3 – Persistent economy & item lifecycle
 - **Server**
   - Integrate SQLite/Postgres persistence covering players, guilds, mines, and item drops with crash-safe recovery.
   - Implement halving-schedule gold emission so scarcity increases over time.
