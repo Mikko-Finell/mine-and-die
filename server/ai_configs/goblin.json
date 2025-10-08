@@ -13,7 +13,7 @@
         { "name": "moveToward", "target": "waypoint" }
       ],
       "transitions": [
-        { "if": "playerWithin", "radius": 320, "to": "Pursue" },
+        { "if": "playerWithin", "radius": 160, "to": "Pursue" },
         { "if": "reachedWaypoint", "to": "Wait" }
       ]
     },
@@ -24,7 +24,7 @@
         { "name": "moveToward", "target": "player" }
       ],
       "transitions": [
-        { "if": "lostSight", "distance": 360, "to": "Patrol" }
+        { "if": "lostSight", "distance": 180, "to": "Patrol" }
       ]
     },
     {
@@ -37,7 +37,7 @@
         { "name": "setWaypoint", "advance": true }
       ],
       "transitions": [
-        { "if": "playerWithin", "radius": 320, "to": "Pursue" },
+        { "if": "playerWithin", "radius": 160, "to": "Pursue" },
         { "if": "timerExpired", "to": "Patrol" }
       ]
     }
