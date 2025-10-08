@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
+
+	"mine-and-die/server/logging"
+	loggingconditions "mine-and-die/server/logging/conditions"
 )
 
 type ConditionType string
@@ -120,6 +124,32 @@ func (w *World) applyCondition(target *actorState, cond ConditionType, source st
 				inst.NextTick = now.Add(def.TickInterval)
 			}
 		}
+		if inst.attachedEffect != nil {
+			inst.attachedEffect.Condition = cond
+		}
+		if w != nil {
+			actorRef := logging.EntityRef{}
+			if source != "" {
+				actorRef = w.entityRef(source)
+			}
+			targetRef := logging.EntityRef{}
+			if target != nil {
+				targetRef = w.entityRef(target.ID)
+			}
+			payload := loggingconditions.AppliedPayload{Condition: string(cond), SourceID: source}
+			if def.Duration > 0 {
+				payload.DurationMs = def.Duration.Milliseconds()
+			}
+			loggingconditions.Applied(
+				context.Background(),
+				w.publisher,
+				w.currentTick,
+				actorRef,
+				targetRef,
+				payload,
+				nil,
+			)
+		}
 		return true
 	}
 
@@ -209,6 +239,7 @@ func (w *World) applyConditionDamage(actor *actorState, inst *conditionInstance,
 			Start:  now.UnixMilli(),
 			Params: map[string]float64{"healthDelta": -amount},
 		},
+		Condition: inst.Definition.Type,
 	}
 	w.applyEffectHitActor(eff, actor, now)
 }

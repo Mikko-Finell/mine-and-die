@@ -1,13 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
 	"time"
 
 	"mine-and-die/server/logging"
+	loggingeconomy "mine-and-die/server/logging/economy"
+	logginglifecycle "mine-and-die/server/logging/lifecycle"
 )
 
 // CommandType enumerates the supported simulation commands.
@@ -75,6 +77,7 @@ type World struct {
 	rng                 *rand.Rand
 	seed                string
 	publisher           logging.Publisher
+	currentTick         uint64
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
@@ -188,6 +191,8 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	if dt <= 0 {
 		dt = 1.0 / float64(tickRate)
 	}
+
+	w.currentTick = tick
 
 	aiCommands := w.runAI(tick, now)
 	if len(aiCommands) > 0 {
@@ -337,6 +342,16 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 			continue
 		}
 		if player.lastHeartbeat.Before(cutoff) {
+			if w.publisher != nil {
+				logginglifecycle.PlayerDisconnected(
+					context.Background(),
+					w.publisher,
+					w.currentTick,
+					logging.EntityRef{ID: id, Kind: logging.EntityKind("player")},
+					logginglifecycle.PlayerDisconnectedPayload{Reason: "timeout"},
+					map[string]any{"lastHeartbeat": player.lastHeartbeat},
+				)
+			}
 			delete(w.players, id)
 			removedPlayers = append(removedPlayers, id)
 		}
@@ -398,12 +413,26 @@ func (w *World) spawnGoblinAt(x, y float64, waypoints []vec2, goldQty, potionQty
 	inventory := NewInventory()
 	if goldQty > 0 {
 		if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: goldQty}); err != nil {
-			log.Printf("failed to seed goblin gold: %v", err)
+			loggingeconomy.ItemGrantFailed(
+				context.Background(),
+				w.publisher,
+				w.currentTick,
+				logging.EntityRef{ID: id, Kind: logging.EntityKind("npc")},
+				loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: goldQty, Reason: "seed_goblin"},
+				map[string]any{"error": err.Error()},
+			)
 		}
 	}
 	if potionQty > 0 {
 		if _, err := inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: potionQty}); err != nil {
-			log.Printf("failed to seed goblin potion: %v", err)
+			loggingeconomy.ItemGrantFailed(
+				context.Background(),
+				w.publisher,
+				w.currentTick,
+				logging.EntityRef{ID: id, Kind: logging.EntityKind("npc")},
+				loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeHealthPotion), Quantity: potionQty, Reason: "seed_goblin"},
+				map[string]any{"error": err.Error()},
+			)
 		}
 	}
 

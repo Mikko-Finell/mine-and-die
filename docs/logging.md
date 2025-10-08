@@ -101,6 +101,12 @@ All event types must be documented to keep downstream sinks stable. Current cove
 | Event Type | Helper | Payload | Description |
 | --- | --- | --- | --- |
 | `combat.attack_overlap` | `combat.AttackOverlap` | `AttackOverlapPayload` (`ability`, `playerHits`, `npcHits`) | Emitted when a combat ability hits multiple targets during a single tick. Actor/targets identify the source and impacted entities. |
+| `combat.damage` | `combat.Damage` | `DamagePayload` (`ability`, `amount`, `targetHealth`, `condition`) | Fired whenever an ability reduces a target's health. `condition` is set when periodic effects (e.g. burning) apply the tick. |
+| `combat.defeat` | `combat.Defeat` | `DefeatPayload` (`ability`, `condition`) | Fired when damage reduces a target to zero health. Targets contain the defeated entity for downstream kill feeds. |
+| `conditions.applied` | `conditions.Applied` | `AppliedPayload` (`condition`, `sourceId`, `durationMs`) | Published when a status condition is first applied to an actor. Actor references the applier (if known); target references the recipient. |
+| `lifecycle.player_joined` | `lifecycle.PlayerJoined` | `PlayerJoinedPayload` (`spawnX`, `spawnY`) | Signals that a new player has joined the shard along with their spawn coordinates. |
+| `lifecycle.player_disconnected` | `lifecycle.PlayerDisconnected` | `PlayerDisconnectedPayload` (`reason`) | Signals that a player left the world. `reason` differentiates manual disconnects from heartbeat timeouts. |
+| `economy.item_grant_failed` | `economy.ItemGrantFailed` | `ItemGrantFailedPayload` (`itemType`, `quantity`, `reason`) | Warn-level event emitted when inventories reject a grant (player seeding, NPC rewards, mining, etc.). The error string is attached via `Event.Extra`. |
 
 Extend this table whenever new helpers are added.
 

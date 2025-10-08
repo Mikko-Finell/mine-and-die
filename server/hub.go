@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	stdlog "log"
@@ -11,6 +12,8 @@ import (
 	"github.com/gorilla/websocket"
 
 	"mine-and-die/server/logging"
+	loggingeconomy "mine-and-die/server/logging/economy"
+	logginglifecycle "mine-and-die/server/logging/lifecycle"
 )
 
 // Hub coordinates subscribers and orchestrates the deterministic world simulation.
@@ -52,13 +55,27 @@ func newHub(pubs ...logging.Publisher) *Hub {
 	}
 }
 
-func seedPlayerState(playerID string, now time.Time) *playerState {
+func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 	inventory := NewInventory()
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
-		stdlog.Printf("failed to seed gold for %s: %v", playerID, err)
+		loggingeconomy.ItemGrantFailed(
+			context.Background(),
+			h.publisher,
+			h.tick.Load(),
+			logging.EntityRef{ID: playerID, Kind: logging.EntityKind("player")},
+			loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 50, Reason: "seed_player"},
+			map[string]any{"error": err.Error()},
+		)
 	}
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 2}); err != nil {
-		stdlog.Printf("failed to seed potions for %s: %v", playerID, err)
+		loggingeconomy.ItemGrantFailed(
+			context.Background(),
+			h.publisher,
+			h.tick.Load(),
+			logging.EntityRef{ID: playerID, Kind: logging.EntityKind("player")},
+			loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeHealthPotion), Quantity: 2, Reason: "seed_player"},
+			map[string]any{"error": err.Error()},
+		)
 	}
 
 	return &playerState{
@@ -85,7 +102,7 @@ func (h *Hub) Join() joinResponse {
 	playerID := fmt.Sprintf("player-%d", id)
 	now := time.Now()
 
-	player := seedPlayerState(playerID, now)
+	player := h.seedPlayerState(playerID, now)
 
 	h.mu.Lock()
 	h.world.AddPlayer(player)
@@ -93,6 +110,15 @@ func (h *Hub) Join() joinResponse {
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
 	h.mu.Unlock()
+
+	logginglifecycle.PlayerJoined(
+		context.Background(),
+		h.publisher,
+		h.tick.Load(),
+		logging.EntityRef{ID: playerID, Kind: logging.EntityKind("player")},
+		logginglifecycle.PlayerJoinedPayload{SpawnX: player.X, SpawnY: player.Y},
+		nil,
+	)
 
 	go h.broadcastState(players, npcs, effects, nil)
 
@@ -116,7 +142,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 
 	newW := newWorld(cfg, h.publisher)
 	for _, id := range playerIDs {
-		newW.AddPlayer(seedPlayerState(id, now))
+		newW.AddPlayer(h.seedPlayerState(id, now))
 	}
 	h.world = newW
 	h.config = cfg
@@ -183,6 +209,15 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 	if !removed {
 		return nil, nil, nil
 	}
+
+	logginglifecycle.PlayerDisconnected(
+		context.Background(),
+		h.publisher,
+		h.tick.Load(),
+		logging.EntityRef{ID: playerID, Kind: logging.EntityKind("player")},
+		logginglifecycle.PlayerDisconnectedPayload{Reason: "manual"},
+		nil,
+	)
 
 	return players, npcs, effects
 }
