@@ -39,14 +39,33 @@ func (w *World) generateObstacles(count int) []Obstacle {
 			width := obstacleMinWidth + rng.Float64()*(obstacleMaxWidth-obstacleMinWidth)
 			height := obstacleMinHeight + rng.Float64()*(obstacleMaxHeight-obstacleMinHeight)
 
-			maxX := worldWidth - obstacleSpawnMargin - width
-			maxY := worldHeight - obstacleSpawnMargin - height
-			if maxX <= obstacleSpawnMargin || maxY <= obstacleSpawnMargin {
+			globalMinX := obstacleSpawnMargin
+			globalMaxX := worldWidth - obstacleSpawnMargin - width
+			globalMinY := obstacleSpawnMargin
+			globalMaxY := worldHeight - obstacleSpawnMargin - height
+			if globalMaxX <= globalMinX || globalMaxY <= globalMinY {
 				break
 			}
 
-			x := obstacleSpawnMargin + rng.Float64()*(maxX-obstacleSpawnMargin)
-			y := obstacleSpawnMargin + rng.Float64()*(maxY-obstacleSpawnMargin)
+			minX, maxX := centralTopLeftRange(worldWidth, defaultSpawnX, obstacleSpawnMargin, width)
+			if maxX <= minX {
+				minX = globalMinX
+				maxX = globalMaxX
+			}
+			minY, maxY := centralTopLeftRange(worldHeight, defaultSpawnY, obstacleSpawnMargin, height)
+			if maxY <= minY {
+				minY = globalMinY
+				maxY = globalMaxY
+			}
+
+			x := minX
+			if maxX > minX {
+				x += rng.Float64() * (maxX - minX)
+			}
+			y := minY
+			if maxY > minY {
+				y += rng.Float64() * (maxY - minY)
+			}
 
 			candidate := Obstacle{
 				ID:     fmt.Sprintf("obstacle-%d", len(obstacles)+1),
@@ -106,14 +125,33 @@ func (w *World) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.R
 		width := goldOreMinSize + rng.Float64()*(goldOreMaxSize-goldOreMinSize)
 		height := goldOreMinSize + rng.Float64()*(goldOreMaxSize-goldOreMinSize)
 
-		maxX := worldWidth - obstacleSpawnMargin - width
-		maxY := worldHeight - obstacleSpawnMargin - height
-		if maxX <= obstacleSpawnMargin || maxY <= obstacleSpawnMargin {
+		globalMinX := obstacleSpawnMargin
+		globalMaxX := worldWidth - obstacleSpawnMargin - width
+		globalMinY := obstacleSpawnMargin
+		globalMaxY := worldHeight - obstacleSpawnMargin - height
+		if globalMaxX <= globalMinX || globalMaxY <= globalMinY {
 			break
 		}
 
-		x := obstacleSpawnMargin + rng.Float64()*(maxX-obstacleSpawnMargin)
-		y := obstacleSpawnMargin + rng.Float64()*(maxY-obstacleSpawnMargin)
+		minX, maxX := centralTopLeftRange(worldWidth, defaultSpawnX, obstacleSpawnMargin, width)
+		if maxX <= minX {
+			minX = globalMinX
+			maxX = globalMaxX
+		}
+		minY, maxY := centralTopLeftRange(worldHeight, defaultSpawnY, obstacleSpawnMargin, height)
+		if maxY <= minY {
+			minY = globalMinY
+			maxY = globalMaxY
+		}
+
+		x := minX
+		if maxX > minX {
+			x += rng.Float64() * (maxX - minX)
+		}
+		y := minY
+		if maxY > minY {
+			y += rng.Float64() * (maxY - minY)
+		}
 
 		candidate := Obstacle{
 			ID:     fmt.Sprintf("gold-ore-%d", len(ores)+1),
