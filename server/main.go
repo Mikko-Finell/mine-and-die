@@ -281,6 +281,7 @@ func main() {
 				}
 
 				ack := heartbeatMessage{
+					Ver:        ProtocolVersion,
 					Type:       "heartbeat",
 					ServerTime: now.UnixMilli(),
 					ClientTime: msg.SentAt,

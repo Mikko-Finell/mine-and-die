@@ -2,6 +2,7 @@ import { computeRtt, createHeartbeat } from "./heartbeat.js";
 
 const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
+export const PROTOCOL_VERSION = 1;
 export const DEFAULT_WORLD_SEED = "prototype";
 const DEFAULT_OBSTACLE_COUNT = 2;
 const DEFAULT_GOLD_MINE_COUNT = 1;
@@ -13,6 +14,59 @@ export const DEFAULT_WORLD_WIDTH = 2400;
 export const DEFAULT_WORLD_HEIGHT = 1800;
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 const heartbeatControllers = new WeakMap();
+
+function normalizeProtocolVersionValue(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export function readProtocolVersion(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const candidates = ["ver", "protocol"];
+  for (const key of candidates) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+      continue;
+    }
+    const version = normalizeProtocolVersionValue(payload[key]);
+    if (version !== null) {
+      return version;
+    }
+  }
+
+  return null;
+}
+
+export function handleProtocolVersion(payload, context, options = {}) {
+  const version = readProtocolVersion(payload);
+  const normalizedContext =
+    typeof context === "string" && context.length > 0 ? context : "message";
+
+  if (version !== null && version !== PROTOCOL_VERSION) {
+    const message =
+      `Protocol version mismatch (${normalizedContext}): expected ${PROTOCOL_VERSION}, received ${version}`;
+    if (typeof options.onMismatch === "function") {
+      options.onMismatch({
+        expected: PROTOCOL_VERSION,
+        received: version,
+        context: normalizedContext,
+        message,
+      });
+    } else {
+      console.warn(message);
+    }
+  }
+
+  return version;
+}
 
 /**
  * Build the payload describing the player's movement intent.
@@ -639,7 +693,13 @@ export function sendMessage(store, payload, { onSent } = {}) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
     return;
   }
-  const messageText = JSON.stringify(payload);
+  const basePayload =
+    payload && typeof payload === "object" ? { ...payload } : {};
+  const message = {
+    ...basePayload,
+    ver: PROTOCOL_VERSION,
+  };
+  const messageText = JSON.stringify(message);
   const dispatch = () => {
     if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
       return;
@@ -676,6 +736,7 @@ export async function joinGame(store) {
       throw new Error(`join failed: ${response.status}`);
     }
     const payload = await response.json();
+    handleProtocolVersion(payload, "/join response");
     store.playerId = payload.id;
     store.players = Object.fromEntries(
       payload.players.map((p) => [p.id, { ...p, facing: normalizeFacing(p.facing) }])
@@ -782,6 +843,7 @@ export function connectEvents(store) {
     }
 
     const payload = parsed.data;
+    handleProtocolVersion(payload, `${parsed.type} message`);
     if (parsed.type === "state") {
         const snapshot = applyStateSnapshot(store, payload);
 

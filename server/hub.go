@@ -123,7 +123,7 @@ func (h *Hub) Join() joinResponse {
 
 	go h.broadcastState(players, npcs, effects, nil, groundItems)
 
-	return joinResponse{ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, GroundItems: groundItems, Config: cfg}
+	return joinResponse{Ver: ProtocolVersion, ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, GroundItems: groundItems, Config: cfg}
 }
 
 // ResetWorld replaces the current world with a freshly generated instance.
@@ -311,7 +311,7 @@ func (h *Hub) HandleAction(playerID, action string) bool {
 
 // HandleConsoleCommand executes a debug console command for the player.
 func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMessage, bool) {
-	ack := consoleAckMessage{Type: "console_ack", Cmd: cmd}
+	ack := consoleAckMessage{Ver: ProtocolVersion, Type: "console_ack", Cmd: cmd}
 	switch cmd {
 	case "drop_gold":
 		if qty <= 0 {
@@ -536,6 +536,7 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 	players := make([]diagnosticsPlayer, 0, len(h.world.players))
 	for _, state := range h.world.players {
 		players = append(players, diagnosticsPlayer{
+			Ver:           ProtocolVersion,
 			ID:            state.ID,
 			LastHeartbeat: state.lastHeartbeat.UnixMilli(),
 			RTTMillis:     state.lastRTT.Milliseconds(),
@@ -567,6 +568,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	h.mu.Unlock()
 
 	msg := stateMessage{
+		Ver:            ProtocolVersion,
 		Type:           "state",
 		Players:        players,
 		NPCs:           npcs,
