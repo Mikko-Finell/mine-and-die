@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"mine-and-die/server/logging"
 )
 
 func findPlayer(players []Player, id string) *Player {
@@ -153,8 +155,8 @@ func TestWorldGenerationDeterministicWithSeed(t *testing.T) {
 	cfg := defaultWorldConfig()
 	cfg.Seed = "deterministic-test"
 
-	w1 := newWorld(cfg)
-	w2 := newWorld(cfg)
+	w1 := newWorld(cfg, logging.NopPublisher{})
+	w2 := newWorld(cfg, logging.NopPublisher{})
 
 	if len(w1.obstacles) != len(w2.obstacles) {
 		t.Fatalf("expected identical obstacle counts, got %d and %d", len(w1.obstacles), len(w2.obstacles))
@@ -166,7 +168,7 @@ func TestWorldGenerationDeterministicWithSeed(t *testing.T) {
 	}
 
 	cfg.Seed = "deterministic-test-alt"
-	w3 := newWorld(cfg)
+	w3 := newWorld(cfg, logging.NopPublisher{})
 
 	if len(w1.obstacles) != len(w3.obstacles) {
 		return
