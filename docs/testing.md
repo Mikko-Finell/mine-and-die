@@ -1,6 +1,7 @@
 # Testing & Troubleshooting
 
 ## Automated Tests
+- Run `npm test` from the repository root to execute the lightweight Vitest client suite. These checks currently focus on brittle helpers, and we are not chasing full coverage of the browser code or any of the playground/tooling packages.
 - Run `go test ./...` from the repository root (or inside `server/`).
 - Current suite covers:
   - Player joins and snapshot correctness.
