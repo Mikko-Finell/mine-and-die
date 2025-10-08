@@ -4,8 +4,10 @@ import {
   DEFAULT_WORLD_SEED,
   DEFAULT_WORLD_WIDTH,
   applyStateSnapshot,
+  clampToWorld,
   deriveDisplayMaps,
   enqueueEffectTriggers,
+  getWorldDims,
   normalizeCount,
   normalizeGroundItems,
   normalizeWorldConfig,
@@ -96,6 +98,78 @@ describe("splitNpcCounts", () => {
     const result = splitNpcCounts(input, DEFAULT_COUNTS);
     expect(result).toEqual(expected);
     expect(result.npcCount).toBe(result.goblinCount + result.ratCount);
+  });
+});
+
+describe("getWorldDims", () => {
+  it("prefers explicit WORLD dimensions when valid", () => {
+    const dims = getWorldDims({
+      WORLD_WIDTH: "1024",
+      WORLD_HEIGHT: 768,
+      canvas: { width: 800, height: 600 },
+      GRID_WIDTH: 30,
+      GRID_HEIGHT: 20,
+      TILE_SIZE: 32,
+    });
+
+    expect(dims).toEqual({ width: 1024, height: 768 });
+  });
+
+  it("falls back to canvas size when WORLD dimensions are invalid", () => {
+    const dims = getWorldDims({
+      WORLD_WIDTH: Infinity,
+      WORLD_HEIGHT: -1,
+      canvas: { width: 640, height: 480 },
+    });
+
+    expect(dims).toEqual({ width: 640, height: 480 });
+  });
+
+  it("derives dimensions from grid metrics when canvas is missing", () => {
+    const dims = getWorldDims({
+      GRID_WIDTH: 25,
+      GRID_HEIGHT: 15,
+      TILE_SIZE: 32,
+    });
+
+    expect(dims).toEqual({ width: 800, height: 480 });
+  });
+
+  it("returns defaults when no inputs are usable", () => {
+    const dims = getWorldDims({});
+    expect(dims).toEqual({
+      width: DEFAULT_WORLD_WIDTH,
+      height: DEFAULT_WORLD_HEIGHT,
+    });
+  });
+
+  it("handles non-object inputs by returning defaults", () => {
+    expect(getWorldDims(null)).toEqual({
+      width: DEFAULT_WORLD_WIDTH,
+      height: DEFAULT_WORLD_HEIGHT,
+    });
+  });
+});
+
+describe("clampToWorld", () => {
+  it("clamps coordinates within world bounds", () => {
+    const result = clampToWorld(-50, 999, { width: 500, height: 400 }, 20);
+    expect(result).toEqual({ x: 20, y: 380 });
+  });
+
+  it("collapses to edges when the map is smaller than the player", () => {
+    const result = clampToWorld(10, -15, { width: 40, height: 30 }, 30);
+    expect(result).toEqual({ x: 30, y: 30 });
+  });
+
+  it("treats invalid dimensions and player sizes as zero", () => {
+    const result = clampToWorld(Number.NaN, Infinity, { width: Infinity }, NaN);
+    expect(result).toEqual({ x: 0, y: 0 });
+  });
+
+  it("respects zero-sized worlds with large player halves", () => {
+    const result = clampToWorld(200, -50, { width: 0, height: 0 }, 25);
+    expect(result).toEqual({ x: 25, y: 25 });
   });
 });
 
