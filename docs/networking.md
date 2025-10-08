@@ -22,7 +22,7 @@ If the socket drops the client tears down local state and re-runs the join flow 
 
 | Type | Description |
 | --- | --- |
-| `state` | Primary snapshot broadcast. Includes `players`, `npcs`, `obstacles`, `effects`, optional `effectTriggers`, optional `groundItems`, the `serverTime` of emission, and the current world configuration. Sent on every tick and immediately after subscribe/reset events. 【F:server/messages.go†L14-L24】【F:server/hub.go†L525-L567】 |
+| `state` | Primary snapshot broadcast. Includes `players`, `npcs`, `obstacles`, `effects`, optional `effectTriggers`, optional `groundItems`, the current tick (`t`), the `serverTime` of emission, and the world configuration. Sent on every tick and immediately after subscribe/reset events. 【F:server/messages.go†L14-L25】【F:server/hub.go†L547-L581】 |
 | `heartbeat` | Reply to client heartbeats containing `serverTime`, the echoed `clientTime`, and the computed `rtt` (milliseconds). 【F:server/messages.go†L40-L45】【F:server/main.go†L276-L315】 |
 | `console_ack` | Response for debug console commands with `status`, optional `reason`, the affected quantity, and the target ground stack ID when relevant. Triggered by `drop_gold` / `pickup_gold`. 【F:server/messages.go†L31-L38】【F:server/hub.go†L312-L444】 |
 

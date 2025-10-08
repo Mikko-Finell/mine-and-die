@@ -19,6 +19,7 @@ type stateMessage struct {
 	Effects        []Effect        `json:"effects"`
 	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
 	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
+	Tick           uint64          `json:"t"`
 	ServerTime     int64           `json:"serverTime"`
 	Config         worldConfig     `json:"config"`
 }

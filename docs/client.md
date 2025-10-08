@@ -15,7 +15,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 `main.js` creates a plain object (`store`) shared across modules. Key fields:
 - DOM references (canvas, status text, diagnostics elements).
 - Simulation constants (`TILE_SIZE`, `PLAYER_SIZE`, etc.).
-- Connection state (`socket`, `playerId`, heartbeat timestamps).
+- Connection state (`socket`, `playerId`, heartbeat timestamps, last authoritative tick).
 - Player dictionaries: `players` (authoritative) and `displayPlayers` (interpolated positions).
 - NPC dictionaries: `npcs` mirrors neutral enemies from the server, `displayNPCs` lerps their positions for rendering.
 - Arrays for `obstacles` and `effects` mirrored from server payloads.
@@ -32,7 +32,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 5. `connectEvents(store)` sets up WebSocket callbacks and kicks off the heartbeat loop.
 
 ## Networking Details
-- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, fire-and-forget `effectTriggers`, and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, queues effect triggers, and keeps diagnostics fresh.
+- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, fire-and-forget `effectTriggers`, the current tick (`t`), and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, queues effect triggers, stores `lastTick`, and keeps diagnostics fresh.
 - **Intents:** `sendCurrentIntent` serializes `{ type: "input", dx, dy, facing }` whenever movement or facing changes.
 - **Path navigation:** `sendMoveTo` sends `{ type: "path", x, y }` for click-to-move requests while `sendCancelPath` clears the server-driven route when WASD input resumes.
 - **Actions:** `sendAction` is used by `input.js` for melee and fireball triggers.

@@ -175,6 +175,7 @@ const store = {
   messagesSent: 0,
   bytesSent: 0,
   lastPathRequestAt: null,
+  lastTick: null,
   effects: [],
   pendingEffectTriggers: [],
   processedEffectTriggerIds: new Set(),
