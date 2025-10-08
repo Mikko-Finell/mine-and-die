@@ -15,6 +15,141 @@ const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 const heartbeatControllers = new WeakMap();
 
 /**
+ * Build the payload describing the player's movement intent.
+ *
+ * @param {{ dx?: number, dy?: number } | null | undefined} intent
+ * @param {string | null | undefined} facing
+ * @returns {{ type: "input", dx: number, dy: number, facing: string }}
+ */
+export function buildInputPayload(intent, facing) {
+  const movement = intent && typeof intent === "object" ? intent : {};
+  const dxValue = Number(movement.dx);
+  const dyValue = Number(movement.dy);
+  const dx = Number.isFinite(dxValue) ? dxValue : 0;
+  const dy = Number.isFinite(dyValue) ? dyValue : 0;
+  const normalizedFacing =
+    typeof facing === "string" && VALID_FACINGS.has(facing)
+      ? facing
+      : DEFAULT_FACING;
+
+  return {
+    type: "input",
+    dx,
+    dy,
+    facing: normalizedFacing,
+  };
+}
+
+/**
+ * Build the payload describing a navigation target in world space.
+ *
+ * @param {number} x
+ * @param {number} y
+ * @returns {{ type: "path", x: number, y: number }}
+ */
+export function buildPathPayload(x, y) {
+  return {
+    type: "path",
+    x,
+    y,
+  };
+}
+
+/**
+ * Build the payload instructing the server to cancel an active path.
+ *
+ * @returns {{ type: "cancelPath" }}
+ */
+export function buildCancelPathPayload() {
+  return { type: "cancelPath" };
+}
+
+/**
+ * Build the payload for a one-off action invocation.
+ *
+ * @param {string} action
+ * @param {Record<string, unknown> | null | undefined} params
+ * @returns {{ type: "action", action: string } & (Record<"params", Record<string, unknown>> | {})}
+ */
+export function buildActionPayload(action, params) {
+  const payload = { type: "action", action };
+  if (params && typeof params === "object" && Object.keys(params).length > 0) {
+    payload.params = params;
+  }
+  return payload;
+}
+
+/**
+ * Build the payload for a heartbeat ping.
+ *
+ * @param {number} sentAt
+ * @returns {{ type: "heartbeat", sentAt: number }}
+ */
+export function buildHeartbeatPayload(sentAt) {
+  return { type: "heartbeat", sentAt };
+}
+
+/**
+ * Build the payload for a debug console command.
+ *
+ * Contract: `{ type: "console", cmd, qty? }` where `qty` is included only
+ * when the provided parameter can be coerced to a finite integer quantity.
+ *
+ * @param {string} cmd
+ * @param {{ qty?: unknown } | null | undefined} params
+ * @returns {{ type: "console", cmd: string } & (Record<"qty", number> | {})}
+ */
+export function buildConsolePayload(cmd, params) {
+  const payload = { type: "console", cmd };
+
+  if (
+    params &&
+    typeof params === "object" &&
+    Object.prototype.hasOwnProperty.call(params, "qty")
+  ) {
+    const qtyRaw = params.qty;
+    if (qtyRaw !== null && qtyRaw !== undefined) {
+      const qtyValue = Number(qtyRaw);
+      if (Number.isFinite(qtyValue)) {
+        payload.qty = Math.trunc(qtyValue);
+      }
+    }
+  }
+
+  return payload;
+}
+
+/**
+ * Parse a JSON-encoded server event into a normalized envelope.
+ *
+ * Arrays and primitive values are rejected to keep the envelope consistent.
+ *
+ * @param {string | null | undefined} jsonString
+ * @returns {{ type: string, data: any } | null}
+ */
+export function parseServerEvent(jsonString) {
+  if (typeof jsonString !== "string") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(jsonString);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const { type } = parsed;
+    if (typeof type !== "string" || type.length === 0) {
+      return null;
+    }
+
+    return { type, data: parsed };
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
  * Resolve the world width/height for movement and rendering calculations.
  *
  * Preference order:
@@ -625,9 +760,13 @@ export function connectEvents(store) {
   };
 
   store.socket.onmessage = (event) => {
-    try {
-      const payload = JSON.parse(event.data);
-      if (payload.type === "state") {
+    const parsed = parseServerEvent(event.data);
+    if (!parsed) {
+      return;
+    }
+
+    const payload = parsed.data;
+    if (parsed.type === "state") {
         const snapshot = applyStateSnapshot({ playerId: store.playerId }, payload);
 
         store.players = snapshot.players;
@@ -682,7 +821,7 @@ export function connectEvents(store) {
         if (store.renderInventory) {
           store.renderInventory();
         }
-      } else if (payload.type === "heartbeat") {
+      } else if (parsed.type === "heartbeat") {
         const ackAt = Date.now();
         const roundTrip = computeRtt(payload, ackAt);
         if (roundTrip !== null) {
@@ -691,12 +830,9 @@ export function connectEvents(store) {
         }
         store.lastHeartbeatAckAt = ackAt;
         store.updateDiagnostics();
-      } else if (payload.type === "console_ack") {
+      } else if (parsed.type === "console_ack") {
         handleConsoleAck(store, payload);
       }
-    } catch (err) {
-      console.error("Failed to parse event", err);
-    }
   };
 
   const handleSocketDrop = () => {
@@ -712,12 +848,7 @@ export function sendCurrentIntent(store) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
     return;
   }
-  const payload = {
-    type: "input",
-    dx: store.currentIntent.dx,
-    dy: store.currentIntent.dy,
-    facing: store.currentFacing,
-  };
+  const payload = buildInputPayload(store.currentIntent, store.currentFacing);
   sendMessage(store, payload, {
     onSent: () => {
       store.lastIntentSentAt = Date.now();
@@ -743,7 +874,7 @@ export function sendMoveTo(store, x, y) {
     store.isPathActive = false;
     return;
   }
-  const payload = { type: "path", x: clampedX, y: clampedY };
+  const payload = buildPathPayload(clampedX, clampedY);
   sendMessage(store, payload, {
     onSent: () => {
       store.activePathTarget = { x: clampedX, y: clampedY };
@@ -763,7 +894,7 @@ export function sendCancelPath(store) {
     store.updateDiagnostics();
     return;
   }
-  const payload = { type: "cancelPath" };
+  const payload = buildCancelPathPayload();
   sendMessage(store, payload, {
     onSent: () => {
       store.updateDiagnostics();
@@ -779,10 +910,7 @@ export function sendAction(store, action, params = undefined) {
   if (!action) {
     return;
   }
-  const payload = { type: "action", action };
-  if (params && typeof params === "object" && Object.keys(params).length > 0) {
-    payload.params = params;
-  }
+  const payload = buildActionPayload(action, params);
   sendMessage(store, payload);
 }
 
@@ -794,15 +922,7 @@ export function sendConsoleCommand(store, cmd, params = undefined) {
   if (typeof cmd !== "string" || cmd.length === 0) {
     return;
   }
-  const payload = { type: "console", cmd };
-  if (params && typeof params === "object") {
-    if (Object.prototype.hasOwnProperty.call(params, "qty")) {
-      const qtyValue = Number(params.qty);
-      if (Number.isFinite(qtyValue)) {
-        payload.qty = Math.trunc(qtyValue);
-      }
-    }
-  }
+  const payload = buildConsolePayload(cmd, params);
   sendMessage(store, payload);
 }
 
@@ -811,10 +931,7 @@ function dispatchHeartbeat(store, sentAt = Date.now()) {
     return;
   }
   const timestamp = Number.isFinite(sentAt) ? sentAt : Date.now();
-  const payload = {
-    type: "heartbeat",
-    sentAt: timestamp,
-  };
+  const payload = buildHeartbeatPayload(timestamp);
   sendMessage(store, payload, {
     onSent: () => {
       store.lastHeartbeatSentAt = Date.now();
