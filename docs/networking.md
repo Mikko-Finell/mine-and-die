@@ -51,7 +51,7 @@ Snapshots (join responses and `state` messages) always include a `config` object
 
 ## Heartbeats and Timeouts
 
-Heartbeats fire immediately on connection open and then every 2000 ms. On each send the client records the timestamp and updates diagnostics; when an acknowledgement arrives it computes the round-trip latency, stores the latest values, and keeps the HUD latency display in sync. The server enqueues heartbeat commands with the computed RTT and removes players whose last heartbeat is older than six seconds. 【F:client/network.js†L732-L999】【F:server/constants.go†L15-L17】【F:server/hub.go†L450-L483】【F:server/simulation.go†L344-L372】
+Heartbeats fire immediately on connection open and then every 2000 ms. On each send the client records the timestamp and updates diagnostics; when an acknowledgement arrives it computes the round-trip latency, stores the latest values, and keeps the HUD `Tick: ####` / `RTT: ## ms` badges in sync. The server enqueues heartbeat commands with the computed RTT and removes players whose last heartbeat is older than six seconds. 【F:client/network.js†L732-L999】【F:server/constants.go†L15-L17】【F:server/hub.go†L450-L483】【F:server/simulation.go†L344-L372】
 
 ## Reconnect Behaviour
 
