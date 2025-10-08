@@ -14,6 +14,92 @@ export const DEFAULT_WORLD_HEIGHT = 1800;
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 const heartbeatControllers = new WeakMap();
 
+/**
+ * Resolve the world width/height for movement and rendering calculations.
+ *
+ * Preference order:
+ * 1. Explicit WORLD_* values when finite and > 0.
+ * 2. Canvas dimensions when present and finite.
+ * 3. GRID_* multiplied by TILE_SIZE when both are finite and positive.
+ * 4. DEFAULT_WORLD_* constants as the final fallback.
+ *
+ * Non-object inputs and non-finite values fall through to later fallbacks.
+ *
+ * @param {object} storeLike
+ * @returns {{ width: number, height: number }}
+ */
+export function getWorldDims(storeLike) {
+  const source = storeLike && typeof storeLike === "object" ? storeLike : {};
+  const canvas =
+    source.canvas && typeof source.canvas === "object" ? source.canvas : null;
+
+  const toPositive = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : null;
+  };
+
+  const productPositive = (a, b) => {
+    const left = Number(a);
+    const right = Number(b);
+    if (!Number.isFinite(left) || !Number.isFinite(right)) {
+      return null;
+    }
+    const product = left * right;
+    return Number.isFinite(product) && product > 0 ? product : null;
+  };
+
+  const width =
+    toPositive(source.WORLD_WIDTH) ??
+    (canvas ? toPositive(canvas.width) : null) ??
+    productPositive(source.GRID_WIDTH, source.TILE_SIZE) ??
+    DEFAULT_WORLD_WIDTH;
+
+  const height =
+    toPositive(source.WORLD_HEIGHT) ??
+    (canvas ? toPositive(canvas.height) : null) ??
+    productPositive(source.GRID_HEIGHT, source.TILE_SIZE) ??
+    DEFAULT_WORLD_HEIGHT;
+
+  return { width, height };
+}
+
+/**
+ * Clamp a target coordinate to the world bounds, respecting the player's size.
+ *
+ * Coordinates are clamped to [playerHalf, dims - playerHalf] when possible,
+ * collapsing to the nearest valid edge when the world is smaller than the
+ * player's diameter. Non-finite inputs are treated as zero.
+ *
+ * @param {number} x
+ * @param {number} y
+ * @param {{ width?: number, height?: number } | null | undefined} dims
+ * @param {number} playerHalf
+ * @returns {{ x: number, y: number }}
+ */
+export function clampToWorld(x, y, dims, playerHalf) {
+  const size = dims && typeof dims === "object" ? dims : {};
+  const rawWidth = Number(size.width);
+  const rawHeight = Number(size.height);
+  const width = Number.isFinite(rawWidth) ? Math.max(0, rawWidth) : 0;
+  const height = Number.isFinite(rawHeight) ? Math.max(0, rawHeight) : 0;
+
+  const halfValue = Number(playerHalf);
+  const half = Number.isFinite(halfValue) && halfValue > 0 ? halfValue : 0;
+
+  const minX = half;
+  const minY = half;
+  const maxX = width > 0 ? Math.max(half, width - half) : half;
+  const maxY = height > 0 ? Math.max(half, height - half) : half;
+
+  const normalizedX = Number.isFinite(Number(x)) ? Number(x) : 0;
+  const normalizedY = Number.isFinite(Number(y)) ? Number(y) : 0;
+
+  const clampedX = Math.min(Math.max(normalizedX, minX), maxX);
+  const clampedY = Math.min(Math.max(normalizedY, minY), maxY);
+
+  return { x: clampedX, y: clampedY };
+}
+
 export function normalizeCount(value, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -645,17 +731,13 @@ export function sendCurrentIntent(store) {
 
 // sendMoveTo requests server-driven navigation toward a world position.
 export function sendMoveTo(store, x, y) {
-  const canvas = store.canvas;
-  const fallbackWidth = canvas ? canvas.width : store.GRID_WIDTH * store.TILE_SIZE;
-  const fallbackHeight = canvas ? canvas.height : store.GRID_HEIGHT * store.TILE_SIZE;
-  const worldWidth =
-    typeof store.WORLD_WIDTH === "number" ? store.WORLD_WIDTH : fallbackWidth;
-  const worldHeight =
-    typeof store.WORLD_HEIGHT === "number" ? store.WORLD_HEIGHT : fallbackHeight;
-  const maxX = Math.max(store.PLAYER_HALF, worldWidth - store.PLAYER_HALF);
-  const maxY = Math.max(store.PLAYER_HALF, worldHeight - store.PLAYER_HALF);
-  const clampedX = Math.max(store.PLAYER_HALF, Math.min(x, maxX));
-  const clampedY = Math.max(store.PLAYER_HALF, Math.min(y, maxY));
+  const worldDims = getWorldDims(store);
+  const { x: clampedX, y: clampedY } = clampToWorld(
+    x,
+    y,
+    worldDims,
+    store.PLAYER_HALF,
+  );
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
     store.activePathTarget = { x: clampedX, y: clampedY };
     store.isPathActive = false;
