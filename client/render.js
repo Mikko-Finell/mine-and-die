@@ -231,7 +231,7 @@ export function startRenderLoop(store) {
 // drawScene paints the background, obstacles, effects, and players.
 function drawScene(store, frameDt, frameNow) {
   const { ctx, canvas } = store;
-  ctx.fillStyle = "#0f172a";
+  ctx.fillStyle = "#020617";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const camera = store.camera || { x: 0, y: 0 };
@@ -243,22 +243,36 @@ function drawScene(store, frameDt, frameNow) {
   ctx.save();
   ctx.translate(-camera.x, -camera.y);
 
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(0, 0, worldWidth, worldHeight);
+
+  const viewportLeft = camera.x;
+  const viewportTop = camera.y;
+  const viewportRight = viewportLeft + viewportWidth;
+  const viewportBottom = viewportTop + viewportHeight;
+  const startColumn = Math.floor(viewportLeft / tileSize);
+  const endColumn = Math.ceil(viewportRight / tileSize);
+  const startRow = Math.floor(viewportTop / tileSize);
+  const endRow = Math.ceil(viewportBottom / tileSize);
+  const gridLeft = startColumn * tileSize;
+  const gridTop = startRow * tileSize;
+  const gridRight = endColumn * tileSize;
+  const gridBottom = endRow * tileSize;
+
   ctx.strokeStyle = "#1e293b";
   ctx.lineWidth = 1;
-  const columnCount = Math.ceil(worldWidth / tileSize);
-  for (let column = 0; column <= columnCount; column++) {
-    const x = Math.min(column * tileSize, worldWidth);
+  for (let column = startColumn; column <= endColumn; column++) {
+    const x = column * tileSize;
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, worldHeight);
+    ctx.moveTo(x, gridTop);
+    ctx.lineTo(x, gridBottom);
     ctx.stroke();
   }
-  const rowCount = Math.ceil(worldHeight / tileSize);
-  for (let row = 0; row <= rowCount; row++) {
-    const y = Math.min(row * tileSize, worldHeight);
+  for (let row = startRow; row <= endRow; row++) {
+    const y = row * tileSize;
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(worldWidth, y);
+    ctx.moveTo(gridLeft, y);
+    ctx.lineTo(gridRight, y);
     ctx.stroke();
   }
 
