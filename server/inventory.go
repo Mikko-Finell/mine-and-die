@@ -147,3 +147,72 @@ func (inv *Inventory) RemoveQuantity(slotIndex int, quantity int) (ItemStack, er
 
 	return removed, nil
 }
+
+// QuantityOf returns the total quantity of an item type across all slots.
+func (inv Inventory) QuantityOf(itemType ItemType) int {
+	total := 0
+	for _, slot := range inv.Slots {
+		if slot.Item.Type != itemType {
+			continue
+		}
+		if slot.Item.Quantity > 0 {
+			total += slot.Item.Quantity
+		}
+	}
+	return total
+}
+
+// RemoveAllOf removes every stack of the provided item type and returns the total quantity removed.
+func (inv *Inventory) RemoveAllOf(itemType ItemType) int {
+	if inv == nil {
+		return 0
+	}
+	total := 0
+	for i := len(inv.Slots) - 1; i >= 0; i-- {
+		slot := inv.Slots[i]
+		if slot.Item.Type != itemType {
+			continue
+		}
+		qty := slot.Item.Quantity
+		if qty <= 0 {
+			continue
+		}
+		if removed, err := inv.RemoveQuantity(i, qty); err == nil {
+			total += removed.Quantity
+		}
+	}
+	return total
+}
+
+// RemoveItemTypeQuantity subtracts a specific quantity of the given item type across slots.
+func (inv *Inventory) RemoveItemTypeQuantity(itemType ItemType, quantity int) (int, error) {
+	if inv == nil {
+		return 0, fmt.Errorf("inventory is nil")
+	}
+	if quantity <= 0 {
+		return 0, fmt.Errorf("quantity must be positive, got %d", quantity)
+	}
+	remaining := quantity
+	for i := len(inv.Slots) - 1; i >= 0 && remaining > 0; i-- {
+		slot := inv.Slots[i]
+		if slot.Item.Type != itemType {
+			continue
+		}
+		available := slot.Item.Quantity
+		if available <= 0 {
+			continue
+		}
+		take := available
+		if take > remaining {
+			take = remaining
+		}
+		if _, err := inv.RemoveQuantity(i, take); err != nil {
+			return quantity - remaining, err
+		}
+		remaining -= take
+	}
+	if remaining > 0 {
+		return quantity - remaining, fmt.Errorf("not enough quantity of %s", itemType)
+	}
+	return quantity, nil
+}

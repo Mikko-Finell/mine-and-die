@@ -87,6 +87,14 @@ Players track `Health` and `MaxHealth`. Effect helpers share the `Effect` struct
 - `Inventory.MoveSlot` and `Inventory.RemoveQuantity` centralize reordering and stack splitting logic. Both operate while holding the hub mutex to keep state consistent.
 - `Inventory.Clone` is used when broadcasting player snapshots to avoid data races between the simulation and JSON encoding.
 
+### Ground Items & Console Commands
+- The hub tracks a single `GroundItem` stack per tile (`groundItems` plus a tile index) so repeated drops merge automatically.
+- Ground gold is exposed alongside other snapshot arrays (`state.groundItems`) and included in `/join` responses so fresh clients immediately render existing piles.
+- Players (and NPCs) automatically drop their entire gold inventory when their health reaches zero; the stack spawns on the corpse tile using the shared merge rules.
+- Two debug-only console commands exist for manual testing over WebSocket: `drop_gold` (requires a positive quantity not exceeding the carried amount) and `pickup_gold` (grabs the nearest stack within one tile radius). The server validates requests while holding the hub mutex to guarantee deterministic outcomes.
+- Successful console commands include the affected ground stack ID in their acknowledgement payloads so clients can correlate logs or overlay highlights with the authoritative entity.
+- `logging/economy` emits `economy.gold_dropped`, `economy.gold_picked_up`, and `economy.gold_pickup_failed` events so QA can audit transfers.
+
 ### Heartbeats and Diagnostics
 - Clients send `{ type: "heartbeat", sentAt }` ~every 2 seconds.
 - `UpdateHeartbeat` enqueues a heartbeat command recording the receipt time and RTT so the simulation can update `playerState` records during the next tick.
