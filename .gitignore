@@ -10,6 +10,7 @@ server/dist/
 *.out
 
 # Node / JS dependencies
+node_modules/
 client/node_modules/
 client/.npm/
 client/.cache/

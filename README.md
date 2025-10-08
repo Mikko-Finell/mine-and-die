@@ -83,12 +83,13 @@ The initial `goblin` patrol uses a simple `Patrol ↔ Wait` loop (`server/ai_con
 The Go server serves static assets straight from `client/`, so refreshing the browser picks up any changes immediately.
 
 ## Testing
-Run the Go suite from the server module:
+Run both the client and server suites before submitting changes:
 ```bash
+npm test
 cd server
 go test ./...
 ```
-The tests exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.
+The JavaScript tests use Vitest to spot-check brittle client helpers; we are not pursuing full browser coverage and the effects playground tooling does not require dedicated tests. The Go tests continue to exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.
 
 ## Roadmap
 The core mining loop, melee/projectile combat, and lava-driven conditions are already

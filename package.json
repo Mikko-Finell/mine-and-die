@@ -4,6 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "npm --prefix tools/js-effects run dev",
-    "build": "npm --prefix tools/js-effects run build && node tools/js-effects/scripts/sync-dist-to-client.mjs"
+    "build": "npm --prefix tools/js-effects run build && node tools/js-effects/scripts/sync-dist-to-client.mjs",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
   }
 }

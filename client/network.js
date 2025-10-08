@@ -169,6 +169,8 @@ function normalizeGroundItems(items) {
   return Object.fromEntries(entries);
 }
 
+export { normalizeWorldConfig, normalizeGroundItems, normalizeFacing };
+
 function handleConsoleAck(store, payload) {
   if (!payload || typeof payload !== "object") {
     return;
