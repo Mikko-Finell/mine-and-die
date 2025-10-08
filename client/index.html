@@ -69,22 +69,42 @@
                   </label>
                   <label
                     class="world-reset-quantity"
-                    for="world-reset-npcs-count"
+                    for="world-reset-goblins-count"
                   >
-                    <span class="world-reset-quantity__label">Count</span>
+                    <span class="world-reset-quantity__label">Goblins</span>
                     <input
-                      id="world-reset-npcs-count"
-                      name="npcCount"
+                      id="world-reset-goblins-count"
+                      name="goblinCount"
                       type="number"
                       inputmode="numeric"
                       min="0"
                       step="1"
-                      value="3"
+                      value="2"
                       class="world-reset-quantity__input"
-                      aria-label="NPC count"
+                      aria-label="Goblin count"
                     />
                     <span class="world-reset-quantity__hint"
-                      >How many neutral enemies should patrol.</span
+                      >How many goblins should patrol.</span
+                    >
+                  </label>
+                  <label
+                    class="world-reset-quantity"
+                    for="world-reset-rats-count"
+                  >
+                    <span class="world-reset-quantity__label">Rats</span>
+                    <input
+                      id="world-reset-rats-count"
+                      name="ratCount"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      value="1"
+                      class="world-reset-quantity__input"
+                      aria-label="Rat count"
+                    />
+                    <span class="world-reset-quantity__hint"
+                      >How many rats should skitter around.</span
                     >
                   </label>
                 </div>

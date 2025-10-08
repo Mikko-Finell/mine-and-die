@@ -62,6 +62,8 @@ func main() {
 			GoldMines      *bool   `json:"goldMines"`
 			GoldMineCount  *int    `json:"goldMineCount"`
 			NPCs           *bool   `json:"npcs"`
+			GoblinCount    *int    `json:"goblinCount"`
+			RatCount       *int    `json:"ratCount"`
 			NPCCount       *int    `json:"npcCount"`
 			Lava           *bool   `json:"lava"`
 			LavaCount      *int    `json:"lavaCount"`
@@ -91,8 +93,29 @@ func main() {
 			if req.NPCs != nil {
 				cfg.NPCs = *req.NPCs
 			}
+			if req.GoblinCount != nil {
+				cfg.GoblinCount = *req.GoblinCount
+			}
+			if req.RatCount != nil {
+				cfg.RatCount = *req.RatCount
+			}
 			if req.NPCCount != nil {
 				cfg.NPCCount = *req.NPCCount
+				if req.GoblinCount == nil && req.RatCount == nil {
+					goblins := cfg.NPCCount
+					if goblins > 2 {
+						goblins = 2
+					}
+					if goblins < 0 {
+						goblins = 0
+					}
+					cfg.GoblinCount = goblins
+					rats := cfg.NPCCount - goblins
+					if rats < 0 {
+						rats = 0
+					}
+					cfg.RatCount = rats
+				}
 			}
 			if req.Lava != nil {
 				cfg.Lava = *req.Lava

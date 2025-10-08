@@ -11,6 +11,8 @@ type worldConfig struct {
 	GoldMines      bool   `json:"goldMines"`
 	GoldMineCount  int    `json:"goldMineCount"`
 	NPCs           bool   `json:"npcs"`
+	GoblinCount    int    `json:"goblinCount"`
+	RatCount       int    `json:"ratCount"`
 	NPCCount       int    `json:"npcCount"`
 	Lava           bool   `json:"lava"`
 	LavaCount      int    `json:"lavaCount"`
@@ -30,12 +32,19 @@ func (cfg worldConfig) normalized() worldConfig {
 	if normalized.GoldMineCount < 0 {
 		normalized.GoldMineCount = 0
 	}
+	if normalized.GoblinCount < 0 {
+		normalized.GoblinCount = 0
+	}
+	if normalized.RatCount < 0 {
+		normalized.RatCount = 0
+	}
 	if normalized.NPCCount < 0 {
 		normalized.NPCCount = 0
 	}
 	if normalized.LavaCount < 0 {
 		normalized.LavaCount = 0
 	}
+	normalized.NPCCount = normalized.GoblinCount + normalized.RatCount
 	return normalized
 }
 
@@ -47,6 +56,8 @@ func defaultWorldConfig() worldConfig {
 		GoldMines:      true,
 		GoldMineCount:  defaultGoldMineCount,
 		NPCs:           true,
+		GoblinCount:    defaultGoblinCount,
+		RatCount:       defaultRatCount,
 		NPCCount:       defaultNPCCount,
 		Lava:           true,
 		LavaCount:      defaultLavaCount,

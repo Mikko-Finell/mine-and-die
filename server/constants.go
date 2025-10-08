@@ -21,7 +21,9 @@ const (
 	obstacleSpawnMargin   = 100.0
 	playerSpawnSafeRadius = 120.0
 	defaultGoldMineCount  = 1
-	defaultNPCCount       = 3
+	defaultGoblinCount    = 2
+	defaultRatCount       = 1
+	defaultNPCCount       = defaultGoblinCount + defaultRatCount
 	defaultLavaCount      = 3
 	goldOreMinSize        = 56.0
 	goldOreMaxSize        = 96.0
