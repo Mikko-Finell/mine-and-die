@@ -1,3 +1,5 @@
+import { computeRtt, createHeartbeat } from "./heartbeat.js";
+
 const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
 export const DEFAULT_WORLD_SEED = "prototype";
@@ -10,6 +12,7 @@ const DEFAULT_LAVA_COUNT = 3;
 export const DEFAULT_WORLD_WIDTH = 2400;
 export const DEFAULT_WORLD_HEIGHT = 1800;
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
+const heartbeatControllers = new WeakMap();
 
 export function normalizeCount(value, fallback) {
   const parsed = Number(value);
@@ -510,16 +513,13 @@ export function connectEvents(store) {
           store.renderInventory();
         }
       } else if (payload.type === "heartbeat") {
-        if (typeof payload.rtt === "number") {
-          const roundTrip = Math.max(0, payload.rtt);
+        const ackAt = Date.now();
+        const roundTrip = computeRtt(payload, ackAt);
+        if (roundTrip !== null) {
           store.setLatency(roundTrip);
           store.lastHeartbeatRoundTrip = roundTrip;
-        } else if (typeof payload.clientTime === "number") {
-          const roundTrip = Date.now() - payload.clientTime;
-          store.setLatency(Math.max(0, roundTrip));
-          store.lastHeartbeatRoundTrip = Math.max(0, roundTrip);
         }
-        store.lastHeartbeatAckAt = Date.now();
+        store.lastHeartbeatAckAt = ackAt;
         store.updateDiagnostics();
       } else if (payload.type === "console_ack") {
         handleConsoleAck(store, payload);
@@ -640,32 +640,14 @@ export function sendConsoleCommand(store, cmd, params = undefined) {
   sendMessage(store, payload);
 }
 
-// startHeartbeat kicks off the repeating heartbeat timer.
-export function startHeartbeat(store) {
-  stopHeartbeat(store);
-  sendHeartbeat(store);
-  store.heartbeatTimer = setInterval(() => sendHeartbeat(store), HEARTBEAT_INTERVAL);
-  store.updateDiagnostics();
-}
-
-// stopHeartbeat clears the heartbeat timer if it exists.
-export function stopHeartbeat(store) {
-  if (store.heartbeatTimer !== null) {
-    clearInterval(store.heartbeatTimer);
-    store.heartbeatTimer = null;
-    store.updateDiagnostics();
-  }
-}
-
-// sendHeartbeat emits a heartbeat payload and records timing.
-export function sendHeartbeat(store) {
+function dispatchHeartbeat(store, sentAt = Date.now()) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
     return;
   }
-  const sentAt = Date.now();
+  const timestamp = Number.isFinite(sentAt) ? sentAt : Date.now();
   const payload = {
     type: "heartbeat",
-    sentAt,
+    sentAt: timestamp,
   };
   sendMessage(store, payload, {
     onSent: () => {
@@ -673,6 +655,62 @@ export function sendHeartbeat(store) {
       store.updateDiagnostics();
     },
   });
+}
+
+function createHeartbeatEnv(store) {
+  return {
+    now: () => Date.now(),
+    setInterval: (fn, ms) => {
+      const id = globalThis.setInterval(fn, ms);
+      store.heartbeatTimer = id;
+      store.updateDiagnostics();
+      return id;
+    },
+    clearInterval: (id) => {
+      globalThis.clearInterval(id);
+      if (store.heartbeatTimer === id) {
+        store.heartbeatTimer = null;
+        store.updateDiagnostics();
+      }
+    },
+    send: (timestamp) => {
+      dispatchHeartbeat(store, timestamp);
+    },
+  };
+}
+
+function getHeartbeatController(store) {
+  let controller = heartbeatControllers.get(store);
+  if (!controller) {
+    controller = createHeartbeat(createHeartbeatEnv(store));
+    heartbeatControllers.set(store, controller);
+  }
+  return controller;
+}
+
+// startHeartbeat kicks off the repeating heartbeat timer.
+export function startHeartbeat(store) {
+  const controller = getHeartbeatController(store);
+  controller.start(HEARTBEAT_INTERVAL);
+}
+
+// stopHeartbeat clears the heartbeat timer if it exists.
+export function stopHeartbeat(store) {
+  const controller = heartbeatControllers.get(store);
+  if (controller) {
+    controller.stop();
+    return;
+  }
+  if (store.heartbeatTimer !== null) {
+    globalThis.clearInterval(store.heartbeatTimer);
+    store.heartbeatTimer = null;
+    store.updateDiagnostics();
+  }
+}
+
+// sendHeartbeat emits a heartbeat payload and records timing.
+export function sendHeartbeat(store) {
+  dispatchHeartbeat(store);
 }
 
 // closeSocketSilently tears down handlers and closes without triggering loops.
