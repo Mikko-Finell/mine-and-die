@@ -11,7 +11,7 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 	hub := newHub()
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, err := hub.marshalState(nil, nil, nil, nil, nil)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		hub.advance(time.Now(), dt)
 
-		data, err := hub.marshalState(nil, nil, nil, nil, nil)
+		data, _, err := hub.marshalState(nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("marshalState returned error: %v", err)
 		}

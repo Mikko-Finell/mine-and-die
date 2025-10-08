@@ -24,6 +24,7 @@ type Hub struct {
 	subscribers map[string]*subscriber
 	config      worldConfig
 	publisher   logging.Publisher
+	telemetry   *telemetryCounters
 
 	nextID atomic.Uint64
 	tick   atomic.Uint64
@@ -54,6 +55,7 @@ func newHub(pubs ...logging.Publisher) *Hub {
 		pendingCommands: make([]Command, 0),
 		config:          cfg,
 		publisher:       pub,
+		telemetry:       newTelemetryCounters(),
 	}
 }
 
@@ -556,6 +558,7 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 		case <-stop:
 			return
 		case now := <-ticker.C:
+			tickStart := time.Now()
 			dt := now.Sub(last).Seconds()
 			if dt <= 0 {
 				dt = 1.0 / float64(tickRate)
@@ -567,6 +570,9 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 				sub.conn.Close()
 			}
 			h.broadcastState(players, npcs, effects, triggers, groundItems)
+			if h.telemetry != nil {
+				h.telemetry.RecordTickDuration(time.Since(tickStart))
+			}
 		}
 	}
 }
@@ -594,7 +600,7 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 }
 
 // marshalState serializes a world snapshot into the outbound state payload format.
-func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem) ([]byte, error) {
+func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem) ([]byte, int, error) {
 	h.mu.Lock()
 	shouldFlushTriggers := false
 	if players == nil || npcs == nil || effects == nil {
@@ -628,12 +634,14 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		ServerTime:     time.Now().UnixMilli(),
 		Config:         cfg,
 	}
-	return json.Marshal(msg)
+	entities := len(msg.Players) + len(msg.NPCs) + len(msg.Obstacles) + len(msg.Effects) + len(msg.EffectTriggers) + len(msg.GroundItems)
+	data, err := json.Marshal(msg)
+	return data, entities, err
 }
 
 // broadcastState sends the latest world snapshot to every subscriber.
 func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem) {
-	data, err := h.marshalState(players, npcs, effects, triggers, groundItems)
+	data, entities, err := h.marshalState(players, npcs, effects, triggers, groundItems)
 	if err != nil {
 		stdlog.Printf("failed to marshal state message: %v", err)
 		return
@@ -659,6 +667,16 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 			}
 		}
 	}
+	if h.telemetry != nil {
+		h.telemetry.RecordBroadcast(len(data), entities)
+	}
+}
+
+func (h *Hub) TelemetrySnapshot() telemetrySnapshot {
+	if h.telemetry == nil {
+		return telemetrySnapshot{}
+	}
+	return h.telemetry.Snapshot()
 }
 
 func (h *Hub) enqueueCommand(cmd Command) {
