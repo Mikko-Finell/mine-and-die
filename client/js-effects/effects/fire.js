@@ -14,7 +14,9 @@ class FireInstance {
         this.embers = [];
         this.spawnTimer = 0;
         this.opts = { ...FireEffectDefinition.defaults, ...opts };
-        this.id = `fire-${Math.random().toString(36).slice(2)}`;
+        this.id = typeof opts.effectId === "string" && opts.effectId.length > 0
+            ? opts.effectId
+            : `fire-${Math.random().toString(36).slice(2)}`;
         this.origin = { x: opts.x, y: opts.y };
         const rX = 56 * this.opts.sizeScale;
         const rY = 84 * this.opts.sizeScale;
@@ -148,5 +150,44 @@ export const FireEffectDefinition = {
             ...overrides,
         };
         return new FireInstance({ ...merged, x: position.x, y: position.y });
+    },
+    fromEffect: (effect, store) => {
+        if (!effect || typeof effect !== "object") {
+            return null;
+        }
+        const tileSize = Number.isFinite(store === null || store === void 0 ? void 0 : store.TILE_SIZE) ? store.TILE_SIZE : 40;
+        const width = Number.isFinite(effect.width) ? effect.width : tileSize;
+        const height = Number.isFinite(effect.height) ? effect.height : tileSize;
+        const baseX = Number.isFinite(effect.x) ? effect.x : 0;
+        const baseY = Number.isFinite(effect.y) ? effect.y : 0;
+        const centerX = baseX + width / 2;
+        const centerY = baseY + height / 2;
+        const params = (effect === null || effect === void 0 ? void 0 : effect.params) && typeof effect.params === "object"
+            ? effect.params
+            : {};
+        const readNumber = (key, fallback) => {
+            const value = params[key];
+            return Number.isFinite(value) ? value : fallback;
+        };
+        return {
+            effectId: typeof effect.id === "string" ? effect.id : undefined,
+            x: centerX,
+            y: centerY,
+            additive: true,
+            concentration: readNumber("concentration", 0.25),
+            emberAlpha: readNumber("emberAlpha", 1),
+            embersPerBurst: readNumber("embersPerBurst", 24),
+            flamesPerBurst: readNumber("flamesPerBurst", 1),
+            gradientBias: readNumber("gradientBias", 1.65),
+            jitter: readNumber("jitter", 22.5),
+            lifeScale: readNumber("lifeScale", 1.1),
+            riseSpeed: readNumber("riseSpeed", 35),
+            sizeScale: readNumber("sizeScale", 1.3),
+            spawnInterval: readNumber("spawnInterval", 0.06),
+            spawnRadius: readNumber("spawnRadius", 15.5),
+            swirl: readNumber("swirl", 0.5),
+            windX: readNumber("windX", 0),
+            emberPalette: Array.isArray(effect.palette) ? effect.palette : FireEffectDefinition.defaults.emberPalette,
+        };
     },
 };
