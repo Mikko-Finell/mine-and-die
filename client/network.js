@@ -140,6 +140,71 @@ function normalizeFacing(facing) {
     : DEFAULT_FACING;
 }
 
+function normalizeGroundItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return {};
+  }
+  const entries = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const id = typeof item.id === "string" ? item.id : null;
+    if (!id) {
+      continue;
+    }
+    const x = Number(item.x);
+    const y = Number(item.y);
+    const qty = Number(item.qty);
+    entries.push([
+      id,
+      {
+        id,
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+        qty: Number.isFinite(qty) ? qty : 0,
+      },
+    ]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function handleConsoleAck(store, payload) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  const cmd = typeof payload.cmd === "string" ? payload.cmd : "";
+  const status = typeof payload.status === "string" ? payload.status : "ok";
+  const qtyValue = Number(payload.qty);
+  const qty = Number.isFinite(qtyValue) ? qtyValue : 0;
+  const reason = typeof payload.reason === "string" ? payload.reason : null;
+  const stackId = typeof payload.stackId === "string" ? payload.stackId : null;
+  store.lastConsoleAck = {
+    cmd,
+    status,
+    qty,
+    reason,
+    stackId,
+    receivedAt: Date.now(),
+  };
+  const messageParts = ["[console]", cmd || "<unknown>", status];
+  if (qty) {
+    messageParts.push(`qty=${qty}`);
+  }
+  if (reason) {
+    messageParts.push(`reason=${reason}`);
+  }
+  if (stackId) {
+    messageParts.push(`stack=${stackId}`);
+  }
+  const message = messageParts.join(" ");
+  if (status === "ok") {
+    console.info(message);
+  } else {
+    console.warn(message);
+  }
+}
+
 function ensureEffectTriggerState(store) {
   if (!Array.isArray(store.pendingEffectTriggers)) {
     store.pendingEffectTriggers = [];
@@ -222,6 +287,7 @@ export async function joinGame(store) {
     );
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
     store.effects = Array.isArray(payload.effects) ? payload.effects : [];
+    store.groundItems = normalizeGroundItems(payload.groundItems);
     store.pendingEffectTriggers = [];
     store.processedEffectTriggerIds = new Set();
     queueEffectTriggers(store, payload.effectTriggers);
@@ -328,6 +394,7 @@ export function connectEvents(store) {
         } else {
           store.effects = [];
         }
+        store.groundItems = normalizeGroundItems(payload.groundItems);
         queueEffectTriggers(store, payload.effectTriggers);
         if (payload.config) {
           store.worldConfig = normalizeWorldConfig(payload.config);
@@ -405,6 +472,8 @@ export function connectEvents(store) {
         }
         store.lastHeartbeatAckAt = Date.now();
         store.updateDiagnostics();
+      } else if (payload.type === "console_ack") {
+        handleConsoleAck(store, payload);
       }
     } catch (err) {
       console.error("Failed to parse event", err);
@@ -498,6 +567,26 @@ export function sendAction(store, action, params = undefined) {
   const payload = { type: "action", action };
   if (params && typeof params === "object" && Object.keys(params).length > 0) {
     payload.params = params;
+  }
+  sendMessage(store, payload);
+}
+
+// sendConsoleCommand dispatches a debug console command to the server.
+export function sendConsoleCommand(store, cmd, params = undefined) {
+  if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  if (typeof cmd !== "string" || cmd.length === 0) {
+    return;
+  }
+  const payload = { type: "console", cmd };
+  if (params && typeof params === "object") {
+    if (Object.prototype.hasOwnProperty.call(params, "qty")) {
+      const qtyValue = Number(params.qty);
+      if (Number.isFinite(qtyValue)) {
+        payload.qty = Math.trunc(qtyValue);
+      }
+    }
   }
   sendMessage(store, payload);
 }

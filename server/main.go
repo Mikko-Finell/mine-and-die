@@ -150,7 +150,7 @@ func main() {
 		cfg = cfg.normalized()
 
 		players, npcs, effects := hub.ResetWorld(cfg)
-		go hub.broadcastState(players, npcs, effects, nil)
+		go hub.broadcastState(players, npcs, effects, nil, nil)
 
 		response := struct {
 			Status string      `json:"status"`
@@ -207,7 +207,7 @@ func main() {
 			return
 		}
 
-		sub, snapshotPlayers, snapshotNPCs, snapshotEffects, ok := hub.Subscribe(playerID, conn)
+		sub, snapshotPlayers, snapshotNPCs, snapshotEffects, snapshotGroundItems, ok := hub.Subscribe(playerID, conn)
 		if !ok {
 			message := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unknown player")
 			conn.WriteMessage(websocket.CloseMessage, message)
@@ -218,20 +218,21 @@ func main() {
 		cfg := hub.CurrentConfig()
 
 		initial := stateMessage{
-			Type:       "state",
-			Players:    snapshotPlayers,
-			NPCs:       snapshotNPCs,
-			Obstacles:  append([]Obstacle(nil), hub.world.obstacles...),
-			Effects:    snapshotEffects,
-			ServerTime: time.Now().UnixMilli(),
-			Config:     cfg,
+			Type:        "state",
+			Players:     snapshotPlayers,
+			NPCs:        snapshotNPCs,
+			Obstacles:   append([]Obstacle(nil), hub.world.obstacles...),
+			Effects:     snapshotEffects,
+			GroundItems: snapshotGroundItems,
+			ServerTime:  time.Now().UnixMilli(),
+			Config:      cfg,
 		}
 		data, err := json.Marshal(initial)
 		if err != nil {
 			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players, npcs, effects, nil)
+				go hub.broadcastState(players, npcs, effects, nil, nil)
 			}
 			return
 		}
@@ -242,7 +243,7 @@ func main() {
 			sub.mu.Unlock()
 			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
-				go hub.broadcastState(players, npcs, effects, nil)
+				go hub.broadcastState(players, npcs, effects, nil, nil)
 			}
 			return
 		}
@@ -253,7 +254,7 @@ func main() {
 			if err != nil {
 				players, npcs, effects := hub.Disconnect(playerID)
 				if players != nil {
-					go hub.broadcastState(players, npcs, effects, nil)
+					go hub.broadcastState(players, npcs, effects, nil, nil)
 				}
 				return
 			}
@@ -310,7 +311,28 @@ func main() {
 					sub.mu.Unlock()
 					players, npcs, effects := hub.Disconnect(playerID)
 					if players != nil {
-						go hub.broadcastState(players, npcs, effects, nil)
+						go hub.broadcastState(players, npcs, effects, nil, nil)
+					}
+					return
+				}
+				sub.mu.Unlock()
+			case "console":
+				ack, handled := hub.HandleConsoleCommand(playerID, msg.Cmd, msg.Qty)
+				if !handled {
+					continue
+				}
+				data, err := json.Marshal(ack)
+				if err != nil {
+					stdlog.Printf("failed to marshal console ack for %s: %v", playerID, err)
+					continue
+				}
+				sub.mu.Lock()
+				conn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+					sub.mu.Unlock()
+					players, npcs, effects := hub.Disconnect(playerID)
+					if players != nil {
+						go hub.broadcastState(players, npcs, effects, nil, nil)
 					}
 					return
 				}

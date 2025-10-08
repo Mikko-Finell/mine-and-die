@@ -27,6 +27,7 @@ const (
 	defaultRatCount       = 1
 	defaultNPCCount       = defaultGoblinCount + defaultRatCount
 	defaultLavaCount      = 3
+	tileSize              = 40.0
 	goldOreMinSize        = 56.0
 	goldOreMaxSize        = 96.0
 )

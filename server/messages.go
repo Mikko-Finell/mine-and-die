@@ -7,6 +7,7 @@ type joinResponse struct {
 	Obstacles      []Obstacle      `json:"obstacles"`
 	Effects        []Effect        `json:"effects"`
 	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
+	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
 	Config         worldConfig     `json:"config"`
 }
 
@@ -17,6 +18,7 @@ type stateMessage struct {
 	Obstacles      []Obstacle      `json:"obstacles"`
 	Effects        []Effect        `json:"effects"`
 	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
+	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
 	ServerTime     int64           `json:"serverTime"`
 	Config         worldConfig     `json:"config"`
 }
@@ -30,6 +32,17 @@ type clientMessage struct {
 	Y      float64 `json:"y"`
 	SentAt int64   `json:"sentAt"`
 	Action string  `json:"action"`
+	Cmd    string  `json:"cmd"`
+	Qty    int     `json:"qty"`
+}
+
+type consoleAckMessage struct {
+	Type    string `json:"type"`
+	Cmd     string `json:"cmd"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason,omitempty"`
+	Qty     int    `json:"qty,omitempty"`
+	StackID string `json:"stackId,omitempty"`
 }
 
 type heartbeatMessage struct {

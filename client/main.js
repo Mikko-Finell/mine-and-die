@@ -2,6 +2,7 @@ import {
   joinGame,
   resetWorld,
   sendMoveTo,
+  sendConsoleCommand,
   DEFAULT_WORLD_SEED,
   DEFAULT_WORLD_WIDTH,
   DEFAULT_WORLD_HEIGHT,
@@ -151,6 +152,7 @@ const store = {
   npcs: {},
   displayNPCs: {},
   obstacles: [],
+  groundItems: {},
   effectManager: null,
   socket: null,
   reconnectTimeout: null,
@@ -186,6 +188,20 @@ const store = {
   isResettingWorld: false,
   updateWorldConfigUI: null,
   lastWorldResetAt: null,
+  lastConsoleAck: null,
+};
+
+window.debugDropGold = (qty) => {
+  const amount = Number(qty);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    console.warn("debugDropGold expects a positive number");
+    return;
+  }
+  sendConsoleCommand(store, "drop_gold", { qty: Math.trunc(amount) });
+};
+
+window.debugPickupGold = () => {
+  sendConsoleCommand(store, "pickup_gold");
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));

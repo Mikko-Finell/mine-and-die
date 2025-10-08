@@ -72,12 +72,16 @@ type World struct {
 	conditionDefs       map[ConditionType]*ConditionDefinition
 	nextEffectID        uint64
 	nextNPCID           uint64
+	nextGroundItemID    uint64
 	aiLibrary           *aiLibrary
 	config              worldConfig
 	rng                 *rand.Rand
 	seed                string
 	publisher           logging.Publisher
 	currentTick         uint64
+
+	groundItems       map[string]*groundItemState
+	groundItemsByTile map[groundTileKey]*groundItemState
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
@@ -101,6 +105,8 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		rng:                 newDeterministicRNG(normalized.Seed, "world"),
 		seed:                normalized.Seed,
 		publisher:           publisher,
+		groundItems:         make(map[string]*groundItemState),
+		groundItemsByTile:   make(map[groundTileKey]*groundItemState),
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
@@ -168,6 +174,7 @@ func (w *World) handleNPCDefeat(npc *npcState) {
 	if _, ok := w.npcs[npc.ID]; !ok {
 		return
 	}
+	w.dropAllGold(&npc.actorState, "death")
 	delete(w.npcs, npc.ID)
 }
 

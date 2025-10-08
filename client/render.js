@@ -293,6 +293,7 @@ function drawScene(store, frameDt, frameNow) {
     resetDrawn: true,
   });
 
+  drawGroundItems(store);
   drawNPCs(store);
 
   Object.entries(store.displayPlayers).forEach(([id, position]) => {
@@ -332,6 +333,48 @@ function drawScene(store, frameDt, frameNow) {
   });
 
   ctx.restore();
+}
+
+function drawGroundItems(store) {
+  const { ctx } = store;
+  if (!ctx || !store || typeof store !== "object") {
+    return;
+  }
+  const items = store.groundItems && typeof store.groundItems === "object"
+    ? Object.values(store.groundItems)
+    : [];
+  if (!items || items.length === 0) {
+    return;
+  }
+  const coinRadius = Math.max(6, Math.min(12, (store.TILE_SIZE || 40) * 0.2));
+  for (const item of items) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const qty = Number(item.qty);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      continue;
+    }
+    const x = Number(item.x);
+    const y = Number(item.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      continue;
+    }
+    ctx.save();
+    ctx.fillStyle = "#fbbf24";
+    ctx.strokeStyle = "#f59e0b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, coinRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#78350f";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(qty), x, y);
+    ctx.restore();
+  }
 }
 
 function drawNPCs(store) {
