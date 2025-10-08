@@ -61,7 +61,13 @@ function syncEffectsByType(store, manager, type, definition, onUpdate) {
     return;
   }
   const effects = Array.isArray(store.effects) ? store.effects : [];
-  const tracked = manager.getTrackedInstances(type);
+  const definitionType =
+    definition && typeof definition.type === "string" && definition.type.length > 0
+      ? definition.type
+      : null;
+  const trackedType = definitionType || type;
+  const tracked = manager.getTrackedInstances(trackedType);
+  const crossType = trackedType !== type;
   const seen = new Set();
 
   for (const effect of effects) {
@@ -87,12 +93,25 @@ function syncEffectsByType(store, manager, type, definition, onUpdate) {
       }
       instance = manager.spawn(definition, spawnOptions);
     }
+    if (instance && crossType) {
+      if (typeof instance.__hostEffectType !== "string") {
+        instance.__hostEffectType = type;
+      }
+      if (instance.__hostEffectType !== type) {
+        continue;
+      }
+    }
     if (instance && typeof onUpdate === "function") {
       onUpdate(instance, effect, store);
     }
   }
 
   for (const [trackedId, instance] of Array.from(tracked.entries())) {
+    if (crossType) {
+      if (!instance || instance.__hostEffectType !== type) {
+        continue;
+      }
+    }
     if (!seen.has(trackedId)) {
       manager.removeInstance(instance);
     }
