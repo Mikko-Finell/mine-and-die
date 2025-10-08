@@ -2,6 +2,8 @@
 
 ## Automated Tests
 - Run `go test ./...` from the repository root (or inside `server/`).
+- Run `npm test` to execute the lightweight Vitest suite covering the client utilities. These checks focus on brittle parsing
+  helpers; we are not aiming for exhaustive UI coverage and tooling playgrounds do not require tests.
 - Current suite covers:
   - Player joins and snapshot correctness.
   - Intent normalization and facing behaviour.

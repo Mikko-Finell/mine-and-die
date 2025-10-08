@@ -88,7 +88,12 @@ Run the Go suite from the server module:
 cd server
 go test ./...
 ```
-The tests exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.
+Then execute the lightweight client checks from the repository root:
+```bash
+npm test
+```
+The Vitest suite targets brittle client-side helpers and is intended as a quick guardrail rather than exhaustive UI coverage.
+Tooling workspaces such as the effects playground do not require automated tests.
 
 ## Roadmap
 The core mining loop, melee/projectile combat, and lava-driven conditions are already

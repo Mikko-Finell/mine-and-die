@@ -19,7 +19,7 @@ function normalizeCount(value, fallback) {
   return Math.max(0, Math.floor(parsed));
 }
 
-function normalizeWorldConfig(config) {
+export function normalizeWorldConfig(config) {
   const normalized = {
     obstacles: true,
     obstaclesCount: DEFAULT_OBSTACLE_COUNT,
@@ -140,7 +140,7 @@ function normalizeFacing(facing) {
     : DEFAULT_FACING;
 }
 
-function normalizeGroundItems(items) {
+export function normalizeGroundItems(items) {
   if (!Array.isArray(items) || items.length === 0) {
     return {};
   }
