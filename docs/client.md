@@ -32,11 +32,11 @@ The client is a lightweight ES module bundle served directly from the Go server.
 5. `connectEvents(store)` sets up WebSocket callbacks and kicks off the heartbeat loop.
 
 ## Networking Details
-- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, fire-and-forget `effectTriggers`, the current tick (`t`), and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, queues effect triggers, stores `lastTick`, and keeps diagnostics fresh.
+- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, fire-and-forget `effectTriggers`, the current tick (`t`), and `serverTime`. The client overwrites `store.players`, `store.npcs`, merges the display caches, queues effect triggers, stores `lastTick`, refreshes diagnostics, and updates the HUD badge so testers always see `Tick: ####` in real time.
 - **Intents:** `sendCurrentIntent` serializes `{ type: "input", dx, dy, facing }` whenever movement or facing changes.
 - **Path navigation:** `sendMoveTo` sends `{ type: "path", x, y }` for click-to-move requests while `sendCancelPath` clears the server-driven route when WASD input resumes.
 - **Actions:** `sendAction` is used by `input.js` for melee and fireball triggers.
-- **Heartbeats:** `startHeartbeat` sets an interval that calls `sendHeartbeat`; acknowledgements update latency displays.
+- **Heartbeats:** `startHeartbeat` sets an interval that calls `sendHeartbeat`; acknowledgements update latency displays, including the HUD's `RTT: ## ms` chip fed by the latest round-trip measurement.
 - **Reconnects:** Socket closure funnels through `handleConnectionLoss`, which resets state and schedules `joinGame` again.
 
 ## Rendering Notes

@@ -23,6 +23,8 @@ const ctx = canvas.getContext("2d");
 const latencyInput = document.getElementById("latency-input");
 const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
+const hudTick = document.getElementById("hud-tick");
+const hudRtt = document.getElementById("hud-rtt");
 const worldResetForm = document.getElementById("world-reset-form");
 const worldResetStatus = document.getElementById("world-reset-status");
 const worldResetObstacles = document.getElementById("world-reset-obstacles");
@@ -46,12 +48,18 @@ const diagnosticsEls = {
   connection: document.getElementById("diag-connection"),
   players: document.getElementById("diag-players"),
   stateAge: document.getElementById("diag-state-age"),
+  tick: document.getElementById("diag-tick"),
   intent: document.getElementById("diag-intent"),
   intentAge: document.getElementById("diag-intent-age"),
   heartbeat: document.getElementById("diag-heartbeat"),
   latency: document.getElementById("diag-latency"),
   simLatency: document.getElementById("diag-sim-latency"),
   messages: document.getElementById("diag-messages"),
+};
+
+const hudNetworkEls = {
+  tick: hudTick,
+  rtt: hudRtt,
 };
 
 const DEFAULT_INVENTORY_SLOTS = 4;
@@ -107,6 +115,7 @@ const store = {
   debugPanelBody,
   debugPanelToggle,
   diagnosticsEls,
+  hudNetworkEls,
   inventoryPanel,
   inventoryGrid,
   worldResetForm,
@@ -205,6 +214,26 @@ window.debugPickupGold = () => {
   sendConsoleCommand(store, "pickup_gold");
 };
 
+window.debugNetworkStats = () => {
+  const tickValue =
+    typeof store.lastTick === "number" && Number.isFinite(store.lastTick)
+      ? Math.floor(store.lastTick)
+      : null;
+  const rttValueRaw =
+    typeof store.lastHeartbeatRoundTrip === "number" &&
+    Number.isFinite(store.lastHeartbeatRoundTrip)
+      ? store.lastHeartbeatRoundTrip
+      : typeof store.latencyMs === "number" && Number.isFinite(store.latencyMs)
+        ? store.latencyMs
+        : null;
+  const rttValue =
+    rttValueRaw != null ? Math.max(0, Math.round(rttValueRaw)) : null;
+  const tickLabel = formatTickLabel(tickValue);
+  const rttLabel = formatRttLabel(rttValue);
+  console.info(`[network] ${tickLabel} · ${rttLabel}`);
+  return { tick: tickValue, rttMs: rttValue };
+};
+
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 function initializeCanvasPathing() {
@@ -287,13 +316,12 @@ function renderStatus() {
     store.statusEl.textContent = `${baseText}${separator}${cameraSuffix}`.trim();
   }
   if (store.latencyDisplay) {
-    if (store.latencyMs != null) {
-      store.latencyDisplay.textContent = `${Math.round(store.latencyMs)} ms`;
-      store.latencyDisplay.dataset.state = "active";
-    } else {
-      store.latencyDisplay.textContent = "—";
-      store.latencyDisplay.dataset.state = "idle";
-    }
+    const hasLatency =
+      typeof store.latencyMs === "number" && Number.isFinite(store.latencyMs);
+    store.latencyDisplay.textContent = formatRttLabel(
+      hasLatency ? store.latencyMs : null,
+    );
+    store.latencyDisplay.dataset.state = hasLatency ? "active" : "idle";
   }
 }
 
@@ -371,6 +399,20 @@ function formatLatency(value) {
   return `${Math.round(value)} ms`;
 }
 
+function formatTickLabel(value) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return `Tick: ${Math.floor(value)}`;
+  }
+  return "Tick: —";
+}
+
+function formatRttLabel(value) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return `RTT: ${Math.round(value)} ms`;
+  }
+  return "RTT: —";
+}
+
 // updateDiagnostics refreshes the diagnostics sidebar with live values.
 function updateDiagnostics() {
   const els = store.diagnosticsEls;
@@ -387,6 +429,13 @@ function updateDiagnostics() {
   const npcLabel = `${npcCount} NPC${npcCount === 1 ? "" : "s"}`;
   els.players.textContent = `${playerCount} players · ${npcLabel}`;
   els.stateAge.textContent = formatAgo(store.lastStateReceivedAt);
+  const tickLabel = formatTickLabel(store.lastTick);
+  if (els.tick) {
+    els.tick.textContent = tickLabel;
+  }
+  if (store.hudNetworkEls?.tick) {
+    store.hudNetworkEls.tick.textContent = tickLabel;
+  }
   let intentLabel;
   if (store.isPathActive && store.activePathTarget) {
     const target = store.activePathTarget;
@@ -416,8 +465,20 @@ function updateDiagnostics() {
     heartbeatParts.push(`rtt ${formatLatency(store.lastHeartbeatRoundTrip)}`);
   }
   els.heartbeat.textContent = heartbeatParts.join(" · ");
-
-  els.latency.textContent = formatLatency(store.latencyMs);
+  const latestRtt =
+    typeof store.lastHeartbeatRoundTrip === "number" &&
+    Number.isFinite(store.lastHeartbeatRoundTrip)
+      ? store.lastHeartbeatRoundTrip
+      : typeof store.latencyMs === "number" && Number.isFinite(store.latencyMs)
+        ? store.latencyMs
+        : null;
+  const rttLabel = formatRttLabel(latestRtt);
+  if (els.latency) {
+    els.latency.textContent = rttLabel;
+  }
+  if (store.hudNetworkEls?.rtt) {
+    store.hudNetworkEls.rtt.textContent = rttLabel;
+  }
   els.simLatency.textContent = `${store.simulatedLatencyMs} ms`;
 
   if (store.messagesSent === 0) {

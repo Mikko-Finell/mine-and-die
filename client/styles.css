@@ -88,6 +88,30 @@ h1 {
   align-items: center;
 }
 
+.hud-network {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  width: 100%;
+  max-width: 800px;
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.hud-network__item {
+  font-variant-numeric: tabular-nums;
+}
+
 .play-area__main canvas {
   display: block;
 }

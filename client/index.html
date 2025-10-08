@@ -50,6 +50,10 @@
       </header>
       <div class="play-area">
         <div class="play-area__main">
+          <div class="hud-network" aria-live="polite">
+            <span id="hud-tick" class="hud-network__item">Tick: —</span>
+            <span id="hud-rtt" class="hud-network__item">RTT: —</span>
+          </div>
           <canvas id="game-canvas" width="800" height="600"></canvas>
           <section class="world-controls" aria-label="World controls">
             <h2 class="world-controls__title">World Controls</h2>
@@ -297,6 +301,10 @@
                     <span id="diag-state-age" class="diagnostic-stat__value">—</span>
                   </div>
                   <div class="diagnostic-stat">
+                    <span class="diagnostic-stat__label">Server tick</span>
+                    <span id="diag-tick" class="diagnostic-stat__value">Tick: —</span>
+                  </div>
+                  <div class="diagnostic-stat">
                     <span class="diagnostic-stat__label">Input vector</span>
                     <span id="diag-intent" class="diagnostic-stat__value">—</span>
                   </div>
@@ -310,7 +318,7 @@
                   </div>
                   <div class="diagnostic-stat">
                     <span class="diagnostic-stat__label">Latency (observed)</span>
-                    <span id="diag-latency" class="diagnostic-stat__value">—</span>
+                    <span id="diag-latency" class="diagnostic-stat__value">RTT: —</span>
                   </div>
                   <div class="diagnostic-stat">
                     <span class="diagnostic-stat__label">Simulated latency</span>
