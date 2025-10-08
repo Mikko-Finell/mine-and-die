@@ -27,7 +27,10 @@ const worldResetObstaclesCount = document.getElementById(
   "world-reset-obstacles-count",
 );
 const worldResetNPCs = document.getElementById("world-reset-npcs");
-const worldResetNPCCount = document.getElementById("world-reset-npcs-count");
+const worldResetGoblinsCount = document.getElementById(
+  "world-reset-goblins-count",
+);
+const worldResetRatsCount = document.getElementById("world-reset-rats-count");
 const worldResetLava = document.getElementById("world-reset-lava");
 const worldResetLavaCount = document.getElementById("world-reset-lava-count");
 const worldResetGoldMines = document.getElementById("world-reset-gold-mines");
@@ -58,15 +61,16 @@ const ITEM_METADATA = {
 const WORLD_RESET_TOGGLE_KEYS = ["obstacles", "npcs", "lava", "goldMines"];
 const WORLD_RESET_COUNT_KEYS = [
   "obstaclesCount",
-  "npcCount",
+  "goblinCount",
+  "ratCount",
   "lavaCount",
   "goldMineCount",
 ];
 const WORLD_RESET_COUNT_BY_TOGGLE = {
-  obstacles: "obstaclesCount",
-  npcs: "npcCount",
-  lava: "lavaCount",
-  goldMines: "goldMineCount",
+  obstacles: ["obstaclesCount"],
+  npcs: ["goblinCount", "ratCount"],
+  lava: ["lavaCount"],
+  goldMines: ["goldMineCount"],
 };
 const WORLD_RESET_CONFIG_KEYS = [
   ...WORLD_RESET_TOGGLE_KEYS,
@@ -80,6 +84,8 @@ const DEFAULT_WORLD_CONFIG = {
   goldMines: true,
   goldMineCount: 1,
   npcs: true,
+  goblinCount: 2,
+  ratCount: 1,
   npcCount: 3,
   lava: true,
   lavaCount: 3,
@@ -104,7 +110,8 @@ const store = {
     obstacles: worldResetObstacles,
     obstaclesCount: worldResetObstaclesCount,
     npcs: worldResetNPCs,
-    npcCount: worldResetNPCCount,
+    goblinCount: worldResetGoblinsCount,
+    ratCount: worldResetRatsCount,
     lava: worldResetLava,
     lavaCount: worldResetLavaCount,
     goldMines: worldResetGoldMines,
@@ -115,7 +122,8 @@ const store = {
     obstacles: false,
     obstaclesCount: false,
     npcs: false,
-    npcCount: false,
+    goblinCount: false,
+    ratCount: false,
     lava: false,
     lavaCount: false,
     goldMines: false,
@@ -426,16 +434,19 @@ function getConfigCount(cfg, key) {
 }
 
 function updateCountDisabledState(toggleKey) {
-  const countKey = WORLD_RESET_COUNT_BY_TOGGLE[toggleKey];
-  if (!countKey) {
+  const mapping = WORLD_RESET_COUNT_BY_TOGGLE[toggleKey];
+  if (!mapping) {
     return;
   }
   const toggleInput = store.worldResetInputs[toggleKey];
-  const countInput = store.worldResetInputs[countKey];
-  if (!countInput) {
-    return;
-  }
-  countInput.disabled = !toggleInput?.checked;
+  const enabled = !!toggleInput?.checked;
+  const keys = Array.isArray(mapping) ? mapping : [mapping];
+  keys.forEach((countKey) => {
+    const countInput = store.worldResetInputs[countKey];
+    if (countInput) {
+      countInput.disabled = !enabled;
+    }
+  });
 }
 
 function syncWorldResetControls() {
@@ -590,13 +601,17 @@ function initializeWorldResetControls() {
       return getConfigCount(store.worldConfig || DEFAULT_WORLD_CONFIG, key);
     };
 
+    const desiredGoblinCount = parseCountValue("goblinCount");
+    const desiredRatCount = parseCountValue("ratCount");
     const desiredConfig = {
       obstacles: !!store.worldResetInputs.obstacles?.checked,
       obstaclesCount: parseCountValue("obstaclesCount"),
       goldMines: !!store.worldResetInputs.goldMines?.checked,
       goldMineCount: parseCountValue("goldMineCount"),
       npcs: !!store.worldResetInputs.npcs?.checked,
-      npcCount: parseCountValue("npcCount"),
+      goblinCount: desiredGoblinCount,
+      ratCount: desiredRatCount,
+      npcCount: desiredGoblinCount + desiredRatCount,
       lava: !!store.worldResetInputs.lava?.checked,
       lavaCount: parseCountValue("lavaCount"),
       seed: store.worldResetInputs.seed?.value?.trim() || "",

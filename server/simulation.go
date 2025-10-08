@@ -341,237 +341,218 @@ func (w *World) spawnInitialNPCs() {
 	if !w.config.NPCs {
 		return
 	}
-	desired := w.config.NPCCount
-	if desired <= 0 {
+
+	goblinTarget := w.config.GoblinCount
+	ratTarget := w.config.RatCount
+	if goblinTarget <= 0 && ratTarget <= 0 {
 		return
 	}
 
-	spawned := 0
+	goblinsSpawned := 0
+	if goblinTarget >= 1 {
+		w.spawnGoblinAt(360, 260, []vec2{
+			{X: 360, Y: 260},
+			{X: 480, Y: 260},
+			{X: 480, Y: 380},
+			{X: 360, Y: 380},
+		}, 12, 1)
+		goblinsSpawned++
+	}
+	if goblinTarget >= 2 {
+		w.spawnGoblinAt(640, 480, []vec2{
+			{X: 640, Y: 480},
+			{X: 760, Y: 480},
+			{X: 760, Y: 600},
+			{X: 520, Y: 600},
+			{X: 520, Y: 480},
+		}, 8, 1)
+		goblinsSpawned++
+	}
+	extraGoblins := goblinTarget - goblinsSpawned
+	if extraGoblins > 0 {
+		w.spawnExtraGoblins(extraGoblins)
+	}
 
-	if desired >= 1 {
-		inventory := NewInventory()
-		if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
+	ratsSpawned := 0
+	if ratTarget >= 1 {
+		w.spawnRatAt(280, 520)
+		ratsSpawned++
+	}
+	extraRats := ratTarget - ratsSpawned
+	if extraRats > 0 {
+		w.spawnExtraRats(extraRats)
+	}
+}
+
+func (w *World) spawnGoblinAt(x, y float64, waypoints []vec2, goldQty, potionQty int) {
+	w.nextNPCID++
+	id := fmt.Sprintf("npc-goblin-%d", w.nextNPCID)
+	inventory := NewInventory()
+	if goldQty > 0 {
+		if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: goldQty}); err != nil {
 			log.Printf("failed to seed goblin gold: %v", err)
 		}
-		if _, err := inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 1}); err != nil {
+	}
+	if potionQty > 0 {
+		if _, err := inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: potionQty}); err != nil {
 			log.Printf("failed to seed goblin potion: %v", err)
 		}
-
-		w.nextNPCID++
-		id := fmt.Sprintf("npc-goblin-%d", w.nextNPCID)
-		goblin := &npcState{
-			actorState: actorState{
-				Actor: Actor{
-					ID:        id,
-					X:         360,
-					Y:         260,
-					Facing:    defaultFacing,
-					Health:    60,
-					MaxHealth: 60,
-					Inventory: inventory,
-				},
-			},
-			Type:             NPCTypeGoblin,
-			ExperienceReward: 25,
-			Waypoints: []vec2{
-				{X: 360, Y: 260},
-				{X: 480, Y: 260},
-				{X: 480, Y: 380},
-				{X: 360, Y: 380},
-			},
-		}
-
-		if w.aiLibrary != nil {
-			if cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin); cfg != nil {
-				goblin.AIConfigID = cfg.id
-				goblin.AIState = cfg.initialState
-				cfg.applyDefaults(&goblin.Blackboard)
-			}
-		}
-		if goblin.Blackboard.ArriveRadius <= 0 {
-			goblin.Blackboard.ArriveRadius = 16
-		}
-		if goblin.Blackboard.PauseTicks == 0 {
-			goblin.Blackboard.PauseTicks = 30
-		}
-		if goblin.Blackboard.StuckEpsilon <= 0 {
-			goblin.Blackboard.StuckEpsilon = 0.5
-		}
-		if goblin.Blackboard.WaypointIndex < 0 || goblin.Blackboard.WaypointIndex >= len(goblin.Waypoints) {
-			goblin.Blackboard.WaypointIndex = 0
-		}
-		goblin.Blackboard.NextDecisionAt = 0
-		goblin.Blackboard.LastWaypointIndex = -1
-
-		resolveObstaclePenetration(&goblin.actorState, w.obstacles)
-		goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
-		w.npcs[id] = goblin
-		spawned++
-	} else {
-		return
 	}
 
-	if desired >= 2 {
-		w.nextNPCID++
-		id := fmt.Sprintf("npc-goblin-%d", w.nextNPCID)
-		southGoblinInventory := NewInventory()
-		if _, err := southGoblinInventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 8}); err != nil {
-			log.Printf("failed to seed goblin gold: %v", err)
-		}
-		if _, err := southGoblinInventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 1}); err != nil {
-			log.Printf("failed to seed goblin potion: %v", err)
-		}
-		southernGoblin := &npcState{
-			actorState: actorState{
-				Actor: Actor{
-					ID:        id,
-					X:         640,
-					Y:         480,
-					Facing:    defaultFacing,
-					Health:    60,
-					MaxHealth: 60,
-					Inventory: southGoblinInventory,
-				},
+	goblin := &npcState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        id,
+				X:         x,
+				Y:         y,
+				Facing:    defaultFacing,
+				Health:    60,
+				MaxHealth: 60,
+				Inventory: inventory,
 			},
-			Type:             NPCTypeGoblin,
-			ExperienceReward: 25,
-			Waypoints: []vec2{
-				{X: 640, Y: 480},
-				{X: 760, Y: 480},
-				{X: 760, Y: 600},
-				{X: 520, Y: 600},
-				{X: 520, Y: 480},
-			},
-		}
+		},
+		Type:             NPCTypeGoblin,
+		ExperienceReward: 25,
+		Waypoints:        append([]vec2(nil), waypoints...),
+	}
+	w.initializeGoblinState(goblin)
+}
 
-		if w.aiLibrary != nil {
-			if cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin); cfg != nil {
-				southernGoblin.AIConfigID = cfg.id
-				southernGoblin.AIState = cfg.initialState
-				cfg.applyDefaults(&southernGoblin.Blackboard)
-			}
-		}
-		if southernGoblin.Blackboard.ArriveRadius <= 0 {
-			southernGoblin.Blackboard.ArriveRadius = 16
-		}
-		if southernGoblin.Blackboard.PauseTicks == 0 {
-			southernGoblin.Blackboard.PauseTicks = 30
-		}
-		if southernGoblin.Blackboard.StuckEpsilon <= 0 {
-			southernGoblin.Blackboard.StuckEpsilon = 0.5
-		}
-		if southernGoblin.Blackboard.WaypointIndex < 0 || southernGoblin.Blackboard.WaypointIndex >= len(southernGoblin.Waypoints) {
-			southernGoblin.Blackboard.WaypointIndex = 0
-		}
-		southernGoblin.Blackboard.NextDecisionAt = 0
-		southernGoblin.Blackboard.LastWaypointIndex = -1
-
-		resolveObstaclePenetration(&southernGoblin.actorState, w.obstacles)
-		southernGoblin.Blackboard.LastPos = vec2{X: southernGoblin.X, Y: southernGoblin.Y}
-		w.npcs[id] = southernGoblin
-		spawned++
-	} else {
+func (w *World) initializeGoblinState(goblin *npcState) {
+	if goblin == nil {
 		return
 	}
+	if w.aiLibrary != nil {
+		if cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin); cfg != nil {
+			goblin.AIConfigID = cfg.id
+			goblin.AIState = cfg.initialState
+			cfg.applyDefaults(&goblin.Blackboard)
+		}
+	}
+	if goblin.Blackboard.ArriveRadius <= 0 {
+		goblin.Blackboard.ArriveRadius = 16
+	}
+	if goblin.Blackboard.PauseTicks == 0 {
+		goblin.Blackboard.PauseTicks = 30
+	}
+	if goblin.Blackboard.StuckEpsilon <= 0 {
+		goblin.Blackboard.StuckEpsilon = 0.5
+	}
+	if goblin.Blackboard.WaypointIndex < 0 || goblin.Blackboard.WaypointIndex >= len(goblin.Waypoints) {
+		goblin.Blackboard.WaypointIndex = 0
+	}
+	goblin.Blackboard.NextDecisionAt = 0
+	goblin.Blackboard.LastWaypointIndex = -1
 
-	if desired >= 3 {
-		w.nextNPCID++
-		id := fmt.Sprintf("npc-rat-%d", w.nextNPCID)
-		rat := &npcState{
-			actorState: actorState{
-				Actor: Actor{
-					ID:        id,
-					X:         280,
-					Y:         520,
-					Facing:    defaultFacing,
-					Health:    18,
-					MaxHealth: 18,
-					Inventory: NewInventory(),
-				},
+	resolveObstaclePenetration(&goblin.actorState, w.obstacles)
+	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
+	w.npcs[goblin.ID] = goblin
+}
+
+func (w *World) spawnExtraGoblins(count int) {
+	if count <= 0 {
+		return
+	}
+	rng := w.subsystemRNG("npcs.extraGoblin")
+	const patrolRadius = 60.0
+	minX := obstacleSpawnMargin + patrolRadius
+	maxX := worldWidth - obstacleSpawnMargin - patrolRadius
+	if maxX <= minX {
+		minX = playerHalf + patrolRadius
+		maxX = worldWidth - playerHalf - patrolRadius
+	}
+	minY := obstacleSpawnMargin + patrolRadius
+	maxY := worldHeight - obstacleSpawnMargin - patrolRadius
+	if maxY <= minY {
+		minY = playerHalf + patrolRadius
+		maxY = worldHeight - playerHalf - patrolRadius
+	}
+
+	for i := 0; i < count; i++ {
+		x := minX
+		if maxX > minX {
+			x = minX + rng.Float64()*(maxX-minX)
+		}
+		y := minY
+		if maxY > minY {
+			y = minY + rng.Float64()*(maxY-minY)
+		}
+
+		topLeftX := clamp(x-patrolRadius, playerHalf, worldWidth-playerHalf)
+		topLeftY := clamp(y-patrolRadius, playerHalf, worldHeight-playerHalf)
+		topRightX := clamp(x+patrolRadius, playerHalf, worldWidth-playerHalf)
+		bottomY := clamp(y+patrolRadius, playerHalf, worldHeight-playerHalf)
+
+		waypoints := []vec2{
+			{X: topLeftX, Y: topLeftY},
+			{X: topRightX, Y: topLeftY},
+			{X: topRightX, Y: bottomY},
+			{X: topLeftX, Y: bottomY},
+		}
+
+		w.spawnGoblinAt(topLeftX, topLeftY, waypoints, 10, 1)
+	}
+}
+
+func (w *World) spawnRatAt(x, y float64) {
+	w.nextNPCID++
+	id := fmt.Sprintf("npc-rat-%d", w.nextNPCID)
+	rat := &npcState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        id,
+				X:         x,
+				Y:         y,
+				Facing:    defaultFacing,
+				Health:    18,
+				MaxHealth: 18,
+				Inventory: NewInventory(),
 			},
-			Type:             NPCTypeRat,
-			ExperienceReward: 8,
-			Home:             vec2{X: 280, Y: 520},
-		}
+		},
+		Type:             NPCTypeRat,
+		ExperienceReward: 8,
+		Home:             vec2{X: x, Y: y},
+	}
+	w.initializeRatState(rat)
+}
 
-		if w.aiLibrary != nil {
-			if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
-				rat.AIConfigID = cfg.id
-				rat.AIState = cfg.initialState
-				cfg.applyDefaults(&rat.Blackboard)
-			}
-		}
-		if rat.Blackboard.ArriveRadius <= 0 {
-			rat.Blackboard.ArriveRadius = 10
-		}
-		if rat.Blackboard.PauseTicks == 0 {
-			rat.Blackboard.PauseTicks = 20
-		}
-		if rat.Blackboard.StuckEpsilon <= 0 {
-			rat.Blackboard.StuckEpsilon = 0.5
-		}
-		rat.Blackboard.WaypointIndex = 0
-		rat.Blackboard.NextDecisionAt = 0
-		rat.Blackboard.LastWaypointIndex = -1
-
-		resolveObstaclePenetration(&rat.actorState, w.obstacles)
-		rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
-		w.npcs[id] = rat
-		spawned++
-	} else {
+func (w *World) initializeRatState(rat *npcState) {
+	if rat == nil {
 		return
 	}
+	if w.aiLibrary != nil {
+		if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
+			rat.AIConfigID = cfg.id
+			rat.AIState = cfg.initialState
+			cfg.applyDefaults(&rat.Blackboard)
+		}
+	}
+	if rat.Blackboard.ArriveRadius <= 0 {
+		rat.Blackboard.ArriveRadius = 10
+	}
+	if rat.Blackboard.PauseTicks == 0 {
+		rat.Blackboard.PauseTicks = 20
+	}
+	if rat.Blackboard.StuckEpsilon <= 0 {
+		rat.Blackboard.StuckEpsilon = 0.5
+	}
+	rat.Blackboard.WaypointIndex = 0
+	rat.Blackboard.NextDecisionAt = 0
+	rat.Blackboard.LastWaypointIndex = -1
 
-	extra := desired - spawned
-	if extra <= 0 {
+	resolveObstaclePenetration(&rat.actorState, w.obstacles)
+	rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
+	w.npcs[rat.ID] = rat
+}
+
+func (w *World) spawnExtraRats(count int) {
+	if count <= 0 {
 		return
 	}
-
 	rng := w.subsystemRNG("npcs.extra")
-	for i := 0; i < extra; i++ {
-		w.nextNPCID++
-		id := fmt.Sprintf("npc-rat-%d", w.nextNPCID)
+	for i := 0; i < count; i++ {
 		x := obstacleSpawnMargin + rng.Float64()*(worldWidth-2*obstacleSpawnMargin)
 		y := obstacleSpawnMargin + rng.Float64()*(worldHeight-2*obstacleSpawnMargin)
-		rat := &npcState{
-			actorState: actorState{
-				Actor: Actor{
-					ID:        id,
-					X:         x,
-					Y:         y,
-					Facing:    defaultFacing,
-					Health:    18,
-					MaxHealth: 18,
-					Inventory: NewInventory(),
-				},
-			},
-			Type:             NPCTypeRat,
-			ExperienceReward: 8,
-			Home:             vec2{X: x, Y: y},
-		}
-
-		if w.aiLibrary != nil {
-			if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
-				rat.AIConfigID = cfg.id
-				rat.AIState = cfg.initialState
-				cfg.applyDefaults(&rat.Blackboard)
-			}
-		}
-		if rat.Blackboard.ArriveRadius <= 0 {
-			rat.Blackboard.ArriveRadius = 10
-		}
-		if rat.Blackboard.PauseTicks == 0 {
-			rat.Blackboard.PauseTicks = 20
-		}
-		if rat.Blackboard.StuckEpsilon <= 0 {
-			rat.Blackboard.StuckEpsilon = 0.5
-		}
-		rat.Blackboard.WaypointIndex = 0
-		rat.Blackboard.NextDecisionAt = 0
-		rat.Blackboard.LastWaypointIndex = -1
-
-		resolveObstaclePenetration(&rat.actorState, w.obstacles)
-		rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
-		w.npcs[id] = rat
+		w.spawnRatAt(x, y)
 	}
 }
