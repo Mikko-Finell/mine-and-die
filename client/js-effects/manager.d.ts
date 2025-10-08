@@ -31,6 +31,9 @@ export declare class EffectManager {
     cullByAABB(view: ViewBounds): void;
     updateAll(frame: EffectFrameContext): void;
     drawAll(frame: EffectFrameContext): void;
+    drawLayerRange(frame: EffectFrameContext, minLayer?: number, maxLayer?: number, options?: {
+        resetDrawn?: boolean;
+    }): void;
     collectDecals(): DecalSpec[];
     getLastFrameStats(): FrameStats;
     removeInstance<TOptions>(instance: EffectInstance<TOptions> | null | undefined): boolean;

@@ -163,7 +163,20 @@ export class EffectManager {
   }
 
   drawAll(frame: EffectFrameContext): void {
-    this.stats.drawn = 0;
+    this.drawLayerRange(frame);
+  }
+
+  drawLayerRange(
+    frame: EffectFrameContext,
+    minLayer: EffectLayer | number = Number.NEGATIVE_INFINITY,
+    maxLayer: EffectLayer | number = Number.POSITIVE_INFINITY,
+    options: { resetDrawn?: boolean } = {}
+  ): void {
+    const { resetDrawn = true } = options;
+    if (resetDrawn) {
+      this.stats.drawn = 0;
+    }
+
     const view = this.viewBounds;
     const sorted = [...this.effects].sort((a, b) => {
       if (a.layer !== b.layer) {
@@ -175,6 +188,13 @@ export class EffectManager {
       return a.creationIndex - b.creationIndex;
     });
 
+    const clampedMin = Number.isFinite(minLayer as number)
+      ? (minLayer as number)
+      : Number.NEGATIVE_INFINITY;
+    const clampedMax = Number.isFinite(maxLayer as number)
+      ? (maxLayer as number)
+      : Number.POSITIVE_INFINITY;
+
     for (const managed of sorted) {
       if (managed.culled) {
         this.stats.culled += 1;
@@ -185,6 +205,12 @@ export class EffectManager {
         this.stats.culled += 1;
         continue;
       }
+
+      const layerValue = managed.layer as number;
+      if (layerValue < clampedMin || layerValue > clampedMax) {
+        continue;
+      }
+
       managed.instance.draw(frame);
       this.stats.drawn += 1;
     }
