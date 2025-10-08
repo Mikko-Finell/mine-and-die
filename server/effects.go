@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
 	"time"
+
+	"mine-and-die/server/logging"
+	"mine-and-die/server/logging/combat"
 )
 
 // Effect represents a time-limited gameplay artifact (attack swing, projectile, etc.).
@@ -270,7 +274,7 @@ func (w *World) cooldownReady(cooldowns *map[string]time.Time, ability string, c
 }
 
 // triggerMeleeAttack spawns a short-lived melee hitbox if the cooldown allows it.
-func (w *World) triggerMeleeAttack(actorID string, now time.Time) bool {
+func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) bool {
 	state, cooldowns := w.abilityOwner(actorID)
 	if state == nil || cooldowns == nil {
 		return false
@@ -347,11 +351,17 @@ func (w *World) triggerMeleeAttack(actorID string, now time.Time) bool {
 		}
 	}
 
-	if len(hitPlayerIDs) > 0 {
-		log.Printf("%s %s overlaps players %v", actorID, effectTypeAttack, hitPlayerIDs)
-	}
-	if len(hitNPCIDs) > 0 {
-		log.Printf("%s %s overlaps NPCs %v", actorID, effectTypeAttack, hitNPCIDs)
+	if len(hitPlayerIDs) > 0 || len(hitNPCIDs) > 0 {
+		actorRef := w.entityRef(actorID)
+		playerTargets := make([]logging.EntityRef, 0, len(hitPlayerIDs))
+		for _, id := range hitPlayerIDs {
+			playerTargets = append(playerTargets, logging.EntityRef{ID: id, Kind: logging.EntityKindPlayer})
+		}
+		npcTargets := make([]logging.EntityRef, 0, len(hitNPCIDs))
+		for _, id := range hitNPCIDs {
+			npcTargets = append(npcTargets, logging.EntityRef{ID: id, Kind: logging.EntityKindNPC})
+		}
+		combat.AttackOverlap(context.Background(), w.publisher, tick, actorRef, effectTypeAttack, playerTargets, npcTargets)
 	}
 
 	return true
@@ -431,6 +441,19 @@ func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (
 
 	w.effects = append(w.effects, effect)
 	return effect, true
+}
+
+func (w *World) entityRef(id string) logging.EntityRef {
+	if id == "" {
+		return logging.EntityRef{Kind: logging.EntityKindUnknown}
+	}
+	if _, ok := w.players[id]; ok {
+		return logging.EntityRef{ID: id, Kind: logging.EntityKindPlayer}
+	}
+	if _, ok := w.npcs[id]; ok {
+		return logging.EntityRef{ID: id, Kind: logging.EntityKindNPC}
+	}
+	return logging.EntityRef{ID: id, Kind: logging.EntityKindUnknown}
 }
 
 func spawnSizeFromShape(tpl *ProjectileTemplate) (float64, float64) {

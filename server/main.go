@@ -1,19 +1,48 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"mine-and-die/server/logging"
+	"mine-and-die/server/logging/sinks"
 )
 
 // main wires up HTTP handlers, starts the simulation, and serves the client.
 func main() {
-	hub := newHub()
+	cfg := logging.DefaultConfig()
+	namedSinks := make([]logging.NamedSink, 0)
+	if cfg.HasSink("console") {
+		namedSinks = append(namedSinks, logging.NamedSink{Name: "console", Sink: sinks.NewConsoleSink(os.Stdout, cfg.Console)})
+	}
+	if cfg.HasSink("json") {
+		if jsonSink, err := sinks.NewJSONSink(cfg.JSON); err == nil {
+			namedSinks = append(namedSinks, logging.NamedSink{Name: "json", Sink: jsonSink})
+		} else {
+			log.Printf("failed to initialise json sink: %v", err)
+		}
+	}
+	router, err := logging.NewRouter(logging.ClockFunc(time.Now), cfg, namedSinks)
+	if err != nil {
+		log.Fatalf("failed to start logging router: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := router.Close(ctx); err != nil {
+			log.Printf("failed to close logging router: %v", err)
+		}
+	}()
+
+	hub := newHubWithPublisher(router)
 	stop := make(chan struct{})
 	go hub.RunSimulation(stop)
 	defer close(stop)

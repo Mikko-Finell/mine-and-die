@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"mine-and-die/server/logging"
 )
 
 // Hub coordinates subscribers and orchestrates the deterministic world simulation.
@@ -17,6 +19,8 @@ type Hub struct {
 	world       *World
 	subscribers map[string]*subscriber
 	config      worldConfig
+	logger      logging.Publisher
+	worldPub    logging.Publisher
 
 	nextID atomic.Uint64
 	tick   atomic.Uint64
@@ -31,14 +35,24 @@ type subscriber struct {
 }
 
 // newHub creates a hub with empty maps and a freshly generated world.
-func newHub() *Hub {
+func newHubWithPublisher(pub logging.Publisher) *Hub {
 	cfg := defaultWorldConfig().normalized()
+	if pub == nil {
+		pub = logging.NopPublisher()
+	}
+	worldPublisher := logging.WithFields(pub, map[string]any{"component": "world"})
 	return &Hub{
-		world:           newWorld(cfg),
+		world:           newWorld(cfg, worldPublisher),
 		subscribers:     make(map[string]*subscriber),
 		pendingCommands: make([]Command, 0),
 		config:          cfg,
+		logger:          logging.WithFields(pub, map[string]any{"component": "hub"}),
+		worldPub:        worldPublisher,
 	}
+}
+
+func newHub() *Hub {
+	return newHubWithPublisher(nil)
 }
 
 func seedPlayerState(playerID string, now time.Time) *playerState {
@@ -103,7 +117,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 		playerIDs = append(playerIDs, id)
 	}
 
-	newW := newWorld(cfg)
+	newW := newWorld(cfg, h.worldPub)
 	for _, id := range playerIDs {
 		newW.AddPlayer(seedPlayerState(id, now))
 	}
