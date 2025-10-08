@@ -32,8 +32,9 @@ type Hub struct {
 }
 
 type subscriber struct {
-	conn *websocket.Conn
-	mu   sync.Mutex
+	conn    *websocket.Conn
+	mu      sync.Mutex
+	lastAck atomic.Uint64
 }
 
 // newHub creates a hub with empty maps and a freshly generated world.
@@ -184,6 +185,30 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 	players, npcs, effects := h.world.Snapshot(now)
 	groundItems := h.world.GroundItemsSnapshot()
 	return sub, players, npcs, effects, groundItems, true
+}
+
+// RecordAck updates the latest acknowledged tick for the given subscriber.
+func (h *Hub) RecordAck(playerID string, ack uint64) {
+	h.mu.Lock()
+	sub, ok := h.subscribers[playerID]
+	h.mu.Unlock()
+	if !ok {
+		return
+	}
+
+	for {
+		prev := sub.lastAck.Load()
+		if ack <= prev {
+			if ack < prev {
+				stdlog.Printf("client %s ack regression ignored: prev=%d, received=%d", playerID, prev, ack)
+			}
+			return
+		}
+		if sub.lastAck.CompareAndSwap(prev, ack) {
+			stdlog.Printf("client %s ack advanced to %d (prev %d)", playerID, ack, prev)
+			return
+		}
+	}
 }
 
 // Disconnect removes a player and closes any active subscriber connection.
@@ -535,11 +560,16 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 
 	players := make([]diagnosticsPlayer, 0, len(h.world.players))
 	for _, state := range h.world.players {
+		var ack uint64
+		if sub, ok := h.subscribers[state.ID]; ok {
+			ack = sub.lastAck.Load()
+		}
 		players = append(players, diagnosticsPlayer{
 			Ver:           ProtocolVersion,
 			ID:            state.ID,
 			LastHeartbeat: state.lastHeartbeat.UnixMilli(),
 			RTTMillis:     state.lastRTT.Milliseconds(),
+			LastAck:       ack,
 		})
 	}
 	return players

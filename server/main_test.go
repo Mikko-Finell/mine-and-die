@@ -645,6 +645,12 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 	diagState.lastRTT = 30 * time.Millisecond
 	hub.world.players[playerID] = diagState
 
+	sub := &subscriber{}
+	sub.lastAck.Store(47)
+	hub.mu.Lock()
+	hub.subscribers[playerID] = sub
+	hub.mu.Unlock()
+
 	snapshot := hub.DiagnosticsSnapshot()
 	if len(snapshot) != 1 {
 		t.Fatalf("expected diagnostics snapshot with 1 player, got %d", len(snapshot))
@@ -658,6 +664,34 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 	}
 	if entry.RTTMillis != 30 {
 		t.Fatalf("expected RTTMillis 30, got %d", entry.RTTMillis)
+	}
+	if entry.LastAck != 47 {
+		t.Fatalf("expected LastAck 47, got %d", entry.LastAck)
+	}
+}
+
+func TestRecordAckTracksMonotonicProgress(t *testing.T) {
+	hub := newHub()
+	playerID := "monotonic"
+
+	sub := &subscriber{}
+	hub.mu.Lock()
+	hub.subscribers[playerID] = sub
+	hub.mu.Unlock()
+
+	hub.RecordAck(playerID, 10)
+	if got := sub.lastAck.Load(); got != 10 {
+		t.Fatalf("expected lastAck to be 10, got %d", got)
+	}
+
+	hub.RecordAck(playerID, 8)
+	if got := sub.lastAck.Load(); got != 10 {
+		t.Fatalf("expected ack regression to be ignored, got %d", got)
+	}
+
+	hub.RecordAck(playerID, 25)
+	if got := sub.lastAck.Load(); got != 25 {
+		t.Fatalf("expected lastAck to advance to 25, got %d", got)
 	}
 }
 

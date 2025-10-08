@@ -253,6 +253,10 @@ func main() {
 				continue
 			}
 
+			if msg.Ack != nil {
+				hub.RecordAck(playerID, *msg.Ack)
+			}
+
 			switch msg.Type {
 			case "input":
 				if !hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing) {

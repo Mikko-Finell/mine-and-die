@@ -15,7 +15,7 @@ If the socket drops the client tears down local state and re-runs the join flow 
 - `POST /join` – Returns the join payload described above. Clients send no body.
 - `POST /world/reset` – Accepts JSON toggles for obstacles, NPCs, lava, and counts, plus an optional deterministic `seed`. The server normalises the request, rebuilds the world, and rebroadcasts a fresh snapshot. 【F:server/main.go†L63-L150】【F:client/network.js†L1088-L1156】
 - `GET /ws?id=...` – Upgrades to the WebSocket connection and streams all real-time messages. 【F:server/main.go†L200-L302】
-- `GET /diagnostics` – Serves heartbeat metadata (player IDs, last heartbeat times, RTT) alongside tick and heartbeat intervals for dashboards. 【F:server/main.go†L33-L61】
+- `GET /diagnostics` – Serves heartbeat metadata (player IDs, last heartbeat times, RTT) alongside tick and heartbeat intervals for dashboards, plus each subscriber's latest acknowledged tick. 【F:server/main.go†L33-L61】【F:server/hub.go†L534-L560】
 - `GET /health` – Returns `ok` for liveness checks. 【F:server/main.go†L24-L31】
 
 ## Server → Client Messages
@@ -41,7 +41,9 @@ All payloads are JSON objects with a `type` string:
 | `heartbeat` | `sentAt` | Millisecond timestamp used to compute round-trip time and timeout tracking. 【F:client/network.js†L918-L999】【F:server/hub.go†L450-L483】 |
 | `console` | `cmd`, optional `qty` | Debug commands for dropping/picking gold piles. 【F:client/network.js†L160-L187】【F:server/hub.go†L312-L444】 |
 
-The helper `sendMessage` centralises JSON serialization, simulated latency, and diagnostics counters before dispatch. 【F:client/network.js†L623-L657】
+The helper `sendMessage` centralises JSON serialization, simulated latency, diagnostics counters, and tags every payload with the client's latest applied tick (`ack`). 【F:client/network.js†L623-L657】
+
+All client messages include `ack` when the browser has processed at least one server tick. The hub records the highest value observed per subscriber, logging monotonic progress and exposing the latest acknowledgement through `/diagnostics`. 【F:client/network.js†L623-L657】【F:server/main.go†L257-L320】【F:server/hub.go†L212-L241】【F:server/hub.go†L522-L560】
 
 ## World Configuration Broadcasts
 
