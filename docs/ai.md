@@ -93,7 +93,7 @@ Timers set via `setTimer` (or defaults) populate `WaitUntil`. The `timerExpired`
 
 Two configs ship by default (`server/ai_configs/`):
 
-- **Goblin patrol** – Alternates between `Patrol` and `Wait`, marching through fixed waypoints. Reached-waypoint detection uses stall-aware radius relaxation so the patrol resumes even when nudged off path.
+- **Goblin patrol & pursuit** – Alternates between `Patrol` and `Wait`, marching through fixed waypoints. Reached-waypoint detection uses stall-aware radius relaxation so the patrol resumes even when nudged off path. If a player crosses within roughly eight tiles (320 world units), the `playerWithin` transition promotes the goblin into a `Pursue` state that re-targets the tracked player each tick. The goblin continues chasing until `lostSight` fires at ~360 units or the player despawns, at which point it drops back to its patrol loop.
 - **Rat wander & flee** – Roams around its home point, pauses periodically, and switches into a `Flee` state when players or hostile NPCs enter the configured radius. `moveAway` keeps rats backing off until `lostSight` or timers allow calmer behaviour.
 
 Both behaviours are covered by regression tests in `server/ai_test.go`, which simulate hundreds of ticks to validate patrol loops, stall recovery, and flee logic.

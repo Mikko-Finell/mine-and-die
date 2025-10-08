@@ -69,6 +69,24 @@ func newStaticAIWorld() (*World, *npcState) {
 	return w, npc
 }
 
+func goblinStateID(t *testing.T, w *World, name string) uint8 {
+	t.Helper()
+	if w == nil || w.aiLibrary == nil {
+		t.Fatalf("ai library not initialised")
+	}
+	cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin)
+	if cfg == nil {
+		t.Fatalf("missing goblin ai config")
+	}
+	for idx, state := range cfg.stateNames {
+		if state == name {
+			return uint8(idx)
+		}
+	}
+	t.Fatalf("failed to locate %s state in goblin config", name)
+	return 0
+}
+
 func newRatTestWorld() (*World, *npcState) {
 	w := &World{
 		players:         make(map[string]*playerState),
@@ -180,6 +198,145 @@ func TestGoblinPatrolsBetweenWaypoints(t *testing.T) {
 	}
 	if !returned {
 		t.Fatalf("expected goblin to return to first waypoint after visiting patrol route")
+	}
+}
+
+func TestGoblinPursuesPlayerWithinRange(t *testing.T) {
+	w, npc := newStaticAIWorld()
+	if npc == nil {
+		t.Fatalf("expected goblin NPC")
+	}
+
+	player := &playerState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        "player-target",
+				X:         npc.X + 200,
+				Y:         npc.Y,
+				Facing:    defaultFacing,
+				Health:    playerMaxHealth,
+				MaxHealth: playerMaxHealth,
+				Inventory: NewInventory(),
+			},
+		},
+	}
+	w.players[player.ID] = player
+
+	pursueStateID := goblinStateID(t, w, "Pursue")
+
+	dt := 1.0 / float64(tickRate)
+	now := time.Unix(0, 0)
+
+	pursueTick := uint64(0)
+	for tick := uint64(1); tick <= 200; tick++ {
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+
+		if npc.AIState == pursueStateID {
+			pursueTick = tick
+			break
+		}
+	}
+
+	if pursueTick == 0 {
+		t.Fatalf("expected goblin to enter pursue state when player nearby")
+	}
+
+	if npc.Blackboard.TargetActorID != player.ID {
+		t.Fatalf("expected goblin to track nearby player, tracking %q", npc.Blackboard.TargetActorID)
+	}
+	target := npc.Blackboard.PathTarget
+	if math.Abs(target.X-player.X) > 1e-3 || math.Abs(target.Y-player.Y) > 1e-3 {
+		t.Fatalf("expected goblin to set path toward player (target=%.2f,%.2f player=%.2f,%.2f)", target.X, target.Y, player.X, player.Y)
+	}
+
+	distAtPursue := math.Hypot(npc.X-player.X, npc.Y-player.Y)
+
+	for offset := uint64(1); offset <= 90; offset++ {
+		tick := pursueTick + offset
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+	}
+
+	finalDist := math.Hypot(npc.X-player.X, npc.Y-player.Y)
+	if finalDist >= distAtPursue-1e-3 {
+		t.Fatalf("expected goblin to close distance while pursuing (%.2f -> %.2f)", distAtPursue, finalDist)
+	}
+}
+
+func TestGoblinReturnsToPatrolAfterLosingPlayer(t *testing.T) {
+	w, npc := newStaticAIWorld()
+	if npc == nil {
+		t.Fatalf("expected goblin NPC")
+	}
+
+	player := &playerState{
+		actorState: actorState{
+			Actor: Actor{
+				ID:        "player-escape",
+				X:         npc.X + 200,
+				Y:         npc.Y,
+				Facing:    defaultFacing,
+				Health:    playerMaxHealth,
+				MaxHealth: playerMaxHealth,
+				Inventory: NewInventory(),
+			},
+		},
+	}
+	w.players[player.ID] = player
+
+	pursueStateID := goblinStateID(t, w, "Pursue")
+	patrolStateID := goblinStateID(t, w, "Patrol")
+
+	dt := 1.0 / float64(tickRate)
+	now := time.Unix(0, 0)
+
+	pursueTick := uint64(0)
+	for tick := uint64(1); tick <= 200; tick++ {
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+
+		if npc.AIState == pursueStateID {
+			pursueTick = tick
+			break
+		}
+	}
+	if pursueTick == 0 {
+		t.Fatalf("expected goblin to enter pursue state when player nearby")
+	}
+
+	player.X = npc.X + 1000
+	player.Y = npc.Y + 1000
+
+	patrolTick := uint64(0)
+	for tick := pursueTick + 1; tick <= pursueTick+200; tick++ {
+		w.Step(tick, now, dt, nil)
+		now = now.Add(time.Second / tickRate)
+
+		if npc.AIState == patrolStateID {
+			patrolTick = tick
+			break
+		}
+	}
+
+	if patrolTick == 0 {
+		t.Fatalf("expected goblin to return to patrol after losing player")
+	}
+
+	w.Step(patrolTick+1, now, dt, nil)
+	now = now.Add(time.Second / tickRate)
+
+	if len(npc.Waypoints) == 0 {
+		t.Fatalf("expected goblin to have patrol waypoints")
+	}
+	idx := npc.Blackboard.WaypointIndex
+	if idx < 0 {
+		idx = 0
+	}
+	waypoint := npc.Waypoints[idx%len(npc.Waypoints)]
+	target := npc.Blackboard.PathTarget
+	if math.Hypot(target.X-waypoint.X, target.Y-waypoint.Y) > 1 {
+		t.Fatalf("expected goblin to resume patrol path target (target=%.2f,%.2f waypoint=%.2f,%.2f)", target.X, target.Y, waypoint.X, waypoint.Y)
 	}
 }
 
