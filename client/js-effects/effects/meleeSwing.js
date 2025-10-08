@@ -113,4 +113,37 @@ export const MeleeSwingEffectDefinition = {
         fadeExponent: 1.5,
     },
     create: (opts) => new MeleeSwingInstance(opts),
+    fromEffect: (effect, store) => {
+        var _a, _b, _c, _d;
+        if (!effect || typeof effect !== "object") {
+            return null;
+        }
+        const fallbackSize = Number.isFinite(store === null || store === void 0 ? void 0 : store.TILE_SIZE)
+            ? store.TILE_SIZE
+            : MeleeSwingEffectDefinition.defaults.width;
+        const width = Number.isFinite(effect.width) ? effect.width : fallbackSize;
+        const height = Number.isFinite(effect.height) ? effect.height : fallbackSize;
+        const x = Number.isFinite(effect.x) ? effect.x : 0;
+        const y = Number.isFinite(effect.y) ? effect.y : 0;
+        const durationMs = Number.isFinite(effect.duration) ? effect.duration : 150;
+        const durationSeconds = Math.max(0.05, durationMs / 1000 + 0.05);
+        const strokeWidth = Math.max(2, Math.min(4, Math.min(width, height) * 0.08));
+        const innerInset = Math.max(3, Math.min(width, height) * 0.22);
+        const fadeExponent = Number.isFinite((_a = effect.params) === null || _a === void 0 ? void 0 : _a.fadeExponent)
+            ? (_b = effect.params) === null || _b === void 0 ? void 0 : _b.fadeExponent
+            : MeleeSwingEffectDefinition.defaults.fadeExponent;
+        return {
+            effectId: typeof effect.id === "string" ? effect.id : undefined,
+            x,
+            y,
+            width,
+            height,
+            duration: durationSeconds,
+            strokeWidth,
+            innerInset,
+            fadeExponent,
+            fill: (_c = effect.fill) !== null && _c !== void 0 ? _c : MeleeSwingEffectDefinition.defaults.fill,
+            stroke: (_d = effect.stroke) !== null && _d !== void 0 ? _d : MeleeSwingEffectDefinition.defaults.stroke,
+        };
+    },
 };

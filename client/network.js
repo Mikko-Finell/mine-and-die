@@ -180,9 +180,6 @@ export async function joinGame(store) {
     if (store.effectManager && typeof store.effectManager.clear === "function") {
       store.effectManager.clear();
     }
-    store.meleeEffectInstances = new Map();
-    store.activeDecals = [];
-    store.displayEffects = {};
     if (typeof store.updateWorldConfigUI === "function") {
       store.updateWorldConfigUI();
     }
@@ -535,9 +532,6 @@ function handleConnectionLoss(store) {
   if (store.effectManager && typeof store.effectManager.clear === "function") {
     store.effectManager.clear();
   }
-  store.meleeEffectInstances = new Map();
-  store.activeDecals = [];
-  store.displayEffects = {};
   scheduleReconnect(store);
 }
 

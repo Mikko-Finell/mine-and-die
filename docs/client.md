@@ -19,8 +19,9 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Player dictionaries: `players` (authoritative) and `displayPlayers` (interpolated positions).
 - NPC dictionaries: `npcs` mirrors neutral enemies from the server, `displayNPCs` lerps their positions for rendering.
 - Arrays for `obstacles` and `effects` mirrored from server payloads.
-- Queues for `pendingEffectTriggers` plus `processedEffectTriggerIds` so fire-and-forget
-  events are applied exactly once on the client.
+- Effect runtime: a shared `effectManager` instance drives all combat visuals while
+  `pendingEffectTriggers` / `processedEffectTriggerIds` ensure fire-and-forget payloads are
+  applied exactly once on the client.
 - `worldConfig` mirrors the server's toggles along with the deterministic `seed` string used when restarting the world from the debug panel.
 
 ## Initialization Sequence
@@ -43,18 +44,20 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Players are drawn as colored squares with a facing indicator line; the local player uses cyan/white, others orange/cream.
 - NPCs are drawn in violet with their facing indicator and optional type label.
 - Obstacles use either a stone block style or a gold ore treatment with deterministic pseudo-random nuggets.
-- Melee swings are rendered through the js-effects `EffectManager` using the shared
-  `MeleeSwingEffectDefinition` (synced to `client/js-effects/effects/meleeSwing.js` from the
-  TypeScript source in `tools/js-effects/packages/effects-lib`). This keeps the in-game red hitbox
-  identical to the playground entry and lets contributors tweak it from a single definition while
-  other effect types continue to fall back to simple rectangles.
-- Environmental fires use the looping `FireEffectDefinition`, which now focuses on swirling embers
-  sampled from a configurable colour palette with adjustable spread controls. Tune the defaults via
-  the TypeScript source in `tools/js-effects/packages/effects-lib/src/effects/fire.ts` and run
-  `npm run build` so the regenerated modules land in `client/js-effects/`.
-- Fire-and-forget triggers drain from `store.pendingEffectTriggers` each frame. Registered
-  handlers in `render.js` decide how to visualise the payload—spawning js-effects animations,
-  producing decals, or updating local-only state—without needing further server updates.
+- All combat visuals run through the shared js-effects `EffectManager`. `render.js` calls the
+  generic `syncEffectsByType` helper for each definition (melee swings, lingering fire, and the
+  rectangular fireball trail) then delegates culling, sorting, updates, and drawing entirely to the
+  manager.
+- Definitions in `client/js-effects/effects/` expose a `fromEffect` helper used by
+  `syncEffectsByType` to translate authoritative payloads into spawn options. Add new types by
+  shipping a definition with `fromEffect` plus any custom `onUpdate` callback required to keep the
+  instance aligned with simulation state.
+- Fire-and-forget triggers drain from `store.pendingEffectTriggers` each frame and are dispatched
+  through `EffectManager.triggerAll`. Registered handlers only receive `(manager, trigger, context)`
+  and should call `manager.spawn()` directly—no ad-hoc maps or stores are needed.
+- Effects that hand off decals call `handoffToDecal()` when they expire. `EffectManager.collectDecals`
+  converts those into long-lived decal instances on the ground layer so `render.js` no longer keeps a
+  separate TTL queue.
 - When extending the js-effects runtime (new definitions, manager helpers, etc.), make the changes
   in the TypeScript sources under `tools/js-effects/packages/effects-lib` and run `npm run build`
   from the repository root. This regenerates the vendored modules in `client/js-effects/`, so edits

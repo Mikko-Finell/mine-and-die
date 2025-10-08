@@ -70,12 +70,15 @@ Mine & Die is a small realtime prototype:
   - Update the relevant markdown in `docs/` when changing behaviour that affects contributors or runtime assumptions.
   - Keep diagnostics (`/diagnostics`, HUD) in sync with new fields or metrics you add.
 - **Effects:**
-  - Prefer the js-effects `EffectManager` for new or updated combat visuals. Melee swings already use the shared manager via the
-    `MeleeSwingEffectDefinition` sourced from `tools/js-effects/packages/effects-lib` (synced into `client/js-effects/` by `npm run build`).
-    Mirror that pattern when introducing new definitions so the playground and client stay in lockstep.
-  - Cleanup helper maps (`store.meleeEffectInstances`, etc.) when tearing down state so reconnects and world resets do not leak
-    canvas instances.
-  - When porting additional effects, document any new presets or helpers in `docs/client.md`.
+  - The js-effects `EffectManager` is the sole authority for effect lifecycles. Do not introduce
+    per-type stores, timers, or cleanup sets in client code—use `syncEffectsByType` alongside
+    definition-provided `fromEffect` helpers to mirror simulation state.
+  - Register fire-and-forget visuals through `EffectManager.registerTrigger` and dispatch them via
+    `triggerAll`. Trigger handlers should call `manager.spawn()` directly rather than creating ad-hoc
+    maps or queues.
+  - When adding or tweaking definitions, update the TypeScript sources under
+    `tools/js-effects/packages/effects-lib`, run `npm run build`, and refresh the relevant guidance in
+    `docs/client.md`.
 
 ## AI System Notes
 - NPC behaviours live in JSON configs under `server/ai_configs/`. Run `gofmt` after touching any Go helpers and keep configs free of trailing comments so the embed loader stays simple.
