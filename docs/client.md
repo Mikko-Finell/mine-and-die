@@ -43,18 +43,14 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Players are drawn as colored squares with a facing indicator line; the local player uses cyan/white, others orange/cream.
 - NPCs are drawn in violet with their facing indicator and optional type label.
 - Obstacles use either a stone block style or a gold ore treatment with deterministic pseudo-random nuggets.
-- Melee swings are rendered through the js-effects `EffectManager` using the shared
-  `MeleeSwingEffectDefinition` (synced to `client/js-effects/effects/meleeSwing.js` from the
-  TypeScript source in `tools/js-effects/packages/effects-lib`). This keeps the in-game red hitbox
-  identical to the playground entry and lets contributors tweak it from a single definition while
-  other effect types continue to fall back to simple rectangles.
-- Environmental fires use the looping `FireEffectDefinition`, which now focuses on swirling embers
-  sampled from a configurable colour palette with adjustable spread controls. Tune the defaults via
-  the TypeScript source in `tools/js-effects/packages/effects-lib/src/effects/fire.ts` and run
-  `npm run build` so the regenerated modules land in `client/js-effects/`.
-- Fire-and-forget triggers drain from `store.pendingEffectTriggers` each frame. Registered
-  handlers in `render.js` decide how to visualise the payload—spawning js-effects animations,
-  producing decals, or updating local-only state—without needing further server updates.
+- `render.js` keeps a small binding table that maps simulation effect types to js-effects
+  definitions. `syncEffectsByType` reconciles the snapshot against the shared `EffectManager`
+  so the runtime owns spawning, updates, sorting, decals, and cleanup.
+- Melee swings, environmental fire loops, and fireball projectiles all reuse definitions from
+  `tools/js-effects/packages/effects-lib`. Update the TypeScript sources and run `npm run build`
+  to regenerate the vendored modules under `client/js-effects/`.
+- Fire-and-forget triggers feed through `EffectManager.registerTrigger`/`triggerAll`. Rendering
+  logic stays inside the manager—no per-trigger helper maps or manual cleanup loops remain.
 - When extending the js-effects runtime (new definitions, manager helpers, etc.), make the changes
   in the TypeScript sources under `tools/js-effects/packages/effects-lib` and run `npm run build`
   from the repository root. This regenerates the vendored modules in `client/js-effects/`, so edits
@@ -64,8 +60,8 @@ The client is a lightweight ES module bundle served directly from the Go server.
 - Add new HUD elements to `index.html`, register them in the `store`, and update `main.js` diagnostics helpers.
 - Mirror new server fields by adjusting the payload handling inside `network.js` (state, actions, heartbeat logic).
 - Expand rendering logic by extending `render.js`; prefer pure functions that read from the `store` to keep coordination simple.
-- Route new combat visuals through js-effects. Reuse the existing melee swing integration as a template and update the
-  helper maps/cleanup logic in `network.js` if additional tracked instances are required.
+- Route new combat visuals through js-effects. Add a definition, register it in the render bindings,
+  and let the `EffectManager` handle lifecycle, culling, and decals.
 - New input bindings belong in `input.js`; keep the derived intent normalized before sending.
 
 ## Troubleshooting Tips

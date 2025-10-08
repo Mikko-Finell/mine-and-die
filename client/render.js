@@ -1,7 +1,14 @@
 import { EffectManager } from "./js-effects/manager.js";
+import { EffectLayer } from "./js-effects/types.js";
 import { MeleeSwingEffectDefinition } from "./js-effects/effects/meleeSwing.js";
 import { BloodSplatterDefinition } from "./js-effects/effects/bloodSplatter.js";
 import { FireEffectDefinition } from "./js-effects/effects/fire.js";
+
+/**
+ * render.js bridges authoritative snapshots to the EffectManager runtime.
+ * It mirrors simulation state into the shared manager, forwards triggers,
+ * and relies on the runtime to own effect lifecycles end-to-end.
+ */
 
 const DEFAULT_FACING = "down";
 const FACING_OFFSETS = {
@@ -11,337 +18,404 @@ const FACING_OFFSETS = {
   right: { x: 1, y: 0 },
 };
 
-const EFFECT_STYLES = {
-  attack: {
-    fill: "rgba(239, 68, 68, 0.25)",
-    stroke: "rgba(239, 68, 68, 0.8)",
-  },
-  fireball: {
-    fill: "rgba(251, 191, 36, 0.35)",
-    stroke: "rgba(251, 146, 60, 0.95)",
-  },
-};
-
-const fireAndForgetHandlers = new Map();
-
-export function registerFireAndForgetHandler(type, handler) {
-  if (typeof type !== "string" || type.length === 0) {
-    return;
-  }
-  if (typeof handler !== "function") {
-    return;
-  }
-  fireAndForgetHandlers.set(type, handler);
-}
-
 function ensureEffectRuntime(store) {
   if (!store.effectManager) {
     store.effectManager = new EffectManager();
+    store.effectTriggerHandlersRegistered = false;
+  }
+  if (!store.effectTriggerHandlersRegistered) {
+    registerEffectTriggers(store, store.effectManager);
+    store.effectTriggerHandlersRegistered = true;
   }
   return store.effectManager;
 }
 
-function ensureMeleeEffectStore(store) {
-  if (!(store.meleeEffectInstances instanceof Map)) {
-    store.meleeEffectInstances = new Map();
-  }
-  return store.meleeEffectInstances;
+function registerEffectTriggers(store, manager) {
+  manager.registerTrigger("blood-splatter", ({ manager: mgr, trigger }) => {
+    spawnBloodSplatter(store, mgr, trigger);
+  });
 }
 
-function ensureDecalStore(store) {
-  if (!Array.isArray(store.activeDecals)) {
-    store.activeDecals = [];
-  }
-  return store.activeDecals;
-}
+const SPAWN_OPTION_OVERRIDES = {
+  attack: createMeleeSpawnOverrides,
+  fire: createFireSpawnOverrides,
+  fireball: createFireballSpawnOverrides,
+};
 
-function ensureFireEffectStore(store) {
-  if (!(store.fireEffectInstances instanceof Map)) {
-    store.fireEffectInstances = new Map();
-  }
-  return store.fireEffectInstances;
-}
-
-function queueDecals(store, specs, nowSeconds) {
-  if (!Array.isArray(specs) || specs.length === 0) {
-    return;
-  }
-  const decals = ensureDecalStore(store);
-  const timestamp = Number.isFinite(nowSeconds) ? nowSeconds : Date.now() / 1000;
-  for (const spec of specs) {
-    if (!spec || typeof spec !== "object") {
-      continue;
-    }
-    const ttl =
-      typeof spec.ttl === "number" && Number.isFinite(spec.ttl)
-        ? Math.max(0, spec.ttl)
-        : null;
-    decals.push({
-      spec,
-      spawnedAt: timestamp,
-      expiresAt: ttl === null ? Number.POSITIVE_INFINITY : timestamp + ttl,
-    });
-  }
-}
-
-function drawStoredDecals(store, nowSeconds) {
-  const decals = Array.isArray(store.activeDecals) ? store.activeDecals : null;
-  if (!decals || decals.length === 0) {
-    return;
-  }
-  const ctx = store?.ctx;
-  if (!ctx) {
-    store.activeDecals = [];
-    return;
-  }
-  const timestamp = Number.isFinite(nowSeconds) ? nowSeconds : Date.now() / 1000;
-  let writeIndex = 0;
-  for (let i = 0; i < decals.length; i += 1) {
-    const entry = decals[i];
-    if (!entry || typeof entry !== "object") {
-      continue;
-    }
-    const { spec, expiresAt } = entry;
-    if (!spec || typeof spec !== "object") {
-      continue;
-    }
-    if (timestamp >= (Number.isFinite(expiresAt) ? expiresAt : Number.POSITIVE_INFINITY)) {
-      continue;
-    }
-    drawDecalSpec(ctx, spec);
-    decals[writeIndex] = entry;
-    writeIndex += 1;
-  }
-  decals.length = writeIndex;
-}
-
-function drawDecalSpec(ctx, spec) {
-  if (!ctx || !spec) {
-    return;
-  }
-  const x = Number.isFinite(spec.x) ? spec.x : 0;
-  const y = Number.isFinite(spec.y) ? spec.y : 0;
-  const rotation = Number.isFinite(spec.rotation) ? spec.rotation : 0;
-  const texture = spec.texture;
-  const shape = spec.shape;
-  const defaultColor = typeof spec.averageColor === "string" ? spec.averageColor : "rgba(127, 29, 29, 0.85)";
-
-  ctx.save();
-  ctx.translate(x, y);
-  if (rotation !== 0) {
-    ctx.rotate(rotation);
-  }
-
-  const hasCanvas =
-    typeof HTMLCanvasElement !== "undefined" && texture instanceof HTMLCanvasElement;
-  const hasBitmap = typeof ImageBitmap !== "undefined" && texture instanceof ImageBitmap;
-
-  if (hasCanvas || hasBitmap) {
-    const width = Number.isFinite(texture.width) ? texture.width : 0;
-    const height = Number.isFinite(texture.height) ? texture.height : 0;
-    ctx.drawImage(texture, -width / 2, -height / 2, width, height);
-    ctx.restore();
+function syncEffectsByType(store, manager, type, definition, onUpdate) {
+  if (!store || !manager || typeof type !== "string" || !definition) {
     return;
   }
 
-  if (shape && typeof shape === "object") {
-    ctx.fillStyle = defaultColor;
-    if (shape.type === "oval") {
-      const rx = Number.isFinite(shape.rx) ? shape.rx : 0;
-      const ry = Number.isFinite(shape.ry) ? shape.ry : 0;
-      if (rx > 0 && ry > 0) {
-        ctx.beginPath();
-        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else if (shape.type === "rect") {
-      const w = Number.isFinite(shape.w) ? shape.w : 0;
-      const h = Number.isFinite(shape.h) ? shape.h : 0;
-      if (w > 0 && h > 0) {
-        ctx.fillRect(-w / 2, -h / 2, w, h);
-      }
-    } else if (shape.type === "poly" && Array.isArray(shape.points)) {
-      const points = shape.points;
-      if (points.length >= 4 && points.length % 2 === 0) {
-        ctx.beginPath();
-        ctx.moveTo(points[0], points[1]);
-        for (let i = 2; i < points.length; i += 2) {
-          ctx.lineTo(points[i], points[i + 1]);
-        }
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-    return;
-  }
-
-  if (typeof texture === "string" && texture) {
-    ctx.fillStyle = texture;
-    const size = 12;
-    ctx.fillRect(-size / 2, -size / 2, size, size);
-  }
-
-  ctx.restore();
-}
-
-function syncMeleeSwingEffects(store, existingManager = null) {
   const effects = Array.isArray(store.effects) ? store.effects : [];
-  const tracked = ensureMeleeEffectStore(store);
   const seen = new Set();
-  let manager = existingManager || store.effectManager || null;
 
   for (const effect of effects) {
     if (!effect || typeof effect !== "object") {
       continue;
     }
-    if (effect.type !== "attack") {
+    if (effect.type !== type) {
       continue;
     }
     const id = typeof effect.id === "string" ? effect.id : null;
     if (!id) {
       continue;
     }
+
     seen.add(id);
-    if (tracked.has(id)) {
-      continue;
-    }
-    const width = Number.isFinite(effect.width) ? effect.width : store.TILE_SIZE || 40;
-    const height = Number.isFinite(effect.height) ? effect.height : store.TILE_SIZE || 40;
-    const x = Number.isFinite(effect.x) ? effect.x : 0;
-    const y = Number.isFinite(effect.y) ? effect.y : 0;
-    const durationMs = Number.isFinite(effect.duration) ? effect.duration : 150;
-    const durationSeconds = Math.max(0.05, durationMs / 1000 + 0.05);
-    const strokeWidth = Math.max(2, Math.min(4, Math.min(width, height) * 0.08));
-    const innerInset = Math.max(3, Math.min(width, height) * 0.22);
 
-    if (!manager) {
-      manager = ensureEffectRuntime(store);
+    let instance = manager.getInstanceById(id);
+    const overridesFactory = SPAWN_OPTION_OVERRIDES[type];
+    const baseOptions = createBaseSpawnOptions(effect, store, id);
+    const overrides = typeof overridesFactory === "function" ? overridesFactory(effect, store) : null;
+    const spawnOptions = overrides ? { ...baseOptions, ...overrides } : baseOptions;
+    const isNew = !instance;
+
+    if (!instance) {
+      instance = manager.spawn(definition, spawnOptions);
     }
 
-    const instance = manager.spawn(MeleeSwingEffectDefinition, {
-      effectId: id,
-      x,
-      y,
-      width,
-      height,
-      duration: durationSeconds,
-      strokeWidth,
-      innerInset,
-    });
-    tracked.set(id, instance);
-  }
-
-  for (const [id, instance] of tracked.entries()) {
-    const isAlive = instance && typeof instance.isAlive === "function" ? instance.isAlive() : false;
-    if (!seen.has(id) || !isAlive) {
-      if (manager && typeof manager.removeInstance === "function") {
-        manager.removeInstance(instance);
-      }
-      tracked.delete(id);
+    if (instance && onUpdate) {
+      onUpdate(instance, effect, store, isNew);
     }
   }
 
-  return manager;
+  const active = manager.getInstancesByType(definition.type);
+  for (const instance of active) {
+    if (!seen.has(instance.id)) {
+      manager.removeInstance(instance);
+    }
+  }
 }
 
-function updateFireInstanceTransform(instance, centerX, centerY) {
+function createBaseSpawnOptions(effect, store, id) {
+  const x = Number.isFinite(effect?.x) ? effect.x : 0;
+  const y = Number.isFinite(effect?.y) ? effect.y : 0;
+  const width = Number.isFinite(effect?.width) ? effect.width : store.TILE_SIZE || 40;
+  const height = Number.isFinite(effect?.height) ? effect.height : store.TILE_SIZE || 40;
+  const duration = Number.isFinite(effect?.duration) ? effect.duration : null;
+
+  const options = { effectId: id, x, y };
+  if (Number.isFinite(width)) {
+    options.width = width;
+  }
+  if (Number.isFinite(height)) {
+    options.height = height;
+  }
+  if (Number.isFinite(duration)) {
+    options.duration = Math.max(0.05, duration / 1000);
+  }
+  return options;
+}
+
+function createMeleeSpawnOverrides(effect, store) {
+  const width = Number.isFinite(effect?.width) ? effect.width : store.TILE_SIZE || 40;
+  const height = Number.isFinite(effect?.height) ? effect.height : store.TILE_SIZE || 40;
+  const duration = Number.isFinite(effect?.duration) ? effect.duration : 150;
+
+  const safeSize = Math.max(1, Math.min(width, height));
+  const strokeWidth = Math.max(2, Math.min(4, safeSize * 0.08));
+  const innerInset = Math.max(3, safeSize * 0.22);
+
+  return {
+    width,
+    height,
+    duration: Math.max(0.05, duration / 1000 + 0.05),
+    strokeWidth,
+    innerInset,
+  };
+}
+
+function createFireSpawnOverrides(effect, store) {
+  const width = Number.isFinite(effect?.width) ? effect.width : store.TILE_SIZE || 40;
+  const height = Number.isFinite(effect?.height) ? effect.height : store.TILE_SIZE || 40;
+  const baseX = Number.isFinite(effect?.x) ? effect.x : 0;
+  const baseY = Number.isFinite(effect?.y) ? effect.y : 0;
+  const centerX = baseX + width / 2;
+  const centerY = baseY + height / 2;
+
+  return {
+    x: centerX,
+    y: centerY,
+    additive: true,
+    concentration: 0.25,
+    emberAlpha: 1,
+    emberPalette: [
+      "rgba(255, 220, 150, 1.0)",
+      "rgba(255, 180, 60, 1.0)",
+      "rgba(255, 245, 200, 1.0)",
+    ],
+    embersPerBurst: 24,
+    jitter: 22.5,
+    lifeScale: 1.1,
+    riseSpeed: 35,
+    sizeScale: 1.3,
+    spawnInterval: 0.06,
+    spawnRadius: 15.5,
+    swirl: 0.5,
+    windX: 0,
+  };
+}
+
+function createFireballSpawnOverrides(effect, store) {
+  const width = Number.isFinite(effect?.width) ? effect.width : store.TILE_SIZE || 32;
+  const height = Number.isFinite(effect?.height) ? effect.height : store.TILE_SIZE || 32;
+  const baseX = Number.isFinite(effect?.x) ? effect.x : 0;
+  const baseY = Number.isFinite(effect?.y) ? effect.y : 0;
+
+  return {
+    x: baseX + width / 2,
+    y: baseY + height / 2,
+    width,
+    height,
+    colors: [
+      "rgba(253, 230, 138, 0.95)",
+      "rgba(251, 191, 36, 0.85)",
+      "rgba(194, 65, 12, 0.45)",
+    ],
+  };
+}
+
+function updateMeleeSwingInstance(instance, effect, store) {
   if (!instance || typeof instance !== "object") {
     return;
   }
-  const origin = instance.origin;
-  if (origin && typeof origin === "object") {
-    origin.x = centerX;
-    origin.y = centerY;
+
+  const width = Number.isFinite(effect?.width) ? effect.width : store.TILE_SIZE || 40;
+  const height = Number.isFinite(effect?.height) ? effect.height : store.TILE_SIZE || 40;
+  const x = Number.isFinite(effect?.x) ? effect.x : 0;
+  const y = Number.isFinite(effect?.y) ? effect.y : 0;
+  const duration = Number.isFinite(effect?.duration) ? effect.duration : 150;
+  const safeSize = Math.max(1, Math.min(width, height));
+  const strokeWidth = Math.max(2, Math.min(4, safeSize * 0.08));
+  const innerInset = Math.max(3, safeSize * 0.22);
+
+  if (instance.origin) {
+    instance.origin.x = x;
+    instance.origin.y = y;
   }
-  const opts = instance.opts || {};
-  const sizeScale = Number.isFinite(opts.sizeScale) ? opts.sizeScale : 1;
-  const radiusX = 56 * sizeScale;
-  const radiusY = 84 * sizeScale;
-  const aabb = instance.aabb;
-  if (aabb && typeof aabb === "object") {
-    aabb.x = centerX - radiusX;
-    aabb.y = centerY - radiusY;
-    aabb.w = radiusX * 2;
-    aabb.h = radiusY * 2;
+  if (instance.aabb) {
+    instance.aabb.x = x;
+    instance.aabb.y = y;
+    instance.aabb.w = width;
+    instance.aabb.h = height;
+  }
+  if (instance.opts && typeof instance.opts === "object") {
+    instance.opts.width = width;
+    instance.opts.height = height;
+    instance.opts.duration = Math.max(0.05, duration / 1000 + 0.05);
+    instance.opts.strokeWidth = strokeWidth;
+    instance.opts.innerInset = innerInset;
   }
 }
 
-function syncFireEffects(store, existingManager = null) {
-  const effects = Array.isArray(store.effects) ? store.effects : [];
-  const tracked = ensureFireEffectStore(store);
-  const seen = new Set();
-  let manager = existingManager || store.effectManager || null;
-
-  for (const effect of effects) {
-    if (!effect || typeof effect !== "object") {
-      continue;
-    }
-    if (effect.type !== "fire") {
-      continue;
-    }
-    const id = typeof effect.id === "string" ? effect.id : null;
-    if (!id) {
-      continue;
-    }
-    const width = Number.isFinite(effect.width) ? effect.width : store.TILE_SIZE || 40;
-    const height = Number.isFinite(effect.height) ? effect.height : store.TILE_SIZE || 40;
-    const baseX = Number.isFinite(effect.x) ? effect.x : 0;
-    const baseY = Number.isFinite(effect.y) ? effect.y : 0;
-    const centerX = baseX + width / 2;
-    const centerY = baseY + height / 2;
-
-    seen.add(id);
-
-    let instance = tracked.get(id);
-    if (!instance) {
-      if (!manager) {
-        manager = ensureEffectRuntime(store);
-      }
-      if (!manager) {
-        continue;
-      }
-      instance = manager.spawn(FireEffectDefinition, {
-        x: centerX,
-        y: centerY,
-        additive: true,
-        concentration: 0.25,
-        emberAlpha: 1,
-        emberPalette: [
-          "rgba(255, 220, 150, 1.0)",
-          "rgba(255, 180, 60, 1.0)",
-          "rgba(255, 245, 200, 1.0)",
-        ],
-        embersPerBurst: 24,
-        flamesPerBurst: 1,
-        gradientBias: 1.65,
-        jitter: 22.5,
-        lifeScale: 1.1,
-        riseSpeed: 35,
-        sizeScale: 1.3,
-        spawnInterval: 0.06,
-        spawnRadius: 15.5,
-        swirl: 0.5,
-        windX: 0,
-      });
-      tracked.set(id, instance);
-    }
-
-    updateFireInstanceTransform(instance, centerX, centerY);
+function updateFireInstanceTransform(instance, effect, store) {
+  if (!instance || typeof instance !== "object") {
+    return;
   }
 
-  for (const [id, instance] of tracked.entries()) {
-    const isAlive = instance && typeof instance.isAlive === "function" ? instance.isAlive() : false;
-    if (!seen.has(id) || !isAlive) {
-      if (manager && typeof manager.removeInstance === "function") {
-        manager.removeInstance(instance);
-      }
-      tracked.delete(id);
-    }
+  const width = Number.isFinite(effect?.width) ? effect.width : store.TILE_SIZE || 40;
+  const height = Number.isFinite(effect?.height) ? effect.height : store.TILE_SIZE || 40;
+  const baseX = Number.isFinite(effect?.x) ? effect.x : 0;
+  const baseY = Number.isFinite(effect?.y) ? effect.y : 0;
+  const centerX = baseX + width / 2;
+  const centerY = baseY + height / 2;
+
+  if (typeof instance.setCenter === "function") {
+    instance.setCenter(centerX, centerY);
+  } else if (instance.origin) {
+    instance.origin.x = centerX;
+    instance.origin.y = centerY;
   }
 
-  return manager;
+  const scale = Math.max(0.6, Math.max(width, height) / 64);
+  if (typeof instance.setSizeScale === "function") {
+    instance.setSizeScale(scale);
+  } else if (instance.opts && typeof instance.opts === "object") {
+    instance.opts.sizeScale = scale;
+  }
+
+  if (instance.aabb) {
+    const radiusX = 56 * (instance.opts?.sizeScale ?? scale);
+    const radiusY = 84 * (instance.opts?.sizeScale ?? scale);
+    instance.aabb.x = centerX - radiusX;
+    instance.aabb.y = centerY - radiusY;
+    instance.aabb.w = radiusX * 2;
+    instance.aabb.h = radiusY * 2;
+  }
 }
+
+function updateFireballInstance(instance, effect) {
+  if (!instance || typeof instance !== "object") {
+    return;
+  }
+  if (typeof instance.syncFromEffect === "function") {
+    instance.syncFromEffect(effect);
+    return;
+  }
+  const width = Number.isFinite(effect?.width) ? effect.width : 24;
+  const height = Number.isFinite(effect?.height) ? effect.height : 24;
+  const baseX = Number.isFinite(effect?.x) ? effect.x : 0;
+  const baseY = Number.isFinite(effect?.y) ? effect.y : 0;
+  const centerX = baseX + width / 2;
+  const centerY = baseY + height / 2;
+  if (instance.position) {
+    instance.position.x = centerX;
+    instance.position.y = centerY;
+  }
+  if (instance.aabb) {
+    instance.aabb.x = centerX - width / 2;
+    instance.aabb.y = centerY - height / 2;
+    instance.aabb.w = width;
+    instance.aabb.h = height;
+  }
+}
+
+class FireballProjectileInstance {
+  constructor(opts) {
+    this.id =
+      typeof opts.effectId === "string" && opts.effectId
+        ? opts.effectId
+        : `fireball-${Math.random().toString(36).slice(2)}`;
+    this.type = FireballProjectileEffectDefinition.type;
+    this.layer = EffectLayer.ActorOverlay;
+    this.sublayer = 1;
+    this.kind = "loop";
+    this.finished = false;
+    this.elapsed = 0;
+    this.glowPhase = 0;
+    this.position = { x: opts.x, y: opts.y };
+    this.radiusX = Math.max(6, (Number.isFinite(opts.width) ? opts.width : 24) / 2);
+    this.radiusY = Math.max(6, (Number.isFinite(opts.height) ? opts.height : 24) / 2);
+    this.colors = Array.isArray(opts.colors)
+      ? opts.colors
+      : ["rgba(253, 230, 138, 0.95)", "rgba(251, 191, 36, 0.85)", "rgba(194, 65, 12, 0.45)"];
+    this.aabb = { x: 0, y: 0, w: 0, h: 0 };
+    this.updateAABB();
+  }
+
+  isAlive() {
+    return !this.finished;
+  }
+
+  getAABB() {
+    return this.aabb;
+  }
+
+  update(frame) {
+    const dt = Math.max(0, frame.dt || 0);
+    this.elapsed += dt;
+    this.glowPhase += dt * 6;
+  }
+
+  draw(frame) {
+    const { ctx, camera } = frame;
+    const screenX = camera.toScreenX(this.position.x);
+    const screenY = camera.toScreenY(this.position.y);
+    const radiusX = this.radiusX * camera.zoom;
+    const radiusY = this.radiusY * camera.zoom;
+    const outerRadius = Math.max(radiusX, radiusY) * (1.05 + 0.1 * Math.sin(this.glowPhase));
+
+    ctx.save();
+    ctx.translate(screenX, screenY);
+    const gradient = ctx.createRadialGradient(0, 0, outerRadius * 0.1, 0, 0, outerRadius);
+    gradient.addColorStop(0, this.colors[0] ?? "rgba(253, 230, 138, 0.95)");
+    gradient.addColorStop(0.6, this.colors[1] ?? "rgba(251, 191, 36, 0.85)");
+    gradient.addColorStop(1, this.colors[2] ?? "rgba(194, 65, 12, 0.45)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, outerRadius, outerRadius * (radiusY / Math.max(1, radiusX)), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  dispose() {}
+
+  syncFromEffect(effect) {
+    const width = Number.isFinite(effect?.width) ? effect.width : this.radiusX * 2;
+    const height = Number.isFinite(effect?.height) ? effect.height : this.radiusY * 2;
+    const baseX = Number.isFinite(effect?.x) ? effect.x : this.position.x - width / 2;
+    const baseY = Number.isFinite(effect?.y) ? effect.y : this.position.y - height / 2;
+    this.position.x = baseX + width / 2;
+    this.position.y = baseY + height / 2;
+    this.radiusX = Math.max(6, width / 2);
+    this.radiusY = Math.max(6, height / 2);
+    this.updateAABB();
+  }
+
+  updateAABB() {
+    this.aabb.x = this.position.x - this.radiusX;
+    this.aabb.y = this.position.y - this.radiusY;
+    this.aabb.w = this.radiusX * 2;
+    this.aabb.h = this.radiusY * 2;
+  }
+}
+
+const FireballProjectileEffectDefinition = {
+  type: "fireball",
+  defaults: {
+    width: 24,
+    height: 24,
+    colors: [
+      "rgba(253, 230, 138, 0.95)",
+      "rgba(251, 191, 36, 0.85)",
+      "rgba(194, 65, 12, 0.45)",
+    ],
+  },
+  create: (opts) => new FireballProjectileInstance(opts),
+};
+
+function spawnBloodSplatter(store, manager, trigger) {
+  if (!trigger || typeof trigger !== "object") {
+    return;
+  }
+
+  const width = Number.isFinite(trigger.width) ? trigger.width : store.TILE_SIZE || 40;
+  const height = Number.isFinite(trigger.height) ? trigger.height : store.TILE_SIZE || 40;
+  const baseX = Number.isFinite(trigger.x) ? trigger.x : 0;
+  const baseY = Number.isFinite(trigger.y) ? trigger.y : 0;
+  const centerX = baseX + width / 2;
+  const centerY = baseY + height / 2;
+
+  const params = trigger && typeof trigger.params === "object" ? trigger.params : null;
+  const readNumber = (key, fallback) => {
+    if (!params || typeof params !== "object") {
+      return fallback;
+    }
+    const value = params[key];
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const readColor = (key, fallback) => {
+    if (!params || typeof params !== "object") {
+      return fallback;
+    }
+    const value = params[key];
+    return typeof value === "string" && value ? value : fallback;
+  };
+
+  manager.spawn(BloodSplatterDefinition, {
+    x: centerX,
+    y: centerY,
+    colors: [readColor("midColor", "#7a0e12"), readColor("darkColor", "#4a090b")],
+    drag: readNumber("drag", 0.92),
+    dropletRadius: readNumber("dropletRadius", 3),
+    maxBursts: readNumber("maxBursts", 0),
+    maxDroplets: readNumber("maxDroplets", 33),
+    maxStainRadius: readNumber("maxStainRadius", 6),
+    maxStains: readNumber("maxStains", 140),
+    minDroplets: readNumber("minDroplets", 4),
+    minStainRadius: readNumber("minStainRadius", 4),
+    spawnInterval: readNumber("spawnInterval", 1.1),
+    speed: readNumber("speed", 3),
+  });
+}
+
+const EFFECT_BINDINGS = [
+  { type: "attack", definition: MeleeSwingEffectDefinition, onUpdate: updateMeleeSwingInstance },
+  { type: "fire", definition: FireEffectDefinition, onUpdate: updateFireInstanceTransform },
+  { type: "fireball", definition: FireballProjectileEffectDefinition, onUpdate: updateFireballInstance },
+];
+
 
 function getWorldDimensions(store) {
   const fallbackWidth = store.canvas?.width || store.GRID_WIDTH * store.TILE_SIZE;
@@ -412,51 +486,6 @@ export function startRenderLoop(store) {
     Object.keys(store.displayNPCs).forEach((id) => {
       if (!store.npcs[id]) {
         delete store.displayNPCs[id];
-      }
-    });
-
-    const activeEffectIds = new Set();
-    if (Array.isArray(store.effects)) {
-      store.effects.forEach((effect) => {
-        if (!effect || typeof effect !== "object") {
-          return;
-        }
-        const id = typeof effect.id === "string" ? effect.id : null;
-        if (!id) {
-          return;
-        }
-        activeEffectIds.add(id);
-        const targetX = typeof effect.x === "number" ? effect.x : 0;
-        const targetY = typeof effect.y === "number" ? effect.y : 0;
-        if (!store.displayEffects[id]) {
-          store.displayEffects[id] = {
-            x: targetX,
-            y: targetY,
-            width:
-              typeof effect.width === "number" ? effect.width : store.TILE_SIZE,
-            height:
-              typeof effect.height === "number" ? effect.height : store.TILE_SIZE,
-            type: typeof effect.type === "string" ? effect.type : "",
-          };
-        }
-        const display = store.displayEffects[id];
-        display.x += (targetX - display.x) * lerpAmount;
-        display.y += (targetY - display.y) * lerpAmount;
-        if (typeof effect.width === "number") {
-          display.width = effect.width;
-        }
-        if (typeof effect.height === "number") {
-          display.height = effect.height;
-        }
-        if (typeof effect.type === "string") {
-          display.type = effect.type;
-        }
-      });
-    }
-
-    Object.keys(store.displayEffects).forEach((id) => {
-      if (!activeEffectIds.has(id)) {
-        delete store.displayEffects[id];
       }
     });
 
@@ -619,85 +648,50 @@ function drawHealthBar(ctx, store, position, player, id) {
   ctx.restore();
 }
 
-// drawEffects renders js-effects-driven melee swings plus legacy rectangle effects.
+// drawEffects mirrors snapshot state into the shared EffectManager and draws active instances.
 function drawEffects(store, frameDt, frameNow, viewportWidth, viewportHeight) {
   const { ctx } = store;
-  const nowSeconds = Number.isFinite(frameNow) ? frameNow / 1000 : Date.now() / 1000;
-  drawStoredDecals(store, nowSeconds);
-
-  let manager = processFireAndForgetTriggers(store, store.effectManager || null);
-  manager = syncMeleeSwingEffects(store, manager);
-  manager = syncFireEffects(store, manager);
-  const effectEntries = Object.entries(store.displayEffects || {});
-  const hasActiveDecals = Array.isArray(store.activeDecals) && store.activeDecals.length > 0;
-
-  if (!manager && effectEntries.length === 0 && !hasActiveDecals) {
+  const manager = ensureEffectRuntime(store);
+  if (!manager || !ctx) {
     return;
   }
 
-  if (manager) {
-    const camera = store.camera || { x: 0, y: 0 };
-    const safeWidth = Number.isFinite(viewportWidth)
-      ? viewportWidth
-      : store.canvas?.width || 0;
-    const safeHeight = Number.isFinite(viewportHeight)
-      ? viewportHeight
-      : store.canvas?.height || 0;
-    const frameContext = {
-      ctx,
-      dt: Math.max(0, frameDt || 0),
-      now: Number.isFinite(frameNow) ? frameNow / 1000 : Date.now() / 1000,
-      camera: {
-        toScreenX: (value) => value,
-        toScreenY: (value) => value,
-        zoom: 1,
-      },
-    };
+  const nowSeconds = Number.isFinite(frameNow) ? frameNow / 1000 : Date.now() / 1000;
+  const triggers = drainPendingEffectTriggers(store);
+  manager.triggerAll(triggers, { store });
 
-    manager.cullByAABB({
-      x: camera.x,
-      y: camera.y,
-      w: safeWidth,
-      h: safeHeight,
-    });
-    manager.updateAll(frameContext);
-    manager.drawAll(frameContext);
-    if (typeof manager.collectDecals === "function") {
-      const newDecals = manager.collectDecals();
-      if (Array.isArray(newDecals) && newDecals.length > 0) {
-        queueDecals(store, newDecals, frameContext.now);
-      }
-    }
+  for (const binding of EFFECT_BINDINGS) {
+    syncEffectsByType(store, manager, binding.type, binding.definition, binding.onUpdate);
   }
 
-  effectEntries.forEach(([, effect]) => {
-    if (!effect || typeof effect !== "object") {
-      return;
-    }
-    if (effect.type === "attack") {
-      return;
-    }
-    const style = EFFECT_STYLES[effect.type];
-    if (!style) {
-      return;
-    }
-    const { x, y, width, height } = effect;
-    if (
-      typeof x !== "number" ||
-      typeof y !== "number" ||
-      typeof width !== "number" ||
-      typeof height !== "number"
-    ) {
-      return;
-    }
-    ctx.save();
-    ctx.fillStyle = style.fill;
-    ctx.strokeStyle = style.stroke;
-    ctx.lineWidth = 2;
-    ctx.fillRect(x, y, width, height);
-    ctx.strokeRect(x, y, width, height);
-    ctx.restore();
+  const camera = store.camera || { x: 0, y: 0 };
+  const safeWidth = Number.isFinite(viewportWidth)
+    ? viewportWidth
+    : store.canvas?.width || 0;
+  const safeHeight = Number.isFinite(viewportHeight)
+    ? viewportHeight
+    : store.canvas?.height || 0;
+
+  const frameContext = {
+    ctx,
+    dt: Math.max(0, frameDt || 0),
+    now: nowSeconds,
+    camera: {
+      toScreenX: (value) => value,
+      toScreenY: (value) => value,
+      zoom: 1,
+    },
+  };
+
+  manager.cullByAABB({
+    x: camera.x,
+    y: camera.y,
+    w: safeWidth,
+    h: safeHeight,
   });
+  manager.updateAll(frameContext);
+  manager.drawAll(frameContext);
+  manager.collectDecals(nowSeconds);
 }
 
 function drainPendingEffectTriggers(store) {
@@ -708,118 +702,6 @@ function drainPendingEffectTriggers(store) {
   store.pendingEffectTriggers.length = 0;
   return drained;
 }
-
-function processFireAndForgetTriggers(store, manager) {
-  const triggers = drainPendingEffectTriggers(store);
-  if (triggers.length === 0) {
-    return manager;
-  }
-
-  let effectManager = manager || store.effectManager || null;
-  for (const trigger of triggers) {
-    if (!trigger || typeof trigger !== "object") {
-      continue;
-    }
-    const type = typeof trigger.type === "string" ? trigger.type : "";
-    if (!type) {
-      continue;
-    }
-    const handler = fireAndForgetHandlers.get(type);
-    if (!handler) {
-      continue;
-    }
-    try {
-      const maybeManager = handler({
-        store,
-        trigger,
-        manager: effectManager,
-        ensureEffectManager: () => ensureEffectRuntime(store),
-      });
-      if (
-        maybeManager &&
-        typeof maybeManager === "object" &&
-        typeof maybeManager.spawn === "function"
-      ) {
-        effectManager = maybeManager;
-      } else if (!effectManager && store.effectManager) {
-        effectManager = store.effectManager;
-      }
-    } catch (err) {
-      console.error("failed to process effect trigger", err);
-    }
-  }
-
-  return effectManager;
-}
-
-function handleBloodSplatterTrigger({ store, trigger, manager, ensureEffectManager }) {
-  if (!store || !trigger) {
-    return manager;
-  }
-  const effectManager = manager || ensureEffectManager();
-  if (!effectManager) {
-    return manager;
-  }
-
-  const width = Number.isFinite(trigger.width) ? trigger.width : store.TILE_SIZE || 40;
-  const height = Number.isFinite(trigger.height) ? trigger.height : store.TILE_SIZE || 40;
-  const baseX = Number.isFinite(trigger.x) ? trigger.x : 0;
-  const baseY = Number.isFinite(trigger.y) ? trigger.y : 0;
-  const centerX = baseX + width / 2;
-  const centerY = baseY + height / 2;
-
-  const params =
-    trigger && typeof trigger === "object" && typeof trigger.params === "object"
-      ? trigger.params
-      : null;
-  const readNumber = (key, fallback) => {
-    if (!params || typeof params !== "object") {
-      return fallback;
-    }
-    const value = params[key];
-    return Number.isFinite(value) ? value : fallback;
-  };
-  const readColor = (key, fallback) => {
-    if (!params || typeof params !== "object") {
-      return fallback;
-    }
-    const value = params[key];
-    return typeof value === "string" && value ? value : fallback;
-  };
-
-  const dropletRadius = readNumber("dropletRadius", 3);
-  const drag = readNumber("drag", 0.92);
-  const speed = readNumber("speed", 3);
-  const spawnInterval = readNumber("spawnInterval", 1.1);
-  const minDroplets = readNumber("minDroplets", 4);
-  const maxDroplets = readNumber("maxDroplets", 33);
-  const minStainRadius = readNumber("minStainRadius", 4);
-  const maxStainRadius = readNumber("maxStainRadius", 6);
-  const maxStains = readNumber("maxStains", 140);
-  const maxBursts = readNumber("maxBursts", 0);
-  const midColor = readColor("midColor", "#7a0e12");
-  const darkColor = readColor("darkColor", "#4a090b");
-
-  effectManager.spawn(BloodSplatterDefinition, {
-    x: centerX,
-    y: centerY,
-    colors: [midColor, darkColor],
-    drag,
-    dropletRadius,
-    maxBursts,
-    maxDroplets,
-    maxStainRadius,
-    maxStains,
-    minDroplets,
-    minStainRadius,
-    spawnInterval,
-    speed,
-  });
-
-  return effectManager;
-}
-
-registerFireAndForgetHandler("blood-splatter", handleBloodSplatterTrigger);
 
 // drawObstacle picks the correct renderer for each obstacle type.
 function drawObstacle(ctx, obstacle) {

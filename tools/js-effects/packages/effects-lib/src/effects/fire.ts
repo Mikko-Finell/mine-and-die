@@ -48,7 +48,7 @@ class FireInstance implements EffectInstance<FireOptions> {
   kind: "loop" = "loop";
   finished = false;
 
-  private readonly opts: FireOptions;
+  private opts: FireOptions;
   private readonly origin: { x: number; y: number };
   private readonly aabb = { x: 0, y: 0, w: 0, h: 0 };
 
@@ -56,17 +56,15 @@ class FireInstance implements EffectInstance<FireOptions> {
 
   private spawnTimer = 0;
 
-  constructor(opts: Partial<FireOptions> & { x: number; y: number }) {
-    this.opts = { ...FireEffectDefinition.defaults, ...opts };
-    this.id = `fire-${Math.random().toString(36).slice(2)}`;
+  constructor(opts: Partial<FireOptions> & { x: number; y: number; effectId?: string }) {
+    const { effectId, ...rest } = opts;
+    this.opts = { ...FireEffectDefinition.defaults, ...rest };
+    this.id =
+      typeof effectId === "string" && effectId.length > 0
+        ? effectId
+        : `fire-${Math.random().toString(36).slice(2)}`;
     this.origin = { x: opts.x, y: opts.y };
-
-    const rX = 56 * this.opts.sizeScale;
-    const rY = 84 * this.opts.sizeScale;
-    this.aabb.x = this.origin.x - rX;
-    this.aabb.y = this.origin.y - rY;
-    this.aabb.w = rX * 2;
-    this.aabb.h = rY * 2;
+    this.updateAABB();
   }
 
   isAlive(): boolean {
@@ -83,6 +81,20 @@ class FireInstance implements EffectInstance<FireOptions> {
 
   handoffToDecal(): null {
     return null;
+  }
+
+  setSizeScale(scale: number): void {
+    if (!Number.isFinite(scale) || scale <= 0) {
+      return;
+    }
+    this.opts = { ...this.opts, sizeScale: scale };
+    this.updateAABB();
+  }
+
+  setCenter(x: number, y: number): void {
+    this.origin.x = x;
+    this.origin.y = y;
+    this.updateAABB();
   }
 
   update(frame: EffectFrameContext): void {
@@ -194,6 +206,15 @@ class FireInstance implements EffectInstance<FireOptions> {
     }
 
     ctx.restore();
+  }
+
+  private updateAABB(): void {
+    const rX = 56 * this.opts.sizeScale;
+    const rY = 84 * this.opts.sizeScale;
+    this.aabb.x = this.origin.x - rX;
+    this.aabb.y = this.origin.y - rY;
+    this.aabb.w = rX * 2;
+    this.aabb.h = rY * 2;
   }
 }
 

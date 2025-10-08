@@ -13,15 +13,14 @@ class FireInstance {
         this.aabb = { x: 0, y: 0, w: 0, h: 0 };
         this.embers = [];
         this.spawnTimer = 0;
-        this.opts = { ...FireEffectDefinition.defaults, ...opts };
-        this.id = `fire-${Math.random().toString(36).slice(2)}`;
+        const { effectId, ...rest } = opts;
+        this.opts = { ...FireEffectDefinition.defaults, ...rest };
+        this.id =
+            typeof effectId === "string" && effectId.length > 0
+                ? effectId
+                : `fire-${Math.random().toString(36).slice(2)}`;
         this.origin = { x: opts.x, y: opts.y };
-        const rX = 56 * this.opts.sizeScale;
-        const rY = 84 * this.opts.sizeScale;
-        this.aabb.x = this.origin.x - rX;
-        this.aabb.y = this.origin.y - rY;
-        this.aabb.w = rX * 2;
-        this.aabb.h = rY * 2;
+        this.updateAABB();
     }
     isAlive() {
         return !this.finished;
@@ -34,6 +33,18 @@ class FireInstance {
     }
     handoffToDecal() {
         return null;
+    }
+    setSizeScale(scale) {
+        if (!Number.isFinite(scale) || scale <= 0) {
+            return;
+        }
+        this.opts = { ...this.opts, sizeScale: scale };
+        this.updateAABB();
+    }
+    setCenter(x, y) {
+        this.origin.x = x;
+        this.origin.y = y;
+        this.updateAABB();
     }
     update(frame) {
         var _a, _b, _c;
@@ -115,6 +126,14 @@ class FireInstance {
             ctx.restore();
         }
         ctx.restore();
+    }
+    updateAABB() {
+        const rX = 56 * this.opts.sizeScale;
+        const rY = 84 * this.opts.sizeScale;
+        this.aabb.x = this.origin.x - rX;
+        this.aabb.y = this.origin.y - rY;
+        this.aabb.w = rX * 2;
+        this.aabb.h = rY * 2;
     }
 }
 export const FireEffectDefinition = {
