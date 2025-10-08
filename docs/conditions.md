@@ -17,6 +17,7 @@ The condition system powers persistent gameplay states (burning, poison, frozen,
 
 ## Burning example
 - Lava hazards call `applyCondition` with `ConditionBurning` when an actor overlaps the obstacle.
+- Fireball impacts also call `applyCondition` so direct hits ignite the target before the lava timer kicks in.
 - The `OnApply` hook spawns a looping `fire` effect that follows the actor and refreshes while the condition is active.
 - Every `200ms` the `OnTick` handler spawns a `burning-tick` effect that uses `healthDeltaBehavior` to deduct health, so the damage path reuses the existing effect behaviours.
 - After three seconds without refresh, `OnExpire` cleans up the attached fire effect and the actor stops taking damage.
