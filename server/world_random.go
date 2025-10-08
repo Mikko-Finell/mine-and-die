@@ -6,6 +6,8 @@ import (
 	"math/rand"
 )
 
+const centralSpawnRegionRatio = 0.5
+
 func deterministicSeedValue(rootSeed, label string) int64 {
 	hasher := fnv.New64a()
 	hasher.Write([]byte(rootSeed))
@@ -60,4 +62,51 @@ func (w *World) randomDistance(min, max float64) float64 {
 		return min
 	}
 	return min + w.randomFloat()*(max-min)
+}
+
+func centralTopLeftRange(total, center, margin, size float64) (float64, float64) {
+	if total <= 0 {
+		return margin, margin
+	}
+
+	regionHalf := total * centralSpawnRegionRatio / 2
+	min := center - regionHalf
+	max := center + regionHalf - size
+
+	if min < margin {
+		min = margin
+	}
+	maxLimit := total - margin - size
+	if max > maxLimit {
+		max = maxLimit
+	}
+	if max < min {
+		max = min
+	}
+
+	return min, max
+}
+
+func centralCenterRange(total, center, margin, padding float64) (float64, float64) {
+	if total <= 0 {
+		return margin, margin
+	}
+
+	regionHalf := total * centralSpawnRegionRatio / 2
+	min := center - regionHalf
+	max := center + regionHalf
+
+	minLimit := margin + padding
+	if min < minLimit {
+		min = minLimit
+	}
+	maxLimit := total - margin - padding
+	if max > maxLimit {
+		max = maxLimit
+	}
+	if max < min {
+		max = min
+	}
+
+	return min, max
 }

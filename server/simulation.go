@@ -371,23 +371,30 @@ func (w *World) spawnInitialNPCs() {
 		return
 	}
 
+	centerX := defaultSpawnX
+	centerY := defaultSpawnY
+
 	goblinsSpawned := 0
 	if goblinTarget >= 1 {
-		w.spawnGoblinAt(360, 260, []vec2{
-			{X: 360, Y: 260},
-			{X: 480, Y: 260},
-			{X: 480, Y: 380},
-			{X: 360, Y: 380},
+		patrolOffset := 160.0
+		w.spawnGoblinAt(centerX-patrolOffset, centerY-patrolOffset, []vec2{
+			{X: centerX - patrolOffset, Y: centerY - patrolOffset},
+			{X: centerX + patrolOffset, Y: centerY - patrolOffset},
+			{X: centerX + patrolOffset, Y: centerY + patrolOffset},
+			{X: centerX - patrolOffset, Y: centerY + patrolOffset},
 		}, 12, 1)
 		goblinsSpawned++
 	}
 	if goblinTarget >= 2 {
-		w.spawnGoblinAt(640, 480, []vec2{
-			{X: 640, Y: 480},
-			{X: 760, Y: 480},
-			{X: 760, Y: 600},
-			{X: 520, Y: 600},
-			{X: 520, Y: 480},
+		topLeftX := centerX + 120.0
+		height := 220.0
+		width := 220.0
+		topLeftY := centerY - height/2
+		w.spawnGoblinAt(topLeftX, topLeftY, []vec2{
+			{X: topLeftX, Y: topLeftY},
+			{X: topLeftX + width, Y: topLeftY},
+			{X: topLeftX + width, Y: topLeftY + height},
+			{X: topLeftX, Y: topLeftY + height},
 		}, 8, 1)
 		goblinsSpawned++
 	}
@@ -398,7 +405,7 @@ func (w *World) spawnInitialNPCs() {
 
 	ratsSpawned := 0
 	if ratTarget >= 1 {
-		w.spawnRatAt(280, 520)
+		w.spawnRatAt(centerX-200, centerY+240)
 		ratsSpawned++
 	}
 	extraRats := ratTarget - ratsSpawned
@@ -505,6 +512,17 @@ func (w *World) spawnExtraGoblins(count int) {
 		maxY = worldHeight - playerHalf - patrolRadius
 	}
 
+	centralMinX, centralMaxX := centralCenterRange(worldWidth, defaultSpawnX, obstacleSpawnMargin, patrolRadius)
+	if centralMaxX >= centralMinX {
+		minX = centralMinX
+		maxX = centralMaxX
+	}
+	centralMinY, centralMaxY := centralCenterRange(worldHeight, defaultSpawnY, obstacleSpawnMargin, patrolRadius)
+	if centralMaxY >= centralMinY {
+		minY = centralMinY
+		maxY = centralMaxY
+	}
+
 	for i := 0; i < count; i++ {
 		x := minX
 		if maxX > minX {
@@ -587,9 +605,18 @@ func (w *World) spawnExtraRats(count int) {
 		return
 	}
 	rng := w.subsystemRNG("npcs.extra")
+	minX, maxX := centralCenterRange(worldWidth, defaultSpawnX, obstacleSpawnMargin, playerHalf)
+	minY, maxY := centralCenterRange(worldHeight, defaultSpawnY, obstacleSpawnMargin, playerHalf)
+
 	for i := 0; i < count; i++ {
-		x := obstacleSpawnMargin + rng.Float64()*(worldWidth-2*obstacleSpawnMargin)
-		y := obstacleSpawnMargin + rng.Float64()*(worldHeight-2*obstacleSpawnMargin)
+		x := minX
+		if maxX > minX {
+			x = minX + rng.Float64()*(maxX-minX)
+		}
+		y := minY
+		if maxY > minY {
+			y = minY + rng.Float64()*(maxY-minY)
+		}
 		w.spawnRatAt(x, y)
 	}
 }
