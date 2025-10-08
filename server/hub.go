@@ -14,6 +14,7 @@ import (
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
+	loggingnetwork "mine-and-die/server/logging/network"
 )
 
 // Hub coordinates subscribers and orchestrates the deterministic world simulation.
@@ -196,16 +197,33 @@ func (h *Hub) RecordAck(playerID string, ack uint64) {
 		return
 	}
 
+	tick := h.tick.Load()
+	actor := logging.EntityRef{ID: playerID, Kind: logging.EntityKind("player")}
+
 	for {
 		prev := sub.lastAck.Load()
 		if ack <= prev {
 			if ack < prev {
-				stdlog.Printf("client %s ack regression ignored: prev=%d, received=%d", playerID, prev, ack)
+				loggingnetwork.AckRegression(
+					context.Background(),
+					h.publisher,
+					tick,
+					actor,
+					loggingnetwork.AckPayload{Previous: prev, Ack: ack},
+					nil,
+				)
 			}
 			return
 		}
 		if sub.lastAck.CompareAndSwap(prev, ack) {
-			stdlog.Printf("client %s ack advanced to %d (prev %d)", playerID, ack, prev)
+			loggingnetwork.AckAdvanced(
+				context.Background(),
+				h.publisher,
+				tick,
+				actor,
+				loggingnetwork.AckPayload{Previous: prev, Ack: ack},
+				nil,
+			)
 			return
 		}
 	}
