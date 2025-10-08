@@ -3,6 +3,8 @@ import {
   DEFAULT_WORLD_HEIGHT,
   DEFAULT_WORLD_SEED,
   DEFAULT_WORLD_WIDTH,
+  applyStateSnapshot,
+  deriveDisplayMaps,
   enqueueEffectTriggers,
   normalizeCount,
   normalizeGroundItems,
@@ -183,6 +185,107 @@ describe("normalizeGroundItems", () => {
 
   it("returns an empty object when input is not an array", () => {
     expect(normalizeGroundItems(undefined)).toEqual({});
+  });
+});
+
+describe("applyStateSnapshot", () => {
+  it("normalizes entity facings and optional arrays", () => {
+    const payload = {
+      players: [
+        { id: "local", x: 10, y: 20, facing: "invalid" },
+        { id: "ally", x: 30, y: 40, facing: "left" },
+        { id: null, x: 0, y: 0, facing: "right" },
+      ],
+      npcs: [
+        { id: "npc-1", x: 50, y: 60, facing: "bad" },
+        { id: "npc-2", x: 70, y: 80, facing: "up" },
+      ],
+      obstacles: [{ id: "rock" }],
+      effects: [{ id: "beam" }],
+      config: { width: 1200, height: 900 },
+    };
+
+    const result = applyStateSnapshot({ playerId: "local" }, payload);
+
+    expect(result.players.local.facing).toBe("down");
+    expect(result.players.ally.facing).toBe("left");
+    expect(result.npcs["npc-1"].facing).toBe("down");
+    expect(result.npcs["npc-2"].facing).toBe("up");
+    expect(result.obstacles).toEqual(payload.obstacles);
+    expect(result.obstacles).not.toBe(payload.obstacles);
+    expect(result.effects).toEqual(payload.effects);
+    expect(result.effects).not.toBe(payload.effects);
+    expect(result.worldConfig.width).toBe(1200);
+    expect(result.worldConfig.height).toBe(900);
+    expect(result.hasLocalPlayer).toBe(true);
+    expect(result.currentFacing).toBe("down");
+    expect(result.players).not.toBe(payload.players);
+    expect(result.npcs).not.toBe(payload.npcs);
+  });
+
+  it("defaults to empty collections when snapshot arrays are invalid", () => {
+    const result = applyStateSnapshot({ playerId: "player-1" }, {
+      players: null,
+      npcs: undefined,
+      obstacles: "invalid",
+      effects: 42,
+    });
+
+    expect(result.players).toEqual({});
+    expect(result.npcs).toEqual({});
+    expect(result.obstacles).toEqual([]);
+    expect(result.effects).toEqual([]);
+    expect(result.hasLocalPlayer).toBe(false);
+    expect(result.currentFacing).toBeUndefined();
+    expect(result.worldConfig).toBeUndefined();
+  });
+
+  it("surfaces missing local player without throwing", () => {
+    const payload = { players: [{ id: "other", facing: "up" }] };
+    const result = applyStateSnapshot({ playerId: "ghost" }, payload);
+
+    expect(result.hasLocalPlayer).toBe(false);
+    expect(result.currentFacing).toBeUndefined();
+  });
+});
+
+describe("deriveDisplayMaps", () => {
+  it("maps positions and prunes removed entities", () => {
+    const players = {
+      alpha: { id: "alpha", x: 1, y: 2 },
+      beta: { id: "beta", x: 3, y: 4 },
+      invalid: { id: null, x: 5, y: 6 },
+    };
+    const npcs = {
+      goblin: { id: "goblin", x: 7, y: 8 },
+      rat: { id: "rat", x: 9, y: 10 },
+      bad: { id: 123, x: 0, y: 0 },
+    };
+
+    const { displayPlayers, displayNPCs } = deriveDisplayMaps(players, npcs);
+
+    expect(displayPlayers).toEqual({
+      alpha: { x: 1, y: 2 },
+      beta: { x: 3, y: 4 },
+    });
+    expect(displayNPCs).toEqual({
+      goblin: { x: 7, y: 8 },
+      rat: { x: 9, y: 10 },
+    });
+
+    const { displayPlayers: prunedPlayers, displayNPCs: prunedNPCs } = deriveDisplayMaps(
+      { alpha: players.alpha },
+      { goblin: npcs.goblin },
+    );
+
+    expect(prunedPlayers).toEqual({ alpha: { x: 1, y: 2 } });
+    expect(prunedNPCs).toEqual({ goblin: { x: 7, y: 8 } });
+  });
+
+  it("handles non-object inputs without throwing", () => {
+    const { displayPlayers, displayNPCs } = deriveDisplayMaps(null, 5);
+    expect(displayPlayers).toEqual({});
+    expect(displayNPCs).toEqual({});
   });
 });
 

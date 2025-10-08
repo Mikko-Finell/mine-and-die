@@ -189,6 +189,85 @@ function normalizeGroundItems(items) {
 
 export { normalizeWorldConfig, normalizeGroundItems };
 
+export function applyStateSnapshot(prev, payload) {
+  const previousState = prev && typeof prev === "object" ? prev : {};
+  const snapshot = payload && typeof payload === "object" ? payload : {};
+
+  const players = {};
+  if (Array.isArray(snapshot.players)) {
+    for (const entry of snapshot.players) {
+      if (!entry || typeof entry !== "object" || typeof entry.id !== "string") {
+        continue;
+      }
+      players[entry.id] = {
+        ...entry,
+        facing: normalizeFacing(entry.facing),
+      };
+    }
+  }
+
+  const npcs = {};
+  if (Array.isArray(snapshot.npcs)) {
+    for (const entry of snapshot.npcs) {
+      if (!entry || typeof entry !== "object" || typeof entry.id !== "string") {
+        continue;
+      }
+      npcs[entry.id] = {
+        ...entry,
+        facing: normalizeFacing(entry.facing),
+      };
+    }
+  }
+
+  const obstacles = Array.isArray(snapshot.obstacles)
+    ? snapshot.obstacles.slice()
+    : [];
+  const effects = Array.isArray(snapshot.effects) ? snapshot.effects.slice() : [];
+
+  const result = {
+    players,
+    npcs,
+    obstacles,
+    effects,
+    hasLocalPlayer: false,
+  };
+
+  if (snapshot.config) {
+    result.worldConfig = normalizeWorldConfig(snapshot.config);
+  }
+
+  const localId = typeof previousState.playerId === "string" ? previousState.playerId : null;
+  if (localId && players[localId]) {
+    result.hasLocalPlayer = true;
+    result.currentFacing = players[localId].facing;
+  }
+
+  return result;
+}
+
+export function deriveDisplayMaps(players, npcs) {
+  const normalizedPlayers = players && typeof players === "object" ? players : {};
+  const normalizedNpcs = npcs && typeof npcs === "object" ? npcs : {};
+
+  const displayPlayers = {};
+  for (const player of Object.values(normalizedPlayers)) {
+    if (!player || typeof player.id !== "string") {
+      continue;
+    }
+    displayPlayers[player.id] = { x: player.x, y: player.y };
+  }
+
+  const displayNPCs = {};
+  for (const npc of Object.values(normalizedNpcs)) {
+    if (!npc || typeof npc.id !== "string") {
+      continue;
+    }
+    displayNPCs[npc.id] = { x: npc.x, y: npc.y };
+  }
+
+  return { displayPlayers, displayNPCs };
+}
+
 function handleConsoleAck(store, payload) {
   if (!payload || typeof payload !== "object") {
     return;
@@ -430,68 +509,38 @@ export function connectEvents(store) {
     try {
       const payload = JSON.parse(event.data);
       if (payload.type === "state") {
-        store.players = Object.fromEntries(
-          payload.players.map((p) => [p.id, { ...p, facing: normalizeFacing(p.facing) }])
-        );
-        store.npcs = Object.fromEntries(
-          Array.isArray(payload.npcs)
-            ? payload.npcs.map((npc) => [npc.id, { ...npc, facing: normalizeFacing(npc.facing) }])
-            : []
-        );
-        if (Array.isArray(payload.obstacles)) {
-          store.obstacles = payload.obstacles;
-        }
-        if (Array.isArray(payload.effects)) {
-          store.effects = payload.effects;
-        } else {
-          store.effects = [];
-        }
+        const snapshot = applyStateSnapshot({ playerId: store.playerId }, payload);
+
+        store.players = snapshot.players;
+        store.npcs = snapshot.npcs;
+        store.obstacles = snapshot.obstacles;
+        store.effects = snapshot.effects;
         store.groundItems = normalizeGroundItems(payload.groundItems);
         queueEffectTriggers(store, payload.effectTriggers);
-        if (payload.config) {
-          store.worldConfig = normalizeWorldConfig(payload.config);
+
+        if (snapshot.worldConfig) {
+          store.worldConfig = snapshot.worldConfig;
           store.WORLD_WIDTH = store.worldConfig.width;
           store.WORLD_HEIGHT = store.worldConfig.height;
           if (typeof store.updateWorldConfigUI === "function") {
             store.updateWorldConfigUI();
           }
         }
-        if (store.players[store.playerId]) {
-          store.players[store.playerId].facing = normalizeFacing(
-            store.players[store.playerId].facing
-          );
-          if (!store.displayPlayers[store.playerId]) {
-            store.displayPlayers[store.playerId] = {
-              x: store.players[store.playerId].x,
-              y: store.players[store.playerId].y,
-            };
-          }
-          store.currentFacing = store.players[store.playerId].facing;
-        } else {
+
+        if (!snapshot.hasLocalPlayer) {
           store.setStatusBase("Server no longer recognizes this player. Rejoining...");
           handleConnectionLoss(store);
           return;
         }
-        Object.values(store.players).forEach((p) => {
-          if (!store.displayPlayers[p.id]) {
-            store.displayPlayers[p.id] = { x: p.x, y: p.y };
-          }
-        });
-        Object.keys(store.displayPlayers).forEach((id) => {
-          if (!store.players[id]) {
-            delete store.displayPlayers[id];
-          }
-        });
-        Object.values(store.npcs).forEach((npc) => {
-          if (!store.displayNPCs[npc.id]) {
-            store.displayNPCs[npc.id] = { x: npc.x, y: npc.y };
-          }
-        });
-        Object.keys(store.displayNPCs).forEach((id) => {
-          if (!store.npcs[id]) {
-            delete store.displayNPCs[id];
-          }
-        });
+
+        store.currentFacing = snapshot.currentFacing;
+
+        const { displayPlayers, displayNPCs } = deriveDisplayMaps(
+          store.players,
+          store.npcs,
+        );
+        store.displayPlayers = displayPlayers;
+        store.displayNPCs = displayNPCs;
         if (
           store.isPathActive &&
           store.activePathTarget &&
