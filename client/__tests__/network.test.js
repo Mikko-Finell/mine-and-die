@@ -3,6 +3,7 @@ import {
   DEFAULT_WORLD_HEIGHT,
   DEFAULT_WORLD_SEED,
   DEFAULT_WORLD_WIDTH,
+  enqueueEffectTriggers,
   normalizeCount,
   normalizeGroundItems,
   normalizeWorldConfig,
@@ -182,5 +183,102 @@ describe("normalizeGroundItems", () => {
 
   it("returns an empty object when input is not an array", () => {
     expect(normalizeGroundItems(undefined)).toEqual({});
+  });
+});
+
+describe("enqueueEffectTriggers", () => {
+  it.each([
+    { label: "triggers are undefined", triggers: undefined },
+    { label: "triggers are null", triggers: null },
+    { label: "triggers are an empty array", triggers: [] },
+  ])("returns clones of previous state when $label", ({ triggers }) => {
+    const prev = {
+      pending: [{ id: "existing", effect: "alpha" }],
+      processedIds: new Set(["existing"]),
+    };
+    const originalPending = prev.pending.slice();
+    const originalProcessed = new Set(prev.processedIds);
+
+    const result = enqueueEffectTriggers(prev, triggers);
+
+    expect(result.pending).toEqual(originalPending);
+    expect(result.pending).not.toBe(prev.pending);
+    expect([...result.processedIds]).toEqual([...originalProcessed]);
+    expect(result.processedIds).not.toBe(prev.processedIds);
+    expect(prev.pending).toEqual(originalPending);
+    expect(prev.processedIds.size).toBe(originalProcessed.size);
+  });
+
+  it("ignores invalid entries and deduplicates by id", () => {
+    const prev = { pending: [], processedIds: new Set() };
+    const triggers = [
+      null,
+      "string",
+      { effect: "ambient" },
+      { id: "spell-1", effect: "fire" },
+      { id: "spell-1", effect: "duplicate" },
+      { id: "spell-2", effect: "ice" },
+      { id: 123, effect: "numeric" },
+      { effect: "buff" },
+    ];
+
+    const result = enqueueEffectTriggers(prev, triggers);
+
+    expect(result.pending).toEqual([
+      triggers[2],
+      triggers[3],
+      triggers[5],
+      triggers[6],
+      triggers[7],
+    ]);
+    expect([...result.processedIds]).toEqual(["spell-1", "spell-2"]);
+  });
+
+  it("skips triggers already processed across batches", () => {
+    const existing = { id: "alpha", effect: "existing" };
+    const prev = {
+      pending: [existing],
+      processedIds: new Set(["alpha"]),
+    };
+    const triggers = [
+      { id: "alpha", effect: "duplicate" },
+      { id: "beta", effect: "new" },
+      { id: "gamma", effect: "also-new" },
+      { id: "beta", effect: "duplicate" },
+    ];
+
+    const result = enqueueEffectTriggers(prev, triggers);
+
+    expect(result.pending).toEqual([existing, triggers[1], triggers[2]]);
+    expect([...result.processedIds]).toEqual(["alpha", "beta", "gamma"]);
+    expect(prev.pending).toEqual([existing]);
+    expect([...prev.processedIds]).toEqual(["alpha"]);
+  });
+
+  it("always enqueues triggers without ids while preserving order", () => {
+    const triggers = [
+      { effect: "first" },
+      { id: "unique", effect: "with-id" },
+      { effect: "second" },
+      { id: "unique", effect: "duplicate" },
+      { effect: "third" },
+    ];
+
+    const result = enqueueEffectTriggers({ pending: [], processedIds: new Set() }, triggers);
+
+    expect(result.pending).toEqual([triggers[0], triggers[1], triggers[2], triggers[4]]);
+    expect([...result.processedIds]).toEqual(["unique"]);
+  });
+
+  it("deduplicates large batches without quadratic growth", () => {
+    const triggers = Array.from({ length: 1000 }, (_, index) => ({
+      id: `effect-${index % 500}`,
+    }));
+
+    const result = enqueueEffectTriggers({ pending: [], processedIds: new Set() }, triggers);
+
+    expect(result.pending).toHaveLength(500);
+    expect(result.pending).toEqual(triggers.slice(0, 500));
+    expect(result.processedIds.size).toBe(500);
   });
 });

@@ -231,24 +231,56 @@ function ensureEffectTriggerState(store) {
   }
 }
 
-function queueEffectTriggers(store, triggers) {
+/**
+ * Returns an updated effect trigger queue without mutating the provided state.
+ *
+ * - Ignores entries that are not objects.
+ * - Deduplicates triggers that provide a string `id`, keeping the first occurrence.
+ * - Triggers without an `id` are always queued and preserve their relative order.
+ */
+export function enqueueEffectTriggers(prev, triggers) {
+  const sourcePending = Array.isArray(prev && prev.pending) ? prev.pending : [];
+  const sourceProcessed =
+    prev && prev.processedIds instanceof Set ? prev.processedIds : new Set();
+
+  const pending = sourcePending.slice();
+  const processedIds = new Set(sourceProcessed);
+
   if (!Array.isArray(triggers) || triggers.length === 0) {
-    return;
+    return { pending, processedIds };
   }
-  ensureEffectTriggerState(store);
+
   for (const trigger of triggers) {
     if (!trigger || typeof trigger !== "object") {
       continue;
     }
     const id = typeof trigger.id === "string" ? trigger.id : null;
-    if (id && store.processedEffectTriggerIds.has(id)) {
+    if (id && processedIds.has(id)) {
       continue;
     }
-    store.pendingEffectTriggers.push(trigger);
+    pending.push(trigger);
     if (id) {
-      store.processedEffectTriggerIds.add(id);
+      processedIds.add(id);
     }
   }
+
+  return { pending, processedIds };
+}
+
+function queueEffectTriggers(store, triggers) {
+  if (!Array.isArray(triggers) || triggers.length === 0) {
+    return;
+  }
+  ensureEffectTriggerState(store);
+  const nextState = enqueueEffectTriggers(
+    {
+      pending: store.pendingEffectTriggers,
+      processedIds: store.processedEffectTriggerIds,
+    },
+    triggers,
+  );
+  store.pendingEffectTriggers = nextState.pending;
+  store.processedEffectTriggerIds = nextState.processedIds;
 }
 
 // sendMessage serializes payloads, applies simulated latency, and tracks stats.
