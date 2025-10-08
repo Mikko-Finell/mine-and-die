@@ -41,11 +41,11 @@ The Go module under `server/` is now split by responsibility so contributors can
 - `messages.go` – JSON payload contracts for `/join`, `/ws`, and heartbeat acknowledgements.
 
 ## Core Concepts
-- **Gold Mining** – Swinging a melee attack into a gold ore block currently awards a single gold coin; richer economy systems remain aspirational.
-- **Permadeath** – Death deletes the character and drops everything. Create a new avatar to rejoin the fray.
-- **Guild Hierarchy** – Five roles (King → Noble → Knight → Squire → Citizen) with configurable taxes that flow upward.
-- **Player-Driven Economy** – No NPC merchants; scarcity and pricing are dictated by players. Monsters drop items, not gold.
-- **Emergent Territory** – Mines are neutral. Control exists only while actively defended by players.
+- **Finite Gold Deposits** – Gold mines spawn with fixed capacities, deplete permanently when exhausted, and occasionally respawn elsewhere to keep the global supply scarce.
+- **Mining & Loss** – Extracted gold becomes a physical inventory item that drops on death alongside the rest of a player's belongings.
+- **Safe Zones & Marketplace** – Trading is only risk-free inside marked tiles; the global market can be browsed remotely but orders require safe-zone presence.
+- **Faction Hierarchy** – Four ranks (King → Noble → Knight → Citizen) form a tree. Superiors manage direct subordinates and configure tax rates.
+- **Hierarchical Taxation** – Any gold income automatically routes percentage cuts up the faction chain, with succession-by-kill reassigning positions on lethal coups.
 
 ## Runtime Contract
 1. Clients `POST /join` to receive a snapshot containing their player ID, all known players, obstacles, active effects, and any queued fire-and-forget effect triggers.
@@ -95,37 +95,34 @@ The core mining loop, melee/projectile combat, and lava-driven conditions are al
 implemented (see the server, client, and effects documentation). The remaining
 milestones focus on systems that have not shipped yet.
 
-### Milestone 1 – Permadeath & loot retention
+### Milestone 1 – Gold resource loop
 - **Server**
-  - Finalize permadeath cleanup: drop inventories, remove defeated sessions, and
-    surface defeat events for clients.
+  - Represent finite-capacity gold deposits, support depletion/despawning, and broadcast respawn events.
 - **Client**
-  - Provide defeat/rejoin UX, surface dropped loot, and communicate death causes
-    through the HUD.
+  - Visualise deposit state, depletion, and respawn timings so players can prioritise contested sites.
 - **Systems & Economy**
-  - Expand loot tables, ensure dropped items persist long enough to loot, and
-    balance recovery pacing.
+  - Ensure mining actions transfer gold into inventories and trigger the faction tax pipeline.
 - **Documentation**
-  - Document permadeath rules, loot retrieval, and player re-entry expectations.
+  - Capture depletion rules, respawn cadence, and player-facing scarcity expectations.
 
-### Milestone 2 – Guild hierarchy & taxation
+### Milestone 2 – Safe zones & market interaction
 - **Server**
-  - Define guild data structures with tiered roles, relationships, and treasury balances backed by persistence-ready storage.
-  - Expose APIs or WebSocket commands for creation, invites, promotions, demotions, and configurable taxes.
+  - Authoritative safe-zone definitions that disable PvP and gate market interactions.
+  - Implement escrowed buy/sell order matching with direct inventory transfers.
 - **Client**
-  - Build UI for guild management, treasury summaries, and tax notifications.
+  - Surface safe-zone boundaries, market listings, and order-fulfilment flows tied to on-tile presence.
 - **Systems & Economy**
-  - Route mining rewards through the tax pipeline so gold distributes up the hierarchy before reaching players.
+  - Enforce remote market browsing with location-locked order execution, keeping transactions synchronous with taxation.
 - **Documentation**
-  - Expand contributor docs with guild roles, taxation mechanics, and guidance for guild-less players.
+  - Expand references for safe-zone behaviour, market usage, and risk expectations when travelling with gold.
 
-### Milestone 3 – Persistent economy & item lifecycle
+### Milestone 3 – Faction hierarchy & succession
 - **Server**
-  - Integrate SQLite/Postgres persistence covering players, guilds, mines, and item drops with crash-safe recovery.
-  - Implement halving-schedule gold emission so scarcity increases over time.
+  - Persist faction trees with King/Noble/Knight/Citizen ranks, promotion powers, and configurable tax percentages.
+  - Handle succession-by-kill to immediately reassign positions and subordinate tax streams.
 - **Client**
-  - Support player-to-player trade or guild treasury withdrawals with appropriate UI flows.
+  - Provide hierarchy management tools, tax visibility, and coup feedback for kill-based promotions.
 - **Systems & Economy**
-  - Add item spawn/despawn systems for NPCs/monsters, integrating drops into combat resolution and world broadcasts.
+  - Integrate tax routing with every gold acquisition path and maintain subordinate reassignment when members leave.
 - **Documentation**
-  - Document persistence setup, the economic halving schedule, trading expectations, and required migrations.
+  - Maintain faction governance, taxation configuration, and succession rules in the design docs.
