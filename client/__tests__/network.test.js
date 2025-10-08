@@ -276,16 +276,32 @@ describe("deriveDisplayMaps", () => {
     const { displayPlayers: prunedPlayers, displayNPCs: prunedNPCs } = deriveDisplayMaps(
       { alpha: players.alpha },
       { goblin: npcs.goblin },
+      displayPlayers,
+      displayNPCs,
     );
 
     expect(prunedPlayers).toEqual({ alpha: { x: 1, y: 2 } });
     expect(prunedNPCs).toEqual({ goblin: { x: 7, y: 8 } });
+    expect(prunedPlayers.alpha).toBe(displayPlayers.alpha);
+    expect(prunedNPCs.goblin).toBe(displayNPCs.goblin);
   });
 
   it("handles non-object inputs without throwing", () => {
     const { displayPlayers, displayNPCs } = deriveDisplayMaps(null, 5);
     expect(displayPlayers).toEqual({});
     expect(displayNPCs).toEqual({});
+  });
+
+  it("creates fresh entries when no previous display coordinates are available", () => {
+    const players = { alpha: { id: "alpha", x: 10, y: 20 } };
+    const npcs = { goblin: { id: "goblin", x: 30, y: 40 } };
+
+    const { displayPlayers, displayNPCs } = deriveDisplayMaps(players, npcs, {
+      alpha: { x: NaN, y: 0 },
+    });
+
+    expect(displayPlayers.alpha).toEqual({ x: 10, y: 20 });
+    expect(displayNPCs.goblin).toEqual({ x: 30, y: 40 });
   });
 });
 
