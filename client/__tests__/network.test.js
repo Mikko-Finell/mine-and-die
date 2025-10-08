@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { computeRtt } from "../heartbeat.js";
 import {
+  buildActionPayload,
+  buildCancelPathPayload,
+  buildConsolePayload,
+  buildHeartbeatPayload,
+  buildInputPayload,
+  buildPathPayload,
   DEFAULT_WORLD_HEIGHT,
   DEFAULT_WORLD_SEED,
   DEFAULT_WORLD_WIDTH,
@@ -11,6 +18,7 @@ import {
   normalizeCount,
   normalizeGroundItems,
   normalizeWorldConfig,
+  parseServerEvent,
   splitNpcCounts,
 } from "../network.js";
 
@@ -473,5 +481,163 @@ describe("enqueueEffectTriggers", () => {
     expect(result.pending).toHaveLength(500);
     expect(result.pending).toEqual(triggers.slice(0, 500));
     expect(result.processedIds.size).toBe(500);
+  });
+});
+
+describe("message payload builders", () => {
+  it.each([
+    {
+      label: "preserves provided intent values",
+      intent: { dx: 1, dy: -0.5 },
+      facing: "left",
+      expected: { type: "input", dx: 1, dy: -0.5, facing: "left" },
+    },
+    {
+      label: "normalizes invalid intent and facing",
+      intent: null,
+      facing: "north-east",
+      expected: { type: "input", dx: 0, dy: 0, facing: "down" },
+    },
+    {
+      label: "coerces non-finite deltas",
+      intent: { dx: Number.NaN, dy: Infinity },
+      facing: "right",
+      expected: { type: "input", dx: 0, dy: 0, facing: "right" },
+    },
+    {
+      label: "coerces string deltas",
+      intent: { dx: "5", dy: "-4.5" },
+      facing: "up",
+      expected: { type: "input", dx: 5, dy: -4.5, facing: "up" },
+    },
+  ])("buildInputPayload $label", ({ intent, facing, expected }) => {
+    expect(buildInputPayload(intent, facing)).toEqual(expected);
+  });
+
+  it("buildPathPayload preserves coordinates without mutation", () => {
+    const payload = buildPathPayload(123.45, -67.89);
+    expect(payload).toEqual({ type: "path", x: 123.45, y: -67.89 });
+  });
+
+  it("buildCancelPathPayload returns only the command type", () => {
+    expect(buildCancelPathPayload()).toEqual({ type: "cancelPath" });
+  });
+
+  it.each([
+    {
+      label: "includes params when provided",
+      params: { slot: 2 },
+      expected: { type: "action", action: "use", params: { slot: 2 } },
+    },
+    {
+      label: "omits params when null",
+      params: null,
+      expected: { type: "action", action: "use" },
+    },
+    {
+      label: "omits params when empty",
+      params: {},
+      expected: { type: "action", action: "use" },
+    },
+  ])("buildActionPayload $label", ({ params, expected }) => {
+    expect(buildActionPayload("use", params)).toEqual(expected);
+  });
+
+  it("buildHeartbeatPayload preserves the provided timestamp", () => {
+    expect(buildHeartbeatPayload(1234)).toEqual({ type: "heartbeat", sentAt: 1234 });
+  });
+
+  it.each([
+    {
+      label: "includes qty when provided as an integer",
+      params: { qty: 5 },
+      expected: { type: "console", cmd: "spawn", qty: 5 },
+    },
+    {
+      label: "truncates finite float qty",
+      params: { qty: 3.9 },
+      expected: { type: "console", cmd: "spawn", qty: 3 },
+    },
+    {
+      label: "coerces numeric strings",
+      params: { qty: "7" },
+      expected: { type: "console", cmd: "spawn", qty: 7 },
+    },
+    {
+      label: "omits qty when null",
+      params: { qty: null },
+      expected: { type: "console", cmd: "spawn" },
+    },
+    {
+      label: "omits qty when not finite",
+      params: { qty: Infinity },
+      expected: { type: "console", cmd: "spawn" },
+    },
+    {
+      label: "omits qty when NaN",
+      params: { qty: Number.NaN },
+      expected: { type: "console", cmd: "spawn" },
+    },
+    {
+      label: "omits qty when string is non-numeric",
+      params: { qty: "many" },
+      expected: { type: "console", cmd: "spawn" },
+    },
+    {
+      label: "omits qty when params absent",
+      params: undefined,
+      expected: { type: "console", cmd: "spawn" },
+    },
+  ])("buildConsolePayload $label", ({ params, expected }) => {
+    expect(buildConsolePayload("spawn", params)).toEqual(expected);
+  });
+});
+
+describe("parseServerEvent", () => {
+  it("returns an envelope for valid state events", () => {
+    const encoded = JSON.stringify({ type: "state", players: [], sequence: 5 });
+
+    const result = parseServerEvent(encoded);
+
+    expect(result).not.toBeNull();
+    expect(result).toEqual({
+      type: "state",
+      data: { type: "state", players: [], sequence: 5 },
+    });
+  });
+
+  it("preserves extra fields for heartbeat events", () => {
+    const encoded = JSON.stringify({ type: "heartbeat", clientTime: 50, rtt: 20 });
+
+    const result = parseServerEvent(encoded);
+
+    expect(result).not.toBeNull();
+    expect(result.type).toBe("heartbeat");
+    expect(result?.data).toEqual({ type: "heartbeat", clientTime: 50, rtt: 20 });
+  });
+
+  it.each([
+    { label: "non-string input", input: null },
+    { label: "number input", input: 42 },
+    { label: "boolean input", input: true },
+    { label: "invalid json", input: "{" },
+    { label: "missing type", input: JSON.stringify({}) },
+    { label: "non-string type", input: JSON.stringify({ type: 7 }) },
+    { label: "array payload", input: JSON.stringify([]) },
+    {
+      label: "array with type-like object",
+      input: JSON.stringify([{ type: "state" }]),
+    },
+    { label: "empty string", input: "" },
+  ])("returns null for $label", ({ input }) => {
+    expect(parseServerEvent(input)).toBeNull();
+  });
+
+  it("remains compatible with computeRtt for heartbeat payloads", () => {
+    const encoded = JSON.stringify({ type: "heartbeat", clientTime: 100 });
+    const result = parseServerEvent(encoded);
+
+    expect(result?.type).toBe("heartbeat");
+    expect(computeRtt(result?.data, 175)).toBe(75);
   });
 });
