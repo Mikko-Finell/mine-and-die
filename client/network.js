@@ -11,12 +11,54 @@ export const DEFAULT_WORLD_WIDTH = 2400;
 export const DEFAULT_WORLD_HEIGHT = 1800;
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 
-function normalizeCount(value, fallback) {
+export function normalizeCount(value, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
   }
   return Math.max(0, Math.floor(parsed));
+}
+
+export function splitNpcCounts(countConfig, defaults = {}) {
+  const source =
+    countConfig && typeof countConfig === "object" ? countConfig : Object.create(null);
+  const defaultGoblin = normalizeCount(
+    defaults.goblinCount,
+    DEFAULT_GOBLIN_COUNT,
+  );
+  const defaultRat = normalizeCount(defaults.ratCount, DEFAULT_RAT_COUNT);
+  const defaultTotal = normalizeCount(
+    defaults.npcCount,
+    defaultGoblin + defaultRat,
+  );
+
+  const goblinProvided = Object.prototype.hasOwnProperty.call(
+    source,
+    "goblinCount",
+  );
+  const ratProvided = Object.prototype.hasOwnProperty.call(source, "ratCount");
+
+  let goblinCount = goblinProvided
+    ? normalizeCount(source.goblinCount, defaultGoblin)
+    : defaultGoblin;
+  let ratCount = ratProvided
+    ? normalizeCount(source.ratCount, defaultRat)
+    : defaultRat;
+
+  if (
+    Object.prototype.hasOwnProperty.call(source, "npcCount") &&
+    !goblinProvided &&
+    !ratProvided
+  ) {
+    const total = normalizeCount(source.npcCount, defaultTotal);
+    const goblins = Math.min(2, total);
+    goblinCount = goblins;
+    ratCount = Math.max(0, total - goblins);
+  }
+
+  const npcCount = goblinCount + ratCount;
+
+  return { goblinCount, ratCount, npcCount };
 }
 
 function normalizeWorldConfig(config) {
@@ -67,37 +109,10 @@ function normalizeWorldConfig(config) {
   if (config.npcs === true) {
     normalized.npcs = true;
   }
-  const goblinProvided = Object.prototype.hasOwnProperty.call(
-    config,
-    "goblinCount",
-  );
-  if (goblinProvided) {
-    normalized.goblinCount = normalizeCount(
-      config.goblinCount,
-      normalized.goblinCount,
-    );
-  }
-  const ratProvided = Object.prototype.hasOwnProperty.call(
-    config,
-    "ratCount",
-  );
-  if (ratProvided) {
-    normalized.ratCount = normalizeCount(config.ratCount, normalized.ratCount);
-  }
-  let totalProvided = null;
-  if (Object.prototype.hasOwnProperty.call(config, "npcCount")) {
-    totalProvided = normalizeCount(
-      config.npcCount,
-      normalized.goblinCount + normalized.ratCount,
-    );
-  }
-  if (totalProvided !== null && !goblinProvided && !ratProvided) {
-    const goblins = Math.min(2, totalProvided);
-    const rats = Math.max(0, totalProvided - goblins);
-    normalized.goblinCount = goblins;
-    normalized.ratCount = rats;
-  }
-  normalized.npcCount = normalized.goblinCount + normalized.ratCount;
+  const counts = splitNpcCounts(config, normalized);
+  normalized.goblinCount = counts.goblinCount;
+  normalized.ratCount = counts.ratCount;
+  normalized.npcCount = counts.npcCount;
   if (config.lava === false) {
     normalized.lava = false;
   }
@@ -134,7 +149,7 @@ function normalizeWorldConfig(config) {
 }
 
 // normalizeFacing guards against invalid facing values from the network.
-function normalizeFacing(facing) {
+export function normalizeFacing(facing) {
   return typeof facing === "string" && VALID_FACINGS.has(facing)
     ? facing
     : DEFAULT_FACING;
@@ -169,7 +184,7 @@ function normalizeGroundItems(items) {
   return Object.fromEntries(entries);
 }
 
-export { normalizeWorldConfig, normalizeGroundItems, normalizeFacing };
+export { normalizeWorldConfig, normalizeGroundItems };
 
 function handleConsoleAck(store, payload) {
   if (!payload || typeof payload !== "object") {
@@ -695,47 +710,28 @@ export async function resetWorld(store, config) {
   } else if (rawSeed != null) {
     seed = String(rawSeed).trim();
   }
-  const parseCount = (value, fallback) => normalizeCount(value, fallback);
-  const configObject =
-    config && typeof config === "object" ? config : Object.create(null);
-  const hasGoblinCount = Object.prototype.hasOwnProperty.call(
-    configObject,
-    "goblinCount",
-  );
-  const hasRatCount = Object.prototype.hasOwnProperty.call(
-    configObject,
-    "ratCount",
-  );
-  let goblinCount = hasGoblinCount
-    ? parseCount(config?.goblinCount, DEFAULT_GOBLIN_COUNT)
-    : DEFAULT_GOBLIN_COUNT;
-  let ratCount = hasRatCount
-    ? parseCount(config?.ratCount, DEFAULT_RAT_COUNT)
-    : DEFAULT_RAT_COUNT;
-  if (!hasGoblinCount && !hasRatCount) {
-    const total = parseCount(config?.npcCount, DEFAULT_NPC_COUNT);
-    const goblins = Math.min(2, total);
-    goblinCount = goblins;
-    ratCount = Math.max(0, total - goblins);
-  }
-  const npcTotal = goblinCount + ratCount;
+  const { goblinCount, ratCount, npcCount } = splitNpcCounts(config, {
+    goblinCount: DEFAULT_GOBLIN_COUNT,
+    ratCount: DEFAULT_RAT_COUNT,
+    npcCount: DEFAULT_NPC_COUNT,
+  });
   const payload = {
     obstacles: !!config?.obstacles,
-    obstaclesCount: parseCount(
+    obstaclesCount: normalizeCount(
       config?.obstaclesCount,
       DEFAULT_OBSTACLE_COUNT,
     ),
     goldMines: !!config?.goldMines,
-    goldMineCount: parseCount(
+    goldMineCount: normalizeCount(
       config?.goldMineCount,
       DEFAULT_GOLD_MINE_COUNT,
     ),
     npcs: !!config?.npcs,
     goblinCount,
     ratCount,
-    npcCount: npcTotal,
+    npcCount,
     lava: !!config?.lava,
-    lavaCount: parseCount(config?.lavaCount, DEFAULT_LAVA_COUNT),
+    lavaCount: normalizeCount(config?.lavaCount, DEFAULT_LAVA_COUNT),
     seed,
   };
 
