@@ -325,24 +325,37 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 		initialPlayerPositions[id] = vec2{X: player.X, Y: player.Y}
 	}
 
-	actors := make([]*actorState, 0, len(w.players)+len(w.npcs))
+	actorsForCollisions := make([]*actorState, 0, len(w.players)+len(w.npcs))
+	proposedPlayerStates := make(map[string]*actorState, len(w.players))
 	// Movement system.
-	for _, player := range w.players {
+	for id, player := range w.players {
+		// Operate on a copy so player coordinates can be committed via
+		// SetPosition after all collision resolution completes.
+		scratch := player.actorState
 		if player.intentX != 0 || player.intentY != 0 {
-			moveActorWithObstacles(&player.actorState, dt, w.obstacles)
+			moveActorWithObstacles(&scratch, dt, w.obstacles)
 		}
-		actors = append(actors, &player.actorState)
+		proposedPlayerStates[id] = &scratch
+		actorsForCollisions = append(actorsForCollisions, &scratch)
 	}
 	for _, npc := range w.npcs {
 		if npc.intentX != 0 || npc.intentY != 0 {
 			moveActorWithObstacles(&npc.actorState, dt, w.obstacles)
 		}
-		actors = append(actors, &npc.actorState)
+		actorsForCollisions = append(actorsForCollisions, &npc.actorState)
 	}
 
-	resolveActorCollisions(actors, w.obstacles)
+	resolveActorCollisions(actorsForCollisions, w.obstacles)
 
-	w.applyPlayerPositionMutations(initialPlayerPositions)
+	proposedPositions := make(map[string]vec2, len(proposedPlayerStates))
+	for id, state := range proposedPlayerStates {
+		if state == nil {
+			continue
+		}
+		proposedPositions[id] = vec2{X: state.X, Y: state.Y}
+	}
+
+	w.applyPlayerPositionMutations(initialPlayerPositions, proposedPositions)
 
 	// Ability and effect staging.
 	for _, action := range stagedActions {
@@ -355,7 +368,14 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 
 	// Environmental systems.
-	w.applyEnvironmentalConditions(actors, now)
+	actorsForHazards := make([]*actorState, 0, len(w.players)+len(w.npcs))
+	for _, player := range w.players {
+		actorsForHazards = append(actorsForHazards, &player.actorState)
+	}
+	for _, npc := range w.npcs {
+		actorsForHazards = append(actorsForHazards, &npc.actorState)
+	}
+	w.applyEnvironmentalConditions(actorsForHazards, now)
 
 	w.advanceConditions(now)
 	w.advanceEffects(now, dt)
@@ -388,7 +408,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	return removedPlayers
 }
 
-func (w *World) applyPlayerPositionMutations(initial map[string]vec2) {
+// applyPlayerPositionMutations commits any movement resolved during the tick
+// via the SetPosition write barrier so patches and versions stay consistent.
+func (w *World) applyPlayerPositionMutations(initial map[string]vec2, proposed map[string]vec2) {
 	if w == nil {
 		return
 	}
@@ -399,17 +421,16 @@ func (w *World) applyPlayerPositionMutations(initial map[string]vec2) {
 			start = vec2{X: player.X, Y: player.Y}
 		}
 
-		if positionsEqual(start.X, start.Y, player.X, player.Y) {
+		target, ok := proposed[id]
+		if !ok {
+			target = vec2{X: player.X, Y: player.Y}
+		}
+
+		if positionsEqual(start.X, start.Y, target.X, target.Y) {
 			continue
 		}
 
-		newX := player.X
-		newY := player.Y
-
-		player.X = start.X
-		player.Y = start.Y
-
-		w.SetPosition(id, newX, newY)
+		w.SetPosition(id, target.X, target.Y)
 	}
 }
 

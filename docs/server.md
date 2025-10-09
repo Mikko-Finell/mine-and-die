@@ -51,6 +51,9 @@ The queue is drained at the start of each tick so every command is applied exact
 - Advances and prunes effect lifecycles plus awards ore mining loot.
 - Removes players whose last heartbeat is older than `disconnectAfter`.
 
+### Player Position Mutations
+Player coordinates are guarded by the `World.SetPosition` write barrier. Any server code that needs to move a player must call `SetPosition` instead of mutating `playerState.Actor.X`/`Y` directly. The helper bumps the player's version, records a position patch for clients, and keeps journal diffs authoritative. The simulation stage works with scratch copies while resolving collisions and then commits the final location through `SetPosition` so patches stay consistent.
+
 ### Fire-and-forget Effect Triggers
 The hub tracks two effect collections when serialising a snapshot:
 - `effects` – Active hitboxes or projectiles that still need per-tick updates.

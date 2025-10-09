@@ -145,6 +145,9 @@ func (s *actorState) applyHealthDelta(delta float64) bool {
 	return true
 }
 
+// playerState wraps actorState with simulation metadata. Mutate the embedded
+// Actor's position via World.SetPosition so versioning and patch emission stay
+// consistent.
 type playerState struct {
 	actorState
 	lastInput     time.Time
