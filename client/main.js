@@ -56,6 +56,9 @@ const diagnosticsEls = {
   latency: document.getElementById("diag-latency"),
   simLatency: document.getElementById("diag-sim-latency"),
   messages: document.getElementById("diag-messages"),
+  patchBaseline: document.getElementById("diag-patch-baseline"),
+  patchBatch: document.getElementById("diag-patch-batch"),
+  patchEntities: document.getElementById("diag-patch-entities"),
 };
 
 const hudNetworkEls = {
@@ -492,6 +495,131 @@ function updateDiagnostics() {
       : "";
     const base = `${store.messagesSent} (${store.bytesSent} bytes)`;
     els.messages.textContent = lastSentText ? `${base} · ${lastSentText}` : base;
+  }
+
+  if (els.patchBaseline || els.patchBatch || els.patchEntities) {
+    const patchState =
+      store.patchState && typeof store.patchState === "object"
+        ? store.patchState
+        : null;
+
+    let baselineText = "—";
+    let batchText = "—";
+    let entitiesText = "—";
+
+    if (patchState) {
+      const toFiniteTick = (value) =>
+        typeof value === "number" && Number.isFinite(value) && value >= 0
+          ? Math.floor(value)
+          : null;
+      const baselineTick = toFiniteTick(patchState.baseline?.tick);
+      const patchedTick = toFiniteTick(patchState.patched?.tick);
+      const sourceLabel =
+        typeof patchState.lastUpdateSource === "string" &&
+        patchState.lastUpdateSource.trim().length > 0
+          ? patchState.lastUpdateSource.trim()
+          : null;
+
+      let tickSummary = null;
+      if (baselineTick !== null && patchedTick !== null) {
+        tickSummary =
+          baselineTick === patchedTick
+            ? `Tick ${baselineTick}`
+            : `Tick ${baselineTick} → ${patchedTick}`;
+      } else if (baselineTick !== null) {
+        tickSummary = `Tick ${baselineTick} (baseline)`;
+      } else if (patchedTick !== null) {
+        tickSummary = `Tick ${patchedTick} (patched)`;
+      }
+
+      if (tickSummary) {
+        baselineText = tickSummary;
+        if (sourceLabel) {
+          baselineText += ` · ${sourceLabel}`;
+        }
+      } else if (sourceLabel) {
+        baselineText = sourceLabel;
+      }
+
+      const toNonNegativeInt = (value) =>
+        typeof value === "number" && Number.isFinite(value) && value >= 0
+          ? Math.floor(value)
+          : 0;
+      const appliedCount = toNonNegativeInt(patchState.lastAppliedPatchCount);
+      const errors = Array.isArray(patchState.errors) ? patchState.errors : [];
+      const errorCount = errors.length;
+      const lastError =
+        patchState.lastError && typeof patchState.lastError === "object"
+          ? patchState.lastError
+          : null;
+
+      const formatErrorLabel = () => {
+        if (errorCount === 0) {
+          return "no errors";
+        }
+        const message =
+          typeof lastError?.message === "string" && lastError.message.trim().length > 0
+            ? lastError.message.trim()
+            : "error";
+        const truncated =
+          message.length > 72 ? `${message.slice(0, 69)}…` : message;
+        const errorTick = toFiniteTick(lastError?.tick);
+        const tickSuffix = errorTick !== null ? `@${errorTick}` : "";
+        const countLabel = `${errorCount} error${errorCount === 1 ? "" : "s"}`;
+        return tickSuffix
+          ? `${countLabel} ${tickSuffix} (${truncated})`
+          : `${countLabel} (${truncated})`;
+      };
+
+      batchText = `Applied ${appliedCount} · ${formatErrorLabel()}`;
+
+      const countEntries = (record) => {
+        if (!record || typeof record !== "object") {
+          return 0;
+        }
+        return Object.keys(record).length;
+      };
+      const baselineCounts = {
+        players: countEntries(patchState.baseline?.players),
+        npcs: countEntries(patchState.baseline?.npcs),
+        effects: countEntries(patchState.baseline?.effects),
+        groundItems: countEntries(patchState.baseline?.groundItems),
+      };
+      const patchedCounts = {
+        players: countEntries(patchState.patched?.players),
+        npcs: countEntries(patchState.patched?.npcs),
+        effects: countEntries(patchState.patched?.effects),
+        groundItems: countEntries(patchState.patched?.groundItems),
+      };
+
+      const formatCountLabel = (label, baselineValue, patchedValue) => {
+        const base = toNonNegativeInt(baselineValue);
+        const patched = toNonNegativeInt(patchedValue);
+        if (base === patched) {
+          return `${label} ${patched}`;
+        }
+        return `${label} ${base}→${patched}`;
+      };
+
+      const entityParts = [
+        formatCountLabel("Players", baselineCounts.players, patchedCounts.players),
+        formatCountLabel("NPCs", baselineCounts.npcs, patchedCounts.npcs),
+        formatCountLabel("Effects", baselineCounts.effects, patchedCounts.effects),
+        formatCountLabel("Items", baselineCounts.groundItems, patchedCounts.groundItems),
+      ];
+
+      entitiesText = entityParts.filter(Boolean).join(" · ");
+    }
+
+    if (els.patchBaseline) {
+      els.patchBaseline.textContent = baselineText;
+    }
+    if (els.patchBatch) {
+      els.patchBatch.textContent = batchText;
+    }
+    if (els.patchEntities) {
+      els.patchEntities.textContent = entitiesText;
+    }
   }
 }
 
