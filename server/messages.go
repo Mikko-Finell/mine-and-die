@@ -9,6 +9,7 @@ type joinResponse struct {
 	Effects        []Effect        `json:"effects"`
 	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
 	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
+	Patches        []Patch         `json:"patches,omitempty"`
 	Config         worldConfig     `json:"config"`
 }
 
@@ -21,6 +22,7 @@ type stateMessage struct {
 	Effects        []Effect        `json:"effects"`
 	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
 	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
+	Patches        []Patch         `json:"patches"`
 	Tick           uint64          `json:"t"`
 	ServerTime     int64           `json:"serverTime"`
 	Config         worldConfig     `json:"config"`
