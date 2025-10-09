@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 	"time"
@@ -149,6 +150,84 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 	if len(first.Effects) != 0 {
 		t.Fatalf("expected initial effect list to be empty, got %d", len(first.Effects))
 	}
+}
+
+func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
+	hub := newHub()
+	joined := hub.Join()
+	playerID := joined.ID
+
+	hub.enqueueCommand(Command{
+		ActorID: playerID,
+		Type:    CommandMove,
+		Move: &MoveCommand{
+			DX:     1,
+			DY:     0,
+			Facing: FacingRight,
+		},
+	})
+
+	dt := 1.0 / float64(tickRate)
+	now := time.Now()
+	players, npcs, effects, triggers, groundItems, _ := hub.advance(now, dt)
+
+	hub.mu.Lock()
+	player := hub.world.players[playerID]
+	expectedX := player.X
+	expectedY := player.Y
+	patches := hub.world.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		hub.mu.Unlock()
+		t.Fatalf("expected 1 patch before broadcast, got %d", len(patches))
+	}
+	if patches[0].Kind != PatchPlayerPos {
+		hub.mu.Unlock()
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerPos, patches[0].Kind)
+	}
+	hub.mu.Unlock()
+
+	data, _, err := hub.marshalState(players, npcs, effects, triggers, groundItems, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var decoded stateMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to decode state message: %v", err)
+	}
+	if len(decoded.Patches) != 1 {
+		t.Fatalf("expected 1 patch after broadcast, got %d", len(decoded.Patches))
+	}
+
+	patch := decoded.Patches[0]
+	if patch.Kind != PatchPlayerPos {
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerPos, patch.Kind)
+	}
+	if patch.EntityID != playerID {
+		t.Fatalf("expected patch entity %q, got %q", playerID, patch.EntityID)
+	}
+	payload, ok := patch.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("expected payload to decode as map, got %T", patch.Payload)
+	}
+	x, ok := payload["x"].(float64)
+	if !ok {
+		t.Fatalf("expected payload.x to be float64, got %T", payload["x"])
+	}
+	y, ok := payload["y"].(float64)
+	if !ok {
+		t.Fatalf("expected payload.y to be float64, got %T", payload["y"])
+	}
+	if math.Abs(x-expectedX) > 1e-6 || math.Abs(y-expectedY) > 1e-6 {
+		t.Fatalf("expected payload coords (%.6f, %.6f), got (%.6f, %.6f)", expectedX, expectedY, x, y)
+	}
+
+	hub.mu.Lock()
+	if remaining := hub.world.snapshotPatchesLocked(); len(remaining) != 0 {
+		hub.mu.Unlock()
+		t.Fatalf("expected journal to be drained after broadcast, got %d patches", len(remaining))
+	}
+	hub.mu.Unlock()
 }
 
 func TestWorldGenerationDeterministicWithSeed(t *testing.T) {
