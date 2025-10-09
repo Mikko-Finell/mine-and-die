@@ -134,6 +134,33 @@ func (w *World) dropAllGold(actor *actorState, reason string) int {
 	return w.dropAllItemsOfType(actor, ItemTypeGold, reason)
 }
 
+func (w *World) dropAllInventory(actor *actorState, reason string) int {
+	if w == nil || actor == nil {
+		return 0
+	}
+	var stacks []ItemStack
+	if _, ok := w.players[actor.ID]; ok {
+		_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
+			stacks = inv.DrainAll()
+			return nil
+		})
+	} else {
+		stacks = actor.Inventory.DrainAll()
+	}
+	if len(stacks) == 0 {
+		return 0
+	}
+	total := 0
+	for _, stack := range stacks {
+		if stack.Type == "" || stack.Quantity <= 0 {
+			continue
+		}
+		w.upsertGroundItem(actor, stack, reason)
+		total += stack.Quantity
+	}
+	return total
+}
+
 func (w *World) dropAllItemsOfType(actor *actorState, itemType ItemType, reason string) int {
 	if w == nil || actor == nil || itemType == "" {
 		return 0

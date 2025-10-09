@@ -188,10 +188,7 @@ func (w *World) handleNPCDefeat(npc *npcState) {
 	if _, ok := w.npcs[npc.ID]; !ok {
 		return
 	}
-	w.dropAllGold(&npc.actorState, "death")
-	if npc.Type == NPCTypeRat {
-		w.dropAllItemsOfType(&npc.actorState, ItemTypeRatTail, "death")
-	}
+	w.dropAllInventory(&npc.actorState, "death")
 	delete(w.npcs, npc.ID)
 }
 
