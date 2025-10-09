@@ -7,6 +7,14 @@ import {
   PATCH_KIND_PLAYER_INTENT,
   PATCH_KIND_PLAYER_HEALTH,
   PATCH_KIND_PLAYER_INVENTORY,
+  PATCH_KIND_NPC_POS,
+  PATCH_KIND_NPC_FACING,
+  PATCH_KIND_NPC_HEALTH,
+  PATCH_KIND_NPC_INVENTORY,
+  PATCH_KIND_EFFECT_POS,
+  PATCH_KIND_EFFECT_PARAMS,
+  PATCH_KIND_GROUND_ITEM_POS,
+  PATCH_KIND_GROUND_ITEM_QTY,
 } from "../patches.js";
 
 function makePlayer(overrides = {}) {
@@ -18,6 +26,49 @@ function makePlayer(overrides = {}) {
     health: 10,
     maxHealth: 10,
     inventory: { slots: [] },
+    ...overrides,
+  };
+}
+
+function makeNPC(overrides = {}) {
+  return {
+    id: "npc-1",
+    x: 4,
+    y: 5,
+    facing: "down",
+    health: 20,
+    maxHealth: 20,
+    type: "goblin",
+    aiControlled: true,
+    experienceReward: 5,
+    inventory: { slots: [] },
+    ...overrides,
+  };
+}
+
+function makeEffect(overrides = {}) {
+  return {
+    id: "effect-1",
+    type: "fireball",
+    owner: "player-1",
+    start: 100,
+    duration: 250,
+    x: 6,
+    y: 7,
+    width: 24,
+    height: 24,
+    params: { remaining: 1.5 },
+    ...overrides,
+  };
+}
+
+function makeGroundItem(overrides = {}) {
+  return {
+    id: "ground-1",
+    type: "gold",
+    x: 8,
+    y: 9,
+    qty: 3,
     ...overrides,
   };
 }
@@ -47,7 +98,13 @@ function freezeState(state) {
 describe("updatePatchState", () => {
   it("builds a baseline and patched snapshot when no patches are provided", () => {
     const initial = freezeState(createPatchState());
-    const payload = deepFreeze({ t: 1, players: [makePlayer()] });
+    const payload = deepFreeze({
+      t: 1,
+      players: [makePlayer()],
+      npcs: [makeNPC()],
+      effects: [makeEffect()],
+      groundItems: [makeGroundItem()],
+    });
 
     const result = updatePatchState(initial, payload, { source: "join" });
 
@@ -61,6 +118,39 @@ describe("updatePatchState", () => {
       x: 1,
       y: 2,
       facing: "up",
+    });
+    expect(Object.keys(result.baseline.npcs)).toEqual(["npc-1"]);
+    expect(Object.keys(result.patched.npcs)).toEqual(["npc-1"]);
+    expect(result.baseline.npcs["npc-1"]).not.toBe(
+      result.patched.npcs["npc-1"],
+    );
+    expect(result.patched.npcs["npc-1"]).toMatchObject({
+      type: "goblin",
+      facing: "down",
+      x: 4,
+      y: 5,
+    });
+    expect(Object.keys(result.baseline.effects)).toEqual(["effect-1"]);
+    expect(Object.keys(result.patched.effects)).toEqual(["effect-1"]);
+    expect(result.baseline.effects["effect-1"]).not.toBe(
+      result.patched.effects["effect-1"],
+    );
+    expect(result.patched.effects["effect-1"]).toMatchObject({
+      type: "fireball",
+      x: 6,
+      y: 7,
+    });
+    expect(result.patched.effects["effect-1"].params).toEqual({ remaining: 1.5 });
+    expect(Object.keys(result.baseline.groundItems)).toEqual(["ground-1"]);
+    expect(Object.keys(result.patched.groundItems)).toEqual(["ground-1"]);
+    expect(result.baseline.groundItems["ground-1"]).not.toBe(
+      result.patched.groundItems["ground-1"],
+    );
+    expect(result.patched.groundItems["ground-1"]).toMatchObject({
+      type: "gold",
+      qty: 3,
+      x: 8,
+      y: 9,
     });
     expect(result.lastAppliedPatchCount).toBe(0);
     expect(result.errors).toEqual([]);
@@ -121,6 +211,78 @@ describe("updatePatchState", () => {
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(3);
+  });
+
+  it("applies NPC, effect, and ground item patches onto the baseline snapshot", () => {
+    const basePayload = deepFreeze({
+      t: 6,
+      players: [makePlayer()],
+      npcs: [makeNPC()],
+      effects: [makeEffect()],
+      groundItems: [makeGroundItem()],
+    });
+    const seeded = updatePatchState(createPatchState(), basePayload, { source: "join" });
+    freezeState(seeded);
+
+    const payload = deepFreeze({
+      t: 7,
+      players: [makePlayer()],
+      npcs: [makeNPC()],
+      effects: [makeEffect()],
+      groundItems: [makeGroundItem()],
+      patches: [
+        { kind: PATCH_KIND_NPC_POS, entityId: "npc-1", payload: { x: 14, y: 16 } },
+        {
+          kind: PATCH_KIND_NPC_FACING,
+          entityId: "npc-1",
+          payload: { facing: "left" },
+        },
+        {
+          kind: PATCH_KIND_NPC_HEALTH,
+          entityId: "npc-1",
+          payload: { health: 12, maxHealth: 22 },
+        },
+        {
+          kind: PATCH_KIND_NPC_INVENTORY,
+          entityId: "npc-1",
+          payload: { slots: [{ slot: 1, item: { type: "gold", quantity: 9 } }] },
+        },
+        { kind: PATCH_KIND_EFFECT_POS, entityId: "effect-1", payload: { x: 9, y: 10 } },
+        {
+          kind: PATCH_KIND_EFFECT_PARAMS,
+          entityId: "effect-1",
+          payload: { params: { remaining: 0.5, speed: 2 } },
+        },
+        { kind: PATCH_KIND_GROUND_ITEM_POS, entityId: "ground-1", payload: { x: 2, y: 3 } },
+        { kind: PATCH_KIND_GROUND_ITEM_QTY, entityId: "ground-1", payload: { qty: 7 } },
+      ],
+    });
+
+    const result = updatePatchState(seeded, payload, { source: "state" });
+
+    expect(result.lastAppliedPatchCount).toBe(8);
+    const npc = result.patched.npcs["npc-1"];
+    expect(npc).toMatchObject({
+      x: 14,
+      y: 16,
+      facing: "left",
+      health: 12,
+      maxHealth: 22,
+    });
+    expect(npc.inventory.slots).toEqual([
+      { slot: 1, item: { type: "gold", quantity: 9 } },
+    ]);
+    const effect = result.patched.effects["effect-1"];
+    expect(effect).toMatchObject({ x: 9, y: 10 });
+    expect(effect.params).toEqual({ remaining: 0.5, speed: 2 });
+    const groundItem = result.patched.groundItems["ground-1"];
+    expect(groundItem).toMatchObject({ x: 2, y: 3, qty: 7 });
+    expect(result.baseline.npcs["npc-1"].x).toBe(4);
+    expect(result.baseline.effects["effect-1"].x).toBe(6);
+    expect(result.baseline.groundItems["ground-1"].qty).toBe(3);
+    expect(result.errors).toEqual([]);
+    expect(result.lastUpdateSource).toBe("state");
+    expect(result.lastTick).toBe(7);
   });
 
   it("records errors for invalid patch envelopes and respects the history limit", () => {
