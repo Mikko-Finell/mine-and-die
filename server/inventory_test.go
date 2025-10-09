@@ -91,3 +91,34 @@ func TestInventoryCloneCreatesDeepCopy(t *testing.T) {
 		t.Fatalf("expected original inventory to remain unchanged, got %d", inv.Slots[0].Item.Quantity)
 	}
 }
+
+func TestInventoryDrainAllClearsSlots(t *testing.T) {
+	inv := NewInventory()
+	if _, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 5}); err != nil {
+		t.Fatalf("unexpected error adding gold: %v", err)
+	}
+	if _, err := inv.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 2}); err != nil {
+		t.Fatalf("unexpected error adding potion: %v", err)
+	}
+
+	drained := inv.DrainAll()
+	if len(inv.Slots) != 0 {
+		t.Fatalf("expected inventory to be empty after drain, have %d slots", len(inv.Slots))
+	}
+	if len(drained) != 2 {
+		t.Fatalf("expected two drained stacks, got %d", len(drained))
+	}
+	if drained[0].Type == drained[1].Type {
+		t.Fatalf("expected drained stacks to preserve distinct item types")
+	}
+	totals := map[ItemType]int{}
+	for _, stack := range drained {
+		totals[stack.Type] += stack.Quantity
+	}
+	if totals[ItemTypeGold] != 5 {
+		t.Fatalf("expected drained gold quantity 5, got %d", totals[ItemTypeGold])
+	}
+	if totals[ItemTypeHealthPotion] != 2 {
+		t.Fatalf("expected drained potion quantity 2, got %d", totals[ItemTypeHealthPotion])
+	}
+}

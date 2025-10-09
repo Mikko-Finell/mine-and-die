@@ -1936,7 +1936,7 @@ func TestConsolePickupRaceHonoursFirstCollector(t *testing.T) {
 	}
 }
 
-func TestDeathDropPlayerGold(t *testing.T) {
+func TestDeathDropsPlayerInventory(t *testing.T) {
 	hub := newHub()
 	attacker := newTestPlayerState("player-attacker")
 	victim := newTestPlayerState("player-victim")
@@ -1947,6 +1947,12 @@ func TestDeathDropPlayerGold(t *testing.T) {
 		return err
 	}); err != nil {
 		t.Fatalf("failed to seed victim gold: %v", err)
+	}
+	if err := hub.world.MutateInventory(victim.ID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 2})
+		return err
+	}); err != nil {
+		t.Fatalf("failed to seed victim potions: %v", err)
 	}
 
 	now := time.Now()
@@ -1960,24 +1966,34 @@ func TestDeathDropPlayerGold(t *testing.T) {
 	if qty := victim.Inventory.QuantityOf(ItemTypeGold); qty != 0 {
 		t.Fatalf("expected victim gold to be zero after death, got %d", qty)
 	}
+	if qty := victim.Inventory.QuantityOf(ItemTypeHealthPotion); qty != 0 {
+		t.Fatalf("expected victim potions to be zero after death, got %d", qty)
+	}
 	items := hub.world.GroundItemsSnapshot()
-	if len(items) != 1 {
-		t.Fatalf("expected one ground drop after death, got %d", len(items))
+	if len(items) != 2 {
+		t.Fatalf("expected two ground drops after death, got %d", len(items))
 	}
-	if items[0].Type != ItemTypeGold {
-		t.Fatalf("expected ground drop of gold, got %s", items[0].Type)
+	totals := map[ItemType]int{}
+	for _, item := range items {
+		totals[item.Type] += item.Qty
 	}
-	if items[0].Qty != 37 {
-		t.Fatalf("expected ground gold to equal 37, got %d", items[0].Qty)
+	if totals[ItemTypeGold] != 37 {
+		t.Fatalf("expected ground gold to equal 37, got %d", totals[ItemTypeGold])
+	}
+	if totals[ItemTypeHealthPotion] != 2 {
+		t.Fatalf("expected ground potion quantity 2, got %d", totals[ItemTypeHealthPotion])
 	}
 }
 
-func TestDeathDropNPCGold(t *testing.T) {
+func TestDeathDropsNPCInventory(t *testing.T) {
 	hub := newHub()
 	attacker := newTestPlayerState("player-vs-npc")
 	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 300, Y: 300, Health: 25, MaxHealth: 25, Inventory: NewInventory()}}, Type: NPCTypeGoblin}
 	if _, err := npc.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
 		t.Fatalf("failed to seed npc gold: %v", err)
+	}
+	if _, err := npc.Inventory.AddStack(ItemStack{Type: ItemTypeHealthPotion, Quantity: 1}); err != nil {
+		t.Fatalf("failed to seed npc potion: %v", err)
 	}
 	hub.world.AddPlayer(attacker)
 	hub.world.npcs[npc.ID] = npc
@@ -1990,14 +2006,18 @@ func TestDeathDropNPCGold(t *testing.T) {
 		t.Fatalf("expected npc to be removed after death")
 	}
 	items := hub.world.GroundItemsSnapshot()
-	if len(items) != 1 {
-		t.Fatalf("expected ground drop for npc death, got %d", len(items))
+	if len(items) != 2 {
+		t.Fatalf("expected two ground drops for npc death, got %d", len(items))
 	}
-	if items[0].Type != ItemTypeGold {
-		t.Fatalf("expected npc drop of gold, got %s", items[0].Type)
+	totals := map[ItemType]int{}
+	for _, item := range items {
+		totals[item.Type] += item.Qty
 	}
-	if items[0].Qty != 12 {
-		t.Fatalf("expected npc drop of 12 gold, got %d", items[0].Qty)
+	if totals[ItemTypeGold] != 12 {
+		t.Fatalf("expected npc drop of 12 gold, got %d", totals[ItemTypeGold])
+	}
+	if totals[ItemTypeHealthPotion] != 1 {
+		t.Fatalf("expected npc drop of 1 potion, got %d", totals[ItemTypeHealthPotion])
 	}
 }
 

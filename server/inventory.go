@@ -190,6 +190,24 @@ func (inv *Inventory) RemoveAllOf(itemType ItemType) int {
 	return total
 }
 
+// DrainAll removes every stack from the inventory, returning the collected items.
+func (inv *Inventory) DrainAll() []ItemStack {
+	if inv == nil || len(inv.Slots) == 0 {
+		inv.Slots = nil
+		return nil
+	}
+	drained := make([]ItemStack, 0, len(inv.Slots))
+	for _, slot := range inv.Slots {
+		stack := slot.Item
+		if stack.Type == "" || stack.Quantity <= 0 {
+			continue
+		}
+		drained = append(drained, stack)
+	}
+	inv.Slots = nil
+	return drained
+}
+
 // RemoveItemTypeQuantity subtracts a specific quantity of the given item type across slots.
 func (inv *Inventory) RemoveItemTypeQuantity(itemType ItemType, quantity int) (int, error) {
 	if inv == nil {
