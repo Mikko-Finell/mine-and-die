@@ -93,7 +93,7 @@ Players track `Health` and `MaxHealth`. Effect helpers share the `Effect` struct
 ### Ground Items & Console Commands
 - The hub tracks a single `GroundItem` stack per tile (`groundItems` plus a tile index) so repeated drops merge automatically.
 - Ground gold is exposed alongside other snapshot arrays (`state.groundItems`) and included in `/join` responses so fresh clients immediately render existing piles.
-- Players (and NPCs) automatically drop their entire gold inventory when their health reaches zero; the stack spawns on the corpse tile using the shared merge rules.
+- Players (and NPCs) automatically drop their entire inventory when their health reaches zero; stacks spawn on the corpse tile using the shared merge rules.
 - Two debug-only console commands exist for manual testing over WebSocket: `drop_gold` (requires a positive quantity not exceeding the carried amount) and `pickup_gold` (grabs the nearest stack within one tile radius). The server validates requests while holding the hub mutex to guarantee deterministic outcomes.
 - Successful console commands include the affected ground stack ID in their acknowledgement payloads so clients can correlate logs or overlay highlights with the authoritative entity.
 - `logging/economy` emits `economy.gold_dropped`, `economy.gold_picked_up`, and `economy.gold_pickup_failed` events so QA can audit transfers.

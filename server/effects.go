@@ -272,7 +272,7 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 					loggingcombat.DefeatPayload{Ability: ability, Condition: conditionName},
 					nil,
 				)
-				w.dropAllGold(target, "death")
+				w.dropAllInventory(target, "death")
 			}
 		}
 	})
