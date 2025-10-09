@@ -249,12 +249,13 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 				}
 				player.intentX = dx
 				player.intentY = dy
-				player.Facing = deriveFacing(dx, dy, player.Facing)
+				nextFacing := deriveFacing(dx, dy, player.Facing)
 				if dx == 0 && dy == 0 {
 					if cmd.Move.Facing != "" {
-						player.Facing = cmd.Move.Facing
+						nextFacing = cmd.Move.Facing
 					}
 				}
+				w.SetFacing(player.ID, nextFacing)
 				if !cmd.IssuedAt.IsZero() {
 					player.lastInput = cmd.IssuedAt
 				} else {

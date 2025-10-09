@@ -379,7 +379,12 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 			ack.Reason = "insufficient_gold"
 			return ack, true
 		}
-		removed, err := player.Inventory.RemoveItemTypeQuantity(ItemTypeGold, qty)
+		var removed int
+		err := h.world.MutateInventory(playerID, func(inv *Inventory) error {
+			var innerErr error
+			removed, innerErr = inv.RemoveItemTypeQuantity(ItemTypeGold, qty)
+			return innerErr
+		})
 		if err != nil || removed != qty {
 			h.mu.Unlock()
 			ack.Status = "error"
@@ -453,7 +458,11 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 			)
 			return ack, true
 		}
-		if _, err := player.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: qty}); err != nil {
+		err := h.world.MutateInventory(playerID, func(inv *Inventory) error {
+			_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: qty})
+			return addErr
+		})
+		if err != nil {
 			h.mu.Unlock()
 			ack.Status = "error"
 			ack.Reason = "inventory_error"

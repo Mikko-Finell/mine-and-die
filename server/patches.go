@@ -8,6 +8,12 @@ type PatchKind string
 const (
 	// PatchPlayerPos updates a player's position.
 	PatchPlayerPos PatchKind = "player_pos"
+	// PatchPlayerFacing updates a player's facing direction.
+	PatchPlayerFacing PatchKind = "player_facing"
+	// PatchPlayerHealth updates a player's health pool.
+	PatchPlayerHealth PatchKind = "player_health"
+	// PatchPlayerInventory updates a player's inventory slots.
+	PatchPlayerInventory PatchKind = "player_inventory"
 )
 
 // Patch represents a diff entry that can be applied to the client state.
@@ -21,6 +27,22 @@ type Patch struct {
 type PlayerPosPayload struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
+}
+
+// PlayerFacingPayload captures the facing for a player patch.
+type PlayerFacingPayload struct {
+	Facing FacingDirection `json:"facing"`
+}
+
+// PlayerHealthPayload captures the health for a player patch.
+type PlayerHealthPayload struct {
+	Health    float64 `json:"health"`
+	MaxHealth float64 `json:"maxHealth,omitempty"`
+}
+
+// PlayerInventoryPayload captures the inventory slots for a player patch.
+type PlayerInventoryPayload struct {
+	Slots []InventorySlot `json:"slots"`
 }
 
 // Journal accumulates patches generated during a tick and keeps a rolling

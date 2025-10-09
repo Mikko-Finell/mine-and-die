@@ -176,13 +176,37 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	expectedX := player.X
 	expectedY := player.Y
 	patches := hub.world.snapshotPatchesLocked()
-	if len(patches) != 1 {
+	if len(patches) != 2 {
 		hub.mu.Unlock()
-		t.Fatalf("expected 1 patch before broadcast, got %d", len(patches))
+		t.Fatalf("expected 2 patches before broadcast, got %d", len(patches))
 	}
-	if patches[0].Kind != PatchPlayerPos {
+	var posPatch *Patch
+	var facingPatch *Patch
+	for i := range patches {
+		patch := patches[i]
+		switch patch.Kind {
+		case PatchPlayerPos:
+			posPatch = &patch
+		case PatchPlayerFacing:
+			facingPatch = &patch
+		}
+	}
+	if posPatch == nil {
 		hub.mu.Unlock()
-		t.Fatalf("expected patch kind %q, got %q", PatchPlayerPos, patches[0].Kind)
+		t.Fatalf("expected position patch before broadcast")
+	}
+	if facingPatch == nil {
+		hub.mu.Unlock()
+		t.Fatalf("expected facing patch before broadcast")
+	}
+	facingPayload, ok := facingPatch.Payload.(PlayerFacingPayload)
+	if !ok {
+		hub.mu.Unlock()
+		t.Fatalf("expected facing payload to be PlayerFacingPayload, got %T", facingPatch.Payload)
+	}
+	if facingPayload.Facing != FacingRight {
+		hub.mu.Unlock()
+		t.Fatalf("expected facing payload to be %q, got %q", FacingRight, facingPayload.Facing)
 	}
 	hub.mu.Unlock()
 
@@ -195,28 +219,43 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("failed to decode state message: %v", err)
 	}
-	if len(decoded.Patches) != 1 {
-		t.Fatalf("expected 1 patch after broadcast, got %d", len(decoded.Patches))
+	if len(decoded.Patches) != 2 {
+		t.Fatalf("expected 2 patches after broadcast, got %d", len(decoded.Patches))
 	}
 
-	patch := decoded.Patches[0]
-	if patch.Kind != PatchPlayerPos {
-		t.Fatalf("expected patch kind %q, got %q", PatchPlayerPos, patch.Kind)
+	var decodedPos map[string]any
+	var decodedFacing map[string]any
+	for _, patch := range decoded.Patches {
+		if patch.EntityID != playerID {
+			t.Fatalf("expected patch entity %q, got %q", playerID, patch.EntityID)
+		}
+		payload, ok := patch.Payload.(map[string]any)
+		if !ok {
+			t.Fatalf("expected payload to decode as map, got %T", patch.Payload)
+		}
+		switch patch.Kind {
+		case PatchPlayerPos:
+			decodedPos = payload
+		case PatchPlayerFacing:
+			decodedFacing = payload
+		}
 	}
-	if patch.EntityID != playerID {
-		t.Fatalf("expected patch entity %q, got %q", playerID, patch.EntityID)
+	if decodedPos == nil {
+		t.Fatalf("expected position patch after broadcast")
 	}
-	payload, ok := patch.Payload.(map[string]any)
+	if decodedFacing == nil {
+		t.Fatalf("expected facing patch after broadcast")
+	}
+	x, ok := decodedPos["x"].(float64)
 	if !ok {
-		t.Fatalf("expected payload to decode as map, got %T", patch.Payload)
+		t.Fatalf("expected payload.x to be float64, got %T", decodedPos["x"])
 	}
-	x, ok := payload["x"].(float64)
+	y, ok := decodedPos["y"].(float64)
 	if !ok {
-		t.Fatalf("expected payload.x to be float64, got %T", payload["x"])
+		t.Fatalf("expected payload.y to be float64, got %T", decodedPos["y"])
 	}
-	y, ok := payload["y"].(float64)
-	if !ok {
-		t.Fatalf("expected payload.y to be float64, got %T", payload["y"])
+	if facing, ok := decodedFacing["facing"].(string); !ok || facing != string(FacingRight) {
+		t.Fatalf("expected facing payload to be %q, got %v", FacingRight, decodedFacing["facing"])
 	}
 	if math.Abs(x-expectedX) > 1e-6 || math.Abs(y-expectedY) > 1e-6 {
 		t.Fatalf("expected payload coords (%.6f, %.6f), got (%.6f, %.6f)", expectedX, expectedY, x, y)
@@ -1756,10 +1795,13 @@ func TestConsoleDropAndPickupSelf(t *testing.T) {
 	hub := newHub()
 	playerID := "player-drop-self"
 	player := newTestPlayerState(playerID)
-	if _, err := player.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 20}); err != nil {
+	hub.world.AddPlayer(player)
+	if err := hub.world.MutateInventory(playerID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 20})
+		return err
+	}); err != nil {
 		t.Fatalf("failed to seed gold: %v", err)
 	}
-	hub.world.AddPlayer(player)
 
 	ack, ok := hub.HandleConsoleCommand(playerID, "drop_gold", 10)
 	if !ok {
@@ -1806,11 +1848,14 @@ func TestConsolePickupTransfersBetweenPlayers(t *testing.T) {
 	pickerID := "player-picker"
 	dropper := newTestPlayerState(dropperID)
 	picker := newTestPlayerState(pickerID)
-	if _, err := dropper.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 15}); err != nil {
-		t.Fatalf("failed to seed dropper gold: %v", err)
-	}
 	hub.world.AddPlayer(dropper)
 	hub.world.AddPlayer(picker)
+	if err := hub.world.MutateInventory(dropperID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 15})
+		return err
+	}); err != nil {
+		t.Fatalf("failed to seed dropper gold: %v", err)
+	}
 
 	ack, ok := hub.HandleConsoleCommand(dropperID, "drop_gold", 15)
 	if !ok || ack.Status != "ok" {
@@ -1835,11 +1880,14 @@ func TestConsolePickupRaceHonoursFirstCollector(t *testing.T) {
 	hub := newHub()
 	dropper := newTestPlayerState("player-race-a")
 	contender := newTestPlayerState("player-race-b")
-	if _, err := dropper.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 8}); err != nil {
-		t.Fatalf("failed to seed dropper gold: %v", err)
-	}
 	hub.world.AddPlayer(dropper)
 	hub.world.AddPlayer(contender)
+	if err := hub.world.MutateInventory(dropper.ID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 8})
+		return err
+	}); err != nil {
+		t.Fatalf("failed to seed dropper gold: %v", err)
+	}
 
 	dropAck, _ := hub.HandleConsoleCommand(dropper.ID, "drop_gold", 8)
 	if dropAck.Status != "ok" {
@@ -1860,11 +1908,14 @@ func TestDeathDropPlayerGold(t *testing.T) {
 	hub := newHub()
 	attacker := newTestPlayerState("player-attacker")
 	victim := newTestPlayerState("player-victim")
-	if _, err := victim.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 37}); err != nil {
-		t.Fatalf("failed to seed victim gold: %v", err)
-	}
 	hub.world.AddPlayer(attacker)
 	hub.world.AddPlayer(victim)
+	if err := hub.world.MutateInventory(victim.ID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 37})
+		return err
+	}); err != nil {
+		t.Fatalf("failed to seed victim gold: %v", err)
+	}
 
 	now := time.Now()
 	damage := victim.Health + 5
@@ -1915,10 +1966,13 @@ func TestDeathDropNPCGold(t *testing.T) {
 func TestGroundGoldMergesOnSameTile(t *testing.T) {
 	hub := newHub()
 	player := newTestPlayerState("player-merge")
-	if _, err := player.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
+	hub.world.AddPlayer(player)
+	if err := hub.world.MutateInventory(player.ID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50})
+		return err
+	}); err != nil {
 		t.Fatalf("failed to seed gold: %v", err)
 	}
-	hub.world.AddPlayer(player)
 
 	if ack, _ := hub.HandleConsoleCommand(player.ID, "drop_gold", 5); ack.Status != "ok" {
 		t.Fatalf("expected first drop to succeed")
@@ -1938,10 +1992,13 @@ func TestGroundGoldMergesOnSameTile(t *testing.T) {
 func TestConsoleDropValidation(t *testing.T) {
 	hub := newHub()
 	player := newTestPlayerState("player-invalid")
-	if _, err := player.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 5}); err != nil {
+	hub.world.AddPlayer(player)
+	if err := hub.world.MutateInventory(player.ID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 5})
+		return err
+	}); err != nil {
 		t.Fatalf("failed to seed gold: %v", err)
 	}
-	hub.world.AddPlayer(player)
 
 	ack, _ := hub.HandleConsoleCommand(player.ID, "drop_gold", 0)
 	if ack.Status != "error" || ack.Reason != "invalid_quantity" {
@@ -1957,11 +2014,14 @@ func TestConsolePickupOutOfRange(t *testing.T) {
 	hub := newHub()
 	dropper := newTestPlayerState("player-out-range-a")
 	picker := newTestPlayerState("player-out-range-b")
-	if _, err := dropper.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 6}); err != nil {
-		t.Fatalf("failed to seed dropper gold: %v", err)
-	}
 	hub.world.AddPlayer(dropper)
 	hub.world.AddPlayer(picker)
+	if err := hub.world.MutateInventory(dropper.ID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 6})
+		return err
+	}); err != nil {
+		t.Fatalf("failed to seed dropper gold: %v", err)
+	}
 
 	if ack, _ := hub.HandleConsoleCommand(dropper.ID, "drop_gold", 6); ack.Status != "ok" {
 		t.Fatalf("expected drop to succeed, got %+v", ack)
