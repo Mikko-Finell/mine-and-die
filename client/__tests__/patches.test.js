@@ -15,6 +15,7 @@ import {
   PATCH_KIND_EFFECT_PARAMS,
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
+  applyPatchesToSnapshot,
 } from "../patches.js";
 
 function makePlayer(overrides = {}) {
@@ -283,6 +284,39 @@ describe("updatePatchState", () => {
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(7);
+  });
+
+  it("normalizes patch kinds and entity identifiers before applying handlers", () => {
+    const base = {
+      players: {
+        "player-1": makePlayer({ id: "player-1", intentDX: 0, intentDY: 0 }),
+      },
+      npcs: {
+        "npc-1": makeNPC({ id: "npc-1" }),
+      },
+      effects: {},
+      groundItems: {},
+    };
+
+    const { players, npcs, errors, appliedCount } = applyPatchesToSnapshot(base, [
+      {
+        kind: " NPC_POS ",
+        entityId: " npc-1 ",
+        payload: { x: 32, y: 48 },
+      },
+      {
+        kind: "PLAYER_POS",
+        entityId: " player-1 ",
+        payload: { x: 5, y: 7 },
+      },
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(appliedCount).toBe(2);
+    expect(npcs["npc-1"].x).toBe(32);
+    expect(npcs["npc-1"].y).toBe(48);
+    expect(players["player-1"].x).toBe(5);
+    expect(players["player-1"].y).toBe(7);
   });
 
   it("records errors for invalid patch envelopes and respects the history limit", () => {

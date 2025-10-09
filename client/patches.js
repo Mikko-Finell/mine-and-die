@@ -12,6 +12,22 @@ const PATCH_KIND_EFFECT_PARAMS = "effect_params";
 const PATCH_KIND_GROUND_ITEM_POS = "ground_item_pos";
 const PATCH_KIND_GROUND_ITEM_QTY = "ground_item_qty";
 
+const KNOWN_PATCH_KINDS = new Set([
+  PATCH_KIND_PLAYER_POS,
+  PATCH_KIND_PLAYER_FACING,
+  PATCH_KIND_PLAYER_INTENT,
+  PATCH_KIND_PLAYER_HEALTH,
+  PATCH_KIND_PLAYER_INVENTORY,
+  PATCH_KIND_NPC_POS,
+  PATCH_KIND_NPC_FACING,
+  PATCH_KIND_NPC_HEALTH,
+  PATCH_KIND_NPC_INVENTORY,
+  PATCH_KIND_EFFECT_POS,
+  PATCH_KIND_EFFECT_PARAMS,
+  PATCH_KIND_GROUND_ITEM_POS,
+  PATCH_KIND_GROUND_ITEM_QTY,
+]);
+
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 const DEFAULT_FACING = "down";
 const DEFAULT_ERROR_LIMIT = 20;
@@ -461,12 +477,35 @@ function rememberPatch(history, key, tick) {
   }
 }
 
+function normalizePatchKind(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const lower = trimmed.toLowerCase();
+  if (KNOWN_PATCH_KINDS.has(lower)) {
+    return lower;
+  }
+  return trimmed;
+}
+
+function normalizeEntityId(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function normalizePatchEnvelope(raw) {
   if (!raw || typeof raw !== "object") {
     return null;
   }
-  const kind = typeof raw.kind === "string" ? raw.kind : null;
-  const entityId = typeof raw.entityId === "string" ? raw.entityId : null;
+  const kind = normalizePatchKind(raw.kind);
+  const entityId = normalizeEntityId(raw.entityId);
   if (!kind || !entityId) {
     return null;
   }
