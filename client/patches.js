@@ -418,13 +418,7 @@ function readBatchSequence(payload) {
   if (!payload || typeof payload !== "object") {
     return null;
   }
-  const candidates = [
-    payload.seq,
-    payload.sequence,
-    payload.patchSequence,
-    payload.patchSeq,
-    payload.sequenceNumber,
-  ];
+  const candidates = [payload.sequence, payload.seq, payload.sequenceNumber];
   for (const candidate of candidates) {
     const seq = coerceTick(candidate);
     if (seq !== null) {

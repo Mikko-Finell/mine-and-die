@@ -410,13 +410,13 @@ describe("updatePatchState", () => {
   });
 
   it("deduplicates repeated patch batches at the same tick", () => {
-    const joinPayload = deepFreeze({ t: 12, seq: 99, players: [makePlayer()] });
+    const joinPayload = deepFreeze({ t: 12, sequence: 99, players: [makePlayer()] });
     const seeded = updatePatchState(createPatchState(), joinPayload, { source: "join" });
     freezeState(seeded);
 
     const patchPayload = deepFreeze({
       t: 12,
-      seq: 200,
+      sequence: 200,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 9, y: 9 } },
@@ -436,12 +436,18 @@ describe("updatePatchState", () => {
     expect(second.lastSequence).toBe(200);
   });
 
+  it("accepts legacy seq field for backwards compatibility", () => {
+    const payload = deepFreeze({ t: 5, seq: 75, players: [makePlayer()] });
+    const state = updatePatchState(createPatchState(), payload, { source: "state" });
+    expect(state.lastSequence).toBe(75);
+  });
+
   it("rejects out-of-order batches and leaves prior state untouched", () => {
-    const seedPayload = deepFreeze({ t: 20, seq: 300, players: [makePlayer()] });
+    const seedPayload = deepFreeze({ t: 20, sequence: 300, players: [makePlayer()] });
     const seeded = updatePatchState(createPatchState(), seedPayload, { source: "state" });
     const live = updatePatchState(seeded, deepFreeze({
       t: 20,
-      seq: 301,
+      sequence: 301,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 11, y: 12 } },
@@ -451,7 +457,7 @@ describe("updatePatchState", () => {
 
     const stale = updatePatchState(live, deepFreeze({
       t: 19,
-      seq: 250,
+      sequence: 250,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 1, y: 1 } },
@@ -470,14 +476,14 @@ describe("updatePatchState", () => {
   it("rejects batches when the sequence number regresses", () => {
     const base = updatePatchState(
       createPatchState(),
-      deepFreeze({ t: 50, seq: 400, players: [makePlayer()] }),
+      deepFreeze({ t: 50, sequence: 400, players: [makePlayer()] }),
       { source: "state" },
     );
     const live = updatePatchState(
       base,
       deepFreeze({
         t: 50,
-        seq: 401,
+        sequence: 401,
         players: [makePlayer()],
         patches: [
           { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 13, y: 14 } },
@@ -491,7 +497,7 @@ describe("updatePatchState", () => {
       live,
       deepFreeze({
         t: 50,
-        seq: 400,
+        sequence: 400,
         players: [makePlayer()],
         patches: [
           { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 1, y: 1 } },
