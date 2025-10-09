@@ -11,7 +11,7 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 	hub := newHub()
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		hub.advance(time.Now(), dt)
 
-		data, _, err := hub.marshalState(nil, nil, nil, nil, nil)
+		data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
 		if err != nil {
 			t.Fatalf("marshalState returned error: %v", err)
 		}
@@ -85,7 +85,7 @@ func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
 	hub := newHub()
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -138,4 +138,34 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 	if len(decoded.Patches) != 1 {
 		t.Fatalf("expected 1 patch after round trip, got %d", len(decoded.Patches))
 	}
+}
+
+func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
+	hub := newHub()
+
+	hub.mu.Lock()
+	hub.world.journal.AppendPatch(Patch{})
+	hub.mu.Unlock()
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, false); err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	hub.mu.Lock()
+	if patches := hub.world.snapshotPatchesLocked(); len(patches) != 1 {
+		hub.mu.Unlock()
+		t.Fatalf("expected patches to remain after snapshot, got %d", len(patches))
+	}
+	hub.mu.Unlock()
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true); err != nil {
+		t.Fatalf("marshalState returned error when draining: %v", err)
+	}
+
+	hub.mu.Lock()
+	if patches := hub.world.snapshotPatchesLocked(); len(patches) != 0 {
+		hub.mu.Unlock()
+		t.Fatalf("expected patches to drain after broadcast, got %d", len(patches))
+	}
+	hub.mu.Unlock()
 }

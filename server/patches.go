@@ -40,6 +40,17 @@ func (j *Journal) DrainPatches() []Patch {
 	return drained
 }
 
+// SnapshotPatches returns a copy of the staged patches without clearing the
+// journal.
+func (j *Journal) SnapshotPatches() []Patch {
+	if len(j.patches) == 0 {
+		return nil
+	}
+	snapshot := make([]Patch, len(j.patches))
+	copy(snapshot, j.patches)
+	return snapshot
+}
+
 // RecordKeyframe stores a keyframe in the ring buffer.
 func (j *Journal) RecordKeyframe(frame keyframe) {
 	j.keyframes.Push(frame)

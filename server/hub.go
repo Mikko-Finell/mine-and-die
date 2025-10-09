@@ -600,7 +600,7 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 }
 
 // marshalState serializes a world snapshot into the outbound state payload format.
-func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem) ([]byte, int, error) {
+func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool) ([]byte, int, error) {
 	h.mu.Lock()
 	shouldFlushTriggers := false
 	if players == nil || npcs == nil || effects == nil {
@@ -616,7 +616,12 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	if groundItems == nil {
 		groundItems = h.world.GroundItemsSnapshot()
 	}
-	patches := h.world.drainPatchesLocked()
+	var patches []Patch
+	if drainPatches {
+		patches = h.world.drainPatchesLocked()
+	} else {
+		patches = h.world.snapshotPatchesLocked()
+	}
 	if patches == nil {
 		patches = make([]Patch, 0)
 	}
@@ -646,7 +651,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 
 // broadcastState sends the latest world snapshot to every subscriber.
 func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem) {
-	data, entities, err := h.marshalState(players, npcs, effects, triggers, groundItems)
+	data, entities, err := h.marshalState(players, npcs, effects, triggers, groundItems, true)
 	if err != nil {
 		stdlog.Printf("failed to marshal state message: %v", err)
 		return
