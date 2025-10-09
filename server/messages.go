@@ -1,31 +1,34 @@
 package main
 
 type joinResponse struct {
-	Ver            int             `json:"ver"`
-	ID             string          `json:"id"`
-	Players        []Player        `json:"players"`
-	NPCs           []NPC           `json:"npcs"`
-	Obstacles      []Obstacle      `json:"obstacles"`
-	Effects        []Effect        `json:"effects"`
-	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
-	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
-	Patches        []Patch         `json:"patches,omitempty"`
-	Config         worldConfig     `json:"config"`
+Ver            int             `json:"ver"`
+ID             string          `json:"id"`
+Players        []Player        `json:"players"`
+NPCs           []NPC           `json:"npcs"`
+Obstacles      []Obstacle      `json:"obstacles"`
+Effects        []Effect        `json:"effects"`
+EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
+GroundItems    []GroundItem    `json:"groundItems,omitempty"`
+Patches        []Patch         `json:"patches,omitempty"`
+Config         worldConfig     `json:"config"`
+Resync         bool            `json:"resync"`
 }
 
 type stateMessage struct {
-	Ver            int             `json:"ver"`
-	Type           string          `json:"type"`
+Ver            int             `json:"ver"`
+Type           string          `json:"type"`
 	Players        []Player        `json:"players"`
 	NPCs           []NPC           `json:"npcs"`
 	Obstacles      []Obstacle      `json:"obstacles"`
 	Effects        []Effect        `json:"effects"`
 	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
-	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
-	Patches        []Patch         `json:"patches"`
-	Tick           uint64          `json:"t"`
-	ServerTime     int64           `json:"serverTime"`
-	Config         worldConfig     `json:"config"`
+GroundItems    []GroundItem    `json:"groundItems,omitempty"`
+Patches        []Patch         `json:"patches"`
+Tick           uint64          `json:"t"`
+Sequence       uint64          `json:"seq"`
+ServerTime     int64           `json:"serverTime"`
+Config         worldConfig     `json:"config"`
+Resync         bool            `json:"resync,omitempty"`
 }
 
 type clientMessage struct {

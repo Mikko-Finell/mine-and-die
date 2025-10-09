@@ -392,8 +392,10 @@ function buildBaselineFromSnapshot(payload) {
       tick = Math.floor(tickValue);
     }
   }
+  const sequence = readBatchSequence(payload);
   return {
     tick,
+    sequence,
     players,
     npcs,
     effects,
@@ -410,6 +412,32 @@ function coerceTick(value) {
     return null;
   }
   return tick;
+}
+
+function readBatchSequence(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const candidates = [
+    payload.seq,
+    payload.sequence,
+    payload.patchSequence,
+    payload.patchSeq,
+    payload.sequenceNumber,
+  ];
+  for (const candidate of candidates) {
+    const seq = coerceTick(candidate);
+    if (seq !== null) {
+      return seq;
+    }
+  }
+  if (Object.hasOwn(payload, "t")) {
+    const tickCandidate = coerceTick(payload.t);
+    if (tickCandidate !== null) {
+      return tickCandidate;
+    }
+  }
+  return null;
 }
 
 function readPatchSequence(patch) {
@@ -664,6 +692,7 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
     ? options.history
     : null;
   const batchTick = coerceTick(options.batchTick);
+  const batchSequence = coerceTick(options.batchSequence);
 
   if (!Array.isArray(patches) || patches.length === 0) {
     return { players, npcs, effects, groundItems, errors, appliedCount };
@@ -701,9 +730,14 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
       continue;
     }
     const patchTick = readPatchSequence(rawPatch);
-    const dedupeTick = patchTick !== null ? patchTick : batchTick;
+    const dedupeValue =
+      patchTick !== null
+        ? patchTick
+        : batchSequence !== null
+          ? batchSequence
+          : batchTick;
     const dedupeKey = `${patch.kind}:${patch.entityId}`;
-    const isDuplicate = shouldSkipPatch(history, dedupeKey, dedupeTick);
+    const isDuplicate = shouldSkipPatch(history, dedupeKey, dedupeValue);
     const result = handlerEntry.apply(view, patch.payload);
     if (!result || result.applied !== true) {
       const message = result?.error || "failed to apply patch";
@@ -712,7 +746,7 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
     }
     if (!isDuplicate) {
       appliedCount += 1;
-      rememberPatch(history, dedupeKey, dedupeTick);
+      rememberPatch(history, dedupeKey, dedupeValue);
     }
   }
 
@@ -733,6 +767,7 @@ export function createPatchState() {
   return {
     baseline: {
       tick: null,
+      sequence: null,
       players: Object.create(null),
       npcs: Object.create(null),
       effects: Object.create(null),
@@ -740,6 +775,7 @@ export function createPatchState() {
     },
     patched: {
       tick: null,
+      sequence: null,
       players: Object.create(null),
       npcs: Object.create(null),
       effects: Object.create(null),
@@ -750,6 +786,7 @@ export function createPatchState() {
     errors: [],
     lastUpdateSource: null,
     lastTick: null,
+    lastSequence: null,
     patchHistory: createPatchHistory(),
   };
 }
@@ -786,16 +823,21 @@ export function updatePatchState(previousState, payload, options = {}) {
   const previousTick = Number.isFinite(state.lastTick) && state.lastTick >= 0
     ? Math.floor(state.lastTick)
     : null;
+  const previousSequence = Number.isFinite(state.lastSequence) && state.lastSequence >= 0
+    ? Math.floor(state.lastSequence)
+    : null;
   const nextTick = baseline.tick;
+  const nextSequence = baseline.sequence;
 
   const historyEntries = Array.isArray(state.errors) ? state.errors.slice() : [];
   let lastError = null;
-  const appendError = (kind, entityId, message, tickValue) => {
+  const appendError = (kind, entityId, message, tickValue, sequenceValue) => {
     const entry = {
       kind: typeof kind === "string" ? kind : null,
       entityId: typeof entityId === "string" ? entityId : null,
       message,
       tick: tickValue,
+      sequence: sequenceValue,
       source,
     };
     historyEntries.push(entry);
@@ -804,7 +846,7 @@ export function updatePatchState(previousState, payload, options = {}) {
   };
 
   if (!shouldResetHistory && previousTick !== null && nextTick !== null && nextTick < previousTick) {
-    appendError(null, null, `out-of-order patch tick ${nextTick} < ${previousTick}`);
+    appendError(null, null, `out-of-order patch tick ${nextTick} < ${previousTick}`, nextTick, nextSequence);
     const trimmedErrors = trimErrors(historyEntries, errorLimit);
     return {
       baseline: state.baseline,
@@ -814,6 +856,29 @@ export function updatePatchState(previousState, payload, options = {}) {
       errors: trimmedErrors,
       lastUpdateSource: source,
       lastTick: previousTick,
+      lastSequence: previousSequence,
+      patchHistory: history,
+    };
+  }
+
+  if (!shouldResetHistory && previousSequence !== null && nextSequence !== null && nextSequence < previousSequence) {
+    appendError(
+      null,
+      null,
+      `out-of-order patch sequence ${nextSequence} < ${previousSequence}`,
+      nextTick,
+      nextSequence,
+    );
+    const trimmedErrors = trimErrors(historyEntries, errorLimit);
+    return {
+      baseline: state.baseline,
+      patched: state.patched,
+      lastAppliedPatchCount: 0,
+      lastError,
+      errors: trimmedErrors,
+      lastUpdateSource: source,
+      lastTick: previousTick,
+      lastSequence: previousSequence,
       patchHistory: history,
     };
   }
@@ -821,20 +886,23 @@ export function updatePatchState(previousState, payload, options = {}) {
   const patchResult = applyPatchesToSnapshot(baseline, patchList, {
     history,
     batchTick: nextTick,
+    batchSequence: nextSequence,
   });
 
   if (patchResult.errors.length > 0) {
     for (const error of patchResult.errors) {
-      appendError(error.kind, error.entityId, error.message, baseline.tick);
+      appendError(error.kind, error.entityId, error.message, baseline.tick, baseline.sequence);
     }
   }
 
   const trimmedErrors = trimErrors(historyEntries, errorLimit);
   const resolvedTick = nextTick !== null ? nextTick : previousTick;
+  const resolvedSequence = nextSequence !== null ? nextSequence : previousSequence;
 
   return {
     baseline: {
       tick: baseline.tick,
+      sequence: baseline.sequence,
       players: baseline.players,
       npcs: baseline.npcs,
       effects: baseline.effects,
@@ -842,6 +910,7 @@ export function updatePatchState(previousState, payload, options = {}) {
     },
     patched: {
       tick: baseline.tick,
+      sequence: baseline.sequence,
       players: patchResult.players,
       npcs: patchResult.npcs,
       effects: patchResult.effects,
@@ -852,6 +921,7 @@ export function updatePatchState(previousState, payload, options = {}) {
     errors: trimmedErrors,
     lastUpdateSource: source,
     lastTick: resolvedTick,
+    lastSequence: resolvedSequence,
     patchHistory: history,
   };
 }
