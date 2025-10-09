@@ -10,6 +10,8 @@ func positionsEqual(ax, ay, bx, by float64) bool {
 }
 
 // SetPosition updates a player's position, bumps the version, and records a patch.
+// All player position writes must flow through this helper so snapshot versions
+// and patch journals stay authoritative.
 func (w *World) SetPosition(playerID string, x, y float64) {
 	if w == nil {
 		return
