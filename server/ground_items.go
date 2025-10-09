@@ -9,12 +9,13 @@ import (
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
-// GroundItem represents a stack of gold that exists in the world.
+// GroundItem represents a stack of items that exists in the world.
 type GroundItem struct {
-	ID  string  `json:"id"`
-	X   float64 `json:"x"`
-	Y   float64 `json:"y"`
-	Qty int     `json:"qty"`
+	ID   string   `json:"id"`
+	Type ItemType `json:"type"`
+	X    float64  `json:"x"`
+	Y    float64  `json:"y"`
+	Qty  int      `json:"qty"`
 }
 
 type groundTileKey struct {
@@ -59,45 +60,36 @@ func tileCenter(key groundTileKey) (float64, float64) {
 	return float64(key.X)*tileSize + tileSize/2, float64(key.Y)*tileSize + tileSize/2
 }
 
-func (w *World) upsertGroundGold(actor *actorState, qty int, reason string) *groundItemState {
-	if w == nil || actor == nil || qty <= 0 {
+func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason string) *groundItemState {
+	if w == nil || actor == nil || stack.Quantity <= 0 || stack.Type == "" {
 		return nil
 	}
 	tile := tileForPosition(actor.X, actor.Y)
 	centerX, centerY := tileCenter(tile)
-	if existing, ok := w.groundItemsByTile[tile]; ok && existing != nil {
-		existing.Qty += qty
+	if w.groundItemsByTile == nil {
+		w.groundItemsByTile = make(map[groundTileKey]map[ItemType]*groundItemState)
+	}
+	itemsByType := w.groundItemsByTile[tile]
+	if itemsByType == nil {
+		itemsByType = make(map[ItemType]*groundItemState)
+		w.groundItemsByTile[tile] = itemsByType
+	}
+	if existing := itemsByType[stack.Type]; existing != nil {
+		existing.Qty += stack.Quantity
 		existing.X = centerX
 		existing.Y = centerY
-		loggingeconomy.GoldDropped(
-			context.Background(),
-			w.publisher,
-			w.currentTick,
-			w.entityRef(actor.ID),
-			loggingeconomy.GoldDroppedPayload{Quantity: qty, Reason: reason},
-			map[string]any{"stackId": existing.ID},
-		)
+		w.logGoldDrop(actor, stack, reason, existing.ID)
 		return existing
 	}
 	w.nextGroundItemID++
 	id := fmt.Sprintf("ground-%d", w.nextGroundItemID)
 	item := &groundItemState{
-		GroundItem: GroundItem{ID: id, X: centerX, Y: centerY, Qty: qty},
+		GroundItem: GroundItem{ID: id, Type: stack.Type, X: centerX, Y: centerY, Qty: stack.Quantity},
 		tile:       tile,
 	}
 	w.groundItems[id] = item
-	if w.groundItemsByTile == nil {
-		w.groundItemsByTile = make(map[groundTileKey]*groundItemState)
-	}
-	w.groundItemsByTile[tile] = item
-	loggingeconomy.GoldDropped(
-		context.Background(),
-		w.publisher,
-		w.currentTick,
-		w.entityRef(actor.ID),
-		loggingeconomy.GoldDroppedPayload{Quantity: qty, Reason: reason},
-		map[string]any{"stackId": id},
-	)
+	itemsByType[stack.Type] = item
+	w.logGoldDrop(actor, stack, reason, id)
 	return item
 }
 
@@ -106,17 +98,22 @@ func (w *World) removeGroundItem(item *groundItemState) {
 		return
 	}
 	delete(w.groundItems, item.ID)
-	delete(w.groundItemsByTile, item.tile)
+	if itemsByType, ok := w.groundItemsByTile[item.tile]; ok {
+		delete(itemsByType, item.Type)
+		if len(itemsByType) == 0 {
+			delete(w.groundItemsByTile, item.tile)
+		}
+	}
 }
 
-func (w *World) nearestGroundGold(actor *actorState) (*groundItemState, float64) {
-	if w == nil || actor == nil || len(w.groundItems) == 0 {
+func (w *World) nearestGroundItem(actor *actorState, itemType ItemType) (*groundItemState, float64) {
+	if w == nil || actor == nil || itemType == "" || len(w.groundItems) == 0 {
 		return nil, 0
 	}
 	var best *groundItemState
 	bestDist := math.MaxFloat64
 	for _, item := range w.groundItems {
-		if item == nil || item.Qty <= 0 {
+		if item == nil || item.Qty <= 0 || item.Type != itemType {
 			continue
 		}
 		dx := item.X - actor.X
@@ -134,21 +131,42 @@ func (w *World) nearestGroundGold(actor *actorState) (*groundItemState, float64)
 }
 
 func (w *World) dropAllGold(actor *actorState, reason string) int {
-	if w == nil || actor == nil {
+	return w.dropAllItemsOfType(actor, ItemTypeGold, reason)
+}
+
+func (w *World) dropAllItemsOfType(actor *actorState, itemType ItemType, reason string) int {
+	if w == nil || actor == nil || itemType == "" {
 		return 0
 	}
 	var total int
 	if _, ok := w.players[actor.ID]; ok {
 		_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
-			total = inv.RemoveAllOf(ItemTypeGold)
+			total = inv.RemoveAllOf(itemType)
 			return nil
 		})
 	} else {
-		total = actor.Inventory.RemoveAllOf(ItemTypeGold)
+		total = actor.Inventory.RemoveAllOf(itemType)
 	}
 	if total <= 0 {
 		return 0
 	}
-	w.upsertGroundGold(actor, total, reason)
+	w.upsertGroundItem(actor, ItemStack{Type: itemType, Quantity: total}, reason)
 	return total
+}
+
+func (w *World) logGoldDrop(actor *actorState, stack ItemStack, reason, stackID string) {
+	if w == nil || actor == nil {
+		return
+	}
+	if stack.Type != ItemTypeGold || stack.Quantity <= 0 {
+		return
+	}
+	loggingeconomy.GoldDropped(
+		context.Background(),
+		w.publisher,
+		w.currentTick,
+		w.entityRef(actor.ID),
+		loggingeconomy.GoldDroppedPayload{Quantity: stack.Quantity, Reason: reason},
+		map[string]any{"stackId": stackID},
+	)
 }

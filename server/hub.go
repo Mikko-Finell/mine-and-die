@@ -391,7 +391,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 			ack.Reason = "inventory_error"
 			return ack, true
 		}
-		stack := h.world.upsertGroundGold(&player.actorState, removed, "manual")
+		stack := h.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: removed}, "manual")
 		groundItems := h.world.GroundItemsSnapshot()
 		h.mu.Unlock()
 
@@ -412,7 +412,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 			return ack, true
 		}
 		actorRef := h.world.entityRef(playerID)
-		item, distance := h.world.nearestGroundGold(&player.actorState)
+		item, distance := h.world.nearestGroundItem(&player.actorState, ItemTypeGold)
 		if item == nil {
 			h.mu.Unlock()
 			ack.Status = "error"

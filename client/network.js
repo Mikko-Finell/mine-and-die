@@ -449,10 +449,12 @@ function normalizeGroundItems(items) {
     const x = Number(item.x);
     const y = Number(item.y);
     const qty = Number(item.qty);
+    const type = typeof item.type === "string" ? item.type : "gold";
     entries.push([
       id,
       {
         id,
+        type,
         x: Number.isFinite(x) ? x : 0,
         y: Number.isFinite(y) ? y : 0,
         qty: Number.isFinite(qty) ? qty : 0,
