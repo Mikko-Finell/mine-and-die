@@ -76,7 +76,7 @@ func (w *World) followNPCPath(npc *npcState, tick uint64) {
 
 		npc.intentX = dx
 		npc.intentY = dy
-		npc.Facing = deriveFacing(dx, dy, npc.Facing)
+		w.SetNPCFacing(npc.ID, deriveFacing(dx, dy, npc.Facing))
 		return
 	}
 

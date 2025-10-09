@@ -16,6 +16,25 @@ const (
 	PatchPlayerHealth PatchKind = "player_health"
 	// PatchPlayerInventory updates a player's inventory slots.
 	PatchPlayerInventory PatchKind = "player_inventory"
+
+	// PatchNPCPos updates an NPC's position.
+	PatchNPCPos PatchKind = "npc_pos"
+	// PatchNPCFacing updates an NPC's facing direction.
+	PatchNPCFacing PatchKind = "npc_facing"
+	// PatchNPCHealth updates an NPC's health pool.
+	PatchNPCHealth PatchKind = "npc_health"
+	// PatchNPCInventory updates an NPC's inventory slots.
+	PatchNPCInventory PatchKind = "npc_inventory"
+
+	// PatchEffectPos updates an effect's position.
+	PatchEffectPos PatchKind = "effect_pos"
+	// PatchEffectParams updates an effect's parameter map.
+	PatchEffectParams PatchKind = "effect_params"
+
+	// PatchGroundItemPos updates a ground item's position.
+	PatchGroundItemPos PatchKind = "ground_item_pos"
+	// PatchGroundItemQty updates a ground item's quantity.
+	PatchGroundItemQty PatchKind = "ground_item_qty"
 )
 
 // Patch represents a diff entry that can be applied to the client state.
@@ -25,16 +44,34 @@ type Patch struct {
 	Payload  any       `json:"payload,omitempty"`
 }
 
-// PlayerPosPayload captures the coordinates for a player position patch.
-type PlayerPosPayload struct {
+// PositionPayload captures the coordinates for an entity position patch.
+type PositionPayload struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
 }
 
-// PlayerFacingPayload captures the facing for a player patch.
-type PlayerFacingPayload struct {
+// PlayerPosPayload captures the coordinates for a player position patch.
+type PlayerPosPayload = PositionPayload
+
+// NPCPosPayload captures the coordinates for an NPC position patch.
+type NPCPosPayload = PositionPayload
+
+// EffectPosPayload captures the coordinates for an effect position patch.
+type EffectPosPayload = PositionPayload
+
+// GroundItemPosPayload captures the coordinates for a ground item position patch.
+type GroundItemPosPayload = PositionPayload
+
+// FacingPayload captures the facing for an entity patch.
+type FacingPayload struct {
 	Facing FacingDirection `json:"facing"`
 }
+
+// PlayerFacingPayload captures the facing for a player patch.
+type PlayerFacingPayload = FacingPayload
+
+// NPCFacingPayload captures the facing for an NPC patch.
+type NPCFacingPayload = FacingPayload
 
 // PlayerIntentPayload captures the movement intent vector for a player patch.
 type PlayerIntentPayload struct {
@@ -42,15 +79,37 @@ type PlayerIntentPayload struct {
 	DY float64 `json:"dy"`
 }
 
-// PlayerHealthPayload captures the health for a player patch.
-type PlayerHealthPayload struct {
+// HealthPayload captures the health for an entity patch.
+type HealthPayload struct {
 	Health    float64 `json:"health"`
 	MaxHealth float64 `json:"maxHealth,omitempty"`
 }
 
-// PlayerInventoryPayload captures the inventory slots for a player patch.
-type PlayerInventoryPayload struct {
+// PlayerHealthPayload captures the health for a player patch.
+type PlayerHealthPayload = HealthPayload
+
+// NPCHealthPayload captures the health for an NPC patch.
+type NPCHealthPayload = HealthPayload
+
+// InventoryPayload captures the inventory slots for an entity patch.
+type InventoryPayload struct {
 	Slots []InventorySlot `json:"slots"`
+}
+
+// PlayerInventoryPayload captures the inventory slots for a player patch.
+type PlayerInventoryPayload = InventoryPayload
+
+// NPCInventoryPayload captures the inventory slots for an NPC patch.
+type NPCInventoryPayload = InventoryPayload
+
+// EffectParamsPayload captures the mutable parameters for an effect patch.
+type EffectParamsPayload struct {
+	Params map[string]float64 `json:"params"`
+}
+
+// GroundItemQtyPayload captures the quantity for a ground item patch.
+type GroundItemQtyPayload struct {
+	Qty int `json:"qty"`
 }
 
 // Journal accumulates patches generated during a tick and keeps a rolling

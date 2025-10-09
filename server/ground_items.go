@@ -25,7 +25,8 @@ type groundTileKey struct {
 
 type groundItemState struct {
 	GroundItem
-	tile groundTileKey
+	tile    groundTileKey
+	version uint64
 }
 
 const groundPickupRadius = tileSize
@@ -75,9 +76,8 @@ func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason stri
 		w.groundItemsByTile[tile] = itemsByType
 	}
 	if existing := itemsByType[stack.Type]; existing != nil {
-		existing.Qty += stack.Quantity
-		existing.X = centerX
-		existing.Y = centerY
+		w.SetGroundItemQuantity(existing, existing.Qty+stack.Quantity)
+		w.SetGroundItemPosition(existing, centerX, centerY)
 		w.logGoldDrop(actor, stack, reason, existing.ID)
 		return existing
 	}
@@ -144,6 +144,11 @@ func (w *World) dropAllInventory(actor *actorState, reason string) int {
 			stacks = inv.DrainAll()
 			return nil
 		})
+	} else if npc, ok := w.npcs[actor.ID]; ok {
+		_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
+			stacks = inv.DrainAll()
+			return nil
+		})
 	} else {
 		stacks = actor.Inventory.DrainAll()
 	}
@@ -168,6 +173,11 @@ func (w *World) dropAllItemsOfType(actor *actorState, itemType ItemType, reason 
 	var total int
 	if _, ok := w.players[actor.ID]; ok {
 		_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
+			total = inv.RemoveAllOf(itemType)
+			return nil
+		})
+	} else if npc, ok := w.npcs[actor.ID]; ok {
+		_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
 			total = inv.RemoveAllOf(itemType)
 			return nil
 		})
