@@ -218,14 +218,6 @@ func (h *Hub) RecordAck(playerID string, ack uint64) {
 			return
 		}
 		if sub.lastAck.CompareAndSwap(prev, ack) {
-			loggingnetwork.AckAdvanced(
-				context.Background(),
-				h.publisher,
-				tick,
-				actor,
-				loggingnetwork.AckPayload{Previous: prev, Ack: ack},
-				nil,
-			)
 			return
 		}
 	}
