@@ -369,13 +369,7 @@ function buildBaselineFromSnapshot(payload) {
       groundItems[view.id] = view;
     }
   }
-  let tick = null;
-  if (payload && typeof payload === "object" && Object.hasOwn(payload, "t")) {
-    const tickValue = toFiniteNumber(payload.t, null);
-    if (tickValue !== null && tickValue >= 0) {
-      tick = Math.floor(tickValue);
-    }
-  }
+  const tick = readBatchSequence(payload);
   return {
     tick,
     players,
@@ -394,6 +388,22 @@ function coerceTick(value) {
     return null;
   }
   return tick;
+}
+
+function readBatchSequence(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const fields = ["sequence", "seq", "t", "tick", "version"];
+  for (const field of fields) {
+    if (Object.hasOwn(payload, field)) {
+      const tick = coerceTick(payload[field]);
+      if (tick !== null) {
+        return tick;
+      }
+    }
+  }
+  return null;
 }
 
 function readPatchSequence(patch) {

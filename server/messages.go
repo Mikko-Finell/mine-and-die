@@ -26,6 +26,8 @@ type stateMessage struct {
 	Tick           uint64          `json:"t"`
 	ServerTime     int64           `json:"serverTime"`
 	Config         worldConfig     `json:"config"`
+	Sequence       uint64          `json:"sequence"`
+	Resync         bool            `json:"resync,omitempty"`
 }
 
 type clientMessage struct {

@@ -110,9 +110,10 @@ can validate diff replays while the game continues to rely on the authoritative
 snapshot path:
 
 * A new `createPatchState`/`updatePatchState` pair normalises player snapshots,
-  enforces monotonic ticks, deduplicates recent patch keys with an LRU cache,
-  clamps invalid coordinates, and records replay errors for inspection while
-  preserving prior patched values across duplicate batches.【F:client/patches.js†L1-L380】
+  enforces monotonic batch sequences, deduplicates recent patch keys with an LRU
+  cache, clamps invalid coordinates, and records replay errors for inspection
+  while preserving prior patched values across duplicate batches using the
+  server's authoritative `sequence` counter.【F:client/patches.js†L360-L452】【F:client/patches.js†L720-L838】
 * The main store instantiates this background state during bootstrap, and the
   network layer refreshes it on `/join` and every `state` broadcast while logging
   new patch replay issues to the console for debugging and resetting the dedupe
@@ -133,18 +134,18 @@ snapshot path:
 * ✅ **Expand patch coverage** – client-side NPC, effect, and ground item patch
   handlers mirror the server journals so replay validation covers every
   broadcast entity without console noise.【F:client/patches.js†L1-L828】【F:client/__tests__/patches.test.js†L1-L328】
+* ✅ **Patch sequence plumbing** – websocket state payloads now ship a monotonic
+  `sequence` counter plus explicit `resync` markers so the client dedupe cache
+  can rely on authoritative metadata instead of inferred ticks.【F:server/hub.go†L25-L119】【F:server/messages.go†L16-L32】【F:client/network.js†L420-L520】【F:client/patches.js†L360-L452】【F:client/__tests__/patches.test.js†L150-L470】
 
 ## Suggested next steps
 
 1. **Replay validation tooling** – surface the background patch state in the
    diagnostics drawer so QA can compare snapshot-vs-diff outputs without opening
    the console.
-2. **Patch sequence plumbing** – expose per-batch sequence numbers and explicit
-   resync markers in the websocket payload so the client dedupe cache can rely on
-   authoritative metadata instead of inferred ticks.
-3. **Keyframe recovery** – plumb the server's journal keyframes through to the
+2. **Keyframe recovery** – plumb the server's journal keyframes through to the
    client and teach the patch runner to resynchronise from a full snapshot when a
    diff references an unknown entity.
-4. **Switch-over rehearsal** – gate the render loop behind a feature flag that
+3. **Switch-over rehearsal** – gate the render loop behind a feature flag that
    can swap between full snapshots and the patch-driven state to smoke test the
    final migration path.

@@ -334,10 +334,10 @@ describe("applyStateSnapshot", () => {
     expect(result.currentFacing).toBeUndefined();
   });
 
-  it("applies tick from state", () => {
+  it("applies sequence from state", () => {
     const result = applyStateSnapshot({ playerId: "local", lastTick: 7 }, {
       players: [],
-      t: 42,
+      sequence: 42,
     });
 
     expect(result.lastTick).toBe(42);

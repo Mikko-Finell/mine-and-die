@@ -26,8 +26,10 @@ type Hub struct {
 	publisher   logging.Publisher
 	telemetry   *telemetryCounters
 
-	nextID atomic.Uint64
-	tick   atomic.Uint64
+	nextID        atomic.Uint64
+	tick          atomic.Uint64
+	sequence      atomic.Uint64
+	resyncPending atomic.Bool
 
 	commandsMu      sync.Mutex // protects pendingCommands between network handlers and the tick loop
 	pendingCommands []Command  // staged commands applied in order at the next simulation step
@@ -155,6 +157,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 	h.mu.Unlock()
 
 	h.tick.Store(0)
+	h.resyncPending.Store(true)
 
 	return players, npcs, effects
 }
@@ -629,7 +632,16 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
 	tick := h.tick.Load()
+	resync := !drainPatches
+	if h.resyncPending.Load() {
+		resync = true
+		if drainPatches {
+			h.resyncPending.Store(false)
+		}
+	}
 	h.mu.Unlock()
+
+	sequence := h.sequence.Add(1)
 
 	msg := stateMessage{
 		Ver:            ProtocolVersion,
@@ -644,6 +656,10 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		Tick:           tick,
 		ServerTime:     time.Now().UnixMilli(),
 		Config:         cfg,
+		Sequence:       sequence,
+	}
+	if resync {
+		msg.Resync = true
 	}
 	entities := len(msg.Players) + len(msg.NPCs) + len(msg.Obstacles) + len(msg.Effects) + len(msg.EffectTriggers) + len(msg.GroundItems)
 	data, err := json.Marshal(msg)

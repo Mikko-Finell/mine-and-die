@@ -100,7 +100,7 @@ describe("updatePatchState", () => {
   it("builds a baseline and patched snapshot when no patches are provided", () => {
     const initial = freezeState(createPatchState());
     const payload = deepFreeze({
-      t: 1,
+      sequence: 1,
       players: [makePlayer()],
       npcs: [makeNPC()],
       effects: [makeEffect()],
@@ -160,12 +160,12 @@ describe("updatePatchState", () => {
   });
 
   it("applies player patches onto the baseline snapshot", () => {
-    const seeded = updatePatchState(createPatchState(), deepFreeze({ t: 2, players: [makePlayer()] }), {
+    const seeded = updatePatchState(createPatchState(), deepFreeze({ sequence: 2, players: [makePlayer()] }), {
       source: "join",
     });
     freezeState(seeded);
     const payload = deepFreeze({
-      t: 3,
+      sequence: 3,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 5, y: 6 } },
@@ -216,7 +216,7 @@ describe("updatePatchState", () => {
 
   it("applies NPC, effect, and ground item patches onto the baseline snapshot", () => {
     const basePayload = deepFreeze({
-      t: 6,
+      sequence: 6,
       players: [makePlayer()],
       npcs: [makeNPC()],
       effects: [makeEffect()],
@@ -226,7 +226,7 @@ describe("updatePatchState", () => {
     freezeState(seeded);
 
     const payload = deepFreeze({
-      t: 7,
+      sequence: 7,
       players: [makePlayer()],
       npcs: [makeNPC()],
       effects: [makeEffect()],
@@ -320,14 +320,14 @@ describe("updatePatchState", () => {
   });
 
   it("records errors for invalid patch envelopes and respects the history limit", () => {
-    const seeded = updatePatchState(createPatchState(), deepFreeze({ t: 4, players: [makePlayer()] }), {
+    const seeded = updatePatchState(createPatchState(), deepFreeze({ sequence: 4, players: [makePlayer()] }), {
       source: "join",
     });
     expect(seeded.errors).toEqual([]);
     freezeState(seeded);
 
     const payload = deepFreeze({
-      t: 5,
+      sequence: 5,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "missing", payload: { x: 8, y: 9 } },
@@ -354,12 +354,12 @@ describe("updatePatchState", () => {
   });
 
   it("deduplicates repeated patch batches at the same tick", () => {
-    const joinPayload = deepFreeze({ t: 12, players: [makePlayer()] });
+    const joinPayload = deepFreeze({ sequence: 12, players: [makePlayer()] });
     const seeded = updatePatchState(createPatchState(), joinPayload, { source: "join" });
     freezeState(seeded);
 
     const patchPayload = deepFreeze({
-      t: 12,
+      sequence: 12,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 9, y: 9 } },
@@ -378,10 +378,10 @@ describe("updatePatchState", () => {
   });
 
   it("rejects out-of-order batches and leaves prior state untouched", () => {
-    const seedPayload = deepFreeze({ t: 20, players: [makePlayer()] });
+    const seedPayload = deepFreeze({ sequence: 20, players: [makePlayer()] });
     const seeded = updatePatchState(createPatchState(), seedPayload, { source: "state" });
     const live = updatePatchState(seeded, deepFreeze({
-      t: 20,
+      sequence: 20,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 11, y: 12 } },
@@ -390,7 +390,7 @@ describe("updatePatchState", () => {
     freezeState(live);
 
     const stale = updatePatchState(live, deepFreeze({
-      t: 19,
+      sequence: 19,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 1, y: 1 } },
@@ -406,13 +406,13 @@ describe("updatePatchState", () => {
   });
 
   it("hard rejects non-finite position payloads", () => {
-    const seeded = updatePatchState(createPatchState(), deepFreeze({ t: 30, players: [makePlayer()] }), {
+    const seeded = updatePatchState(createPatchState(), deepFreeze({ sequence: 30, players: [makePlayer()] }), {
       source: "join",
     });
     freezeState(seeded);
 
     const result = updatePatchState(seeded, deepFreeze({
-      t: 30,
+      sequence: 30,
       players: [makePlayer()],
       patches: [
         {
@@ -431,11 +431,11 @@ describe("updatePatchState", () => {
   });
 
   it("resets patch history on resync and drops stale inflight patches", () => {
-    const seeded = updatePatchState(createPatchState(), deepFreeze({ t: 40, players: [makePlayer()] }), {
+    const seeded = updatePatchState(createPatchState(), deepFreeze({ sequence: 40, players: [makePlayer()] }), {
       source: "state",
     });
     const withLivePatch = updatePatchState(seeded, deepFreeze({
-      t: 40,
+      sequence: 40,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 21, y: 22 } },
@@ -444,7 +444,7 @@ describe("updatePatchState", () => {
     freezeState(withLivePatch);
 
     const resynced = updatePatchState(withLivePatch, deepFreeze({
-      t: 5,
+      sequence: 5,
       players: [makePlayer({ x: 2, y: 3 })],
     }), { source: "state", resetHistory: true });
 
@@ -452,7 +452,7 @@ describe("updatePatchState", () => {
     expect(resynced.patched.players["player-1"].x).toBe(2);
 
     const fresh = updatePatchState(resynced, deepFreeze({
-      t: 6,
+      sequence: 6,
       players: [makePlayer({ x: 2, y: 3 })],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 7, y: 8 } },
@@ -463,7 +463,7 @@ describe("updatePatchState", () => {
     freezeState(fresh);
 
     const stale = updatePatchState(fresh, deepFreeze({
-      t: 5,
+      sequence: 5,
       players: [makePlayer({ x: 2, y: 3 })],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 99, y: 99 } },

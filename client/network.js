@@ -434,6 +434,33 @@ export function normalizeFacing(facing) {
     : DEFAULT_FACING;
 }
 
+function readBatchSequence(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const fields = ["sequence", "seq", "t", "tick", "version"];
+  for (const field of fields) {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      continue;
+    }
+    const raw = payload[field];
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
+      return Math.floor(raw);
+    }
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (trimmed.length === 0) {
+        continue;
+      }
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        return Math.floor(parsed);
+      }
+    }
+  }
+  return null;
+}
+
 function normalizeGroundItems(items) {
   if (!Array.isArray(items) || items.length === 0) {
     return {};
@@ -510,13 +537,7 @@ export function applyStateSnapshot(prev, payload) {
     hasLocalPlayer: false,
   };
 
-  let lastTick = null;
-  if (Object.prototype.hasOwnProperty.call(snapshot, "t")) {
-    const tickValue = snapshot.t;
-    if (typeof tickValue === "number" && Number.isFinite(tickValue) && tickValue >= 0) {
-      lastTick = Math.floor(tickValue);
-    }
-  }
+  let lastTick = readBatchSequence(snapshot);
   if (lastTick === null && previousState && typeof previousState === "object") {
     const priorTick = previousState.lastTick;
     if (typeof priorTick === "number" && Number.isFinite(priorTick) && priorTick >= 0) {
