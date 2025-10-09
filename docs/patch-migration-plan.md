@@ -117,6 +117,9 @@ snapshot path:
   network layer refreshes it on `/join` and every `state` broadcast while logging
   new patch replay issues to the console for debugging and resetting the dedupe
   history whenever the server announces a resynchronisation.【F:client/main.js†L9-L110】【F:client/network.js†L1-L214】【F:client/network.js†L702-L744】【F:client/network.js†L804-L851】
+* The diagnostics drawer now surfaces the patch baseline tick, replay batch
+  summary, and entity counts so QA can compare snapshot and diff pipelines at a
+  glance without opening the console.【F:client/index.html†L288-L315】【F:client/main.js†L420-L620】
 * NPC, effect, and ground item patches now replay alongside player diffs in the
   background state container, eliminating the temporary unsupported patch
   warnings while exercising dedupe logic for every entity type.【F:client/patches.js†L1-L828】

@@ -73,5 +73,6 @@ The client is a lightweight ES module bundle served directly from the Go server.
 
 ## Troubleshooting Tips
 - Use the diagnostics panel toggle to watch connection state, latency, and outbound message counts.
+- The diagnostics drawer also mirrors the background patch baseline, replay summary, and entity counts so you can compare snapshot and diff pipelines at a glance without inspecting the console.【F:client/index.html†L288-L315】【F:client/main.js†L420-L620】
 - Heartbeat issues usually show up as missing `ack` timestamps—ensure the WebSocket stays open and `sendHeartbeat` is firing.
 - If the client loses track of its player record, the status text will prompt a reconnect; inspect `/diagnostics` on the server for confirmation.
