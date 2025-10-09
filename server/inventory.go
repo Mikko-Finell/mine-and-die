@@ -192,7 +192,10 @@ func (inv *Inventory) RemoveAllOf(itemType ItemType) int {
 
 // DrainAll removes every stack from the inventory, returning the collected items.
 func (inv *Inventory) DrainAll() []ItemStack {
-	if inv == nil || len(inv.Slots) == 0 {
+	if inv == nil {
+		return nil
+	}
+	if len(inv.Slots) == 0 {
 		inv.Slots = nil
 		return nil
 	}
