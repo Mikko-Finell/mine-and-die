@@ -82,6 +82,7 @@ type World struct {
 
 	groundItems       map[string]*groundItemState
 	groundItemsByTile map[groundTileKey]*groundItemState
+	journal           Journal
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
@@ -107,6 +108,7 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		publisher:           publisher,
 		groundItems:         make(map[string]*groundItemState),
 		groundItemsByTile:   make(map[groundTileKey]*groundItemState),
+		journal:             newJournal(defaultJournalKeyframeCapacity),
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
@@ -142,6 +144,12 @@ func (w *World) flushEffectTriggersLocked() []EffectTrigger {
 	copy(drained, w.effectTriggers)
 	w.effectTriggers = w.effectTriggers[:0]
 	return drained
+}
+
+// drainPatchesLocked returns any accumulated patches for the current tick and
+// clears the journal. Callers must hold the world mutex.
+func (w *World) drainPatchesLocked() []Patch {
+	return w.journal.DrainPatches()
 }
 
 // HasPlayer reports whether the world currently tracks the given player.

@@ -616,6 +616,10 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	if groundItems == nil {
 		groundItems = h.world.GroundItemsSnapshot()
 	}
+	patches := h.world.drainPatchesLocked()
+	if patches == nil {
+		patches = make([]Patch, 0)
+	}
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
 	tick := h.tick.Load()
@@ -630,6 +634,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		Effects:        effects,
 		EffectTriggers: triggers,
 		GroundItems:    groundItems,
+		Patches:        patches,
 		Tick:           tick,
 		ServerTime:     time.Now().UnixMilli(),
 		Config:         cfg,
