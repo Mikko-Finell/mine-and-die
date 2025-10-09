@@ -10,6 +10,8 @@ const (
 	PatchPlayerPos PatchKind = "player_pos"
 	// PatchPlayerFacing updates a player's facing direction.
 	PatchPlayerFacing PatchKind = "player_facing"
+	// PatchPlayerIntent updates a player's movement intent vector.
+	PatchPlayerIntent PatchKind = "player_intent"
 	// PatchPlayerHealth updates a player's health pool.
 	PatchPlayerHealth PatchKind = "player_health"
 	// PatchPlayerInventory updates a player's inventory slots.
@@ -32,6 +34,12 @@ type PlayerPosPayload struct {
 // PlayerFacingPayload captures the facing for a player patch.
 type PlayerFacingPayload struct {
 	Facing FacingDirection `json:"facing"`
+}
+
+// PlayerIntentPayload captures the movement intent vector for a player patch.
+type PlayerIntentPayload struct {
+	DX float64 `json:"dx"`
+	DY float64 `json:"dy"`
 }
 
 // PlayerHealthPayload captures the health for a player patch.

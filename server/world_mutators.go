@@ -4,6 +4,7 @@ import "math"
 
 const positionEpsilon = 1e-6
 const healthEpsilon = 1e-6
+const intentEpsilon = 1e-6
 
 // positionsEqual reports whether two coordinate pairs are effectively the same.
 func positionsEqual(ax, ay, bx, by float64) bool {
@@ -70,6 +71,41 @@ func (w *World) SetFacing(playerID string, facing FacingDirection) {
 		EntityID: playerID,
 		Payload: PlayerFacingPayload{
 			Facing: facing,
+		},
+	})
+}
+
+// SetIntent updates a player's movement intent, bumps the version, and records
+// a patch. All player intent writes must flow through this helper so snapshot
+// versions and patch journals stay authoritative.
+func (w *World) SetIntent(playerID string, dx, dy float64) {
+	if w == nil {
+		return
+	}
+
+	if math.IsNaN(dx) || math.IsNaN(dy) || math.IsInf(dx, 0) || math.IsInf(dy, 0) {
+		return
+	}
+
+	player, ok := w.players[playerID]
+	if !ok {
+		return
+	}
+
+	if math.Abs(player.intentX-dx) < intentEpsilon && math.Abs(player.intentY-dy) < intentEpsilon {
+		return
+	}
+
+	player.intentX = dx
+	player.intentY = dy
+	player.version++
+
+	w.journal.AppendPatch(Patch{
+		Kind:     PatchPlayerIntent,
+		EntityID: playerID,
+		Payload: PlayerIntentPayload{
+			DX: dx,
+			DY: dy,
 		},
 	})
 }

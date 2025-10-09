@@ -19,8 +19,7 @@ func (w *World) followPlayerPath(player *playerState, tick uint64) {
 		if path.PathTarget.X == 0 && path.PathTarget.Y == 0 {
 			return
 		}
-		player.intentX = 0
-		player.intentY = 0
+		w.SetIntent(player.ID, 0, 0)
 		if tick >= path.PathRecalcTick {
 			if w.recalculatePlayerPath(player, tick) {
 				w.followPlayerPath(player, tick)
@@ -79,8 +78,7 @@ func (w *World) followPlayerPath(player *playerState, tick uint64) {
 			return
 		}
 
-		player.intentX = dx
-		player.intentY = dy
+		w.SetIntent(player.ID, dx, dy)
 		w.SetFacing(player.ID, deriveFacing(dx, dy, player.Facing))
 		return
 	}
@@ -93,8 +91,7 @@ func (w *World) finishPlayerPath(player *playerState) {
 		return
 	}
 	radius := player.path.ArriveRadius
-	player.intentX = 0
-	player.intentY = 0
+	w.SetIntent(player.ID, 0, 0)
 	player.path = playerPathState{ArriveRadius: radius}
 }
 
@@ -118,8 +115,7 @@ func (w *World) ensurePlayerPath(player *playerState, target vec2, tick uint64) 
 	if !ok {
 		radius := player.path.ArriveRadius
 		player.path = playerPathState{ArriveRadius: radius, PathTarget: player.path.PathTarget, PathRecalcTick: tick + pathRecalcCooldownTicks}
-		player.intentX = 0
-		player.intentY = 0
+		w.SetIntent(player.ID, 0, 0)
 		return false
 	}
 	radius := player.path.ArriveRadius
@@ -154,8 +150,7 @@ func (w *World) recalculatePlayerPath(player *playerState, tick uint64) bool {
 		player.path.PathStallTicks = 0
 		player.path.PathRecalcTick = tick + pathRecalcCooldownTicks
 		player.path.ArriveRadius = radius
-		player.intentX = 0
-		player.intentY = 0
+		w.SetIntent(player.ID, 0, 0)
 		return false
 	}
 	player.path.Path = path
