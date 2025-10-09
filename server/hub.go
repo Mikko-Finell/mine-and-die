@@ -19,18 +19,21 @@ import (
 
 // Hub coordinates subscribers and orchestrates the deterministic world simulation.
 type Hub struct {
-	mu          sync.Mutex
-	world       *World
-	subscribers map[string]*subscriber
-	config      worldConfig
-	publisher   logging.Publisher
-	telemetry   *telemetryCounters
+        mu          sync.Mutex
+        world       *World
+        subscribers map[string]*subscriber
+        config      worldConfig
+        publisher   logging.Publisher
+        telemetry   *telemetryCounters
 
-	nextID atomic.Uint64
-	tick   atomic.Uint64
+        nextID atomic.Uint64
+        tick   atomic.Uint64
+        seq    atomic.Uint64
 
-	commandsMu      sync.Mutex // protects pendingCommands between network handlers and the tick loop
-	pendingCommands []Command  // staged commands applied in order at the next simulation step
+        resyncNext atomic.Bool
+
+        commandsMu      sync.Mutex // protects pendingCommands between network handlers and the tick loop
+        pendingCommands []Command  // staged commands applied in order at the next simulation step
 }
 
 type subscriber struct {
@@ -125,15 +128,15 @@ func (h *Hub) Join() joinResponse {
 		nil,
 	)
 
-	go h.broadcastState(players, npcs, effects, nil, groundItems)
+        go h.broadcastState(players, npcs, effects, nil, groundItems)
 
-	return joinResponse{Ver: ProtocolVersion, ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, GroundItems: groundItems, Config: cfg}
+        return joinResponse{Ver: ProtocolVersion, ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, GroundItems: groundItems, Config: cfg, Resync: true}
 }
 
 // ResetWorld replaces the current world with a freshly generated instance.
 func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
-	cfg = cfg.normalized()
-	now := time.Now()
+        cfg = cfg.normalized()
+        now := time.Now()
 
 	h.commandsMu.Lock()
 	h.pendingCommands = nil
@@ -152,11 +155,12 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 	h.world = newW
 	h.config = cfg
 	players, npcs, effects := h.world.Snapshot(now)
-	h.mu.Unlock()
+        h.mu.Unlock()
 
-	h.tick.Store(0)
+        h.tick.Store(0)
+        h.resyncNext.Store(true)
 
-	return players, npcs, effects
+        return players, npcs, effects
 }
 
 // CurrentConfig returns a copy of the active world configuration.
@@ -602,11 +606,11 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 
 // marshalState serializes a world snapshot into the outbound state payload format.
 func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool) ([]byte, int, error) {
-	h.mu.Lock()
-	shouldFlushTriggers := false
-	if players == nil || npcs == nil || effects == nil {
-		now := time.Now()
-		if players == nil || npcs == nil || effects == nil {
+        h.mu.Lock()
+        shouldFlushTriggers := false
+        if players == nil || npcs == nil || effects == nil {
+                now := time.Now()
+                if players == nil || npcs == nil || effects == nil {
 			players, npcs, effects = h.world.Snapshot(now)
 		}
 		shouldFlushTriggers = true
@@ -625,29 +629,40 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	}
 	if patches == nil {
 		patches = make([]Patch, 0)
-	}
-	obstacles := append([]Obstacle(nil), h.world.obstacles...)
-	cfg := h.config
-	tick := h.tick.Load()
-	h.mu.Unlock()
+        }
+        obstacles := append([]Obstacle(nil), h.world.obstacles...)
+        cfg := h.config
+        tick := h.tick.Load()
+        h.mu.Unlock()
 
-	msg := stateMessage{
-		Ver:            ProtocolVersion,
-		Type:           "state",
-		Players:        players,
-		NPCs:           npcs,
-		Obstacles:      obstacles,
-		Effects:        effects,
-		EffectTriggers: triggers,
-		GroundItems:    groundItems,
-		Patches:        patches,
-		Tick:           tick,
-		ServerTime:     time.Now().UnixMilli(),
-		Config:         cfg,
-	}
-	entities := len(msg.Players) + len(msg.NPCs) + len(msg.Obstacles) + len(msg.Effects) + len(msg.EffectTriggers) + len(msg.GroundItems)
-	data, err := json.Marshal(msg)
-	return data, entities, err
+        resync := !drainPatches
+        if !resync && h.resyncNext.CompareAndSwap(true, false) {
+                resync = true
+        }
+
+        seq := h.seq.Add(1)
+
+        msg := stateMessage{
+                Ver:            ProtocolVersion,
+                Type:           "state",
+                Players:        players,
+                NPCs:           npcs,
+                Obstacles:      obstacles,
+                Effects:        effects,
+                EffectTriggers: triggers,
+                GroundItems:    groundItems,
+                Patches:        patches,
+                Tick:           tick,
+                Sequence:       seq,
+                ServerTime:     time.Now().UnixMilli(),
+                Config:         cfg,
+        }
+        if resync {
+                msg.Resync = true
+        }
+        entities := len(msg.Players) + len(msg.NPCs) + len(msg.Obstacles) + len(msg.Effects) + len(msg.EffectTriggers) + len(msg.GroundItems)
+        data, err := json.Marshal(msg)
+        return data, entities, err
 }
 
 // broadcastState sends the latest world snapshot to every subscriber.

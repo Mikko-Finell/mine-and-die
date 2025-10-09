@@ -158,6 +158,9 @@ describe("updatePatchState", () => {
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("join");
     expect(result.lastTick).toBe(1);
+    expect(result.lastSequence).toBe(1);
+    expect(result.baseline.sequence).toBe(1);
+    expect(result.patched.sequence).toBe(1);
   });
 
   it("applies player patches onto the baseline snapshot", () => {
@@ -285,6 +288,8 @@ describe("updatePatchState", () => {
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(7);
+    expect(result.lastSequence).toBe(7);
+    expect(result.patched.sequence).toBe(7);
   });
 
   it("normalizes entity identifiers when seeding baseline state", () => {
@@ -306,6 +311,7 @@ describe("updatePatchState", () => {
     expect(baseline.npcs["npc-2"].id).toBe("npc-2");
     expect(baseline.effects["effect-3"].id).toBe("effect-3");
     expect(baseline.groundItems["ground-4"].id).toBe("ground-4");
+    expect(baseline.sequence).toBe(11);
   });
 
   it("normalizes patch kinds and entity identifiers before applying handlers", () => {
@@ -404,12 +410,13 @@ describe("updatePatchState", () => {
   });
 
   it("deduplicates repeated patch batches at the same tick", () => {
-    const joinPayload = deepFreeze({ t: 12, players: [makePlayer()] });
+    const joinPayload = deepFreeze({ t: 12, seq: 99, players: [makePlayer()] });
     const seeded = updatePatchState(createPatchState(), joinPayload, { source: "join" });
     freezeState(seeded);
 
     const patchPayload = deepFreeze({
       t: 12,
+      seq: 200,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 9, y: 9 } },
@@ -419,19 +426,22 @@ describe("updatePatchState", () => {
     const first = updatePatchState(seeded, patchPayload, { source: "state" });
     expect(first.lastAppliedPatchCount).toBe(1);
     expect(first.patched.players["player-1"].x).toBe(9);
+    expect(first.lastSequence).toBe(200);
     freezeState(first);
 
     const second = updatePatchState(first, patchPayload, { source: "state" });
     expect(second.lastAppliedPatchCount).toBe(0);
     expect(second.patched.players["player-1"].x).toBe(9);
     expect(second.lastTick).toBe(12);
+    expect(second.lastSequence).toBe(200);
   });
 
   it("rejects out-of-order batches and leaves prior state untouched", () => {
-    const seedPayload = deepFreeze({ t: 20, players: [makePlayer()] });
+    const seedPayload = deepFreeze({ t: 20, seq: 300, players: [makePlayer()] });
     const seeded = updatePatchState(createPatchState(), seedPayload, { source: "state" });
     const live = updatePatchState(seeded, deepFreeze({
       t: 20,
+      seq: 301,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 11, y: 12 } },
@@ -441,6 +451,7 @@ describe("updatePatchState", () => {
 
     const stale = updatePatchState(live, deepFreeze({
       t: 19,
+      seq: 250,
       players: [makePlayer()],
       patches: [
         { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 1, y: 1 } },
@@ -453,6 +464,48 @@ describe("updatePatchState", () => {
       /out-of-order patch tick 19 < 20/,
     );
     expect(stale.lastTick).toBe(20);
+    expect(stale.lastSequence).toBe(301);
+  });
+
+  it("rejects batches when the sequence number regresses", () => {
+    const base = updatePatchState(
+      createPatchState(),
+      deepFreeze({ t: 50, seq: 400, players: [makePlayer()] }),
+      { source: "state" },
+    );
+    const live = updatePatchState(
+      base,
+      deepFreeze({
+        t: 50,
+        seq: 401,
+        players: [makePlayer()],
+        patches: [
+          { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 13, y: 14 } },
+        ],
+      }),
+      { source: "state" },
+    );
+    freezeState(live);
+
+    const regressed = updatePatchState(
+      live,
+      deepFreeze({
+        t: 50,
+        seq: 400,
+        players: [makePlayer()],
+        patches: [
+          { kind: PATCH_KIND_PLAYER_POS, entityId: "player-1", payload: { x: 1, y: 1 } },
+        ],
+      }),
+      { source: "state" },
+    );
+
+    expect(regressed.lastAppliedPatchCount).toBe(0);
+    expect(regressed.patched.players["player-1"].x).toBe(13);
+    expect(regressed.errors[regressed.errors.length - 1].message).toMatch(
+      /out-of-order patch sequence 400 < 401/,
+    );
+    expect(regressed.lastSequence).toBe(401);
   });
 
   it("hard rejects non-finite position payloads", () => {
@@ -499,6 +552,7 @@ describe("updatePatchState", () => {
     }), { source: "state", resetHistory: true });
 
     expect(resynced.lastTick).toBe(5);
+    expect(resynced.lastSequence).toBe(5);
     expect(resynced.patched.players["player-1"].x).toBe(2);
 
     const fresh = updatePatchState(resynced, deepFreeze({
@@ -510,6 +564,7 @@ describe("updatePatchState", () => {
     }), { source: "state" });
     expect(fresh.patched.players["player-1"].x).toBe(7);
     expect(fresh.lastAppliedPatchCount).toBe(1);
+    expect(fresh.lastSequence).toBe(6);
     freezeState(fresh);
 
     const stale = updatePatchState(fresh, deepFreeze({
@@ -525,5 +580,6 @@ describe("updatePatchState", () => {
     expect(stale.errors[stale.errors.length - 1].message).toMatch(
       /out-of-order patch tick 5 < 6/,
     );
+    expect(stale.lastSequence).toBe(6);
   });
 });
