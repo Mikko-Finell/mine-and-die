@@ -137,7 +137,15 @@ func (w *World) dropAllGold(actor *actorState, reason string) int {
 	if w == nil || actor == nil {
 		return 0
 	}
-	total := actor.Inventory.RemoveAllOf(ItemTypeGold)
+	var total int
+	if _, ok := w.players[actor.ID]; ok {
+		_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
+			total = inv.RemoveAllOf(ItemTypeGold)
+			return nil
+		})
+	} else {
+		total = actor.Inventory.RemoveAllOf(ItemTypeGold)
+	}
 	if total <= 0 {
 		return 0
 	}

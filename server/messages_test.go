@@ -119,14 +119,26 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 		Effects:        nil,
 		EffectTriggers: nil,
 		GroundItems:    nil,
-		Patches: []Patch{{
-			Kind:     PatchPlayerPos,
-			EntityID: "player-1",
-			Payload: PlayerPosPayload{
-				X: 12.5,
-				Y: 42.75,
+		Patches: []Patch{
+			{
+				Kind:     PatchPlayerPos,
+				EntityID: "player-1",
+				Payload: PlayerPosPayload{
+					X: 12.5,
+					Y: 42.75,
+				},
 			},
-		}},
+			{
+				Kind:     PatchPlayerInventory,
+				EntityID: "player-1",
+				Payload: PlayerInventoryPayload{
+					Slots: []InventorySlot{{
+						Slot: 0,
+						Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
+					}},
+				},
+			},
+		},
 		Tick:       1,
 		ServerTime: time.Now().UnixMilli(),
 		Config:     worldConfig{},
@@ -142,8 +154,8 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 		t.Fatalf("failed to decode message: %v", err)
 	}
 
-	if len(decoded.Patches) != 1 {
-		t.Fatalf("expected 1 patch after round trip, got %d", len(decoded.Patches))
+	if len(decoded.Patches) != 2 {
+		t.Fatalf("expected 2 patches after round trip, got %d", len(decoded.Patches))
 	}
 }
 

@@ -81,7 +81,7 @@ func (w *World) followPlayerPath(player *playerState, tick uint64) {
 
 		player.intentX = dx
 		player.intentY = dy
-		player.Facing = deriveFacing(dx, dy, player.Facing)
+		w.SetFacing(player.ID, deriveFacing(dx, dy, player.Facing))
 		return
 	}
 

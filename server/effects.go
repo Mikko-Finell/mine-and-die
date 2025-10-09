@@ -198,51 +198,81 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 				delta = value
 			}
 		}
-		if delta == 0 {
+		if delta == 0 || target == nil {
 			return
 		}
-		if target.applyHealthDelta(delta) {
-			if w != nil && delta < 0 {
-				ability := ""
-				actorRef := logging.EntityRef{}
-				conditionName := ""
-				if eff != nil {
-					ability = eff.Type
-					actorRef = w.entityRef(eff.Owner)
-					if eff.Condition != "" {
-						conditionName = string(eff.Condition)
-					}
+
+		var changed bool
+		if w != nil {
+			if player, ok := w.players[target.ID]; ok && player != nil {
+				max := player.MaxHealth
+				if max <= 0 {
+					max = playerMaxHealth
 				}
-				targetRef := logging.EntityRef{}
-				if target != nil {
-					targetRef = w.entityRef(target.ID)
+				next := player.Health + delta
+				if math.IsNaN(next) || math.IsInf(next, 0) {
+					return
 				}
-				loggingcombat.Damage(
+				if next < 0 {
+					next = 0
+				} else if next > max {
+					next = max
+				}
+				if math.Abs(next-player.Health) < healthEpsilon {
+					return
+				}
+				w.SetHealth(player.ID, next)
+				changed = true
+			} else {
+				changed = target.applyHealthDelta(delta)
+			}
+		} else {
+			changed = target.applyHealthDelta(delta)
+		}
+
+		if !changed {
+			return
+		}
+		if w != nil && delta < 0 {
+			ability := ""
+			actorRef := logging.EntityRef{}
+			conditionName := ""
+			if eff != nil {
+				ability = eff.Type
+				actorRef = w.entityRef(eff.Owner)
+				if eff.Condition != "" {
+					conditionName = string(eff.Condition)
+				}
+			}
+			targetRef := logging.EntityRef{}
+			if target != nil {
+				targetRef = w.entityRef(target.ID)
+			}
+			loggingcombat.Damage(
+				context.Background(),
+				w.publisher,
+				w.currentTick,
+				actorRef,
+				targetRef,
+				loggingcombat.DamagePayload{
+					Ability:      ability,
+					Amount:       -delta,
+					TargetHealth: target.Health,
+					Condition:    conditionName,
+				},
+				nil,
+			)
+			if target.Health <= 0 {
+				loggingcombat.Defeat(
 					context.Background(),
 					w.publisher,
 					w.currentTick,
 					actorRef,
 					targetRef,
-					loggingcombat.DamagePayload{
-						Ability:      ability,
-						Amount:       -delta,
-						TargetHealth: target.Health,
-						Condition:    conditionName,
-					},
+					loggingcombat.DefeatPayload{Ability: ability, Condition: conditionName},
 					nil,
 				)
-				if target.Health <= 0 {
-					loggingcombat.Defeat(
-						context.Background(),
-						w.publisher,
-						w.currentTick,
-						actorRef,
-						targetRef,
-						loggingcombat.DefeatPayload{Ability: ability, Condition: conditionName},
-						nil,
-					)
-					w.dropAllGold(target, "death")
-				}
+				w.dropAllGold(target, "death")
 			}
 		}
 	})
@@ -376,14 +406,23 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 		if !obstaclesOverlap(area, obs, 0) {
 			continue
 		}
-		if _, err := state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1}); err != nil {
+		var addErr error
+		if _, ok := w.players[actorID]; ok {
+			addErr = w.MutateInventory(actorID, func(inv *Inventory) error {
+				_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+				return err
+			})
+		} else {
+			_, addErr = state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+		}
+		if addErr != nil {
 			loggingeconomy.ItemGrantFailed(
 				context.Background(),
 				w.publisher,
 				tick,
 				w.entityRef(actorID),
 				loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 1, Reason: "mine_gold"},
-				map[string]any{"error": err.Error(), "obstacle": obs.ID},
+				map[string]any{"error": addErr.Error(), "obstacle": obs.ID},
 			)
 		}
 		break

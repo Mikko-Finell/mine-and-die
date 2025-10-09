@@ -51,8 +51,8 @@ The queue is drained at the start of each tick so every command is applied exact
 - Advances and prunes effect lifecycles plus awards ore mining loot.
 - Removes players whose last heartbeat is older than `disconnectAfter`.
 
-### Player Position Mutations
-Player coordinates are guarded by the `World.SetPosition` write barrier. Any server code that needs to move a player must call `SetPosition` instead of mutating `playerState.Actor.X`/`Y` directly. The helper bumps the player's version, records a position patch for clients, and keeps journal diffs authoritative. The simulation stage works with scratch copies while resolving collisions and then commits the final location through `SetPosition` so patches stay consistent.
+### Player Position, Facing, and Health Mutations
+Player coordinates, facing, hitpoints, and inventory are guarded by the `World.SetPosition`, `World.SetFacing`, `World.SetHealth`, and `World.MutateInventory` write barriers. Any server code that needs to move a player must call `SetPosition` instead of mutating `playerState.Actor.X`/`Y` directly, call `SetFacing` when rotating the actor, use `SetHealth` for damage or healing, and wrap stack adjustments in `MutateInventory`. The helpers bump the player's version, record patches for clients, and keep journal diffs authoritative. The simulation stage works with scratch copies while resolving collisions and then commits the final location, facing, health, and inventory through these helpers so patches stay consistent.
 
 ### Fire-and-forget Effect Triggers
 The hub tracks two effect collections when serialising a snapshot:
