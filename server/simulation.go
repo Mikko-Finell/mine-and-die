@@ -209,6 +209,11 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 
 	w.currentTick = tick
 
+	originalPositions := make(map[string]vec2, len(w.players))
+	for id, player := range w.players {
+		originalPositions[id] = vec2{X: player.X, Y: player.Y}
+	}
+
 	aiCommands := w.runAI(tick, now)
 	if len(aiCommands) > 0 {
 		combined := make([]Command, 0, len(aiCommands)+len(commands))
@@ -330,6 +335,21 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 
 	resolveActorCollisions(actors, w.obstacles)
+
+	for id, player := range w.players {
+		original, ok := originalPositions[id]
+		newX := player.X
+		newY := player.Y
+		if !ok {
+			original = vec2{X: newX, Y: newY}
+		}
+		if newX == original.X && newY == original.Y {
+			continue
+		}
+		player.X = original.X
+		player.Y = original.Y
+		w.SetPosition(id, newX, newY)
+	}
 
 	// Ability and effect staging.
 	for _, action := range stagedActions {
