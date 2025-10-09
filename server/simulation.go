@@ -320,6 +320,11 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	w.advancePlayerPaths(tick)
 	w.advanceNPCPaths(tick)
 
+	initialPlayerPositions := make(map[string]vec2, len(w.players))
+	for id, player := range w.players {
+		initialPlayerPositions[id] = vec2{X: player.X, Y: player.Y}
+	}
+
 	actors := make([]*actorState, 0, len(w.players)+len(w.npcs))
 	// Movement system.
 	for _, player := range w.players {
@@ -336,6 +341,8 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 
 	resolveActorCollisions(actors, w.obstacles)
+
+	w.applyPlayerPositionMutations(initialPlayerPositions)
 
 	// Ability and effect staging.
 	for _, action := range stagedActions {
@@ -379,6 +386,31 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 
 	return removedPlayers
+}
+
+func (w *World) applyPlayerPositionMutations(initial map[string]vec2) {
+	if w == nil {
+		return
+	}
+
+	for id, player := range w.players {
+		start, ok := initial[id]
+		if !ok {
+			start = vec2{X: player.X, Y: player.Y}
+		}
+
+		if positionsEqual(start.X, start.Y, player.X, player.Y) {
+			continue
+		}
+
+		newX := player.X
+		newY := player.Y
+
+		player.X = start.X
+		player.Y = start.Y
+
+		w.SetPosition(id, newX, newY)
+	}
 }
 
 func (w *World) spawnInitialNPCs() {

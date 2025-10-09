@@ -119,10 +119,17 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 		Effects:        nil,
 		EffectTriggers: nil,
 		GroundItems:    nil,
-		Patches:        []Patch{{}},
-		Tick:           1,
-		ServerTime:     time.Now().UnixMilli(),
-		Config:         worldConfig{},
+		Patches: []Patch{{
+			Kind:     PatchPlayerPos,
+			EntityID: "player-1",
+			Payload: PlayerPosPayload{
+				X: 12.5,
+				Y: 42.75,
+			},
+		}},
+		Tick:       1,
+		ServerTime: time.Now().UnixMilli(),
+		Config:     worldConfig{},
 	}
 
 	data, err := json.Marshal(msg)
@@ -144,7 +151,7 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 	hub := newHub()
 
 	hub.mu.Lock()
-	hub.world.journal.AppendPatch(Patch{})
+	hub.world.journal.AppendPatch(Patch{Kind: PatchPlayerPos, EntityID: "player-1"})
 	hub.mu.Unlock()
 
 	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, false); err != nil {

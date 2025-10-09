@@ -2,8 +2,26 @@ package main
 
 const defaultJournalKeyframeCapacity = 8
 
+// PatchKind identifies the type of diff entry.
+type PatchKind string
+
+const (
+	// PatchPlayerPos updates a player's position.
+	PatchPlayerPos PatchKind = "player_pos"
+)
+
 // Patch represents a diff entry that can be applied to the client state.
-type Patch struct{}
+type Patch struct {
+	Kind     PatchKind `json:"kind"`
+	EntityID string    `json:"entityId"`
+	Payload  any       `json:"payload,omitempty"`
+}
+
+// PlayerPosPayload captures the coordinates for a player position patch.
+type PlayerPosPayload struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
 
 // Journal accumulates patches generated during a tick and keeps a rolling
 // buffer of recent keyframes so future diff recovery can rehydrate state.

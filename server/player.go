@@ -152,6 +152,7 @@ type playerState struct {
 	lastRTT       time.Duration
 	cooldowns     map[string]time.Time
 	path          playerPathState
+	version       uint64
 }
 
 func (s *playerState) snapshot() Player {
