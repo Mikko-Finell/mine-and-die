@@ -67,6 +67,7 @@ const DEFAULT_INVENTORY_SLOTS = 4;
 const ITEM_METADATA = {
   gold: { name: "Gold Coin", icon: "🪙" },
   health_potion: { name: "Lesser Healing Potion", icon: "🧪" },
+  rat_tail: { name: "Rat Tail", icon: "🐀" },
 };
 
 const WORLD_RESET_TOGGLE_KEYS = ["obstacles", "npcs", "lava", "goldMines"];

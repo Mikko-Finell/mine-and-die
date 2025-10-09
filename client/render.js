@@ -360,15 +360,43 @@ function drawGroundItems(store) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       continue;
     }
+    const type = typeof item.type === "string" ? item.type : "gold";
+    const isGold = type === "gold";
     ctx.save();
-    ctx.fillStyle = "#fbbf24";
-    ctx.strokeStyle = "#f59e0b";
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, coinRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#78350f";
+    if (isGold) {
+      ctx.fillStyle = "#fbbf24";
+      ctx.strokeStyle = "#f59e0b";
+      ctx.beginPath();
+      ctx.arc(x, y, coinRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#9ca3af";
+      ctx.strokeStyle = "#4b5563";
+      ctx.beginPath();
+      ctx.ellipse(
+        x,
+        y,
+        coinRadius * 0.9,
+        coinRadius * 0.45,
+        Math.PI / 4,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + coinRadius * 0.6, y + coinRadius * 0.6);
+      ctx.quadraticCurveTo(
+        x + coinRadius * 1.1,
+        y + coinRadius * 1.1,
+        x + coinRadius * 1.4,
+        y + coinRadius * 0.2
+      );
+      ctx.stroke();
+    }
+    ctx.fillStyle = isGold ? "#78350f" : "#111827";
     ctx.font = "10px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
