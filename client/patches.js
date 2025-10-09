@@ -99,7 +99,7 @@ function createPlayerView(player) {
   if (!player || typeof player !== "object") {
     return null;
   }
-  const id = typeof player.id === "string" ? player.id : null;
+  const id = normalizeEntityId(player.id);
   if (!id) {
     return null;
   }
@@ -129,8 +129,12 @@ function clonePlayerView(view) {
   if (!view || typeof view !== "object") {
     return null;
   }
+  const id = normalizeEntityId(view.id);
+  if (!id) {
+    return null;
+  }
   return {
-    id: typeof view.id === "string" ? view.id : null,
+    id,
     x: toFiniteNumber(view.x, 0),
     y: toFiniteNumber(view.y, 0),
     facing: normalizeFacingValue(view.facing),
@@ -153,12 +157,12 @@ function clonePlayersMap(source) {
   if (!source || typeof source !== "object") {
     return next;
   }
-  for (const [id, view] of Object.entries(source)) {
+  for (const view of Object.values(source)) {
     const cloned = clonePlayerView(view);
     if (!cloned || !cloned.id) {
       continue;
     }
-    next[id] = cloned;
+    next[cloned.id] = cloned;
   }
   return next;
 }
@@ -167,7 +171,7 @@ function createNPCView(npc) {
   if (!npc || typeof npc !== "object") {
     return null;
   }
-  const id = typeof npc.id === "string" ? npc.id : null;
+  const id = normalizeEntityId(npc.id);
   if (!id) {
     return null;
   }
@@ -193,8 +197,12 @@ function cloneNPCView(view) {
   if (!view || typeof view !== "object") {
     return null;
   }
+  const id = normalizeEntityId(view.id);
+  if (!id) {
+    return null;
+  }
   return {
-    id: typeof view.id === "string" ? view.id : null,
+    id,
     x: toFiniteNumber(view.x, 0),
     y: toFiniteNumber(view.y, 0),
     facing: normalizeFacingValue(view.facing),
@@ -218,12 +226,12 @@ function cloneNPCsMap(source) {
   if (!source || typeof source !== "object") {
     return next;
   }
-  for (const [id, view] of Object.entries(source)) {
+  for (const view of Object.values(source)) {
     const cloned = cloneNPCView(view);
     if (!cloned || !cloned.id) {
       continue;
     }
-    next[id] = cloned;
+    next[cloned.id] = cloned;
   }
   return next;
 }
@@ -232,7 +240,7 @@ function createEffectView(effect) {
   if (!effect || typeof effect !== "object") {
     return null;
   }
-  const id = typeof effect.id === "string" ? effect.id : null;
+  const id = normalizeEntityId(effect.id);
   if (!id) {
     return null;
   }
@@ -254,8 +262,12 @@ function cloneEffectView(view) {
   if (!view || typeof view !== "object") {
     return null;
   }
+  const id = normalizeEntityId(view.id);
+  if (!id) {
+    return null;
+  }
   return {
-    id: typeof view.id === "string" ? view.id : null,
+    id,
     type: typeof view.type === "string" ? view.type : "",
     owner: typeof view.owner === "string" ? view.owner : "",
     start: toFiniteInt(view.start, 0),
@@ -273,12 +285,12 @@ function cloneEffectsMap(source) {
   if (!source || typeof source !== "object") {
     return next;
   }
-  for (const [id, view] of Object.entries(source)) {
+  for (const view of Object.values(source)) {
     const cloned = cloneEffectView(view);
     if (!cloned || !cloned.id) {
       continue;
     }
-    next[id] = cloned;
+    next[cloned.id] = cloned;
   }
   return next;
 }
@@ -287,7 +299,7 @@ function createGroundItemView(item) {
   if (!item || typeof item !== "object") {
     return null;
   }
-  const id = typeof item.id === "string" ? item.id : null;
+  const id = normalizeEntityId(item.id);
   if (!id) {
     return null;
   }
@@ -304,8 +316,12 @@ function cloneGroundItemView(view) {
   if (!view || typeof view !== "object") {
     return null;
   }
+  const id = normalizeEntityId(view.id);
+  if (!id) {
+    return null;
+  }
   return {
-    id: typeof view.id === "string" ? view.id : null,
+    id,
     type: typeof view.type === "string" ? view.type : "",
     x: toFiniteNumber(view.x, 0),
     y: toFiniteNumber(view.y, 0),
@@ -318,12 +334,12 @@ function cloneGroundItemsMap(source) {
   if (!source || typeof source !== "object") {
     return next;
   }
-  for (const [id, view] of Object.entries(source)) {
+  for (const view of Object.values(source)) {
     const cloned = cloneGroundItemView(view);
     if (!cloned || !cloned.id) {
       continue;
     }
-    next[id] = cloned;
+    next[cloned.id] = cloned;
   }
   return next;
 }
