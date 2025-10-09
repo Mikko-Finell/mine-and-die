@@ -31,6 +31,12 @@ type groundItemState struct {
 
 const groundPickupRadius = tileSize
 
+const (
+	groundScatterMinDistance = tileSize * 0.1
+	groundScatterMaxDistance = tileSize * 0.35
+	groundScatterPadding     = tileSize * 0.1
+)
+
 func (w *World) groundItemsSnapshot() []GroundItem {
 	if w == nil || len(w.groundItems) == 0 {
 		return nil
@@ -66,7 +72,7 @@ func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason stri
 		return nil
 	}
 	tile := tileForPosition(actor.X, actor.Y)
-	centerX, centerY := tileCenter(tile)
+	x, y := w.scatterGroundItemPosition(actor, tile)
 	if w.groundItemsByTile == nil {
 		w.groundItemsByTile = make(map[groundTileKey]map[ItemType]*groundItemState)
 	}
@@ -77,20 +83,61 @@ func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason stri
 	}
 	if existing := itemsByType[stack.Type]; existing != nil {
 		w.SetGroundItemQuantity(existing, existing.Qty+stack.Quantity)
-		w.SetGroundItemPosition(existing, centerX, centerY)
+		existing.tile = tile
+		w.SetGroundItemPosition(existing, x, y)
 		w.logGoldDrop(actor, stack, reason, existing.ID)
 		return existing
 	}
 	w.nextGroundItemID++
 	id := fmt.Sprintf("ground-%d", w.nextGroundItemID)
 	item := &groundItemState{
-		GroundItem: GroundItem{ID: id, Type: stack.Type, X: centerX, Y: centerY, Qty: stack.Quantity},
+		GroundItem: GroundItem{ID: id, Type: stack.Type, X: x, Y: y, Qty: stack.Quantity},
 		tile:       tile,
 	}
 	w.groundItems[id] = item
 	itemsByType[stack.Type] = item
 	w.logGoldDrop(actor, stack, reason, id)
 	return item
+}
+
+func (w *World) scatterGroundItemPosition(actor *actorState, tile groundTileKey) (float64, float64) {
+	if actor == nil {
+		return tileCenter(tile)
+	}
+
+	angle := w.randomAngle()
+	distance := w.randomDistance(groundScatterMinDistance, groundScatterMaxDistance)
+	baseX := actor.X
+	baseY := actor.Y
+	x := baseX + math.Cos(angle)*distance
+	y := baseY + math.Sin(angle)*distance
+
+	left := float64(tile.X) * tileSize
+	top := float64(tile.Y) * tileSize
+	right := left + tileSize
+	bottom := top + tileSize
+
+	padding := groundScatterPadding
+	if padding*2 >= tileSize {
+		padding = 0
+	}
+
+	minX := left + padding
+	maxX := right - padding
+	minY := top + padding
+	maxY := bottom - padding
+
+	return clampFloat(x, minX, maxX), clampFloat(y, minY, maxY)
+}
+
+func clampFloat(value, min, max float64) float64 {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 func (w *World) removeGroundItem(item *groundItemState) {
