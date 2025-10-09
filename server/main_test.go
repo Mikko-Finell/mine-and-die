@@ -176,12 +176,13 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	expectedX := player.X
 	expectedY := player.Y
 	patches := hub.world.snapshotPatchesLocked()
-	if len(patches) != 2 {
+	if len(patches) != 3 {
 		hub.mu.Unlock()
-		t.Fatalf("expected 2 patches before broadcast, got %d", len(patches))
+		t.Fatalf("expected 3 patches before broadcast, got %d", len(patches))
 	}
 	var posPatch *Patch
 	var facingPatch *Patch
+	var intentPatch *Patch
 	for i := range patches {
 		patch := patches[i]
 		switch patch.Kind {
@@ -189,6 +190,8 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 			posPatch = &patch
 		case PatchPlayerFacing:
 			facingPatch = &patch
+		case PatchPlayerIntent:
+			intentPatch = &patch
 		}
 	}
 	if posPatch == nil {
@@ -199,6 +202,10 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected facing patch before broadcast")
 	}
+	if intentPatch == nil {
+		hub.mu.Unlock()
+		t.Fatalf("expected intent patch before broadcast")
+	}
 	facingPayload, ok := facingPatch.Payload.(PlayerFacingPayload)
 	if !ok {
 		hub.mu.Unlock()
@@ -207,6 +214,15 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	if facingPayload.Facing != FacingRight {
 		hub.mu.Unlock()
 		t.Fatalf("expected facing payload to be %q, got %q", FacingRight, facingPayload.Facing)
+	}
+	intentPayload, ok := intentPatch.Payload.(PlayerIntentPayload)
+	if !ok {
+		hub.mu.Unlock()
+		t.Fatalf("expected intent payload to be PlayerIntentPayload, got %T", intentPatch.Payload)
+	}
+	if math.Abs(intentPayload.DX-1) > 1e-6 || math.Abs(intentPayload.DY) > 1e-6 {
+		hub.mu.Unlock()
+		t.Fatalf("expected intent payload to be (1,0), got (%.6f, %.6f)", intentPayload.DX, intentPayload.DY)
 	}
 	hub.mu.Unlock()
 
@@ -219,12 +235,13 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("failed to decode state message: %v", err)
 	}
-	if len(decoded.Patches) != 2 {
-		t.Fatalf("expected 2 patches after broadcast, got %d", len(decoded.Patches))
+	if len(decoded.Patches) != 3 {
+		t.Fatalf("expected 3 patches after broadcast, got %d", len(decoded.Patches))
 	}
 
 	var decodedPos map[string]any
 	var decodedFacing map[string]any
+	var decodedIntent map[string]any
 	for _, patch := range decoded.Patches {
 		if patch.EntityID != playerID {
 			t.Fatalf("expected patch entity %q, got %q", playerID, patch.EntityID)
@@ -238,6 +255,8 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 			decodedPos = payload
 		case PatchPlayerFacing:
 			decodedFacing = payload
+		case PatchPlayerIntent:
+			decodedIntent = payload
 		}
 	}
 	if decodedPos == nil {
@@ -245,6 +264,9 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	}
 	if decodedFacing == nil {
 		t.Fatalf("expected facing patch after broadcast")
+	}
+	if decodedIntent == nil {
+		t.Fatalf("expected intent patch after broadcast")
 	}
 	x, ok := decodedPos["x"].(float64)
 	if !ok {
@@ -257,8 +279,19 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	if facing, ok := decodedFacing["facing"].(string); !ok || facing != string(FacingRight) {
 		t.Fatalf("expected facing payload to be %q, got %v", FacingRight, decodedFacing["facing"])
 	}
+	dx, ok := decodedIntent["dx"].(float64)
+	if !ok {
+		t.Fatalf("expected intent payload dx to be float64, got %T", decodedIntent["dx"])
+	}
+	dy, ok := decodedIntent["dy"].(float64)
+	if !ok {
+		t.Fatalf("expected intent payload dy to be float64, got %T", decodedIntent["dy"])
+	}
 	if math.Abs(x-expectedX) > 1e-6 || math.Abs(y-expectedY) > 1e-6 {
 		t.Fatalf("expected payload coords (%.6f, %.6f), got (%.6f, %.6f)", expectedX, expectedY, x, y)
+	}
+	if math.Abs(dx-1) > 1e-6 || math.Abs(dy) > 1e-6 {
+		t.Fatalf("expected intent payload to be (1,0), got (%.6f, %.6f)", dx, dy)
 	}
 
 	hub.mu.Lock()
@@ -466,17 +499,16 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	moverState := newTestPlayerState(moverID)
 	moverState.X = 80
 	moverState.Y = 80
-	moverState.intentX = 1
-	moverState.intentY = 0
 	moverState.lastHeartbeat = now
-	hub.world.players[moverID] = moverState
+	hub.world.AddPlayer(moverState)
+	hub.world.SetIntent(moverID, 1, 0)
 
 	boundaryState := newTestPlayerState(boundaryID)
 	boundaryState.X = worldWidth - playerHalf - 5
 	boundaryState.Y = 100
-	boundaryState.intentX = 1
 	boundaryState.lastHeartbeat = now
-	hub.world.players[boundaryID] = boundaryState
+	hub.world.AddPlayer(boundaryState)
+	hub.world.SetIntent(boundaryID, 1, 0)
 
 	players, _, _, _, _, toClose := hub.advance(now, 0.5)
 	if len(toClose) != 0 {
@@ -829,10 +861,9 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	blockState := newTestPlayerState(playerID)
 	blockState.X = 100
 	blockState.Y = 120
-	blockState.intentX = 1
-	blockState.intentY = 0
 	blockState.lastHeartbeat = now
-	hub.world.players[playerID] = blockState
+	hub.world.AddPlayer(blockState)
+	hub.world.SetIntent(playerID, 1, 0)
 
 	players, _, _, _, _, _ := hub.advance(now, 1)
 	blocker := findPlayer(players, playerID)
@@ -921,18 +952,16 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	firstState := newTestPlayerState(firstID)
 	firstState.X = 300
 	firstState.Y = 200
-	firstState.intentX = 1
-	firstState.intentY = 0
 	firstState.lastHeartbeat = now
-	hub.world.players[firstID] = firstState
+	hub.world.AddPlayer(firstState)
+	hub.world.SetIntent(firstID, 1, 0)
 
 	secondState := newTestPlayerState(secondID)
 	secondState.X = 300 + playerHalf/2
 	secondState.Y = 200
-	secondState.intentX = -1
-	secondState.intentY = 0
 	secondState.lastHeartbeat = now
-	hub.world.players[secondID] = secondState
+	hub.world.AddPlayer(secondState)
+	hub.world.SetIntent(secondID, -1, 0)
 
 	players, _, _, _, _, _ := hub.advance(now, 1)
 

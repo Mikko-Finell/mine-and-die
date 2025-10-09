@@ -116,6 +116,62 @@ func TestSetFacingRecordsPatch(t *testing.T) {
 	}
 }
 
+func TestSetIntentNoopDoesNotEmitPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent-noop"}}}
+	player.intentX = 0.25
+	player.intentY = -0.5
+	w.AddPlayer(player)
+
+	w.SetIntent("player-intent-noop", 0.25, -0.5)
+
+	if player.version != 0 {
+		t.Fatalf("expected version to remain 0, got %d", player.version)
+	}
+
+	if patches := w.snapshotPatchesLocked(); len(patches) != 0 {
+		t.Fatalf("expected no patches, got %d", len(patches))
+	}
+}
+
+func TestSetIntentRecordsPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent"}}}
+	w.AddPlayer(player)
+
+	w.SetIntent("player-intent", 1, 0)
+
+	if player.version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchPlayerIntent {
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerIntent, patch.Kind)
+	}
+	if patch.EntityID != "player-intent" {
+		t.Fatalf("expected entity id player-intent, got %q", patch.EntityID)
+	}
+
+	payload, ok := patch.Payload.(PlayerIntentPayload)
+	if !ok {
+		t.Fatalf("expected payload to be PlayerIntentPayload, got %T", patch.Payload)
+	}
+	if math.Abs(payload.DX-1) > 1e-6 || math.Abs(payload.DY-0) > 1e-6 {
+		t.Fatalf("expected payload vector (1,0), got (%.2f, %.2f)", payload.DX, payload.DY)
+	}
+
+	w.SetIntent("player-intent", 0, -1)
+	if player.version != 2 {
+		t.Fatalf("expected version to increment to 2, got %d", player.version)
+	}
+}
+
 func TestSetHealthNoopDoesNotEmitPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-5", Health: 75, MaxHealth: 100}}}

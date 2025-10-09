@@ -247,8 +247,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 				if dx != 0 || dy != 0 {
 					w.clearPlayerPath(player)
 				}
-				player.intentX = dx
-				player.intentY = dy
+				w.SetIntent(player.ID, dx, dy)
 				nextFacing := deriveFacing(dx, dy, player.Facing)
 				if dx == 0 && dy == 0 {
 					if cmd.Move.Facing != "" {
@@ -307,8 +306,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 		case CommandClearPath:
 			if player, ok := w.players[cmd.ActorID]; ok {
 				w.clearPlayerPath(player)
-				player.intentX = 0
-				player.intentY = 0
+				w.SetIntent(player.ID, 0, 0)
 				if !cmd.IssuedAt.IsZero() {
 					player.lastInput = cmd.IssuedAt
 				} else {
