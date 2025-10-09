@@ -40,5 +40,6 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 - [Effects & Conditions](./effects.md) – How the authoritative effect pipeline maps to client visuals.
 - [Testing & Troubleshooting](./testing.md) – Available test suites and common debugging tips.
 - [Game Economy & Faction Hierarchy](./game-economy-and-faction-hierarchy.md) – Closed-loop resource model, taxation, and governance rules.
+- [Playground Animations](./playground-animations.md) – How to author effect definitions and surface them inside the playground tool.
 
 Keep this folder updated as the simulation evolves so newcomers can get productive quickly.
