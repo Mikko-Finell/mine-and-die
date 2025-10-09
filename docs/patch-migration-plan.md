@@ -1,10 +1,13 @@
-# Player Write Barrier Coverage
+# Patch Migration Plan
 
-This note documents which pieces of player state are currently funneled through
-write barrier helpers on the server and which fields are still mutated
-in-place throughout the simulation code.
+We are incrementally transitioning the Mine & Die client/server sync model from
+full-state broadcasts to diff-based patches. This document tracks the current
+coverage, the client-side scaffolding introduced for testing, and the next steps
+required before the patch pipeline can replace the legacy snapshot flow.
 
-## State that already flows through write barriers
+## Current Server Coverage
+
+### Player write barrier coverage
 
 * **Position (`Actor.X`, `Actor.Y`)** – committed via `World.SetPosition`, which
   verifies that the coordinates changed, bumps the per-player version, and emits
@@ -37,7 +40,7 @@ in-place throughout the simulation code.
   setters above, ensuring authoritative snapshots line up with the mutation
   journal.【F:server/world_mutators.go†L30-L147】
 
-## State still mutated directly
+### Player state still mutated directly
 
 The remaining player fields are still updated in place by simulation systems and
 hub flows. They currently bypass write barriers and therefore do not emit
@@ -61,42 +64,38 @@ patches or version bumps:
   the authoritative map entries directly but are worth noting when auditing the
   pipeline.【F:server/movement.go†L6-L102】【F:server/simulation.go†L331-L359】
 
-When new write barriers are introduced for the fields above, the existing direct
-assignments will need to be routed through the new helpers so versioning and
-patch emission continue to stay in sync.
+## Client instrumentation
 
-## Prioritising future write barriers
+The client now mirrors incoming patches in a background state container so we
+can validate diff replays while the game continues to rely on the authoritative
+snapshot path:
 
-We eventually want every player mutation that surfaces in outbound snapshots to
-flow through a write barrier so we can derive patches instead of resending full
-state dumps. Not every field carried on `playerState` needs that treatment,
-though, and sequencing the work will keep the change manageable:
+* A new `createPatchState`/`updatePatchState` pair normalises player snapshots,
+  enforces monotonic ticks, deduplicates recent patch keys with an LRU cache,
+  clamps invalid coordinates, and records replay errors for inspection while
+  preserving prior patched values across duplicate batches.【F:client/patches.js†L1-L380】
+* The main store instantiates this background state during bootstrap, and the
+  network layer refreshes it on `/join` and every `state` broadcast while logging
+  new patch replay issues to the console for debugging and resetting the dedupe
+  history whenever the server announces a resynchronisation.【F:client/main.js†L9-L110】【F:client/network.js†L1-L214】【F:client/network.js†L702-L744】【F:client/network.js†L804-L851】
+* Vitest coverage now freezes inputs to guard against mutation, asserts
+  idempotent replay counts, validates monotonic tick handling, and exercises the
+  resync pathway so future patch types can extend the pipeline with
+  confidence.【F:client/__tests__/patches.test.js†L1-L216】
 
-* **Client-facing actor fields** – Anything that ships as part of the
-  authoritative `Actor` snapshot should ultimately move behind a setter so
-  deltas can be journaled. At the moment the remaining `playerState` fields that
-  reach the client are limited to the inventory, health, facing, position, and
-  intents we have already covered.【F:server/player.go†L1-L116】【F:server/player.go†L151-L175】
-  If we ever add more HUD-visible attributes (for example, an exposed cooldown
-  tracker), we should introduce a dedicated setter at the same time so patches
-  stay consistent.
-* **Server-only simulation metadata** – Fields like path progress, last input
-  timestamps, and heartbeat bookkeeping never leave the server or influence the
-  derived `Player` snapshot.【F:server/player.go†L151-L175】【F:server/player_path.go†L18-L168】【F:server/simulation.go†L239-L315】
-  These can remain direct mutations for now because patching them would not
-  unlock network savings. If any of this data becomes relevant to clients (for
-  example, exposing next waypoint data for debugging), we can wrap the new
-  outward-facing representation in a barrier without moving the internal
-  bookkeeping structures.
-* **Condition and cooldown maps** – The condition map already powers gameplay
-  decisions on the server and could eventually influence remote visuals. The
-  cooldown table behaves similarly, gating ability reuse and affecting several
-  regression tests.【F:server/effects.go†L320-L367】【F:server/player.go†L97-L175】 Both
-  should move behind helpers once we are ready to stream these values to the
-  client. Until then, the churn is purely server-side so the benefit of a write
-  barrier is limited to consistency checks.
+## Suggested next steps
 
-As a result, we do **not** need to wrap every `playerState` field immediately.
-Focusing on the client-visible attributes keeps the barrier surface area small
-while we iterate on patch ingestion. Once the client can consume those patches
-reliably, we can expand outward to any remaining data we decide to expose.
+1. **Expand patch coverage** – add NPC, effect, and ground item patch handlers on
+   the client once the server emits them, mirroring the player helper structure.
+2. **Replay validation tooling** – surface the background patch state in the
+   diagnostics drawer so QA can compare snapshot-vs-diff outputs without opening
+   the console.
+3. **Patch sequence plumbing** – expose per-batch sequence numbers and explicit
+   resync markers in the websocket payload so the client dedupe cache can rely on
+   authoritative metadata instead of inferred ticks.
+4. **Keyframe recovery** – plumb the server's journal keyframes through to the
+   client and teach the patch runner to resynchronise from a full snapshot when a
+   diff references an unknown entity.
+5. **Switch-over rehearsal** – gate the render loop behind a feature flag that
+   can swap between full snapshots and the patch-driven state to smoke test the
+   final migration path.

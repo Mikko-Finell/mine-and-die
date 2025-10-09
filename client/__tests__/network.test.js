@@ -264,8 +264,8 @@ describe("normalizeGroundItems", () => {
     ]);
 
     expect(result).toEqual({
-      "ore-1": { id: "ore-1", x: 12, y: 7.5, qty: 3 },
-      "ore-2": { id: "ore-2", x: 0, y: 0, qty: 0 },
+      "ore-1": { id: "ore-1", type: "gold", x: 12, y: 7.5, qty: 3 },
+      "ore-2": { id: "ore-2", type: "gold", x: 0, y: 0, qty: 0 },
     });
   });
 

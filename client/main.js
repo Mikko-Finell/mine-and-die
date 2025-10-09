@@ -7,6 +7,7 @@ import {
   DEFAULT_WORLD_WIDTH,
   DEFAULT_WORLD_HEIGHT,
 } from "./network.js";
+import { createPatchState } from "./patches.js";
 import { startRenderLoop } from "./render.js";
 import { registerInputHandlers } from "./input.js";
 import { createVendorBanner } from "./vendor/example-banner.js";
@@ -198,6 +199,7 @@ const store = {
   worldConfig: { ...DEFAULT_WORLD_CONFIG },
   isResettingWorld: false,
   updateWorldConfigUI: null,
+  patchState: createPatchState(),
   lastWorldResetAt: null,
   lastConsoleAck: null,
 };

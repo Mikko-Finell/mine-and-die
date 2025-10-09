@@ -1,4 +1,5 @@
 import { computeRtt, createHeartbeat } from "./heartbeat.js";
+import { updatePatchState } from "./patches.js";
 
 const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
@@ -690,6 +691,43 @@ function queueEffectTriggers(store, triggers) {
   store.processedEffectTriggerIds = nextState.processedIds;
 }
 
+function syncPatchTestingState(store, payload, source) {
+  if (!store || !store.patchState) {
+    return;
+  }
+  const previous = store.patchState;
+  const resetHistory =
+    source === "join" ||
+    (payload && typeof payload === "object" && (
+      payload.resync === true ||
+      payload.patchReset === true ||
+      payload.full === true ||
+      payload.reset === true
+    ));
+  const next = updatePatchState(previous, payload, {
+    source,
+    resetHistory,
+  });
+  const prevError = previous && typeof previous === "object" ? previous.lastError : null;
+  const prevCount = Array.isArray(previous?.errors) ? previous.errors.length : 0;
+  const nextCount = Array.isArray(next.errors) ? next.errors.length : 0;
+  const nextError = next.lastError;
+  const hasNewError =
+    !!nextError && (!prevError || prevCount !== nextCount || prevError.message !== nextError.message);
+  if (hasNewError) {
+    const parts = ["[patches]", source || "snapshot"];
+    if (nextError.kind) {
+      parts.push(nextError.kind);
+    }
+    if (nextError.entityId) {
+      parts.push(nextError.entityId);
+    }
+    parts.push(nextError.message || "error applying patch");
+    console.warn(parts.join(" "), nextError);
+  }
+  store.patchState = next;
+}
+
 // sendMessage serializes payloads, applies simulated latency, and tracks stats.
 export function sendMessage(store, payload, { onSent } = {}) {
   if (!store.socket || store.socket.readyState !== WebSocket.OPEN) {
@@ -759,6 +797,7 @@ export async function joinGame(store) {
     store.pendingEffectTriggers = [];
     store.processedEffectTriggerIds = new Set();
     queueEffectTriggers(store, payload.effectTriggers);
+    syncPatchTestingState(store, payload, "join");
     store.worldConfig = normalizeWorldConfig(payload.config);
     store.WORLD_WIDTH = store.worldConfig.width;
     store.WORLD_HEIGHT = store.worldConfig.height;
@@ -853,6 +892,8 @@ export function connectEvents(store) {
     handleProtocolVersion(payload, `${parsed.type} message`);
     if (parsed.type === "state") {
         const snapshot = applyStateSnapshot(store, payload);
+
+        syncPatchTestingState(store, payload, "state");
 
         store.players = snapshot.players;
         store.npcs = snapshot.npcs;
