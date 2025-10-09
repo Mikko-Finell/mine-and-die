@@ -1852,6 +1852,9 @@ func TestConsoleDropAndPickupSelf(t *testing.T) {
 	if items[0].Qty != 10 {
 		t.Fatalf("expected ground stack of 10, got %d", items[0].Qty)
 	}
+	if items[0].Type != ItemTypeGold {
+		t.Fatalf("expected ground item type %q, got %q", ItemTypeGold, items[0].Type)
+	}
 
 	ack, ok = hub.HandleConsoleCommand(playerID, "pickup_gold", 0)
 	if !ok {
@@ -1964,6 +1967,9 @@ func TestDeathDropPlayerGold(t *testing.T) {
 	if items[0].Qty != 37 {
 		t.Fatalf("expected ground gold to equal 37, got %d", items[0].Qty)
 	}
+	if items[0].Type != ItemTypeGold {
+		t.Fatalf("expected ground item type %q, got %q", ItemTypeGold, items[0].Type)
+	}
 }
 
 func TestDeathDropNPCGold(t *testing.T) {
@@ -1990,6 +1996,50 @@ func TestDeathDropNPCGold(t *testing.T) {
 	if items[0].Qty != 12 {
 		t.Fatalf("expected npc drop of 12 gold, got %d", items[0].Qty)
 	}
+	if items[0].Type != ItemTypeGold {
+		t.Fatalf("expected npc ground item type %q, got %q", ItemTypeGold, items[0].Type)
+	}
+}
+
+func TestRatDropsTailOnDeath(t *testing.T) {
+	hub := newHub()
+	hub.world.spawnRatAt(220, 220)
+
+	var rat *npcState
+	for _, candidate := range hub.world.npcs {
+		if candidate != nil && candidate.Type == NPCTypeRat {
+			rat = candidate
+			break
+		}
+	}
+	if rat == nil {
+		t.Fatalf("expected to locate spawned rat")
+	}
+	if qty := rat.Inventory.QuantityOf(ItemTypeRatTail); qty != 1 {
+		t.Fatalf("expected rat inventory to contain one tail, got %d", qty)
+	}
+
+	now := time.Now()
+	eff := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "player-hunter", Params: map[string]float64{"healthDelta": -(rat.Health + 5)}}}
+	hub.world.applyEffectHitNPC(eff, rat, now)
+
+	items := hub.world.GroundItemsSnapshot()
+	if len(items) == 0 {
+		t.Fatalf("expected at least one ground item after rat death")
+	}
+	var tail *GroundItem
+	for i := range items {
+		if items[i].Type == ItemTypeRatTail {
+			tail = &items[i]
+			break
+		}
+	}
+	if tail == nil {
+		t.Fatalf("expected rat tail ground item, got %+v", items)
+	}
+	if tail.Qty != 1 {
+		t.Fatalf("expected rat tail quantity 1, got %d", tail.Qty)
+	}
 }
 
 func TestGroundGoldMergesOnSameTile(t *testing.T) {
@@ -2015,6 +2065,9 @@ func TestGroundGoldMergesOnSameTile(t *testing.T) {
 	}
 	if items[0].Qty != 12 {
 		t.Fatalf("expected merged quantity 12, got %d", items[0].Qty)
+	}
+	if items[0].Type != ItemTypeGold {
+		t.Fatalf("expected merged stack type %q, got %q", ItemTypeGold, items[0].Type)
 	}
 }
 
@@ -2079,5 +2132,8 @@ func TestJoinIncludesGroundItems(t *testing.T) {
 	}
 	if second.GroundItems[0].Qty != 10 {
 		t.Fatalf("expected join ground stack qty 10, got %d", second.GroundItems[0].Qty)
+	}
+	if second.GroundItems[0].Type != ItemTypeGold {
+		t.Fatalf("expected join ground item type %q, got %q", ItemTypeGold, second.GroundItems[0].Type)
 	}
 }

@@ -28,6 +28,19 @@ const EFFECT_STYLES = {
   },
 };
 
+const GROUND_ITEM_STYLES = {
+  gold: {
+    fill: "#fbbf24",
+    stroke: "#f59e0b",
+    text: "#78350f",
+  },
+  rat_tail: {
+    fill: "#fbcfe8",
+    stroke: "#f472b6",
+    text: "#831843",
+  },
+};
+
 const FireballZoneEffectDefinition = makeRectZoneDefinition("fireball", {
   fill: EFFECT_STYLES.fireball.fill,
   stroke: EFFECT_STYLES.fireball.stroke,
@@ -360,15 +373,21 @@ function drawGroundItems(store) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       continue;
     }
+    const type = typeof item.type === "string" ? item.type : "gold";
+    const style =
+      Object.prototype.hasOwnProperty.call(GROUND_ITEM_STYLES, type)
+        ? GROUND_ITEM_STYLES[type]
+        : GROUND_ITEM_STYLES.gold;
+
     ctx.save();
-    ctx.fillStyle = "#fbbf24";
-    ctx.strokeStyle = "#f59e0b";
+    ctx.fillStyle = style.fill;
+    ctx.strokeStyle = style.stroke;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(x, y, coinRadius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = "#78350f";
+    ctx.fillStyle = style.text;
     ctx.font = "10px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";

@@ -412,7 +412,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 			return ack, true
 		}
 		actorRef := h.world.entityRef(playerID)
-		item, distance := h.world.nearestGroundGold(&player.actorState)
+		item, distance := h.world.nearestGroundItem(&player.actorState, ItemTypeGold)
 		if item == nil {
 			h.mu.Unlock()
 			ack.Status = "error"

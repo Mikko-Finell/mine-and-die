@@ -8,6 +8,7 @@ type ItemType string
 const (
 	ItemTypeGold         ItemType = "gold"
 	ItemTypeHealthPotion ItemType = "health_potion"
+	ItemTypeRatTail      ItemType = "rat_tail"
 )
 
 // ItemDefinition describes metadata for an item kind that can appear in the world.
@@ -27,6 +28,11 @@ var itemCatalog = map[ItemType]ItemDefinition{
 		Type:        ItemTypeHealthPotion,
 		Name:        "Lesser Healing Potion",
 		Description: "Restores a small amount of health when consumed.",
+	},
+	ItemTypeRatTail: {
+		Type:        ItemTypeRatTail,
+		Name:        "Rat Tail",
+		Description: "A grisly trophy prized by certain alchemists.",
 	},
 }
 

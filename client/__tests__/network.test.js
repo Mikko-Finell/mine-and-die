@@ -257,15 +257,15 @@ describe("normalizeCount", () => {
 describe("normalizeGroundItems", () => {
   it("builds an object of sanitized entries", () => {
     const result = normalizeGroundItems([
-      { id: "ore-1", x: "12", y: 7.5, qty: "3" },
+      { id: "ore-1", x: "12", y: 7.5, qty: "3", type: "rat_tail" },
       { id: "ore-2", x: null, y: undefined, qty: Infinity },
       { id: 0, x: 4, y: 5, qty: 1 },
       null,
     ]);
 
     expect(result).toEqual({
-      "ore-1": { id: "ore-1", x: 12, y: 7.5, qty: 3 },
-      "ore-2": { id: "ore-2", x: 0, y: 0, qty: 0 },
+      "ore-1": { id: "ore-1", x: 12, y: 7.5, qty: 3, type: "rat_tail" },
+      "ore-2": { id: "ore-2", x: 0, y: 0, qty: 0, type: "gold" },
     });
   });
 

@@ -9,12 +9,13 @@ import (
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
-// GroundItem represents a stack of gold that exists in the world.
+// GroundItem represents a stack of items that exists in the world.
 type GroundItem struct {
-	ID  string  `json:"id"`
-	X   float64 `json:"x"`
-	Y   float64 `json:"y"`
-	Qty int     `json:"qty"`
+	ID   string   `json:"id"`
+	X    float64  `json:"x"`
+	Y    float64  `json:"y"`
+	Type ItemType `json:"type"`
+	Qty  int      `json:"qty"`
 }
 
 type groundTileKey struct {
@@ -59,46 +60,60 @@ func tileCenter(key groundTileKey) (float64, float64) {
 	return float64(key.X)*tileSize + tileSize/2, float64(key.Y)*tileSize + tileSize/2
 }
 
-func (w *World) upsertGroundGold(actor *actorState, qty int, reason string) *groundItemState {
-	if w == nil || actor == nil || qty <= 0 {
+func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason string) *groundItemState {
+	if w == nil || actor == nil || stack.Quantity <= 0 || stack.Type == "" {
 		return nil
 	}
 	tile := tileForPosition(actor.X, actor.Y)
 	centerX, centerY := tileCenter(tile)
-	if existing, ok := w.groundItemsByTile[tile]; ok && existing != nil {
-		existing.Qty += qty
+	if w.groundItemsByTile == nil {
+		w.groundItemsByTile = make(map[groundTileKey]map[ItemType]*groundItemState)
+	}
+	if w.groundItemsByTile[tile] == nil {
+		w.groundItemsByTile[tile] = make(map[ItemType]*groundItemState)
+	}
+	if existing := w.groundItemsByTile[tile][stack.Type]; existing != nil {
+		existing.Qty += stack.Quantity
 		existing.X = centerX
 		existing.Y = centerY
-		loggingeconomy.GoldDropped(
-			context.Background(),
-			w.publisher,
-			w.currentTick,
-			w.entityRef(actor.ID),
-			loggingeconomy.GoldDroppedPayload{Quantity: qty, Reason: reason},
-			map[string]any{"stackId": existing.ID},
-		)
+		if stack.Type == ItemTypeGold {
+			loggingeconomy.GoldDropped(
+				context.Background(),
+				w.publisher,
+				w.currentTick,
+				w.entityRef(actor.ID),
+				loggingeconomy.GoldDroppedPayload{Quantity: stack.Quantity, Reason: reason},
+				map[string]any{"stackId": existing.ID},
+			)
+		}
 		return existing
 	}
 	w.nextGroundItemID++
 	id := fmt.Sprintf("ground-%d", w.nextGroundItemID)
 	item := &groundItemState{
-		GroundItem: GroundItem{ID: id, X: centerX, Y: centerY, Qty: qty},
+		GroundItem: GroundItem{ID: id, X: centerX, Y: centerY, Type: stack.Type, Qty: stack.Quantity},
 		tile:       tile,
 	}
 	w.groundItems[id] = item
-	if w.groundItemsByTile == nil {
-		w.groundItemsByTile = make(map[groundTileKey]*groundItemState)
+	w.groundItemsByTile[tile][stack.Type] = item
+	if stack.Type == ItemTypeGold {
+		loggingeconomy.GoldDropped(
+			context.Background(),
+			w.publisher,
+			w.currentTick,
+			w.entityRef(actor.ID),
+			loggingeconomy.GoldDroppedPayload{Quantity: stack.Quantity, Reason: reason},
+			map[string]any{"stackId": id},
+		)
 	}
-	w.groundItemsByTile[tile] = item
-	loggingeconomy.GoldDropped(
-		context.Background(),
-		w.publisher,
-		w.currentTick,
-		w.entityRef(actor.ID),
-		loggingeconomy.GoldDroppedPayload{Quantity: qty, Reason: reason},
-		map[string]any{"stackId": id},
-	)
 	return item
+}
+
+func (w *World) upsertGroundGold(actor *actorState, qty int, reason string) *groundItemState {
+	if qty <= 0 {
+		return nil
+	}
+	return w.upsertGroundItem(actor, ItemStack{Type: ItemTypeGold, Quantity: qty}, reason)
 }
 
 func (w *World) removeGroundItem(item *groundItemState) {
@@ -106,17 +121,22 @@ func (w *World) removeGroundItem(item *groundItemState) {
 		return
 	}
 	delete(w.groundItems, item.ID)
-	delete(w.groundItemsByTile, item.tile)
+	if perTile := w.groundItemsByTile[item.tile]; perTile != nil {
+		delete(perTile, item.Type)
+		if len(perTile) == 0 {
+			delete(w.groundItemsByTile, item.tile)
+		}
+	}
 }
 
-func (w *World) nearestGroundGold(actor *actorState) (*groundItemState, float64) {
+func (w *World) nearestGroundItem(actor *actorState, itemType ItemType) (*groundItemState, float64) {
 	if w == nil || actor == nil || len(w.groundItems) == 0 {
 		return nil, 0
 	}
 	var best *groundItemState
 	bestDist := math.MaxFloat64
 	for _, item := range w.groundItems {
-		if item == nil || item.Qty <= 0 {
+		if item == nil || item.Qty <= 0 || item.Type != itemType {
 			continue
 		}
 		dx := item.X - actor.X
@@ -149,6 +169,6 @@ func (w *World) dropAllGold(actor *actorState, reason string) int {
 	if total <= 0 {
 		return 0
 	}
-	w.upsertGroundGold(actor, total, reason)
+	w.upsertGroundItem(actor, ItemStack{Type: ItemTypeGold, Quantity: total}, reason)
 	return total
 }

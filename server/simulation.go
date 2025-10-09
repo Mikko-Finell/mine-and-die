@@ -81,7 +81,7 @@ type World struct {
 	currentTick         uint64
 
 	groundItems       map[string]*groundItemState
-	groundItemsByTile map[groundTileKey]*groundItemState
+	groundItemsByTile map[groundTileKey]map[ItemType]*groundItemState
 	journal           Journal
 }
 
@@ -107,7 +107,7 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		seed:                normalized.Seed,
 		publisher:           publisher,
 		groundItems:         make(map[string]*groundItemState),
-		groundItemsByTile:   make(map[groundTileKey]*groundItemState),
+		groundItemsByTile:   make(map[groundTileKey]map[ItemType]*groundItemState),
 		journal:             newJournal(defaultJournalKeyframeCapacity),
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
@@ -189,6 +189,9 @@ func (w *World) handleNPCDefeat(npc *npcState) {
 		return
 	}
 	w.dropAllGold(&npc.actorState, "death")
+	if qty := npc.Inventory.RemoveAllOf(ItemTypeRatTail); qty > 0 {
+		w.upsertGroundItem(&npc.actorState, ItemStack{Type: ItemTypeRatTail, Quantity: qty}, "death")
+	}
 	delete(w.npcs, npc.ID)
 }
 
@@ -641,6 +644,7 @@ func (w *World) spawnRatAt(x, y float64) {
 		ExperienceReward: 8,
 		Home:             vec2{X: x, Y: y},
 	}
+	_, _ = rat.Inventory.AddStack(ItemStack{Type: ItemTypeRatTail, Quantity: 1})
 	w.initializeRatState(rat)
 }
 
