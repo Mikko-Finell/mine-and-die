@@ -16,6 +16,7 @@ import {
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
   applyPatchesToSnapshot,
+  buildBaselineFromSnapshot,
 } from "../patches.js";
 
 function makePlayer(overrides = {}) {
@@ -286,6 +287,27 @@ describe("updatePatchState", () => {
     expect(result.lastTick).toBe(7);
   });
 
+  it("normalizes entity identifiers when seeding baseline state", () => {
+    const payload = deepFreeze({
+      t: 11,
+      players: [makePlayer({ id: "  player-1  " })],
+      npcs: [makeNPC({ id: "\tnpc-2\n" })],
+      effects: [makeEffect({ id: " effect-3 " })],
+      groundItems: [makeGroundItem({ id: "\nground-4\t" })],
+    });
+
+    const baseline = buildBaselineFromSnapshot(payload);
+
+    expect(Object.keys(baseline.players)).toEqual(["player-1"]);
+    expect(Object.keys(baseline.npcs)).toEqual(["npc-2"]);
+    expect(Object.keys(baseline.effects)).toEqual(["effect-3"]);
+    expect(Object.keys(baseline.groundItems)).toEqual(["ground-4"]);
+    expect(baseline.players["player-1"].id).toBe("player-1");
+    expect(baseline.npcs["npc-2"].id).toBe("npc-2");
+    expect(baseline.effects["effect-3"].id).toBe("effect-3");
+    expect(baseline.groundItems["ground-4"].id).toBe("ground-4");
+  });
+
   it("normalizes patch kinds and entity identifiers before applying handlers", () => {
     const base = {
       players: {
@@ -317,6 +339,34 @@ describe("updatePatchState", () => {
     expect(npcs["npc-1"].y).toBe(48);
     expect(players["player-1"].x).toBe(5);
     expect(players["player-1"].y).toBe(7);
+  });
+
+  it("normalizes entity identifiers when cloning baseline maps", () => {
+    const base = {
+      players: {
+        "  player-1  ": makePlayer({ id: "  player-1  " }),
+      },
+      npcs: {
+        " npc-2 ": makeNPC({ id: " npc-2 " }),
+      },
+      effects: {
+        " effect-3 ": makeEffect({ id: " effect-3 " }),
+      },
+      groundItems: {
+        " ground-4 ": makeGroundItem({ id: " ground-4 " }),
+      },
+    };
+
+    const { players, npcs, effects, groundItems } = applyPatchesToSnapshot(base, []);
+
+    expect(Object.keys(players)).toEqual(["player-1"]);
+    expect(Object.keys(npcs)).toEqual(["npc-2"]);
+    expect(Object.keys(effects)).toEqual(["effect-3"]);
+    expect(Object.keys(groundItems)).toEqual(["ground-4"]);
+    expect(players["player-1"].id).toBe("player-1");
+    expect(npcs["npc-2"].id).toBe("npc-2");
+    expect(effects["effect-3"].id).toBe("effect-3");
+    expect(groundItems["ground-4"].id).toBe("ground-4");
   });
 
   it("records errors for invalid patch envelopes and respects the history limit", () => {
