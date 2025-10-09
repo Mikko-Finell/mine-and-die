@@ -414,7 +414,7 @@ func (w *World) actionFace(cfg *aiCompiledConfig, npc *npcState, action aiCompil
 		return nil
 	}
 	facing := deriveFacing(dx, dy, npc.Facing)
-	npc.Facing = facing
+	w.SetNPCFacing(npc.ID, facing)
 	return &Command{
 		OriginTick: tick,
 		ActorID:    npc.ID,

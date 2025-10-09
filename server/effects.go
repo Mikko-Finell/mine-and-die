@@ -45,6 +45,7 @@ type effectState struct {
 	Projectile    *ProjectileState
 	FollowActorID string
 	Condition     ConditionType
+	version       uint64
 }
 
 type ProjectileTemplate struct {
@@ -222,6 +223,25 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 					return
 				}
 				w.SetHealth(player.ID, next)
+				changed = true
+			} else if npc, ok := w.npcs[target.ID]; ok && npc != nil {
+				max := npc.MaxHealth
+				if max <= 0 {
+					max = playerMaxHealth
+				}
+				next := npc.Health + delta
+				if math.IsNaN(next) || math.IsInf(next, 0) {
+					return
+				}
+				if next < 0 {
+					next = 0
+				} else if next > max {
+					next = max
+				}
+				if math.Abs(next-npc.Health) < healthEpsilon {
+					return
+				}
+				w.SetNPCHealth(npc.ID, next)
 				changed = true
 			} else {
 				changed = target.applyHealthDelta(delta)
@@ -679,8 +699,9 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
 			distance = p.RemainingRange
 		}
 		if distance > 0 {
-			eff.Effect.X += p.VelocityUnitX * distance
-			eff.Effect.Y += p.VelocityUnitY * distance
+			newX := eff.X + p.VelocityUnitX*distance
+			newY := eff.Y + p.VelocityUnitY*distance
+			w.SetEffectPosition(eff, newX, newY)
 			if p.RemainingRange > 0 {
 				previous := p.RemainingRange
 				p.RemainingRange -= distance
@@ -688,10 +709,7 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
 					p.RemainingRange = 0
 				}
 				if math.Abs(previous-p.RemainingRange) > 1e-9 {
-					if eff.Params == nil {
-						eff.Params = make(map[string]float64)
-					}
-					eff.Params["remainingRange"] = p.RemainingRange
+					w.SetEffectParam(eff, "remainingRange", p.RemainingRange)
 				}
 			}
 		}
@@ -836,8 +854,7 @@ func (w *World) updateFollowEffect(eff *effectState, now time.Time) {
 	if height <= 0 {
 		height = playerHalf * 2
 	}
-	eff.Effect.X = actor.X - width/2
-	eff.Effect.Y = actor.Y - height/2
+	w.SetEffectPosition(eff, actor.X-width/2, actor.Y-height/2)
 }
 
 func (w *World) actorByID(id string) *actorState {
@@ -861,9 +878,7 @@ func (w *World) stopProjectile(eff *effectState, now time.Time, opts projectileS
 	p := eff.Projectile
 	if p.RemainingRange != 0 {
 		p.RemainingRange = 0
-		if eff.Params != nil {
-			eff.Params["remainingRange"] = 0
-		}
+		w.SetEffectParam(eff, "remainingRange", 0)
 	}
 
 	if p.ExpiryResolved {

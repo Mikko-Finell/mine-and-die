@@ -100,12 +100,20 @@ func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
 		t.Fatalf("expected payload to include patches field")
 	}
 
-	arr, ok := rawPatches.([]any)
-	if !ok {
+	if _, ok := rawPatches.([]any); !ok {
 		t.Fatalf("expected patches to decode as array, got %T", rawPatches)
 	}
-	if len(arr) != 0 {
-		t.Fatalf("expected empty patches array, got %d entries", len(arr))
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state message: %v", err)
+	}
+
+	for _, patch := range msg.Patches {
+		switch patch.Kind {
+		case PatchPlayerPos, PatchPlayerFacing, PatchPlayerIntent, PatchPlayerHealth, PatchPlayerInventory:
+			t.Fatalf("expected no player patches in empty state, saw kind %q", patch.Kind)
+		}
 	}
 }
 

@@ -28,6 +28,7 @@ type npcState struct {
 	Waypoints        []vec2
 	Home             vec2
 	cooldowns        map[string]time.Time
+	version          uint64
 }
 
 func (s *npcState) snapshot() NPC {

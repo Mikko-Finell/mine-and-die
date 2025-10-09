@@ -270,12 +270,11 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 				}
 				npc.intentX = dx
 				npc.intentY = dy
-				npc.Facing = deriveFacing(dx, dy, npc.Facing)
-				if dx == 0 && dy == 0 {
-					if cmd.Move.Facing != "" {
-						npc.Facing = cmd.Move.Facing
-					}
+				nextFacing := deriveFacing(dx, dy, npc.Facing)
+				if dx == 0 && dy == 0 && cmd.Move.Facing != "" {
+					nextFacing = cmd.Move.Facing
 				}
+				w.SetNPCFacing(npc.ID, nextFacing)
 			}
 		case CommandAction:
 			if cmd.Action == nil {
@@ -337,11 +336,16 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 		proposedPlayerStates[id] = &scratch
 		actorsForCollisions = append(actorsForCollisions, &scratch)
 	}
-	for _, npc := range w.npcs {
+	initialNPCPositions := make(map[string]vec2, len(w.npcs))
+	proposedNPCStates := make(map[string]*actorState, len(w.npcs))
+	for id, npc := range w.npcs {
+		initialNPCPositions[id] = vec2{X: npc.X, Y: npc.Y}
+		scratch := npc.actorState
 		if npc.intentX != 0 || npc.intentY != 0 {
-			moveActorWithObstacles(&npc.actorState, dt, w.obstacles)
+			moveActorWithObstacles(&scratch, dt, w.obstacles)
 		}
-		actorsForCollisions = append(actorsForCollisions, &npc.actorState)
+		proposedNPCStates[id] = &scratch
+		actorsForCollisions = append(actorsForCollisions, &scratch)
 	}
 
 	resolveActorCollisions(actorsForCollisions, w.obstacles)
@@ -355,6 +359,16 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 
 	w.applyPlayerPositionMutations(initialPlayerPositions, proposedPositions)
+
+	proposedNPCPositions := make(map[string]vec2, len(proposedNPCStates))
+	for id, state := range proposedNPCStates {
+		if state == nil {
+			continue
+		}
+		proposedNPCPositions[id] = vec2{X: state.X, Y: state.Y}
+	}
+
+	w.applyNPCPositionMutations(initialNPCPositions, proposedNPCPositions)
 
 	// Ability and effect staging.
 	for _, action := range stagedActions {
@@ -430,6 +444,32 @@ func (w *World) applyPlayerPositionMutations(initial map[string]vec2, proposed m
 		}
 
 		w.SetPosition(id, target.X, target.Y)
+	}
+}
+
+// applyNPCPositionMutations commits NPC movement resolved during the tick through
+// the NPC write barrier so patches and versions stay consistent.
+func (w *World) applyNPCPositionMutations(initial map[string]vec2, proposed map[string]vec2) {
+	if w == nil {
+		return
+	}
+
+	for id, npc := range w.npcs {
+		start, ok := initial[id]
+		if !ok {
+			start = vec2{X: npc.X, Y: npc.Y}
+		}
+
+		target, ok := proposed[id]
+		if !ok {
+			target = vec2{X: npc.X, Y: npc.Y}
+		}
+
+		if positionsEqual(start.X, start.Y, target.X, target.Y) {
+			continue
+		}
+
+		w.SetNPCPosition(id, target.X, target.Y)
 	}
 }
 

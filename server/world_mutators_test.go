@@ -368,3 +368,208 @@ func TestMutateInventoryErrorRestoresState(t *testing.T) {
 		t.Fatalf("expected a single patch from the successful mutate, got %d", len(patches))
 	}
 }
+
+func TestSetNPCPositionRecordsPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-1", X: 1, Y: 2}}}
+	w.npcs = map[string]*npcState{"npc-1": npc}
+
+	w.SetNPCPosition("npc-1", 10, 20)
+
+	if npc.version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchNPCPos {
+		t.Fatalf("expected patch kind %q, got %q", PatchNPCPos, patch.Kind)
+	}
+	payload, ok := patch.Payload.(NPCPosPayload)
+	if !ok {
+		t.Fatalf("expected payload to be NPCPosPayload, got %T", patch.Payload)
+	}
+	if payload.X != 10 || payload.Y != 20 {
+		t.Fatalf("expected payload coords (10,20), got (%.2f, %.2f)", payload.X, payload.Y)
+	}
+}
+
+func TestSetNPCFacingRecordsPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-2", Facing: FacingUp}}}
+	w.npcs = map[string]*npcState{"npc-2": npc}
+
+	w.SetNPCFacing("npc-2", FacingLeft)
+
+	if npc.version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != PatchNPCFacing {
+		t.Fatalf("expected patch kind %q, got %q", PatchNPCFacing, patch.Kind)
+	}
+	payload, ok := patch.Payload.(NPCFacingPayload)
+	if !ok {
+		t.Fatalf("expected payload to be NPCFacingPayload, got %T", patch.Payload)
+	}
+	if payload.Facing != FacingLeft {
+		t.Fatalf("expected payload facing %q, got %q", FacingLeft, payload.Facing)
+	}
+}
+
+func TestSetNPCHealthRecordsPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-3", Health: 50, MaxHealth: 100}}}
+	w.npcs = map[string]*npcState{"npc-3": npc}
+
+	w.SetNPCHealth("npc-3", 20)
+
+	if npc.version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	}
+	if math.Abs(npc.Health-20) > 1e-6 {
+		t.Fatalf("expected npc health to be 20, got %.2f", npc.Health)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != PatchNPCHealth {
+		t.Fatalf("expected patch kind %q, got %q", PatchNPCHealth, patch.Kind)
+	}
+	payload, ok := patch.Payload.(NPCHealthPayload)
+	if !ok {
+		t.Fatalf("expected payload to be NPCHealthPayload, got %T", patch.Payload)
+	}
+	if math.Abs(payload.Health-20) > 1e-6 {
+		t.Fatalf("expected payload health 20, got %.2f", payload.Health)
+	}
+}
+
+func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-4", Inventory: NewInventory()}}}
+	w.npcs = map[string]*npcState{"npc-4": npc}
+
+	if err := w.MutateNPCInventory("npc-4", func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 2})
+		return err
+	}); err != nil {
+		t.Fatalf("unexpected error mutating npc inventory: %v", err)
+	}
+
+	if npc.version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != PatchNPCInventory {
+		t.Fatalf("expected patch kind %q, got %q", PatchNPCInventory, patch.Kind)
+	}
+	payload, ok := patch.Payload.(NPCInventoryPayload)
+	if !ok {
+		t.Fatalf("expected payload to be NPCInventoryPayload, got %T", patch.Payload)
+	}
+	if len(payload.Slots) != 1 {
+		t.Fatalf("expected payload to contain 1 slot, got %d", len(payload.Slots))
+	}
+	if payload.Slots[0].Item.Quantity != 2 {
+		t.Fatalf("expected slot quantity 2, got %d", payload.Slots[0].Item.Quantity)
+	}
+}
+
+func TestSetEffectPositionRecordsPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	eff := &effectState{Effect: Effect{ID: "effect-1", X: 1, Y: 2}}
+
+	w.SetEffectPosition(eff, 5, 7)
+
+	if eff.version != 1 {
+		t.Fatalf("expected effect version to increment, got %d", eff.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != PatchEffectPos {
+		t.Fatalf("expected patch kind %q, got %q", PatchEffectPos, patch.Kind)
+	}
+	payload, ok := patch.Payload.(EffectPosPayload)
+	if !ok {
+		t.Fatalf("expected payload to be EffectPosPayload, got %T", patch.Payload)
+	}
+	if payload.X != 5 || payload.Y != 7 {
+		t.Fatalf("expected payload coords (5,7), got (%.2f, %.2f)", payload.X, payload.Y)
+	}
+}
+
+func TestSetEffectParamRecordsPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	eff := &effectState{Effect: Effect{ID: "effect-2"}}
+
+	w.SetEffectParam(eff, "remainingRange", 3.5)
+
+	if eff.version != 1 {
+		t.Fatalf("expected effect version to increment, got %d", eff.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != PatchEffectParams {
+		t.Fatalf("expected patch kind %q, got %q", PatchEffectParams, patch.Kind)
+	}
+	payload, ok := patch.Payload.(EffectParamsPayload)
+	if !ok {
+		t.Fatalf("expected payload to be EffectParamsPayload, got %T", patch.Payload)
+	}
+	if payload.Params["remainingRange"] != 3.5 {
+		t.Fatalf("expected remainingRange 3.5, got %.2f", payload.Params["remainingRange"])
+	}
+}
+
+func TestSetGroundItemQuantityRecordsPatch(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	item := &groundItemState{GroundItem: GroundItem{ID: "ground-1", Qty: 1, X: 0, Y: 0}}
+
+	w.SetGroundItemQuantity(item, 5)
+
+	if item.version != 1 {
+		t.Fatalf("expected item version to increment, got %d", item.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != PatchGroundItemQty {
+		t.Fatalf("expected patch kind %q, got %q", PatchGroundItemQty, patch.Kind)
+	}
+	payload, ok := patch.Payload.(GroundItemQtyPayload)
+	if !ok {
+		t.Fatalf("expected payload to be GroundItemQtyPayload, got %T", patch.Payload)
+	}
+	if payload.Qty != 5 {
+		t.Fatalf("expected quantity 5, got %d", payload.Qty)
+	}
+}
