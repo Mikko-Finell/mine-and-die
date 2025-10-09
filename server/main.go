@@ -217,7 +217,7 @@ func main() {
 			return
 		}
 
-		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, snapshotEffects, nil, snapshotGroundItems)
+		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, snapshotEffects, nil, snapshotGroundItems, false)
 		if err != nil {
 			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs, effects := hub.Disconnect(playerID)

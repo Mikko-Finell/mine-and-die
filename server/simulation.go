@@ -152,6 +152,12 @@ func (w *World) drainPatchesLocked() []Patch {
 	return w.journal.DrainPatches()
 }
 
+// snapshotPatchesLocked returns a copy of any staged patches without clearing
+// the journal. Callers must hold the world mutex.
+func (w *World) snapshotPatchesLocked() []Patch {
+	return w.journal.SnapshotPatches()
+}
+
 // HasPlayer reports whether the world currently tracks the given player.
 func (w *World) HasPlayer(id string) bool {
 	_, ok := w.players[id]
