@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	stats "mine-and-die/server/stats"
 )
 
 func newStaticAIWorld() (*World, *npcState) {
@@ -34,6 +36,7 @@ func newStaticAIWorld() (*World, *npcState) {
 				Inventory: NewInventory(),
 			},
 		},
+		stats:            stats.DefaultComponent(stats.ArchetypeGoblin),
 		Type:             NPCTypeGoblin,
 		ExperienceReward: 25,
 		Waypoints: []vec2{
@@ -115,6 +118,7 @@ func newRatTestWorld() (*World, *npcState) {
 				Inventory: NewInventory(),
 			},
 		},
+		stats:            stats.DefaultComponent(stats.ArchetypeRat),
 		Type:             NPCTypeRat,
 		ExperienceReward: 8,
 		Home:             vec2{X: 420, Y: 360},
@@ -214,11 +218,12 @@ func TestGoblinPursuesPlayerWithinRange(t *testing.T) {
 				X:         npc.X + 200,
 				Y:         npc.Y,
 				Facing:    defaultFacing,
-				Health:    playerMaxHealth,
-				MaxHealth: playerMaxHealth,
+				Health:    baselinePlayerMaxHealth,
+				MaxHealth: baselinePlayerMaxHealth,
 				Inventory: NewInventory(),
 			},
 		},
+		stats: stats.DefaultComponent(stats.ArchetypePlayer),
 	}
 	w.players[player.ID] = player
 
@@ -277,11 +282,12 @@ func TestGoblinReturnsToPatrolAfterLosingPlayer(t *testing.T) {
 				X:         npc.X + 200,
 				Y:         npc.Y,
 				Facing:    defaultFacing,
-				Health:    playerMaxHealth,
-				MaxHealth: playerMaxHealth,
+				Health:    baselinePlayerMaxHealth,
+				MaxHealth: baselinePlayerMaxHealth,
 				Inventory: NewInventory(),
 			},
 		},
+		stats: stats.DefaultComponent(stats.ArchetypePlayer),
 	}
 	w.players[player.ID] = player
 
@@ -465,11 +471,12 @@ func TestRatFleesFromNearbyThreat(t *testing.T) {
 				X:         rat.X + 20,
 				Y:         rat.Y,
 				Facing:    defaultFacing,
-				Health:    playerMaxHealth,
-				MaxHealth: playerMaxHealth,
+				Health:    baselinePlayerMaxHealth,
+				MaxHealth: baselinePlayerMaxHealth,
 				Inventory: NewInventory(),
 			},
 		},
+		stats: stats.DefaultComponent(stats.ArchetypePlayer),
 	}
 	w.players[player.ID] = player
 

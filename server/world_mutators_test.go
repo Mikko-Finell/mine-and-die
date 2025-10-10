@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"mine-and-die/server/logging"
+	stats "mine-and-die/server/stats"
 )
 
 func TestSetPositionNoopDoesNotEmitPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-1", X: 10, Y: 20}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-1", X: 10, Y: 20, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetPosition("player-1", 10, 20)
@@ -26,7 +27,7 @@ func TestSetPositionNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestSetPositionRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-2", X: 5, Y: 6}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-2", X: 5, Y: 6, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetPosition("player-2", 15, 25)
@@ -64,7 +65,7 @@ func TestSetPositionRecordsPatch(t *testing.T) {
 
 func TestSetFacingNoopDoesNotEmitPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-3", Facing: FacingRight}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-3", Facing: FacingRight, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetFacing("player-3", FacingRight)
@@ -80,7 +81,7 @@ func TestSetFacingNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestSetFacingRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-4", Facing: FacingUp}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-4", Facing: FacingUp, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetFacing("player-4", FacingLeft)
@@ -118,7 +119,7 @@ func TestSetFacingRecordsPatch(t *testing.T) {
 
 func TestSetIntentNoopDoesNotEmitPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent-noop"}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent-noop", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	player.intentX = 0.25
 	player.intentY = -0.5
 	w.AddPlayer(player)
@@ -136,7 +137,7 @@ func TestSetIntentNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestSetIntentRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent"}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetIntent("player-intent", 1, 0)
@@ -174,7 +175,7 @@ func TestSetIntentRecordsPatch(t *testing.T) {
 
 func TestSetHealthNoopDoesNotEmitPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-5", Health: 75, MaxHealth: 100}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-5", Health: 75, MaxHealth: 100}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetHealth("player-5", 75)
@@ -190,10 +191,10 @@ func TestSetHealthNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestSetHealthRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-6", Health: playerMaxHealth, MaxHealth: playerMaxHealth}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-6", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
-	w.SetHealth("player-6", playerMaxHealth-25)
+	w.SetHealth("player-6", baselinePlayerMaxHealth-25)
 
 	if player.version != 1 {
 		t.Fatalf("expected version to increment to 1, got %d", player.version)
@@ -216,22 +217,71 @@ func TestSetHealthRecordsPatch(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected payload to be PlayerHealthPayload, got %T", patch.Payload)
 	}
-	if math.Abs(payload.Health-(playerMaxHealth-25)) > 1e-6 {
-		t.Fatalf("expected payload health %.2f, got %.2f", playerMaxHealth-25, payload.Health)
+	if math.Abs(payload.Health-(baselinePlayerMaxHealth-25)) > 1e-6 {
+		t.Fatalf("expected payload health %.2f, got %.2f", baselinePlayerMaxHealth-25, payload.Health)
 	}
-	if math.Abs(payload.MaxHealth-playerMaxHealth) > 1e-6 {
-		t.Fatalf("expected payload max health %.2f, got %.2f", playerMaxHealth, payload.MaxHealth)
+	if math.Abs(payload.MaxHealth-baselinePlayerMaxHealth) > 1e-6 {
+		t.Fatalf("expected payload max health %.2f, got %.2f", baselinePlayerMaxHealth, payload.MaxHealth)
 	}
 
-	w.SetHealth("player-6", playerMaxHealth)
+	w.SetHealth("player-6", baselinePlayerMaxHealth)
 	if player.version != 2 {
 		t.Fatalf("expected version to increment to 2, got %d", player.version)
 	}
 }
 
+func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-max-sync", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	// Clear any staged patches from player onboarding.
+	w.drainPatchesLocked()
+
+	delta := stats.NewStatDelta()
+	delta.Add[stats.StatMight] = 4
+	player.stats.Apply(stats.CommandStatChange{
+		Layer:  stats.LayerPermanent,
+		Source: stats.SourceKey{Kind: stats.SourceKindProgression, ID: "test"},
+		Delta:  delta,
+	})
+
+	w.resolveStats(w.currentTick)
+
+	if player.version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch after max health change, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchPlayerHealth {
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerHealth, patch.Kind)
+	}
+	if patch.EntityID != "player-max-sync" {
+		t.Fatalf("expected entity id player-max-sync, got %q", patch.EntityID)
+	}
+
+	payload, ok := patch.Payload.(PlayerHealthPayload)
+	if !ok {
+		t.Fatalf("expected payload to be PlayerHealthPayload, got %T", patch.Payload)
+	}
+
+	expectedMax := player.stats.GetDerived(stats.DerivedMaxHealth)
+	if math.Abs(payload.Health-baselinePlayerMaxHealth) > 1e-6 {
+		t.Fatalf("expected payload health %.2f, got %.2f", baselinePlayerMaxHealth, payload.Health)
+	}
+	if math.Abs(payload.MaxHealth-expectedMax) > 1e-6 {
+		t.Fatalf("expected payload max health %.2f, got %.2f", expectedMax, payload.MaxHealth)
+	}
+}
+
 func TestApplyEffectHitPlayerEmitsHealthPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-7", Health: playerMaxHealth, MaxHealth: playerMaxHealth}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-7", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	eff := &effectState{
@@ -244,7 +294,7 @@ func TestApplyEffectHitPlayerEmitsHealthPatch(t *testing.T) {
 
 	w.applyEffectHitPlayer(eff, player, time.Now())
 
-	expected := playerMaxHealth - 15
+	expected := baselinePlayerMaxHealth - 15
 	if math.Abs(player.Health-expected) > 1e-6 {
 		t.Fatalf("expected player health to drop to %.2f, got %.2f", expected, player.Health)
 	}
@@ -272,7 +322,7 @@ func TestApplyEffectHitPlayerEmitsHealthPatch(t *testing.T) {
 
 func TestMutateInventoryNoopDoesNotEmitPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-8", Inventory: NewInventory()}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-8", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if err := w.MutateInventory("player-8", func(inv *Inventory) error { return nil }); err != nil {
@@ -290,7 +340,7 @@ func TestMutateInventoryNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestMutateInventoryRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-9", Inventory: NewInventory()}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-9", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if err := w.MutateInventory("player-9", func(inv *Inventory) error {
@@ -338,7 +388,7 @@ func TestMutateInventoryRecordsPatch(t *testing.T) {
 
 func TestMutateInventoryErrorRestoresState(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-10", Inventory: NewInventory()}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-10", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if err := w.MutateInventory("player-10", func(inv *Inventory) error {
@@ -371,7 +421,7 @@ func TestMutateInventoryErrorRestoresState(t *testing.T) {
 
 func TestSetNPCPositionRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-1", X: 1, Y: 2}}}
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-1", X: 1, Y: 2}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-1": npc}
 
 	w.SetNPCPosition("npc-1", 10, 20)
@@ -400,7 +450,7 @@ func TestSetNPCPositionRecordsPatch(t *testing.T) {
 
 func TestSetNPCFacingRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-2", Facing: FacingUp}}}
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-2", Facing: FacingUp}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-2": npc}
 
 	w.SetNPCFacing("npc-2", FacingLeft)
@@ -428,7 +478,7 @@ func TestSetNPCFacingRecordsPatch(t *testing.T) {
 
 func TestSetNPCHealthRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-3", Health: 50, MaxHealth: 100}}}
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-3", Health: 50, MaxHealth: 100}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-3": npc}
 
 	w.SetNPCHealth("npc-3", 20)
@@ -459,7 +509,7 @@ func TestSetNPCHealthRecordsPatch(t *testing.T) {
 
 func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-4", Inventory: NewInventory()}}}
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-4", Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-4": npc}
 
 	if err := w.MutateNPCInventory("npc-4", func(inv *Inventory) error {

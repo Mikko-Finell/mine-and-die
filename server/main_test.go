@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"mine-and-die/server/logging"
+	stats "mine-and-die/server/stats"
 )
 
 func findPlayer(players []Player, id string) *Player {
@@ -37,10 +38,11 @@ func newTestPlayerState(id string) *playerState {
 				ID:        id,
 				Facing:    defaultFacing,
 				Inventory: NewInventory(),
-				Health:    playerMaxHealth,
-				MaxHealth: playerMaxHealth,
+				Health:    baselinePlayerMaxHealth,
+				MaxHealth: baselinePlayerMaxHealth,
 			},
 		},
+		stats:         stats.DefaultComponent(stats.ArchetypePlayer),
 		lastHeartbeat: time.Now(),
 		path:          playerPathState{ArriveRadius: defaultPlayerArriveRadius},
 	}
@@ -126,8 +128,8 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 		t.Fatalf("expected joined player to start with inventory items")
 	} else if math.Abs(p.Health-p.MaxHealth) > 1e-6 {
 		t.Fatalf("expected player to join at full health, got %.2f/%.2f", p.Health, p.MaxHealth)
-	} else if math.Abs(p.MaxHealth-playerMaxHealth) > 1e-6 {
-		t.Fatalf("expected max health %.2f, got %.2f", playerMaxHealth, p.MaxHealth)
+	} else if math.Abs(p.MaxHealth-baselinePlayerMaxHealth) > 1e-6 {
+		t.Fatalf("expected max health %.2f, got %.2f", baselinePlayerMaxHealth, p.MaxHealth)
 	}
 
 	second := hub.Join()
@@ -643,7 +645,7 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected target to remain in hub")
 	}
-	expected := playerMaxHealth - meleeAttackDamage
+	expected := baselinePlayerMaxHealth - meleeAttackDamage
 	if math.Abs(target.Health-expected) > 1e-6 {
 		hub.mu.Unlock()
 		t.Fatalf("expected target health %.1f, got %.1f", expected, target.Health)
@@ -896,7 +898,7 @@ func TestLavaAppliesBurningCondition(t *testing.T) {
 		t.Fatalf("expected player snapshot")
 	}
 
-	expected := playerMaxHealth - lavaDamagePerSecond*burningTickInterval.Seconds()
+	expected := baselinePlayerMaxHealth - lavaDamagePerSecond*burningTickInterval.Seconds()
 	if math.Abs(damaged.Health-expected) > 1e-6 {
 		t.Fatalf("expected burning to deal %.2f damage, got health %.2f", lavaDamagePerSecond*burningTickInterval.Seconds(), damaged.Health)
 	}
@@ -1061,7 +1063,7 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected target to remain in hub")
 	}
-	expected := playerMaxHealth - fireballDamage - lavaDamagePerSecond*burningTickInterval.Seconds()
+	expected := baselinePlayerMaxHealth - fireballDamage - lavaDamagePerSecond*burningTickInterval.Seconds()
 	if math.Abs(target.Health-expected) > 1e-6 {
 		hub.mu.Unlock()
 		t.Fatalf("expected target health %.1f, got %.1f", expected, target.Health)
@@ -1079,7 +1081,7 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 	state := newTestPlayerState(playerID)
 	state.X = 160
 	state.Y = 160
-	state.Health = playerMaxHealth - 30
+	state.Health = baselinePlayerMaxHealth - 30
 	state.lastHeartbeat = time.Now()
 	hub.world.players[playerID] = state
 
@@ -1087,8 +1089,8 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 
 	hub.world.applyEffectHitPlayer(heal, state, time.Now())
 
-	if math.Abs(state.Health-playerMaxHealth) > 1e-6 {
-		t.Fatalf("expected healing to clamp to max %.1f, got %.1f", playerMaxHealth, state.Health)
+	if math.Abs(state.Health-baselinePlayerMaxHealth) > 1e-6 {
+		t.Fatalf("expected healing to clamp to max %.1f, got %.1f", baselinePlayerMaxHealth, state.Health)
 	}
 }
 
@@ -1465,14 +1467,14 @@ func TestProjectileMaxTargetsLimit(t *testing.T) {
 		t.Fatalf("expected projectile to record 2 hits, got %+v", eff.Projectile)
 	}
 
-	if !(first.Health < playerMaxHealth) {
-		t.Fatalf("expected first target health to drop below %.1f, got %.1f", playerMaxHealth, first.Health)
+	if !(first.Health < baselinePlayerMaxHealth) {
+		t.Fatalf("expected first target health to drop below %.1f, got %.1f", baselinePlayerMaxHealth, first.Health)
 	}
-	if !(second.Health < playerMaxHealth) {
-		t.Fatalf("expected second target health to drop below %.1f, got %.1f", playerMaxHealth, second.Health)
+	if !(second.Health < baselinePlayerMaxHealth) {
+		t.Fatalf("expected second target health to drop below %.1f, got %.1f", baselinePlayerMaxHealth, second.Health)
 	}
-	if math.Abs(third.Health-playerMaxHealth) > 1e-6 {
-		t.Fatalf("expected third target to remain unharmed at %.1f, got %.1f", playerMaxHealth, third.Health)
+	if math.Abs(third.Health-baselinePlayerMaxHealth) > 1e-6 {
+		t.Fatalf("expected third target to remain unharmed at %.1f, got %.1f", baselinePlayerMaxHealth, third.Health)
 	}
 }
 
@@ -1770,8 +1772,8 @@ func TestProjectileOwnerImmunity(t *testing.T) {
 		if eff.Projectile.HitCount != 0 {
 			t.Fatalf("expected no self hits when owner immune, got %d", eff.Projectile.HitCount)
 		}
-		if math.Abs(shooter.Health-playerMaxHealth) > 1e-6 {
-			t.Fatalf("expected shooter health to remain %.1f, got %.1f", playerMaxHealth, shooter.Health)
+		if math.Abs(shooter.Health-baselinePlayerMaxHealth) > 1e-6 {
+			t.Fatalf("expected shooter health to remain %.1f, got %.1f", baselinePlayerMaxHealth, shooter.Health)
 		}
 	})
 
@@ -1806,8 +1808,8 @@ func TestProjectileOwnerImmunity(t *testing.T) {
 		if eff.Projectile == nil || eff.Projectile.HitCount == 0 {
 			t.Fatalf("expected projectile to record self hit when allowed")
 		}
-		if !(shooter.Health < playerMaxHealth) {
-			t.Fatalf("expected shooter health to drop below %.1f after self hit, got %.1f", playerMaxHealth, shooter.Health)
+		if !(shooter.Health < baselinePlayerMaxHealth) {
+			t.Fatalf("expected shooter health to drop below %.1f after self hit, got %.1f", baselinePlayerMaxHealth, shooter.Health)
 		}
 	})
 }
@@ -1980,7 +1982,7 @@ func TestDeathDropsPlayerInventory(t *testing.T) {
 func TestDeathDropsNPCInventory(t *testing.T) {
 	hub := newHub()
 	attacker := newTestPlayerState("player-vs-npc")
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 300, Y: 300, Health: 25, MaxHealth: 25, Inventory: NewInventory()}}, Type: NPCTypeGoblin}
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 300, Y: 300, Health: 25, MaxHealth: 25, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin), Type: NPCTypeGoblin}
 	if _, err := npc.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
 		t.Fatalf("failed to seed npc gold: %v", err)
 	}

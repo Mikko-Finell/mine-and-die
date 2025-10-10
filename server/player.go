@@ -3,6 +3,8 @@ package main
 import (
 	"math"
 	"time"
+
+	stats "mine-and-die/server/stats"
 )
 
 // Actor captures the shared state for any living entity in the world.
@@ -128,14 +130,11 @@ func (s *actorState) applyHealthDelta(delta float64) bool {
 		return false
 	}
 	max := s.MaxHealth
-	if max <= 0 {
-		max = playerMaxHealth
-	}
 	next := s.Health + delta
 	if next < 0 {
 		next = 0
 	}
-	if next > max {
+	if max > 0 && next > max {
 		next = max
 	}
 	if math.Abs(next-s.Health) < 1e-6 {
@@ -150,6 +149,7 @@ func (s *actorState) applyHealthDelta(delta float64) bool {
 // consistent.
 type playerState struct {
 	actorState
+	stats         stats.Component
 	lastInput     time.Time
 	lastHeartbeat time.Time
 	lastRTT       time.Duration

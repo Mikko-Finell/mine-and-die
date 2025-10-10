@@ -12,7 +12,6 @@ const (
 	defaultSpawnX         = worldWidth / 2
 	defaultSpawnY         = worldHeight / 2
 	playerHalf            = 14.0
-	playerMaxHealth       = 100.0
 	lavaDamagePerSecond   = 20.0
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
