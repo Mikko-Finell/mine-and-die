@@ -20,6 +20,16 @@ const KEYFRAME_RETRY_MAX_STEP = 2000;
 const KEYFRAME_RETRY_TICK_INTERVAL = 100;
 const heartbeatControllers = new WeakMap();
 
+function computeKeyframeRetryDelay(attempts) {
+  const normalized = Math.max(1, Math.floor(attempts));
+  const exponential = KEYFRAME_RETRY_BASE_DELAY * Math.pow(2, normalized - 1);
+  const bounded = Math.min(
+    KEYFRAME_RETRY_MAX_STEP,
+    Math.max(KEYFRAME_RETRY_BASE_DELAY, exponential),
+  );
+  return bounded;
+}
+
 function normalizeProtocolVersionValue(value) {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
@@ -760,11 +770,19 @@ function processKeyframeRetryLoop(store) {
       continue;
     }
     const nextRetryAt = Number(entry.nextRetryAt);
-    if (!Number.isFinite(nextRetryAt) || nextRetryAt > now) {
+    if (!Number.isFinite(nextRetryAt)) {
       continue;
     }
     const attempts = Math.max(0, Math.floor(entry.attempts ?? 0));
     if (attempts >= KEYFRAME_RETRY_MAX_ATTEMPTS) {
+      if (nextRetryAt <= now) {
+        requests.delete(sequence);
+        handleConnectionLoss(store);
+        return;
+      }
+      continue;
+    }
+    if (nextRetryAt > now) {
       continue;
     }
     const pendingReplay = getPendingReplayForSequence(store, sequence);
@@ -794,13 +812,15 @@ function requestKeyframeSnapshot(store, sequence, tick, options = {}) {
       : baseAttempts > 0
         ? baseAttempts
         : 1;
-    const nextRetryAt = shouldIncrement ? null : existing.nextRetryAt ?? null;
+    const now = Date.now();
+    const nextRetryDelay = computeKeyframeRetryDelay(nextAttempts);
+    const nextRetryAt = now + nextRetryDelay;
     const firstRequestedAtOption = options.firstRequestedAt;
     const firstRequestedAt = Number.isFinite(firstRequestedAtOption)
       ? Math.floor(firstRequestedAtOption)
       : Number.isFinite(existing.firstRequestedAt)
         ? Math.floor(existing.firstRequestedAt)
-        : Date.now();
+        : now;
     pendingRequests.set(normalizedSeq, {
       attempts: nextAttempts,
       nextRetryAt,
@@ -1416,3 +1436,14 @@ export async function resetWorld(store, config) {
 
   return normalized;
 }
+
+export const __networkInternals = {
+  computeKeyframeRetryDelay,
+  processKeyframeRetryLoop,
+  requestKeyframeSnapshot,
+  KEYFRAME_RETRY_CONSTANTS: {
+    BASE_DELAY: KEYFRAME_RETRY_BASE_DELAY,
+    MAX_STEP: KEYFRAME_RETRY_MAX_STEP,
+    MAX_ATTEMPTS: KEYFRAME_RETRY_MAX_ATTEMPTS,
+  },
+};
