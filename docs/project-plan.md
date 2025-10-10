@@ -100,13 +100,21 @@ Our short-term mission is to **stabilize the core loop**, **align messaging with
 
 ---
 
-## 9. Immediate Actions (Next 2 Weeks)
+## 9. Dependency Graph
 
-1. **Start reliability hardening** — implement queue limits and broadcast loop refactor (owners: Server / Infra).  
-2. **Finalize README refresh** — align docs and marketing copy with current capabilities (owners: PM + Comms).  
-3. **Design reset confirmation UX** — deliver wireframes for review (owner: Design).  
-4. **Draft economy data contracts** — deposits, taxes, and safe-zone placeholders for early client integration (owner: Engineering).  
-5. **Define telemetry schema** — events for heartbeat, gold flow, and faction promotions (owner: PM + Backend).  
+| System                          | Hard prereqs                                                                             | Soft links / consumed                                                                                           | Provides / unblocks                                                             |
+| ------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Itemization & Equipment**     | —                                                                                        | Coatings/enchantments, consumables, weapons/armor definitions (modifiers, slots)                                | Baseline item schema for crafting, combat, market fungibility                   |
+| **Stat Taxonomy (core attrs)**  | —                                                                                        | Defines Might/Resonance/Focus/Speed and derived stats (HP, Accuracy, etc.)                                      | Inputs for combat math; target stats for boosters/equipment mods                |
+| **Crafting**                    | Itemization                                                                              | Recipes transform materials → functional outputs; no gates; recyclable loop                                     | Produces consumables, coatings, and gear that feed economy & stat progression   |
+| **Stat Progression (boosters)** | Stat Taxonomy, Crafting                                                                  | Permanent, deterministic stat boosts via crafted elixirs/tinctures (exp-decay curve)                            | Player power growth that combat/economy balance around                          |
+| **Combat**                      | Stat Taxonomy, Itemization (weapons/armor), Stat Progression (to have non-trivial stats) | Consumes equipment and stats; integrates with coatings/effects/conditions; real-time probabilistic resolution   | Drives demand for consumables/repairs; creates loot/loss that fuels economy     |
+| **Economy**                     | Itemization (fungibility), Crafting (supply), Factions (tax routing)                     | Global market UI, finite gold deposits, escrowed settlement; taxes routed via faction chain                     | Trade loops, scarcity signals, and player roles; sinks via PvP loss & taxation  |
+| **Factions (hierarchy & tax)**  | —                                                                                        | Rank tree, immediate upward tax routing on income; succession on death/coup (consumes combat outcomes later)    | Provides taxation config used by economy; long-term identity/governance loop    |
+
+### Suggested build order (pragmatic)
+
+1. **Itemization + Stat Taxonomy** → 2) **Crafting (T1 consumables + a couple coatings)** → 3) **Stat Progression (hook boosters into stats)** → 4) **Combat (using the above)** → 5) **Economy (gold deposits + market escrow; wire faction tax)** → 6) **Factions (enable tax rates, simple promotions; full coup/death rules later)**.
 
 ---
 
