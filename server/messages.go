@@ -26,24 +26,46 @@ type stateMessage struct {
 	Patches        []Patch         `json:"patches"`
 	Tick           uint64          `json:"t"`
 	Sequence       uint64          `json:"sequence"`
+	KeyframeSeq    uint64          `json:"keyframeSeq"`
 	ServerTime     int64           `json:"serverTime"`
 	Config         worldConfig     `json:"config"`
 	Resync         bool            `json:"resync,omitempty"`
 }
 
+type keyframeMessage struct {
+	Ver         int          `json:"ver"`
+	Type        string       `json:"type"`
+	Sequence    uint64       `json:"sequence"`
+	Tick        uint64       `json:"t"`
+	Players     []Player     `json:"players"`
+	NPCs        []NPC        `json:"npcs"`
+	Obstacles   []Obstacle   `json:"obstacles"`
+	Effects     []Effect     `json:"effects"`
+	GroundItems []GroundItem `json:"groundItems"`
+	Config      worldConfig  `json:"config"`
+}
+
+type keyframeNackMessage struct {
+	Ver      int    `json:"ver"`
+	Type     string `json:"type"`
+	Sequence uint64 `json:"sequence"`
+	Reason   string `json:"reason"`
+}
+
 type clientMessage struct {
-	Ver    int     `json:"ver,omitempty"`
-	Type   string  `json:"type"`
-	DX     float64 `json:"dx"`
-	DY     float64 `json:"dy"`
-	Facing string  `json:"facing"`
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	SentAt int64   `json:"sentAt"`
-	Action string  `json:"action"`
-	Cmd    string  `json:"cmd"`
-	Qty    int     `json:"qty"`
-	Ack    *uint64 `json:"ack"`
+	Ver         int     `json:"ver,omitempty"`
+	Type        string  `json:"type"`
+	DX          float64 `json:"dx"`
+	DY          float64 `json:"dy"`
+	Facing      string  `json:"facing"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	SentAt      int64   `json:"sentAt"`
+	Action      string  `json:"action"`
+	Cmd         string  `json:"cmd"`
+	Qty         int     `json:"qty"`
+	Ack         *uint64 `json:"ack"`
+	KeyframeSeq *uint64 `json:"keyframeSeq"`
 }
 
 type consoleAckMessage struct {

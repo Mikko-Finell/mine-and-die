@@ -59,6 +59,7 @@ const diagnosticsEls = {
   patchBaseline: document.getElementById("diag-patch-baseline"),
   patchBatch: document.getElementById("diag-patch-batch"),
   patchEntities: document.getElementById("diag-patch-entities"),
+  patchRecovery: document.getElementById("diag-patch-recovery"),
 };
 
 const hudNetworkEls = {
@@ -193,6 +194,8 @@ const store = {
   effects: [],
   pendingEffectTriggers: [],
   processedEffectTriggerIds: new Set(),
+  keyframeRetryTimers: new Map(),
+  keyframeRetryAttempts: new Map(),
   camera: {
     x: 0,
     y: 0,
@@ -506,6 +509,7 @@ function updateDiagnostics() {
     let baselineText = "—";
     let batchText = "—";
     let entitiesText = "—";
+    let recoveryText = "—";
 
     if (patchState) {
       const toFiniteTick = (value) =>
@@ -609,6 +613,123 @@ function updateDiagnostics() {
       ];
 
       entitiesText = entityParts.filter(Boolean).join(" · ");
+
+      const pendingRequestCount =
+        patchState.pendingKeyframeRequests instanceof Set
+          ? patchState.pendingKeyframeRequests.size
+          : 0;
+      const lastRecoveryEntry = Array.isArray(patchState.recoveryLog) && patchState.recoveryLog.length > 0
+        ? patchState.recoveryLog[patchState.recoveryLog.length - 1]
+        : patchState.lastRecovery && typeof patchState.lastRecovery === "object"
+          ? patchState.lastRecovery
+          : null;
+      const pendingSeqs = patchState.pendingKeyframeRequests instanceof Set
+        ? Array.from(patchState.pendingKeyframeRequests).filter((value) =>
+            typeof value === "number" && Number.isFinite(value),
+          )
+        : [];
+      pendingSeqs.sort((a, b) => a - b);
+      const formatRecoveryLabel = () => {
+        if (pendingRequestCount > 0) {
+          const latestPending = pendingSeqs[pendingSeqs.length - 1] ?? null;
+          const seqLabel =
+            typeof latestPending === "number" && Number.isFinite(latestPending)
+              ? `seq ${Math.floor(latestPending)}`
+              : "pending";
+          if (
+            lastRecoveryEntry &&
+            lastRecoveryEntry.status === "requested" &&
+            lastRecoveryEntry.sequence === latestPending
+          ) {
+            const requestedAt =
+              typeof lastRecoveryEntry.requestedAt === "number" &&
+              Number.isFinite(lastRecoveryEntry.requestedAt)
+                ? lastRecoveryEntry.requestedAt
+                : null;
+            const age = requestedAt ? formatAgo(requestedAt) : null;
+            return age ? `request ${seqLabel} (${age})` : `request ${seqLabel}`;
+          }
+          return pendingRequestCount === 1
+            ? `request ${seqLabel}`
+            : `${pendingRequestCount} requests`;
+        }
+        if (!lastRecoveryEntry) {
+          return "none";
+        }
+        const seqLabel =
+          typeof lastRecoveryEntry.sequence === "number" && Number.isFinite(lastRecoveryEntry.sequence)
+            ? `seq ${Math.floor(lastRecoveryEntry.sequence)}`
+            : "seq ?";
+        if (lastRecoveryEntry.status === "recovered") {
+          const latency =
+            typeof lastRecoveryEntry.latencyMs === "number" && Number.isFinite(lastRecoveryEntry.latencyMs)
+              ? `${Math.max(0, Math.floor(lastRecoveryEntry.latencyMs))} ms`
+              : null;
+          const resolvedAt =
+            typeof lastRecoveryEntry.resolvedAt === "number" &&
+            Number.isFinite(lastRecoveryEntry.resolvedAt)
+              ? formatAgo(lastRecoveryEntry.resolvedAt)
+              : null;
+          const parts = ["recovered", seqLabel];
+          if (latency) {
+            parts.push(`(${latency})`);
+          }
+          if (resolvedAt) {
+            parts.push(`· ${resolvedAt}`);
+          }
+          return parts.join(" ");
+        }
+        if (lastRecoveryEntry.status === "requested") {
+          const requestedAt =
+            typeof lastRecoveryEntry.requestedAt === "number" &&
+            Number.isFinite(lastRecoveryEntry.requestedAt)
+              ? formatAgo(lastRecoveryEntry.requestedAt)
+              : null;
+          return requestedAt ? `request ${seqLabel} (${requestedAt})` : `request ${seqLabel}`;
+        }
+        if (lastRecoveryEntry.status === "expired") {
+          const expiredAt =
+            typeof lastRecoveryEntry.resolvedAt === "number" && Number.isFinite(lastRecoveryEntry.resolvedAt)
+              ? formatAgo(lastRecoveryEntry.resolvedAt)
+              : null;
+          return expiredAt ? `expired ${seqLabel} (${expiredAt})` : `expired ${seqLabel}`;
+        }
+        if (lastRecoveryEntry.status === "rate_limited") {
+          const notedAt =
+            typeof lastRecoveryEntry.resolvedAt === "number" && Number.isFinite(lastRecoveryEntry.resolvedAt)
+              ? formatAgo(lastRecoveryEntry.resolvedAt)
+              : null;
+          return notedAt ? `rate_limited ${seqLabel} (${notedAt})` : `rate_limited ${seqLabel}`;
+        }
+        if (typeof lastRecoveryEntry.status === "string" && lastRecoveryEntry.status.length > 0) {
+          return `${lastRecoveryEntry.status} ${seqLabel}`;
+        }
+        return seqLabel;
+      };
+
+      const nackCounts =
+        patchState.keyframeNackCounts && typeof patchState.keyframeNackCounts === "object"
+          ? patchState.keyframeNackCounts
+          : {};
+      const expiredNacks = toNonNegativeInt(nackCounts.expired);
+      const rateLimitedNacks = toNonNegativeInt(nackCounts.rate_limited);
+      const nackLabels = [];
+      if (expiredNacks > 0) {
+        nackLabels.push(`expired ${expiredNacks}`);
+      }
+      if (rateLimitedNacks > 0) {
+        nackLabels.push(`rate ${rateLimitedNacks}`);
+      }
+      const baseRecoveryLabel = formatRecoveryLabel();
+      if (baseRecoveryLabel && nackLabels.length > 0) {
+        recoveryText = `${baseRecoveryLabel} · ${nackLabels.join(" · ")}`;
+      } else if (baseRecoveryLabel) {
+        recoveryText = baseRecoveryLabel;
+      } else if (nackLabels.length > 0) {
+        recoveryText = nackLabels.join(" · ");
+      } else {
+        recoveryText = baseRecoveryLabel;
+      }
     }
 
     if (els.patchBaseline) {
@@ -619,6 +740,9 @@ function updateDiagnostics() {
     }
     if (els.patchEntities) {
       els.patchEntities.textContent = entitiesText;
+    }
+    if (els.patchRecovery) {
+      els.patchRecovery.textContent = recoveryText;
     }
   }
 }

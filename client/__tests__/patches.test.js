@@ -588,4 +588,158 @@ describe("updatePatchState", () => {
     );
     expect(stale.lastSequence).toBe(6);
   });
+
+  it("requests keyframes for unknown entities and replays once the snapshot arrives", () => {
+    const requestLog = [];
+    const seeded = updatePatchState(
+      createPatchState(),
+      deepFreeze({ t: 10, sequence: 10, players: [makePlayer()] }),
+      { source: "join" },
+    );
+    freezeState(seeded);
+
+    const missingNPCPatch = deepFreeze({
+      sequence: 11,
+      keyframeSeq: 11,
+      patches: [
+        {
+          kind: PATCH_KIND_NPC_HEALTH,
+          entityId: "npc-99",
+          payload: { health: 7, maxHealth: 14 },
+        },
+      ],
+    });
+
+    const deferred = updatePatchState(seeded, missingNPCPatch, {
+      source: "state",
+      requestKeyframe: (sequence) => requestLog.push(sequence),
+    });
+    freezeState(deferred);
+
+    expect(requestLog).toEqual([11]);
+    expect(deferred.lastAppliedPatchCount).toBe(0);
+    expect(
+      deferred.pendingKeyframeRequests instanceof Set
+        ? deferred.pendingKeyframeRequests.has(11)
+        : false,
+    ).toBe(true);
+    expect(Array.isArray(deferred.pendingReplays) ? deferred.pendingReplays.length : 0).toBe(1);
+    expect(Object.keys(deferred.patched.npcs)).toEqual([]);
+
+    const keyframePayload = deepFreeze({
+      type: "keyframe",
+      sequence: 11,
+      t: 11,
+      players: [makePlayer()],
+      npcs: [makeNPC({ id: "npc-99", health: 9, maxHealth: 14 })],
+      effects: [],
+      groundItems: [],
+    });
+
+    const replayed = updatePatchState(deferred, keyframePayload, {
+      source: "keyframe",
+      requestKeyframe: (sequence) => requestLog.push(sequence),
+    });
+
+    expect(requestLog).toEqual([11]);
+    expect(replayed.lastAppliedPatchCount).toBe(1);
+    expect(
+      replayed.pendingKeyframeRequests instanceof Set ? replayed.pendingKeyframeRequests.size : 0,
+    ).toBe(0);
+    expect(Array.isArray(replayed.pendingReplays) ? replayed.pendingReplays.length : 0).toBe(0);
+    expect(replayed.baseline.npcs["npc-99"].health).toBe(9);
+    expect(replayed.patched.npcs["npc-99"].health).toBe(7);
+    expect(replayed.patched.npcs["npc-99"].maxHealth).toBe(14);
+    expect(replayed.lastRecovery && replayed.lastRecovery.status).toBe("recovered");
+    expect(replayed.errors).toEqual([]);
+  });
+
+  it("escalates to resync when a keyframe nack reports expiry", () => {
+    const seeded = freezeState(
+      updatePatchState(
+        createPatchState(),
+        deepFreeze({ t: 2, sequence: 2, players: [makePlayer()] }),
+        { source: "join" },
+      ),
+    );
+
+    const pending = freezeState(
+      updatePatchState(
+        seeded,
+        deepFreeze({
+          sequence: 6,
+          keyframeSeq: 6,
+          patches: [
+            {
+              kind: PATCH_KIND_NPC_POS,
+              entityId: "npc-missing",
+              payload: { x: 3, y: 4 },
+            },
+          ],
+        }),
+        { source: "state", requestKeyframe: () => {} },
+      ),
+    );
+
+    const nack = freezeState(
+      updatePatchState(
+        pending,
+        deepFreeze({ type: "keyframeNack", sequence: 6, reason: "expired" }),
+        { source: "keyframe" },
+      ),
+    );
+
+    expect(nack.resyncRequested).toBe(true);
+    expect(nack.keyframeNackCounts?.expired).toBe(1);
+    expect(
+      nack.pendingKeyframeRequests instanceof Set ? nack.pendingKeyframeRequests.has(6) : false,
+    ).toBe(false);
+    expect(Array.isArray(nack.pendingReplays) ? nack.pendingReplays.length : 0).toBe(0);
+    expect(nack.lastRecovery?.status).toBe("expired");
+  });
+
+  it("tracks rate-limited nacks without clearing pending replays", () => {
+    const seeded = freezeState(
+      updatePatchState(
+        createPatchState(),
+        deepFreeze({ t: 3, sequence: 3, players: [makePlayer()] }),
+        { source: "join" },
+      ),
+    );
+
+    const pending = freezeState(
+      updatePatchState(
+        seeded,
+        deepFreeze({
+          sequence: 8,
+          keyframeSeq: 8,
+          patches: [
+            {
+              kind: PATCH_KIND_PLAYER_HEALTH,
+              entityId: "player-1",
+              payload: { health: 9, maxHealth: 10 },
+            },
+          ],
+        }),
+        { source: "state", requestKeyframe: () => {} },
+      ),
+    );
+
+    const nack = freezeState(
+      updatePatchState(
+        pending,
+        deepFreeze({ type: "keyframeNack", sequence: 8, reason: "rate_limited" }),
+        { source: "keyframe" },
+      ),
+    );
+
+    expect(nack.resyncRequested).toBe(false);
+    expect(nack.keyframeNackCounts?.rate_limited).toBe(1);
+    expect(
+      nack.pendingKeyframeRequests instanceof Set ? nack.pendingKeyframeRequests.has(8) : false,
+    ).toBe(false);
+    expect(Array.isArray(nack.pendingReplays) ? nack.pendingReplays.length : 0).toBe(1);
+    expect(nack.pendingReplays[0].sequence).toBe(8);
+    expect(nack.lastRecovery?.status).toBe("rate_limited");
+  });
 });

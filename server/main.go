@@ -335,6 +335,36 @@ func main() {
 					return
 				}
 				sub.mu.Unlock()
+			case "keyframeRequest":
+				if msg.KeyframeSeq == nil {
+					continue
+				}
+				snapshot, nack, ok := hub.HandleKeyframeRequest(playerID, sub, *msg.KeyframeSeq)
+				if !ok {
+					continue
+				}
+				var data []byte
+				var err error
+				if nack != nil {
+					data, err = json.Marshal(nack)
+				} else {
+					data, err = json.Marshal(snapshot)
+				}
+				if err != nil {
+					stdlog.Printf("failed to marshal keyframe for %s: %v", playerID, err)
+					continue
+				}
+				sub.mu.Lock()
+				conn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+					sub.mu.Unlock()
+					players, npcs, effects := hub.Disconnect(playerID)
+					if players != nil {
+						go hub.broadcastState(players, npcs, effects, nil, nil)
+					}
+					return
+				}
+				sub.mu.Unlock()
 			default:
 				stdlog.Printf("unknown message type %q from %s", msg.Type, playerID)
 			}

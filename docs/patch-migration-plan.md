@@ -123,6 +123,15 @@ snapshot path:
 * NPC, effect, and ground item patches now replay alongside player diffs in the
   background state container, eliminating the temporary unsupported patch
   warnings while exercising dedupe logic for every entity type.【F:client/patches.js†L1-L828】
+* Keyframe recovery maintains an on-client cache of recent snapshots, requests
+  server keyframes when diffs reference unknown entities, replays deferred
+  batches once the baseline arrives, and surfaces recovery status in the
+  diagnostics drawer. The server now bounds its keyframe journal using the
+  `KEYFRAME_JOURNAL_CAPACITY` and `KEYFRAME_JOURNAL_MAX_AGE_MS` environment
+  variables, publishes `keyframe` and `keyframeNack` responses (`expired` / `rate_limited`),
+  rate-limits recovery RPCs, emits telemetry on journal size and NACK counts, and the
+  client escalates to a resync or schedules retries with jittered backoff while tracking
+  diagnostics counters.【F:server/patches.go†L1-L218】【F:server/hub.go†L600-L820】【F:server/main.go†L320-L360】【F:client/patches.js†L900-L1320】【F:client/network.js†L640-L1240】【F:client/main.js†L560-L700】
 * Vitest coverage now freezes inputs to guard against mutation, asserts
   idempotent replay counts, validates monotonic tick handling, and exercises the
   resync pathway so future patch types can extend the pipeline with
@@ -148,12 +157,13 @@ snapshot path:
   baseline ticks, applied patch counts, error summaries, and entity totals by
   reading from the background patch state, letting QA compare snapshot and diff
   pipelines without inspecting the console.【F:client/index.html†L288-L341】【F:client/main.js†L401-L620】
+* ✅ **Keyframe recovery** – the server journals recent snapshots alongside patch
+  batches, exposes them via `keyframeSeq` references plus a `keyframeRequest`
+  websocket flow, and the client consumes those frames to heal missing-entity
+  diffs without console noise.【F:server/hub.go†L600-L720】【F:server/main.go†L200-L360】【F:client/patches.js†L900-L1158】【F:client/network.js†L640-L820】
 
 ## Suggested next steps
 
-1. **Keyframe recovery** – plumb the server's journal keyframes through to the
-   client and teach the patch runner to resynchronise from a full snapshot when a
-   diff references an unknown entity.
-2. **Switch-over rehearsal** – gate the render loop behind a feature flag that
+1. **Switch-over rehearsal** – gate the render loop behind a feature flag that
    can swap between full snapshots and the patch-driven state to smoke test the
    final migration path.
