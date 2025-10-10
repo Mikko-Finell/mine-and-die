@@ -168,7 +168,7 @@ func (c *Component) Apply(change CommandStatChange) {
 		return
 	}
 	if change.Layer == LayerTemporary && change.ExpiresAtTick == 0 {
-		change.ExpiresAtTick = c.lastResolveTick + 1
+		change.ExpiresAtTick = c.lastResolveTick + 2
 	}
 	if c.applySource(change.Layer, change.Source, change.Delta, change.ExpiresAtTick) {
 		c.dirty = true
