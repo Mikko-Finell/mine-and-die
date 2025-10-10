@@ -16,7 +16,8 @@ export const DEFAULT_WORLD_HEIGHT = 1800;
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
 const KEYFRAME_RETRY_MAX_ATTEMPTS = 3;
 const KEYFRAME_RETRY_BASE_DELAY = 200;
-const KEYFRAME_RETRY_MAX_DELAY = 1000;
+const KEYFRAME_RETRY_MAX_STEP = 2000;
+const KEYFRAME_RETRY_TICK_INTERVAL = 100;
 const heartbeatControllers = new WeakMap();
 
 function normalizeProtocolVersionValue(value) {
@@ -694,73 +695,88 @@ function queueEffectTriggers(store, triggers) {
   store.processedEffectTriggerIds = nextState.processedIds;
 }
 
-function ensureKeyframeRetryState(store) {
-  if (!store) {
-    return;
+function getPendingKeyframeRequests(store) {
+  if (!store || !store.patchState) {
+    return null;
   }
-  if (!(store.keyframeRetryTimers instanceof Map)) {
-    store.keyframeRetryTimers = new Map();
-  }
-  if (!(store.keyframeRetryAttempts instanceof Map)) {
-    store.keyframeRetryAttempts = new Map();
-  }
+  const { pendingKeyframeRequests } = store.patchState;
+  return pendingKeyframeRequests instanceof Map ? pendingKeyframeRequests : null;
 }
 
-function clearKeyframeRetry(store, sequence) {
-  if (!store || typeof sequence !== "number" || !Number.isFinite(sequence)) {
-    return;
+function getPendingReplayForSequence(store, sequence) {
+  if (!store || !store.patchState) {
+    return null;
+  }
+  const { pendingReplays } = store.patchState;
+  if (!Array.isArray(pendingReplays) || pendingReplays.length === 0) {
+    return null;
   }
   const normalizedSeq = Math.floor(sequence);
-  ensureKeyframeRetryState(store);
-  const timer = store.keyframeRetryTimers.get(normalizedSeq);
-  if (timer) {
-    clearTimeout(timer);
-    store.keyframeRetryTimers.delete(normalizedSeq);
-  }
-  store.keyframeRetryAttempts.delete(normalizedSeq);
-}
-
-function clearAllKeyframeRetries(store) {
-  if (!store) {
-    return;
-  }
-  ensureKeyframeRetryState(store);
-  for (const timer of store.keyframeRetryTimers.values()) {
-    clearTimeout(timer);
-  }
-  store.keyframeRetryTimers.clear();
-  store.keyframeRetryAttempts.clear();
-}
-
-function scheduleKeyframeRetry(store, sequence, tick) {
-  if (!store || typeof sequence !== "number" || !Number.isFinite(sequence)) {
-    return;
-  }
-  const normalizedSeq = Math.floor(sequence);
-  ensureKeyframeRetryState(store);
-  const attempts = store.keyframeRetryAttempts.get(normalizedSeq) ?? 0;
-  if (attempts >= KEYFRAME_RETRY_MAX_ATTEMPTS) {
-    console.warn(`[keyframe] exhausted retries for sequence ${normalizedSeq}`);
-    clearKeyframeRetry(store, normalizedSeq);
-    handleConnectionLoss(store);
-    return;
-  }
-  const delay = Math.min(
-    KEYFRAME_RETRY_BASE_DELAY * Math.pow(2, attempts),
-    KEYFRAME_RETRY_MAX_DELAY,
+  return (
+    pendingReplays.find((entry) => entry && entry.sequence === normalizedSeq) || null
   );
-  const existing = store.keyframeRetryTimers.get(normalizedSeq);
-  if (existing) {
-    clearTimeout(existing);
-  }
-  const timer = setTimeout(() => {
-    store.keyframeRetryTimers.delete(normalizedSeq);
-    requestKeyframeSnapshot(store, normalizedSeq, tick);
-  }, delay);
-  store.keyframeRetryTimers.set(normalizedSeq, timer);
 }
 
-function requestKeyframeSnapshot(store, sequence, tick) {
+function stopKeyframeRetryLoop(store) {
+  if (!store) {
+    return;
+  }
+  if (store.keyframeRetryTimer !== null) {
+    clearInterval(store.keyframeRetryTimer);
+    store.keyframeRetryTimer = null;
+  }
+}
+
+function startKeyframeRetryLoop(store) {
+  if (!store) {
+    return;
+  }
+  if (store.keyframeRetryTimer !== null) {
+    return;
+  }
+  store.keyframeRetryTimer = setInterval(() => {
+    processKeyframeRetryLoop(store);
+  }, KEYFRAME_RETRY_TICK_INTERVAL);
+}
+
+function updateKeyframeRetryLoop(store) {
+  const requests = getPendingKeyframeRequests(store);
+  if (requests && requests.size > 0) {
+    startKeyframeRetryLoop(store);
+  } else {
+    stopKeyframeRetryLoop(store);
+  }
+}
+
+function processKeyframeRetryLoop(store) {
+  const requests = getPendingKeyframeRequests(store);
+  if (!requests || requests.size === 0) {
+    stopKeyframeRetryLoop(store);
+    return;
+  }
+  const now = Date.now();
+  for (const [sequence, entry] of requests.entries()) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const nextRetryAt = Number(entry.nextRetryAt);
+    if (!Number.isFinite(nextRetryAt) || nextRetryAt > now) {
+      continue;
+    }
+    const attempts = Math.max(0, Math.floor(entry.attempts ?? 0));
+    if (attempts >= KEYFRAME_RETRY_MAX_ATTEMPTS) {
+      continue;
+    }
+    const pendingReplay = getPendingReplayForSequence(store, sequence);
+    const hintTick =
+      pendingReplay && typeof pendingReplay.keyframeTick === "number"
+        ? pendingReplay.keyframeTick
+        : null;
+    requestKeyframeSnapshot(store, sequence, hintTick, { incrementAttempt: true });
+  }
+}
+
+function requestKeyframeSnapshot(store, sequence, tick, options = {}) {
   if (!store || typeof sequence !== "number" || !Number.isFinite(sequence)) {
     return;
   }
@@ -768,9 +784,29 @@ function requestKeyframeSnapshot(store, sequence, tick) {
   if (normalizedSeq <= 0) {
     return;
   }
-  ensureKeyframeRetryState(store);
-  const attempts = store.keyframeRetryAttempts.get(normalizedSeq) ?? 0;
-  store.keyframeRetryAttempts.set(normalizedSeq, attempts + 1);
+  const pendingRequests = getPendingKeyframeRequests(store);
+  if (pendingRequests) {
+    const existing = pendingRequests.get(normalizedSeq) || {};
+    const baseAttempts = Math.max(0, Math.floor(existing.attempts ?? 0));
+    const shouldIncrement = options.incrementAttempt !== false;
+    const nextAttempts = shouldIncrement
+      ? baseAttempts + 1
+      : baseAttempts > 0
+        ? baseAttempts
+        : 1;
+    const nextRetryAt = shouldIncrement ? null : existing.nextRetryAt ?? null;
+    const firstRequestedAtOption = options.firstRequestedAt;
+    const firstRequestedAt = Number.isFinite(firstRequestedAtOption)
+      ? Math.floor(firstRequestedAtOption)
+      : Number.isFinite(existing.firstRequestedAt)
+        ? Math.floor(existing.firstRequestedAt)
+        : Date.now();
+    pendingRequests.set(normalizedSeq, {
+      attempts: nextAttempts,
+      nextRetryAt,
+      firstRequestedAt,
+    });
+  }
   const message = {
     type: "keyframeRequest",
     keyframeSeq: normalizedSeq,
@@ -779,6 +815,7 @@ function requestKeyframeSnapshot(store, sequence, tick) {
     message.keyframeTick = Math.floor(tick);
   }
   sendMessage(store, message);
+  updateKeyframeRetryLoop(store);
 }
 
 function syncPatchTestingState(store, payload, source) {
@@ -797,7 +834,8 @@ function syncPatchTestingState(store, payload, source) {
   const next = updatePatchState(previous, payload, {
     source,
     resetHistory,
-    requestKeyframe: (sequence, tick) => requestKeyframeSnapshot(store, sequence, tick),
+    requestKeyframe: (sequence, tick, options = {}) =>
+      requestKeyframeSnapshot(store, sequence, tick, options),
   });
   const prevError = previous && typeof previous === "object" ? previous.lastError : null;
   const prevCount = Array.isArray(previous?.errors) ? previous.errors.length : 0;
@@ -819,7 +857,7 @@ function syncPatchTestingState(store, payload, source) {
   let finalState = next;
   if (next && next.resyncRequested) {
     finalState = { ...next, resyncRequested: false };
-    clearAllKeyframeRetries(store);
+    stopKeyframeRetryLoop(store);
     handleConnectionLoss(store);
   }
   store.patchState = finalState;
@@ -832,18 +870,11 @@ function handleKeyframeMessage(store, payload) {
     : null;
   const messageType = typeof payload?.type === "string" ? payload.type : null;
   const nextState = syncPatchTestingState(store, payload, messageType || "keyframe");
-  if (messageType === "keyframe" && sequence !== null) {
-    clearKeyframeRetry(store, sequence);
-  } else if (messageType === "keyframeNack" && sequence !== null) {
-    const reason = typeof payload?.reason === "string" ? payload.reason.trim().toLowerCase() : "";
-    if (reason === "rate_limited") {
-      const retryTick = nextState && typeof nextState.lastRecovery === "object"
-        ? nextState.lastRecovery.tick
-        : null;
-      scheduleKeyframeRetry(store, sequence, retryTick);
-    } else {
-      clearKeyframeRetry(store, sequence);
-    }
+  if (
+    (messageType === "keyframe" || messageType === "keyframeNack") &&
+    typeof store?.patchState?.pendingKeyframeRequests !== "undefined"
+  ) {
+    updateKeyframeRetryLoop(store);
   }
   if (store && typeof store.updateDiagnostics === "function") {
     store.updateDiagnostics();
@@ -1295,7 +1326,7 @@ function handleConnectionLoss(store) {
   store.isPathActive = false;
   store.activePathTarget = null;
   store.lastPathRequestAt = null;
-  clearAllKeyframeRetries(store);
+  stopKeyframeRetryLoop(store);
   store.patchState = createPatchState();
   store.updateDiagnostics();
   if (store.playerId === null) {
