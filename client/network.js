@@ -1082,9 +1082,12 @@ export function connectEvents(store) {
         store.updateDiagnostics();
       } else if (parsed.type === "console_ack") {
         handleConsoleAck(store, payload);
-    } else if (parsed.type === "keyframe") {
-      handleKeyframeMessage(store, payload);
-    }
+      } else if (
+        parsed.type === "keyframe" ||
+        parsed.type === "keyframeNack"
+      ) {
+        handleKeyframeMessage(store, payload);
+      }
   };
 
   const handleSocketDrop = () => {
