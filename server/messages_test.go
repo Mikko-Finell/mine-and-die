@@ -301,3 +301,126 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 	}
 	hub.mu.Unlock()
 }
+
+func TestMarshalStateRecordsKeyframe(t *testing.T) {
+	hub := newHub()
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state payload: %v", err)
+	}
+
+	if msg.KeyframeSeq == 0 {
+		t.Fatalf("expected keyframe sequence to be populated")
+	}
+	if msg.KeyframeSeq != msg.Sequence {
+		t.Fatalf("expected keyframe sequence %d to match message sequence %d", msg.KeyframeSeq, msg.Sequence)
+	}
+
+	snapshot, ok := hub.Keyframe(msg.KeyframeSeq)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d", msg.KeyframeSeq)
+	}
+
+	if snapshot.Sequence != msg.KeyframeSeq {
+		t.Fatalf("unexpected keyframe sequence: got %d want %d", snapshot.Sequence, msg.KeyframeSeq)
+	}
+	if snapshot.Tick != msg.Tick {
+		t.Fatalf("unexpected keyframe tick: got %d want %d", snapshot.Tick, msg.Tick)
+	}
+	if len(snapshot.Players) != len(msg.Players) {
+		t.Fatalf("expected %d players in keyframe, got %d", len(msg.Players), len(snapshot.Players))
+	}
+	if len(snapshot.NPCs) != len(msg.NPCs) {
+		t.Fatalf("expected %d NPCs in keyframe, got %d", len(msg.NPCs), len(snapshot.NPCs))
+	}
+	if len(snapshot.Effects) != len(msg.Effects) {
+		t.Fatalf("expected %d effects in keyframe, got %d", len(msg.Effects), len(snapshot.Effects))
+	}
+	if len(snapshot.GroundItems) != len(msg.GroundItems) {
+		t.Fatalf("expected %d ground items in keyframe, got %d", len(msg.GroundItems), len(snapshot.GroundItems))
+	}
+
+	if _, ok := hub.Keyframe(msg.KeyframeSeq + 1); ok {
+		t.Fatalf("expected lookup for unknown keyframe sequence to fail")
+	}
+}
+
+func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
+	hub := newHub()
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state payload: %v", err)
+	}
+
+	snapshot, nack, ok := hub.HandleKeyframeRequest("player-1", nil, msg.Sequence)
+	if !ok {
+		t.Fatalf("expected handle to succeed")
+	}
+	if nack != nil {
+		t.Fatalf("expected ack response, got nack: %+v", nack)
+	}
+	if snapshot.Sequence != msg.Sequence {
+		t.Fatalf("unexpected snapshot sequence: got %d want %d", snapshot.Sequence, msg.Sequence)
+	}
+}
+
+func TestHandleKeyframeRequestExpired(t *testing.T) {
+	t.Setenv(envJournalCapacity, "1")
+	hub := newHub()
+
+	first, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+	var firstMsg stateMessage
+	if err := json.Unmarshal(first, &firstMsg); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true); err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	_, nack, ok := hub.HandleKeyframeRequest("player-2", nil, firstMsg.Sequence)
+	if !ok {
+		t.Fatalf("expected handler to respond")
+	}
+	if nack == nil {
+		t.Fatalf("expected nack when sequence expired")
+	}
+	if nack.Reason != "expired" {
+		t.Fatalf("expected expired reason, got %s", nack.Reason)
+	}
+}
+
+func TestHandleKeyframeRequestRateLimited(t *testing.T) {
+	hub := newHub()
+	sub := &subscriber{limiter: newKeyframeRateLimiter(1, 1)}
+	sub.limiter.allow(time.Now())
+
+	_, nack, ok := hub.HandleKeyframeRequest("player-3", sub, 5)
+	if !ok {
+		t.Fatalf("expected handler to respond to rate limited request")
+	}
+	if nack == nil {
+		t.Fatalf("expected nack when rate limited")
+	}
+	if nack.Reason != "rate_limited" {
+		t.Fatalf("expected rate_limited reason, got %s", nack.Reason)
+	}
+	if nack.Sequence != 5 {
+		t.Fatalf("expected nack sequence 5, got %d", nack.Sequence)
+	}
+}

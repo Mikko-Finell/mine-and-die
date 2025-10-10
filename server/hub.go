@@ -40,6 +40,62 @@ type subscriber struct {
 	conn    *websocket.Conn
 	mu      sync.Mutex
 	lastAck atomic.Uint64
+	limiter keyframeRateLimiter
+}
+
+const (
+	keyframeLimiterCapacity  = 3
+	keyframeLimiterRefillPer = 2.0 // tokens per second
+)
+
+type keyframeLookupStatus int
+
+const (
+	keyframeLookupMissing keyframeLookupStatus = iota
+	keyframeLookupFound
+	keyframeLookupExpired
+)
+
+type keyframeRateLimiter struct {
+	capacity   float64
+	tokens     float64
+	refillRate float64
+	lastRefill time.Time
+}
+
+func newKeyframeRateLimiter(capacity, refillRate float64) keyframeRateLimiter {
+	if capacity <= 0 || refillRate <= 0 {
+		return keyframeRateLimiter{}
+	}
+	now := time.Now()
+	return keyframeRateLimiter{
+		capacity:   capacity,
+		tokens:     capacity,
+		refillRate: refillRate,
+		lastRefill: now,
+	}
+}
+
+func (l *keyframeRateLimiter) allow(now time.Time) bool {
+	if l == nil || l.capacity <= 0 || l.refillRate <= 0 {
+		return true
+	}
+	if now.Before(l.lastRefill) {
+		l.lastRefill = now
+	}
+	elapsed := now.Sub(l.lastRefill).Seconds()
+	if elapsed > 0 {
+		l.tokens += elapsed * l.refillRate
+		if l.tokens > l.capacity {
+			l.tokens = l.capacity
+		}
+		l.lastRefill = now
+	}
+	if l.tokens < 1 {
+		return false
+	}
+	l.tokens -= 1
+	return true
 }
 
 // newHub creates a hub with empty maps and a freshly generated world.
@@ -186,7 +242,7 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 		existing.conn.Close()
 	}
 
-	sub := &subscriber{conn: conn}
+	sub := &subscriber{conn: conn, limiter: newKeyframeRateLimiter(keyframeLimiterCapacity, keyframeLimiterRefillPer)}
 	h.subscribers[playerID] = sub
 	now := time.Now()
 	players, npcs, effects := h.world.Snapshot(now)
@@ -610,9 +666,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	shouldFlushTriggers := false
 	if players == nil || npcs == nil || effects == nil {
 		now := time.Now()
-		if players == nil || npcs == nil || effects == nil {
-			players, npcs, effects = h.world.Snapshot(now)
-		}
+		players, npcs, effects = h.world.Snapshot(now)
 		shouldFlushTriggers = true
 	}
 	if shouldFlushTriggers && triggers == nil {
@@ -627,15 +681,56 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	} else {
 		patches = h.world.snapshotPatchesLocked()
 	}
-	if patches == nil {
-		patches = make([]Patch, 0)
-	}
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
 	tick := h.tick.Load()
+	seq, resync := h.nextStateMeta(drainPatches)
+	journal := &h.world.journal
 	h.mu.Unlock()
 
-	seq, resync := h.nextStateMeta(drainPatches)
+	if patches == nil {
+		patches = make([]Patch, 0)
+	}
+	if players == nil {
+		players = make([]Player, 0)
+	}
+	if npcs == nil {
+		npcs = make([]NPC, 0)
+	}
+	if effects == nil {
+		effects = make([]Effect, 0)
+	}
+	if triggers == nil {
+		triggers = make([]EffectTrigger, 0)
+	}
+	if groundItems == nil {
+		groundItems = make([]GroundItem, 0)
+	}
+	if obstacles == nil {
+		obstacles = make([]Obstacle, 0)
+	}
+
+	frame := keyframe{
+		Tick:        tick,
+		Sequence:    seq,
+		Players:     players,
+		NPCs:        npcs,
+		Obstacles:   obstacles,
+		Effects:     effects,
+		GroundItems: groundItems,
+		Config:      cfg,
+	}
+	record := journal.RecordKeyframe(frame)
+	if h.telemetry != nil {
+		h.telemetry.RecordKeyframeJournal(record.Size, record.OldestSequence, record.NewestSequence)
+	}
+	stdlog.Printf("[journal] add sequence=%d tick=%d size=%d", seq, tick, record.Size)
+	for _, eviction := range record.Evicted {
+		stdlog.Printf("[journal] evict sequence=%d tick=%d size=%d reason=%s", eviction.Sequence, eviction.Tick, record.Size, eviction.Reason)
+	}
+	if h.telemetry != nil && h.telemetry.DebugEnabled() {
+		stdlog.Printf("[journal] window size=%d oldest=%d newest=%d", record.Size, record.OldestSequence, record.NewestSequence)
+	}
 
 	msg := stateMessage{
 		Ver:            ProtocolVersion,
@@ -649,6 +744,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		Patches:        patches,
 		Tick:           tick,
 		Sequence:       seq,
+		KeyframeSeq:    seq,
 		ServerTime:     time.Now().UnixMilli(),
 		Config:         cfg,
 	}
@@ -667,6 +763,99 @@ func (h *Hub) nextStateMeta(drainPatches bool) (seq uint64, resync bool) {
 	}
 	seq = h.seq.Add(1)
 	return seq, resync
+}
+
+func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupStatus) {
+	if sequence == 0 {
+		return keyframeMessage{}, keyframeLookupMissing
+	}
+
+	h.mu.Lock()
+	journal := &h.world.journal
+	h.mu.Unlock()
+
+	frame, ok := journal.KeyframeBySequence(sequence)
+	if ok {
+		snapshot := keyframeMessage{
+			Ver:         ProtocolVersion,
+			Type:        "keyframe",
+			Sequence:    frame.Sequence,
+			Tick:        frame.Tick,
+			Players:     append([]Player(nil), frame.Players...),
+			NPCs:        append([]NPC(nil), frame.NPCs...),
+			Obstacles:   append([]Obstacle(nil), frame.Obstacles...),
+			Effects:     append([]Effect(nil), frame.Effects...),
+			GroundItems: append([]GroundItem(nil), frame.GroundItems...),
+			Config:      frame.Config,
+		}
+		return snapshot, keyframeLookupFound
+	}
+
+	size, oldest, newest := journal.KeyframeWindow()
+	if size == 0 {
+		return keyframeMessage{}, keyframeLookupExpired
+	}
+	if sequence < oldest || sequence > newest {
+		return keyframeMessage{}, keyframeLookupExpired
+	}
+	return keyframeMessage{}, keyframeLookupExpired
+}
+
+// Keyframe returns a serialized keyframe snapshot for the requested sequence.
+func (h *Hub) Keyframe(sequence uint64) (keyframeMessage, bool) {
+	snapshot, status := h.lookupKeyframe(sequence)
+	return snapshot, status == keyframeLookupFound
+}
+
+func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence uint64) (keyframeMessage, *keyframeNackMessage, bool) {
+	if sequence == 0 {
+		return keyframeMessage{}, nil, false
+	}
+
+	now := time.Now()
+	if sub != nil && !sub.limiter.allow(now) {
+		if h.telemetry != nil {
+			h.telemetry.RecordKeyframeRequest(0, false)
+			h.telemetry.IncrementKeyframeRateLimited()
+		}
+		stdlog.Printf("[keyframe] rate_limited player=%s sequence=%d", playerID, sequence)
+		nack := &keyframeNackMessage{
+			Ver:      ProtocolVersion,
+			Type:     "keyframeNack",
+			Sequence: sequence,
+			Reason:   "rate_limited",
+		}
+		return keyframeMessage{}, nack, true
+	}
+
+	snapshot, status := h.lookupKeyframe(sequence)
+	latency := time.Since(now)
+	switch status {
+	case keyframeLookupFound:
+		if h.telemetry != nil {
+			h.telemetry.RecordKeyframeRequest(latency, true)
+		}
+		stdlog.Printf("[keyframe] served player=%s sequence=%d tick=%d latency_ms=%d", playerID, snapshot.Sequence, snapshot.Tick, latency.Milliseconds())
+		return snapshot, nil, true
+	case keyframeLookupExpired:
+		if h.telemetry != nil {
+			h.telemetry.RecordKeyframeRequest(latency, false)
+			h.telemetry.IncrementKeyframeExpired()
+		}
+		stdlog.Printf("[keyframe] expired player=%s sequence=%d", playerID, sequence)
+		nack := &keyframeNackMessage{
+			Ver:      ProtocolVersion,
+			Type:     "keyframeNack",
+			Sequence: sequence,
+			Reason:   "expired",
+		}
+		return keyframeMessage{}, nack, true
+	default:
+		if h.telemetry != nil {
+			h.telemetry.RecordKeyframeRequest(latency, false)
+		}
+		return keyframeMessage{}, nil, false
+	}
 }
 
 // broadcastState sends the latest world snapshot to every subscriber.

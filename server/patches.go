@@ -1,6 +1,19 @@
 package main
 
+import (
+	"os"
+	"strconv"
+	"sync"
+	"time"
+)
+
 const defaultJournalKeyframeCapacity = 8
+const defaultJournalKeyframeMaxAge = 5 * time.Second
+
+const (
+	envJournalCapacity = "KEYFRAME_JOURNAL_CAPACITY"
+	envJournalMaxAgeMS = "KEYFRAME_JOURNAL_MAX_AGE_MS"
+)
 
 // PatchKind identifies the type of diff entry.
 type PatchKind string
@@ -115,29 +128,68 @@ type GroundItemQtyPayload struct {
 // Journal accumulates patches generated during a tick and keeps a rolling
 // buffer of recent keyframes so future diff recovery can rehydrate state.
 type Journal struct {
+	mu        sync.RWMutex
 	patches   []Patch
-	keyframes keyframeRing
+	keyframes []keyframe
+	maxFrames int
+	maxAge    time.Duration
 }
 
 // newJournal constructs a journal with storage for the configured number of
-// keyframes.
-func newJournal(keyframeCapacity int) Journal {
-	journal := Journal{}
+// keyframes and retention window.
+func newJournal(keyframeCapacity int, maxAge time.Duration) Journal {
 	if keyframeCapacity < 0 {
 		keyframeCapacity = 0
 	}
-	journal.keyframes = newKeyframeRing(keyframeCapacity)
-	journal.patches = make([]Patch, 0)
-	return journal
+	if maxAge < 0 {
+		maxAge = 0
+	}
+	return Journal{
+		patches:   make([]Patch, 0),
+		keyframes: make([]keyframe, 0, keyframeCapacity),
+		maxFrames: keyframeCapacity,
+		maxAge:    maxAge,
+	}
+}
+
+// journalConfig loads retention settings from the environment falling back to
+// defaults when unset or invalid.
+func journalConfig() (int, time.Duration) {
+	capacity := defaultJournalKeyframeCapacity
+	if raw := os.Getenv(envJournalCapacity); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			capacity = parsed
+		}
+	}
+
+	maxAge := defaultJournalKeyframeMaxAge
+	if raw := os.Getenv(envJournalMaxAgeMS); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
+			maxAge = time.Duration(parsed) * time.Millisecond
+		}
+	}
+
+	if capacity < 0 {
+		capacity = 0
+	}
+	if maxAge < 0 {
+		maxAge = 0
+	}
+
+	return capacity, maxAge
 }
 
 // AppendPatch records a patch for the current tick.
 func (j *Journal) AppendPatch(p Patch) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	j.patches = append(j.patches, p)
 }
 
 // DrainPatches returns all staged patches and clears the in-memory slice.
 func (j *Journal) DrainPatches() []Patch {
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	if len(j.patches) == 0 {
 		return nil
 	}
@@ -150,6 +202,8 @@ func (j *Journal) DrainPatches() []Patch {
 // SnapshotPatches returns a copy of the staged patches without clearing the
 // journal.
 func (j *Journal) SnapshotPatches() []Patch {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
 	if len(j.patches) == 0 {
 		return nil
 	}
@@ -158,71 +212,134 @@ func (j *Journal) SnapshotPatches() []Patch {
 	return snapshot
 }
 
-// RecordKeyframe stores a keyframe in the ring buffer.
-func (j *Journal) RecordKeyframe(frame keyframe) {
-	j.keyframes.Push(frame)
+// RecordKeyframe stores a keyframe in the buffer enforcing retention limits
+// by count and age.
+func (j *Journal) RecordKeyframe(frame keyframe) keyframeRecordResult {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if j.maxFrames == 0 {
+		j.keyframes = j.keyframes[:0]
+		return keyframeRecordResult{}
+	}
+
+	frame.RecordedAt = time.Now()
+	j.keyframes = append(j.keyframes, frame)
+
+	cutoff := time.Time{}
+	if j.maxAge > 0 {
+		cutoff = frame.RecordedAt.Add(-j.maxAge)
+	}
+
+	evicted := make([]journalEviction, 0)
+	if !cutoff.IsZero() {
+		idx := 0
+		for idx < len(j.keyframes) {
+			if !j.keyframes[idx].RecordedAt.Before(cutoff) {
+				break
+			}
+			evicted = append(evicted, journalEviction{
+				Sequence: j.keyframes[idx].Sequence,
+				Tick:     j.keyframes[idx].Tick,
+				Reason:   "expired",
+			})
+			idx++
+		}
+		if idx > 0 {
+			copy(j.keyframes, j.keyframes[idx:])
+			j.keyframes = j.keyframes[:len(j.keyframes)-idx]
+		}
+	}
+
+	if j.maxFrames > 0 && len(j.keyframes) > j.maxFrames {
+		overflow := len(j.keyframes) - j.maxFrames
+		for i := 0; i < overflow; i++ {
+			frame := j.keyframes[i]
+			evicted = append(evicted, journalEviction{
+				Sequence: frame.Sequence,
+				Tick:     frame.Tick,
+				Reason:   "count",
+			})
+		}
+		copy(j.keyframes, j.keyframes[overflow:])
+		j.keyframes = j.keyframes[:len(j.keyframes)-overflow]
+	}
+
+	size := len(j.keyframes)
+	result := keyframeRecordResult{Size: size}
+	if size > 0 {
+		result.OldestSequence = j.keyframes[0].Sequence
+		result.NewestSequence = j.keyframes[size-1].Sequence
+	}
+	result.Evicted = evicted
+	return result
 }
 
-// Keyframes exposes the current keyframe ring contents in chronological
-// order. Callers receive a copy to avoid holding references into the ring.
+// Keyframes exposes the current keyframe buffer contents in chronological
+// order. Callers receive a copy to avoid holding references into the buffer.
 func (j *Journal) Keyframes() []keyframe {
-	return j.keyframes.Frames()
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if len(j.keyframes) == 0 {
+		return nil
+	}
+	frames := make([]keyframe, len(j.keyframes))
+	copy(frames, j.keyframes)
+	return frames
+}
+
+// KeyframeBySequence returns the keyframe matching the provided sequence.
+func (j *Journal) KeyframeBySequence(sequence uint64) (keyframe, bool) {
+	if sequence == 0 {
+		return keyframe{}, false
+	}
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	for _, frame := range j.keyframes {
+		if frame.Sequence == sequence {
+			return frame, true
+		}
+	}
+	return keyframe{}, false
+}
+
+// KeyframeWindow reports the current retention window.
+func (j *Journal) KeyframeWindow() (size int, oldest, newest uint64) {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	size = len(j.keyframes)
+	if size == 0 {
+		return size, 0, 0
+	}
+	oldest = j.keyframes[0].Sequence
+	newest = j.keyframes[size-1].Sequence
+	return size, oldest, newest
 }
 
 // keyframe captures a full snapshot of the world state. The struct is
 // intentionally minimal for now so future diffs can expand it without touching
 // the broadcast layer again.
 type keyframe struct {
-	Tick uint64
+	Tick        uint64
+	Sequence    uint64
+	Players     []Player
+	NPCs        []NPC
+	Obstacles   []Obstacle
+	Effects     []Effect
+	GroundItems []GroundItem
+	Config      worldConfig
+	RecordedAt  time.Time
 }
 
-// keyframeRing maintains a fixed-size circular buffer of keyframes.
-type keyframeRing struct {
-	frames []keyframe
-	next   int
-	filled bool
+type journalEviction struct {
+	Sequence uint64
+	Tick     uint64
+	Reason   string
 }
 
-func newKeyframeRing(capacity int) keyframeRing {
-	if capacity <= 0 {
-		return keyframeRing{}
-	}
-	return keyframeRing{frames: make([]keyframe, capacity)}
-}
-
-// Push inserts a keyframe into the ring, overwriting the oldest entry when the
-// capacity is exceeded.
-func (r *keyframeRing) Push(frame keyframe) {
-	if len(r.frames) == 0 {
-		return
-	}
-	r.frames[r.next] = frame
-	r.next = (r.next + 1) % len(r.frames)
-	if r.next == 0 {
-		r.filled = true
-	}
-}
-
-// Frames returns a chronological copy of the buffered keyframes.
-func (r *keyframeRing) Frames() []keyframe {
-	if len(r.frames) == 0 {
-		return nil
-	}
-	var count int
-	if r.filled {
-		count = len(r.frames)
-	} else {
-		count = r.next
-	}
-	if count == 0 {
-		return nil
-	}
-	ordered := make([]keyframe, 0, count)
-	if r.filled {
-		ordered = append(ordered, r.frames[r.next:]...)
-		ordered = append(ordered, r.frames[:r.next]...)
-		return ordered
-	}
-	ordered = append(ordered, r.frames[:r.next]...)
-	return ordered
+type keyframeRecordResult struct {
+	Size           int
+	OldestSequence uint64
+	NewestSequence uint64
+	Evicted        []journalEviction
 }

@@ -93,6 +93,8 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		publisher = logging.NopPublisher{}
 	}
 
+	capacity, maxAge := journalConfig()
+
 	w := &World{
 		players:             make(map[string]*playerState),
 		npcs:                make(map[string]*npcState),
@@ -108,7 +110,7 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		publisher:           publisher,
 		groundItems:         make(map[string]*groundItemState),
 		groundItemsByTile:   make(map[groundTileKey]map[ItemType]*groundItemState),
-		journal:             newJournal(defaultJournalKeyframeCapacity),
+		journal:             newJournal(capacity, maxAge),
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()

@@ -1,5 +1,5 @@
 import { computeRtt, createHeartbeat } from "./heartbeat.js";
-import { updatePatchState } from "./patches.js";
+import { createPatchState, updatePatchState } from "./patches.js";
 
 const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
@@ -14,6 +14,9 @@ const DEFAULT_LAVA_COUNT = 3;
 export const DEFAULT_WORLD_WIDTH = 2400;
 export const DEFAULT_WORLD_HEIGHT = 1800;
 const VALID_FACINGS = new Set(["up", "down", "left", "right"]);
+const KEYFRAME_RETRY_MAX_ATTEMPTS = 3;
+const KEYFRAME_RETRY_BASE_DELAY = 200;
+const KEYFRAME_RETRY_MAX_DELAY = 1000;
 const heartbeatControllers = new WeakMap();
 
 function normalizeProtocolVersionValue(value) {
@@ -691,9 +694,96 @@ function queueEffectTriggers(store, triggers) {
   store.processedEffectTriggerIds = nextState.processedIds;
 }
 
+function ensureKeyframeRetryState(store) {
+  if (!store) {
+    return;
+  }
+  if (!(store.keyframeRetryTimers instanceof Map)) {
+    store.keyframeRetryTimers = new Map();
+  }
+  if (!(store.keyframeRetryAttempts instanceof Map)) {
+    store.keyframeRetryAttempts = new Map();
+  }
+}
+
+function clearKeyframeRetry(store, sequence) {
+  if (!store || typeof sequence !== "number" || !Number.isFinite(sequence)) {
+    return;
+  }
+  const normalizedSeq = Math.floor(sequence);
+  ensureKeyframeRetryState(store);
+  const timer = store.keyframeRetryTimers.get(normalizedSeq);
+  if (timer) {
+    clearTimeout(timer);
+    store.keyframeRetryTimers.delete(normalizedSeq);
+  }
+  store.keyframeRetryAttempts.delete(normalizedSeq);
+}
+
+function clearAllKeyframeRetries(store) {
+  if (!store) {
+    return;
+  }
+  ensureKeyframeRetryState(store);
+  for (const timer of store.keyframeRetryTimers.values()) {
+    clearTimeout(timer);
+  }
+  store.keyframeRetryTimers.clear();
+  store.keyframeRetryAttempts.clear();
+}
+
+function scheduleKeyframeRetry(store, sequence, tick) {
+  if (!store || typeof sequence !== "number" || !Number.isFinite(sequence)) {
+    return;
+  }
+  const normalizedSeq = Math.floor(sequence);
+  ensureKeyframeRetryState(store);
+  const attempts = store.keyframeRetryAttempts.get(normalizedSeq) ?? 0;
+  if (attempts >= KEYFRAME_RETRY_MAX_ATTEMPTS) {
+    console.warn(`[keyframe] exhausted retries for sequence ${normalizedSeq}`);
+    clearKeyframeRetry(store, normalizedSeq);
+    handleConnectionLoss(store);
+    return;
+  }
+  const delay = Math.min(
+    KEYFRAME_RETRY_BASE_DELAY * Math.pow(2, attempts),
+    KEYFRAME_RETRY_MAX_DELAY,
+  );
+  const existing = store.keyframeRetryTimers.get(normalizedSeq);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const timer = setTimeout(() => {
+    store.keyframeRetryTimers.delete(normalizedSeq);
+    requestKeyframeSnapshot(store, normalizedSeq, tick);
+  }, delay);
+  store.keyframeRetryTimers.set(normalizedSeq, timer);
+}
+
+function requestKeyframeSnapshot(store, sequence, tick) {
+  if (!store || typeof sequence !== "number" || !Number.isFinite(sequence)) {
+    return;
+  }
+  const normalizedSeq = Math.floor(sequence);
+  if (normalizedSeq <= 0) {
+    return;
+  }
+  ensureKeyframeRetryState(store);
+  const attempts = store.keyframeRetryAttempts.get(normalizedSeq) ?? 0;
+  store.keyframeRetryAttempts.set(normalizedSeq, attempts + 1);
+  const message = {
+    type: "keyframeRequest",
+    keyframeSeq: normalizedSeq,
+  };
+  if (typeof tick === "number" && Number.isFinite(tick) && tick >= 0) {
+    message.keyframeTick = Math.floor(tick);
+  }
+  sendMessage(store, message);
+}
+
 function syncPatchTestingState(store, payload, source) {
   if (!store || !store.patchState) {
-    return;
+    return null;
   }
   const previous = store.patchState;
   const resetHistory =
@@ -707,6 +797,7 @@ function syncPatchTestingState(store, payload, source) {
   const next = updatePatchState(previous, payload, {
     source,
     resetHistory,
+    requestKeyframe: (sequence, tick) => requestKeyframeSnapshot(store, sequence, tick),
   });
   const prevError = previous && typeof previous === "object" ? previous.lastError : null;
   const prevCount = Array.isArray(previous?.errors) ? previous.errors.length : 0;
@@ -725,7 +816,39 @@ function syncPatchTestingState(store, payload, source) {
     parts.push(nextError.message || "error applying patch");
     console.warn(parts.join(" "), nextError);
   }
-  store.patchState = next;
+  let finalState = next;
+  if (next && next.resyncRequested) {
+    finalState = { ...next, resyncRequested: false };
+    clearAllKeyframeRetries(store);
+    handleConnectionLoss(store);
+  }
+  store.patchState = finalState;
+  return finalState;
+}
+
+function handleKeyframeMessage(store, payload) {
+  const sequence = typeof payload?.sequence === "number" && Number.isFinite(payload.sequence)
+    ? Math.floor(payload.sequence)
+    : null;
+  const messageType = typeof payload?.type === "string" ? payload.type : null;
+  const nextState = syncPatchTestingState(store, payload, messageType || "keyframe");
+  if (messageType === "keyframe" && sequence !== null) {
+    clearKeyframeRetry(store, sequence);
+  } else if (messageType === "keyframeNack" && sequence !== null) {
+    const reason = typeof payload?.reason === "string" ? payload.reason.trim().toLowerCase() : "";
+    if (reason === "rate_limited") {
+      const retryTick = nextState && typeof nextState.lastRecovery === "object"
+        ? nextState.lastRecovery.tick
+        : null;
+      scheduleKeyframeRetry(store, sequence, retryTick);
+    } else {
+      clearKeyframeRetry(store, sequence);
+    }
+  }
+  if (store && typeof store.updateDiagnostics === "function") {
+    store.updateDiagnostics();
+  }
+  return nextState;
 }
 
 // sendMessage serializes payloads, applies simulated latency, and tracks stats.
@@ -959,7 +1082,9 @@ export function connectEvents(store) {
         store.updateDiagnostics();
       } else if (parsed.type === "console_ack") {
         handleConsoleAck(store, payload);
-      }
+    } else if (parsed.type === "keyframe") {
+      handleKeyframeMessage(store, payload);
+    }
   };
 
   const handleSocketDrop = () => {
@@ -1167,6 +1292,8 @@ function handleConnectionLoss(store) {
   store.isPathActive = false;
   store.activePathTarget = null;
   store.lastPathRequestAt = null;
+  clearAllKeyframeRetries(store);
+  store.patchState = createPatchState();
   store.updateDiagnostics();
   if (store.playerId === null) {
     return;
