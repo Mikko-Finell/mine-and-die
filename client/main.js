@@ -8,7 +8,11 @@ import {
   DEFAULT_WORLD_HEIGHT,
 } from "./network.js";
 import { createPatchState } from "./patches.js";
-import { startRenderLoop } from "./render.js";
+import {
+  startRenderLoop,
+  RENDER_MODE_PATCH,
+  RENDER_MODE_SNAPSHOT,
+} from "./render.js";
 import { registerInputHandlers } from "./input.js";
 import { createVendorBanner } from "./vendor/example-banner.js";
 
@@ -176,6 +180,7 @@ const store = {
   currentFacing: "down",
   isPathActive: false,
   activePathTarget: null,
+  renderMode: RENDER_MODE_SNAPSHOT,
   heartbeatTimer: null,
   lastTimestamp: performance.now(),
   latencyInputListener: null,
@@ -241,6 +246,62 @@ window.debugNetworkStats = () => {
   console.info(`[network] ${tickLabel} · ${rttLabel}`);
   return { tick: tickValue, rttMs: rttValue };
 };
+
+const VALID_RENDER_MODES = new Set([
+  RENDER_MODE_SNAPSHOT,
+  RENDER_MODE_PATCH,
+]);
+
+function normalizeRenderMode(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === RENDER_MODE_PATCH) {
+    return RENDER_MODE_PATCH;
+  }
+  if (normalized === RENDER_MODE_SNAPSHOT) {
+    return RENDER_MODE_SNAPSHOT;
+  }
+  return null;
+}
+
+function applyRenderMode(nextMode) {
+  const resolved =
+    typeof nextMode === "string" ? normalizeRenderMode(nextMode) : nextMode;
+  const finalMode = VALID_RENDER_MODES.has(resolved)
+    ? resolved
+    : null;
+  if (!finalMode) {
+    console.warn(
+      `[render] Unknown mode "${nextMode}". Expected ` +
+        `${Array.from(VALID_RENDER_MODES).join(" or ")}.`,
+    );
+    return store.renderMode;
+  }
+  if (store.renderMode === finalMode) {
+    console.info(`[render] Already using ${finalMode} rendering.`);
+    return finalMode;
+  }
+  store.renderMode = finalMode;
+  store.displayPlayers = {};
+  store.displayNPCs = {};
+  console.info(`[render] Switched to ${finalMode} rendering.`);
+  if (typeof store.updateDiagnostics === "function") {
+    store.updateDiagnostics();
+  }
+  return finalMode;
+}
+
+store.setRenderMode = applyRenderMode;
+
+window.debugSetRenderMode = (mode) => applyRenderMode(mode);
+window.debugToggleRenderMode = () =>
+  applyRenderMode(
+    store.renderMode === RENDER_MODE_PATCH
+      ? RENDER_MODE_SNAPSHOT
+      : RENDER_MODE_PATCH,
+  );
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
