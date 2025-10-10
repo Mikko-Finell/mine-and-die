@@ -161,14 +161,9 @@ snapshot path:
   batches, exposes them via `keyframeSeq` references plus a `keyframeRequest`
   websocket flow, and the client consumes those frames to heal missing-entity
   diffs without console noise.【F:server/hub.go†L600-L720】【F:server/main.go†L200-L360】【F:client/patches.js†L900-L1158】【F:client/network.js†L640-L820】
-* ✅ **Switch-over rehearsal** – the render loop can now target either the
-  authoritative snapshots or the patch-driven state. Console helpers
-  (`debugSetRenderMode`, `debugToggleRenderMode`, or `store.setRenderMode`)
-  flip the mode at runtime, and the renderer reads from the patch container for
-  players, NPCs, effects, and ground items when patch mode is active so QA can
-  smoke test the diff pipeline without code edits.【F:client/main.js†L183-L304】【F:client/render.js†L16-L620】
 
 ## Suggested next steps
 
-No open items. Continue exercising the patch renderer during playtests and add
-new tasks here as follow-up issues surface.
+1. **Switch-over rehearsal** – gate the render loop behind a feature flag that
+   can swap between full snapshots and the patch-driven state to smoke test the
+   final migration path.
