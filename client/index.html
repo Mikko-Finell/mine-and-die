@@ -56,184 +56,57 @@
             <span id="hud-rtt" class="hud-network__item">RTT: —</span>
           </div>
           <canvas id="game-canvas" width="800" height="600"></canvas>
-          <section class="world-controls" aria-label="World controls">
-            <h2 class="world-controls__title">World Controls</h2>
-            <form id="world-reset-form" class="world-reset-form">
-              <div class="world-reset-grid">
-                <div class="world-reset-option">
-                  <label class="world-reset-toggle" for="world-reset-obstacles">
-                    <input
-                      type="checkbox"
-                      id="world-reset-obstacles"
-                      name="obstacles"
-                      checked
-                    />
-                    <span class="world-reset-toggle__body">
-                      <span class="world-reset-toggle__title">Enable obstacles</span>
-                      <span class="world-reset-toggle__hint"
-                        >Spawn rocks, ore veins, and collision geometry.</span
-                      >
-                    </span>
-                  </label>
-                  <label
-                    class="world-reset-quantity"
-                    for="world-reset-obstacles-count"
-                  >
-                    <span class="world-reset-quantity__label">Count</span>
-                    <input
-                      id="world-reset-obstacles-count"
-                      name="obstaclesCount"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      value="2"
-                      class="world-reset-quantity__input"
-                      aria-label="Obstacle count"
-                    />
-                    <span class="world-reset-quantity__hint"
-                      >How many large rocks to scatter around the map.</span
-                    >
-                  </label>
-                </div>
-                <div class="world-reset-option">
-                  <label class="world-reset-toggle" for="world-reset-npcs">
-                    <input
-                      type="checkbox"
-                      id="world-reset-npcs"
-                      name="npcs"
-                      checked
-                    />
-                    <span class="world-reset-toggle__body">
-                      <span class="world-reset-toggle__title">Enable NPCs</span>
-                      <span class="world-reset-toggle__hint"
-                        >Populate the mine with neutral enemies.</span
-                      >
-                    </span>
-                  </label>
-                  <label
-                    class="world-reset-quantity"
-                    for="world-reset-goblins-count"
-                  >
-                    <span class="world-reset-quantity__label">Goblins</span>
-                    <input
-                      id="world-reset-goblins-count"
-                      name="goblinCount"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      value="2"
-                      class="world-reset-quantity__input"
-                      aria-label="Goblin count"
-                    />
-                    <span class="world-reset-quantity__hint"
-                      >How many goblins should patrol.</span
-                    >
-                  </label>
-                  <label
-                    class="world-reset-quantity"
-                    for="world-reset-rats-count"
-                  >
-                    <span class="world-reset-quantity__label">Rats</span>
-                    <input
-                      id="world-reset-rats-count"
-                      name="ratCount"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      value="1"
-                      class="world-reset-quantity__input"
-                      aria-label="Rat count"
-                    />
-                    <span class="world-reset-quantity__hint"
-                      >How many rats should skitter around.</span
-                    >
-                  </label>
-                </div>
-                <div class="world-reset-option">
-                  <label class="world-reset-toggle" for="world-reset-lava">
-                    <input type="checkbox" id="world-reset-lava" name="lava" checked />
-                    <span class="world-reset-toggle__body">
-                      <span class="world-reset-toggle__title">Enable lava</span>
-                      <span class="world-reset-toggle__hint"
-                        >Include flowing lava pools and hazards.</span
-                      >
-                    </span>
-                  </label>
-                  <label
-                    class="world-reset-quantity"
-                    for="world-reset-lava-count"
-                  >
-                    <span class="world-reset-quantity__label">Count</span>
-                    <input
-                      id="world-reset-lava-count"
-                      name="lavaCount"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      value="3"
-                      class="world-reset-quantity__input"
-                      aria-label="Lava pool count"
-                    />
-                    <span class="world-reset-quantity__hint"
-                      >Limit how many lava pools appear.</span
-                    >
-                  </label>
-                </div>
-                <div class="world-reset-option">
-                  <label class="world-reset-toggle" for="world-reset-gold-mines">
-                    <input
-                      type="checkbox"
-                      id="world-reset-gold-mines"
-                      name="goldMines"
-                      checked
-                    />
-                    <span class="world-reset-toggle__body">
-                      <span class="world-reset-toggle__title">Enable gold mines</span>
-                      <span class="world-reset-toggle__hint"
-                        >Scatter rich ore deposits for mining.</span
-                      >
-                    </span>
-                  </label>
-                  <label
-                    class="world-reset-quantity"
-                    for="world-reset-gold-mines-count"
-                  >
-                    <span class="world-reset-quantity__label">Count</span>
-                    <input
-                      id="world-reset-gold-mines-count"
-                      name="goldMineCount"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      step="1"
-                      value="1"
-                      class="world-reset-quantity__input"
-                      aria-label="Gold mine count"
-                    />
-                    <span class="world-reset-quantity__hint"
-                      >Choose how many ore veins are generated.</span
-                    >
-                  </label>
-                </div>
-              </div>
-            </form>
-          </section>
-        </div>
-        <aside id="inventory-panel" aria-label="Inventory" class="inventory-panel">
-          <h2>Inventory</h2>
-          <div id="inventory-grid" class="inventory-grid" role="list"></div>
-        </aside>
-      </div>
-      <section
-        id="debug-panel"
-        class="debug-panel"
-        aria-label="Testing and debug tools"
-        data-collapsed="false"
-      >
+          <section class="interface-tabs" aria-label="Interface panels">
+            <div class="interface-tabs__list" role="tablist">
+              <button
+                id="interface-tab-telemetry"
+                class="interface-tabs__tab interface-tabs__tab--active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="debug-panel"
+                data-interface-tab="telemetry"
+                data-tab-target="debug-panel"
+              >
+                Telemetry
+              </button>
+              <button
+                id="interface-tab-world"
+                class="interface-tabs__tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="world-controls-panel"
+                tabindex="-1"
+                data-interface-tab="world"
+                data-tab-target="world-controls-panel"
+              >
+                World Controls
+              </button>
+              <button
+                id="interface-tab-inventory"
+                class="interface-tabs__tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="inventory-panel"
+                tabindex="-1"
+                data-interface-tab="inventory"
+                data-tab-target="inventory-panel"
+              >
+                Inventory
+              </button>
+            </div>
+            <section
+              id="debug-panel"
+              class="interface-tabs__panel debug-panel interface-tabs__panel--active"
+              role="tabpanel"
+              tabindex="0"
+              aria-labelledby="interface-tab-telemetry"
+              data-interface-panel=""
+              aria-label="Testing and debug tools"
+              data-collapsed="false"
+            >
         <header class="debug-panel__header">
           <div class="debug-panel__heading">
             <h2 class="debug-panel__title">Testing &amp; Debug</h2>
@@ -350,7 +223,203 @@
             </details>
           </div>
         </div>
-      </section>
+            </section>
+            <section
+              id="world-controls-panel"
+              class="interface-tabs__panel"
+              role="tabpanel"
+              tabindex="0"
+              aria-labelledby="interface-tab-world"
+              data-interface-panel=""
+              hidden
+            >
+              <section class="world-controls" aria-label="World controls">
+                <h2 class="world-controls__title">World Controls</h2>
+                <form id="world-reset-form" class="world-reset-form">
+                  <div class="world-reset-grid">
+                    <div class="world-reset-option">
+                      <label class="world-reset-toggle" for="world-reset-obstacles">
+                        <input
+                          type="checkbox"
+                          id="world-reset-obstacles"
+                          name="obstacles"
+                          checked
+                        />
+                        <span class="world-reset-toggle__body">
+                          <span class="world-reset-toggle__title">Enable obstacles</span>
+                          <span class="world-reset-toggle__hint"
+                            >Spawn rocks, ore veins, and collision geometry.</span
+                          >
+                        </span>
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-obstacles-count"
+                      >
+                        <span class="world-reset-quantity__label">Count</span>
+                        <input
+                          id="world-reset-obstacles-count"
+                          name="obstaclesCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="2"
+                          class="world-reset-quantity__input"
+                          aria-label="Obstacle count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >How many large rocks to scatter around the map.</span
+                        >
+                      </label>
+                    </div>
+                    <div class="world-reset-option">
+                      <label class="world-reset-toggle" for="world-reset-npcs">
+                        <input
+                          type="checkbox"
+                          id="world-reset-npcs"
+                          name="npcs"
+                          checked
+                        />
+                        <span class="world-reset-toggle__body">
+                          <span class="world-reset-toggle__title">Enable NPCs</span>
+                          <span class="world-reset-toggle__hint"
+                            >Populate the mine with neutral enemies.</span
+                          >
+                        </span>
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-goblins-count"
+                      >
+                        <span class="world-reset-quantity__label">Goblins</span>
+                        <input
+                          id="world-reset-goblins-count"
+                          name="goblinCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="2"
+                          class="world-reset-quantity__input"
+                          aria-label="Goblin count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >How many goblins should patrol.</span
+                        >
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-rats-count"
+                      >
+                        <span class="world-reset-quantity__label">Rats</span>
+                        <input
+                          id="world-reset-rats-count"
+                          name="ratCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="1"
+                          class="world-reset-quantity__input"
+                          aria-label="Rat count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >How many rats should skitter around.</span
+                        >
+                      </label>
+                    </div>
+                    <div class="world-reset-option">
+                      <label class="world-reset-toggle" for="world-reset-lava">
+                        <input
+                          type="checkbox"
+                          id="world-reset-lava"
+                          name="lava"
+                          checked
+                        />
+                        <span class="world-reset-toggle__body">
+                          <span class="world-reset-toggle__title">Enable lava</span>
+                          <span class="world-reset-toggle__hint"
+                            >Include flowing lava pools and hazards.</span
+                          >
+                        </span>
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-lava-count"
+                      >
+                        <span class="world-reset-quantity__label">Count</span>
+                        <input
+                          id="world-reset-lava-count"
+                          name="lavaCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="3"
+                          class="world-reset-quantity__input"
+                          aria-label="Lava pool count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >Limit how many lava pools appear.</span
+                        >
+                      </label>
+                    </div>
+                    <div class="world-reset-option">
+                      <label class="world-reset-toggle" for="world-reset-gold-mines">
+                        <input
+                          type="checkbox"
+                          id="world-reset-gold-mines"
+                          name="goldMines"
+                          checked
+                        />
+                        <span class="world-reset-toggle__body">
+                          <span class="world-reset-toggle__title">Enable gold mines</span>
+                          <span class="world-reset-toggle__hint"
+                            >Scatter rich ore deposits for mining.</span
+                          >
+                        </span>
+                      </label>
+                      <label
+                        class="world-reset-quantity"
+                        for="world-reset-gold-mines-count"
+                      >
+                        <span class="world-reset-quantity__label">Count</span>
+                        <input
+                          id="world-reset-gold-mines-count"
+                          name="goldMineCount"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          step="1"
+                          value="1"
+                          class="world-reset-quantity__input"
+                          aria-label="Gold mine count"
+                        />
+                        <span class="world-reset-quantity__hint"
+                          >Choose how many ore veins are generated.</span
+                        >
+                      </label>
+                    </div>
+                  </div>
+                </form>
+              </section>
+            </section>
+            <section
+              id="inventory-panel"
+              class="interface-tabs__panel inventory-panel"
+              role="tabpanel"
+              tabindex="0"
+              aria-labelledby="interface-tab-inventory"
+              data-interface-panel=""
+              hidden
+            >
+              <h2>Inventory</h2>
+              <div id="inventory-grid" class="inventory-grid" role="list"></div>
+            </section>
+          </section>
+        </div>
+      </div>
     </main>
     <script type="module" src="main.js"></script>
   </body>
