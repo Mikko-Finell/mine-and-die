@@ -186,6 +186,31 @@ func (j *Journal) AppendPatch(p Patch) {
 	j.patches = append(j.patches, p)
 }
 
+// PurgeEntity drops all staged patches that reference the provided entity ID.
+// It keeps the journal internally consistent when actors are removed before
+// the next broadcast.
+func (j *Journal) PurgeEntity(entityID string) {
+	if entityID == "" {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if len(j.patches) == 0 {
+		return
+	}
+	filtered := j.patches[:0]
+	for _, patch := range j.patches {
+		if patch.EntityID == entityID {
+			continue
+		}
+		filtered = append(filtered, patch)
+	}
+	if len(filtered) == len(j.patches) {
+		return
+	}
+	j.patches = filtered
+}
+
 // DrainPatches returns all staged patches and clears the in-memory slice.
 func (j *Journal) DrainPatches() []Patch {
 	j.mu.Lock()
