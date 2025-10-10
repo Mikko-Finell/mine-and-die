@@ -8,9 +8,11 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 - **Protocol:** `/join` POST handshake followed by a single WebSocket channel for intents, actions, state snapshots, and heartbeats.
 
 ## Repository Layout
-- `server/` – Authoritative simulation, HTTP handlers, and WebSocket hub. See [Server Architecture](./server.md).
-- `client/` – UI, input, networking, and rendering modules served as static assets. See [Client Architecture](./client.md).
+- `server/` – Authoritative simulation, HTTP handlers, and WebSocket hub. See [Server Architecture](./architecture/server.md).
+- `client/` – UI, input, networking, and rendering modules served as static assets. See [Client Architecture](./architecture/client.md).
 - `docs/` – Living documentation (this folder).
+  - `architecture/` – Technical specs and engineering-focused docs.
+  - `gameplay-design/` – Concept pillars, combat intentions, and progression loops.
 - `README.md` – Quickstart instructions and high-level pitch.
 - `AGENTS.md` – Contributor guidelines and conventions.
 
@@ -36,14 +38,15 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 5. Run `go test ./...` to execute hub regression tests.
 
 ## Additional References
-- [Networking](./networking.md) – Join flow, message contracts, diff metadata, and heartbeat policy.
-- [Server Architecture](./server.md) – Tick loop, data structures, actions, and diagnostics.
-- [Client Architecture](./client.md) – Store layout, rendering flow, and network helpers.
-- [Effects & Conditions](./effects.md) – How the authoritative effect pipeline maps to client visuals.
-- [Logging](./logging.md) – Publisher/router design plus event catalog.
-- [AI System](./ai.md) – Behaviour configs, executor flow, and extension tips.
-- [Testing & Troubleshooting](./testing.md) – Available test suites and common debugging tips.
-- [Patch Migration Plan](./patch-migration-plan.md) – Current coverage and roadmap for the diff pipeline.
-- [Playground Animations](./playground-animations.md) – How to author effect definitions and surface them inside the playground tool.
+- [Networking](./architecture/networking.md) – Join flow, message contracts, diff metadata, and heartbeat policy.
+- [Server Architecture](./architecture/server.md) – Tick loop, data structures, actions, and diagnostics.
+- [Client Architecture](./architecture/client.md) – Store layout, rendering flow, and network helpers.
+- [Effects & Conditions](./architecture/effects.md) – How the authoritative effect pipeline maps to client visuals.
+- [Logging](./architecture/logging.md) – Publisher/router design plus event catalog.
+- [AI System](./architecture/ai.md) – Behaviour configs, executor flow, and extension tips.
+- [Stats System](./architecture/stats.md) – Layered attributes, mutation flow, and integration points for combat.
+- [Testing & Troubleshooting](./architecture/testing.md) – Available test suites and common debugging tips.
+- [Patch Migration Plan](./architecture/patch-migration-plan.md) – Current coverage and roadmap for the diff pipeline.
+- [Playground Animations](./architecture/playground-animations.md) – How to author effect definitions and surface them inside the playground tool.
 
 Keep this folder updated as the simulation evolves so newcomers can get productive quickly.
