@@ -24,6 +24,7 @@ import {
   normalizeWorldConfig,
   parseServerEvent,
   splitNpcCounts,
+  __networkInternals,
 } from "../network.js";
 
 const DEFAULT_COUNTS = {
@@ -790,5 +791,114 @@ describe("parseServerEvent", () => {
 
     expect(result?.type).toBe("heartbeat");
     expect(computeRtt(result?.data, 175)).toBe(75);
+  });
+});
+
+describe("keyframe retry loop", () => {
+  it("backs off before dispatching another request", () => {
+    const originalWebSocket = globalThis.WebSocket;
+    globalThis.WebSocket = { OPEN: 1 };
+
+    vi.useFakeTimers();
+    try {
+      const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+      vi.setSystemTime(now);
+
+      const send = vi.fn();
+      const store = {
+        patchState: {
+          pendingKeyframeRequests: new Map(),
+          pendingReplays: [],
+        },
+        simulatedLatencyMs: 0,
+        socket: { readyState: 1, send },
+        messagesSent: 0,
+        bytesSent: 0,
+        lastMessageSentAt: null,
+        updateDiagnostics: vi.fn(),
+        keyframeRetryTimer: null,
+      };
+
+      __networkInternals.requestKeyframeSnapshot(store, 7, null, {
+        incrementAttempt: false,
+        firstRequestedAt: now,
+      });
+
+      if (store.keyframeRetryTimer !== null) {
+        clearInterval(store.keyframeRetryTimer);
+        store.keyframeRetryTimer = null;
+      }
+
+      const pendingEntry =
+        store.patchState.pendingKeyframeRequests.get(7) || null;
+      expect(pendingEntry).not.toBeNull();
+      expect(pendingEntry?.attempts).toBe(1);
+      expect(pendingEntry?.nextRetryAt).toBe(
+        now + __networkInternals.computeKeyframeRetryDelay(1),
+      );
+
+      __networkInternals.processKeyframeRetryLoop(store);
+      expect(send).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(
+        now + __networkInternals.computeKeyframeRetryDelay(1) + 1,
+      );
+      __networkInternals.processKeyframeRetryLoop(store);
+      expect(send).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      globalThis.WebSocket = originalWebSocket;
+    }
+  });
+
+  it("requests a resync when retries are exhausted", () => {
+    vi.useFakeTimers();
+    try {
+      const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+      vi.setSystemTime(now);
+
+      const pendingEntry = {
+        attempts: __networkInternals.KEYFRAME_RETRY_CONSTANTS.MAX_ATTEMPTS,
+        nextRetryAt: now - 1,
+        firstRequestedAt: now - 5000,
+      };
+
+      const originalPatchState = {
+        pendingKeyframeRequests: new Map([[11, pendingEntry]]),
+        pendingReplays: [],
+      };
+
+      const setLatency = vi.fn();
+      const setStatusBase = vi.fn();
+      const store = {
+        patchState: originalPatchState,
+        keyframeRetryTimer: null,
+        socket: null,
+        setLatency,
+        updateDiagnostics: vi.fn(),
+        playerId: null,
+        players: {},
+        displayPlayers: {},
+        npcs: {},
+        displayNPCs: {},
+        directionOrder: [],
+        currentIntent: { dx: 0, dy: 0 },
+        setStatusBase,
+        effectManager: null,
+        reconnectTimeout: null,
+      };
+
+      __networkInternals.processKeyframeRetryLoop(store);
+
+      expect(store.patchState).not.toBe(originalPatchState);
+      expect(store.patchState?.pendingKeyframeRequests instanceof Map).toBe(true);
+      expect(
+        store.patchState?.pendingKeyframeRequests?.size ?? 0,
+      ).toBe(0);
+      expect(setLatency).toHaveBeenCalledWith(null);
+      expect(store.keyframeRetryTimer).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
