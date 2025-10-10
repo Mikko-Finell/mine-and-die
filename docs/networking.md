@@ -4,7 +4,7 @@ This document describes how the Mine & Die client and server communicate today. 
 
 ## Connection Lifecycle
 
-1. **Join handshake** – The browser performs a `POST /join` to create a player slot and fetch an initial snapshot. The response includes the assigned `id`, the current actors (`players`, `npcs`), static world data (`obstacles`), active effects, pending one-shot `effectTriggers`, any dropped `groundItems`, and the authoritative world configuration object. 【F:server/messages.go†L4-L12】【F:client/network.js†L662-L690】
+1. **Join handshake** – The browser performs a `POST /join` to create a player slot and fetch an initial snapshot. The response includes the assigned `id`, the current actors (`players`, `npcs`), static world data (`obstacles`), active effects, pending one-shot `effectTriggers`, any dropped `groundItems`, and the authoritative world configuration object. 【F:server/messages.go†L4-L12】【F:client/network.js†L943-L1020】
 2. **WebSocket upgrade** – After storing the join payload the client opens `/ws?id={playerId}` using `ws://` or `wss://` based on the page protocol. On success the server immediately publishes a `state` message so late joiners start from the latest tick. 【F:server/main.go†L211-L233】【F:client/network.js†L698-L726】
 3. **Steady state** – The hub advances the simulation at 15 Hz and sends snapshot broadcasts. Clients keep their session alive by submitting input/ability/console messages plus heartbeat pings every two seconds. Players missing three intervals (~6 s) are culled from the world. 【F:server/hub.go†L504-L567】【F:server/constants.go†L7-L17】【F:client/network.js†L916-L999】【F:server/simulation.go†L344-L372】
 
@@ -22,9 +22,11 @@ If the socket drops the client tears down local state and re-runs the join flow 
 
 | Type | Description |
 | --- | --- |
-| `state` | Primary snapshot broadcast. Includes `players`, `npcs`, `obstacles`, `effects`, optional `effectTriggers`, optional `groundItems`, the current tick (`t`), the `serverTime` of emission, and the world configuration. Sent on every tick and immediately after subscribe/reset events. 【F:server/messages.go†L14-L25】【F:server/hub.go†L547-L581】 |
+| `state` | Primary snapshot broadcast. Includes `players`, `npcs`, `obstacles`, `effects`, optional `effectTriggers`, optional `groundItems`, incremental `patches`, the current tick (`t`), monotonic `sequence`/`keyframeSeq`, the `serverTime` of emission, the world configuration, and a `resync` flag. Sent on every tick and immediately after subscribe/reset events. 【F:server/messages.go†L14-L32】【F:server/hub.go†L547-L633】【F:client/network.js†L1043-L1124】 |
 | `heartbeat` | Reply to client heartbeats containing `serverTime`, the echoed `clientTime`, and the computed `rtt` (milliseconds). 【F:server/messages.go†L40-L45】【F:server/main.go†L276-L315】 |
 | `console_ack` | Response for debug console commands with `status`, optional `reason`, the affected quantity, and the target ground stack ID when relevant. Triggered by `drop_gold` / `pickup_gold`. 【F:server/messages.go†L31-L38】【F:server/hub.go†L312-L444】 |
+| `keyframe` | Snapshot replay used by the patch pipeline. Carries a full frame (`players`, `npcs`, `obstacles`, `effects`, `groundItems`, `config`) plus the requested `sequence`/`t` so the client can rebuild its baseline. 【F:server/messages.go†L35-L45】【F:server/hub.go†L600-L820】【F:client/network.js†L887-L1141】 |
+| `keyframeNack` | Indicates that a requested keyframe was rate limited or expired. Includes the original `sequence` and a string `reason`. 【F:server/messages.go†L48-L53】【F:server/hub.go†L600-L820】【F:client/network.js†L887-L1141】 |
 
 The client queues transient `effectTriggers` to drive visuals once and ignores duplicates using a processed-ID set. 【F:client/network.js†L577-L620】
 
@@ -40,14 +42,15 @@ All payloads are JSON objects with a `type` string:
 | `action` | `action` | Fires an ability; currently `attack` and `fireball` are accepted. Extra `params` are ignored. 【F:client/network.js†L118-L158】【F:server/hub.go†L288-L310】 |
 | `heartbeat` | `sentAt` | Millisecond timestamp used to compute round-trip time and timeout tracking. 【F:client/network.js†L918-L999】【F:server/hub.go†L450-L483】 |
 | `console` | `cmd`, optional `qty` | Debug commands for dropping/picking gold piles. 【F:client/network.js†L160-L187】【F:server/hub.go†L312-L444】 |
+| `keyframeRequest` | `keyframeSeq`, optional `keyframeTick` | Requests a cached keyframe to recover the patch baseline. Retries are rate limited on the server and orchestrated on the client. 【F:client/network.js†L790-L839】【F:server/hub.go†L600-L820】 |
 
-The helper `sendMessage` centralises JSON serialization, simulated latency, diagnostics counters, and tags every payload with the client's latest applied tick (`ack`). 【F:client/network.js†L623-L657】
+The helper `sendMessage` centralises JSON serialization, simulated latency, diagnostics counters, and tags every payload with the client's latest applied tick (`ack`). 【F:client/network.js†L905-L940】
 
-All client messages include `ack` when the browser has processed at least one server tick. The hub records the highest value observed per subscriber, logging monotonic progress and exposing the latest acknowledgement through `/diagnostics`. 【F:client/network.js†L623-L657】【F:server/main.go†L257-L320】【F:server/hub.go†L212-L241】【F:server/hub.go†L522-L560】
+All client messages include `ack` when the browser has processed at least one server tick. The hub records the highest value observed per subscriber, logging monotonic progress and exposing the latest acknowledgement through `/diagnostics`. 【F:client/network.js†L905-L940】【F:server/main.go†L257-L320】【F:server/hub.go†L212-L241】【F:server/hub.go†L522-L560】
 
 ## World Configuration Broadcasts
 
-Snapshots (join responses and `state` messages) always include a `config` object mirroring the server’s world toggles—obstacle flags and counts, NPC counts, lava toggles, the `seed`, and world `width`/`height`. Clients normalise the data, update diagnostics, and expose the active seed in the debug UI. 【F:server/messages.go†L4-L24】【F:server/world_config.go†L7-L46】【F:client/network.js†L662-L690】【F:client/network.js†L735-L789】
+Snapshots (join responses and `state` messages) always include a `config` object mirroring the server’s world toggles—obstacle flags and counts, NPC counts, lava toggles, the `seed`, and world `width`/`height`. Clients normalise the data, update diagnostics, and expose the active seed in the debug UI. 【F:server/messages.go†L4-L24】【F:server/world_config.go†L7-L46】【F:client/network.js†L975-L1086】【F:client/network.js†L1043-L1124】
 
 ## Heartbeats and Timeouts
 
