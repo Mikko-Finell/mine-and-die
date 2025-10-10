@@ -1005,6 +1005,7 @@ func (w *World) pruneEffects(now time.Time) {
 		if eff.Projectile != nil && !eff.Projectile.ExpiryResolved {
 			w.maybeExplodeOnExpiry(eff, now)
 		}
+		w.purgeEntityPatches(eff.ID)
 	}
 }
 

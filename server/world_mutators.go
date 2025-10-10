@@ -13,6 +13,13 @@ func (w *World) appendPatch(kind PatchKind, entityID string, payload any) {
 	w.journal.AppendPatch(Patch{Kind: kind, EntityID: entityID, Payload: payload})
 }
 
+func (w *World) purgeEntityPatches(entityID string) {
+	if w == nil || entityID == "" {
+		return
+	}
+	w.journal.PurgeEntity(entityID)
+}
+
 func (w *World) setActorPosition(actor *actorState, version *uint64, entityID string, kind PatchKind, x, y float64) {
 	if w == nil || actor == nil || version == nil || entityID == "" {
 		return

@@ -192,6 +192,7 @@ func (w *World) handleNPCDefeat(npc *npcState) {
 	}
 	w.dropAllInventory(&npc.actorState, "death")
 	delete(w.npcs, npc.ID)
+	w.purgeEntityPatches(npc.ID)
 }
 
 func (w *World) pruneDefeatedNPCs() {

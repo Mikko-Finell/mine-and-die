@@ -710,6 +710,45 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		obstacles = make([]Obstacle, 0)
 	}
 
+	if len(patches) > 0 {
+		alive := make(map[string]struct{}, len(players)+len(npcs)+len(effects)+len(groundItems))
+		for _, player := range players {
+			if player.ID == "" {
+				continue
+			}
+			alive[player.ID] = struct{}{}
+		}
+		for _, npc := range npcs {
+			if npc.ID == "" {
+				continue
+			}
+			alive[npc.ID] = struct{}{}
+		}
+		for _, eff := range effects {
+			if eff.ID == "" {
+				continue
+			}
+			alive[eff.ID] = struct{}{}
+		}
+		for _, item := range groundItems {
+			if item.ID == "" {
+				continue
+			}
+			alive[item.ID] = struct{}{}
+		}
+		filtered := patches[:0]
+		for _, patch := range patches {
+			if patch.EntityID == "" {
+				continue
+			}
+			if _, ok := alive[patch.EntityID]; !ok {
+				continue
+			}
+			filtered = append(filtered, patch)
+		}
+		patches = filtered
+	}
+
 	frame := keyframe{
 		Tick:        tick,
 		Sequence:    seq,
