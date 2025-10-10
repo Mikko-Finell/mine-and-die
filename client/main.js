@@ -52,6 +52,13 @@ const worldResetGoldMineCount = document.getElementById(
 );
 const worldResetSeed = document.getElementById("world-reset-seed");
 
+const interfaceTabButtons = Array.from(
+  document.querySelectorAll("[data-interface-tab]"),
+);
+const interfaceTabPanels = Array.from(
+  document.querySelectorAll("[data-interface-panel]"),
+);
+
 const diagnosticsEls = {
   connection: document.getElementById("diag-connection"),
   players: document.getElementById("diag-players"),
@@ -102,6 +109,8 @@ const WORLD_RESET_CONFIG_KEYS = [
   "seed",
 ];
 
+const INTERFACE_TAB_STORAGE_KEY = "mine-and-die.interface-panel";
+
 const DEFAULT_WORLD_CONFIG = {
   obstacles: true,
   obstaclesCount: 2,
@@ -131,6 +140,9 @@ const store = {
   hudNetworkEls,
   inventoryPanel,
   inventoryGrid,
+  interfaceTabs: interfaceTabButtons,
+  interfacePanels: interfaceTabPanels,
+  activeInterfacePanelId: null,
   worldResetForm,
   worldResetStatusEl: worldResetStatus,
   worldResetInputs: {
@@ -327,6 +339,147 @@ function initializeCanvasPathing() {
   };
   store.canvas.addEventListener("pointerdown", handlePointerDown);
   store.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
+function initializeInterfaceTabs() {
+  if (!Array.isArray(store.interfaceTabs) || store.interfaceTabs.length === 0) {
+    return;
+  }
+
+  const panelsById = new Map();
+  const panelList = [];
+  for (const panel of store.interfacePanels || []) {
+    if (panel && panel.id) {
+      panelsById.set(panel.id, panel);
+      panelList.push(panel);
+    }
+  }
+
+  const tabs = store.interfaceTabs.filter((tab) => {
+    const targetId = tab?.dataset?.tabTarget;
+    return Boolean(targetId && panelsById.has(targetId));
+  });
+
+  if (tabs.length === 0 || panelList.length === 0) {
+    return;
+  }
+
+  const getStorage = () => {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        return window.localStorage;
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  };
+
+  const storage = getStorage();
+
+  const setActive = (panelId, options = {}) => {
+    if (!panelId || !panelsById.has(panelId)) {
+      return;
+    }
+
+    const { focusTab = false, persist = true } = options;
+
+    tabs.forEach((tab) => {
+      const isActive = tab.dataset.tabTarget === panelId;
+      tab.classList.toggle("interface-tabs__tab--active", isActive);
+      tab.setAttribute("aria-selected", String(isActive));
+      tab.setAttribute("tabindex", isActive ? "0" : "-1");
+      if (isActive && focusTab) {
+        tab.focus();
+      }
+    });
+
+    panelList.forEach((panel) => {
+      const isActive = panel.id === panelId;
+      panel.classList.toggle("interface-tabs__panel--active", isActive);
+      if (isActive) {
+        panel.removeAttribute("hidden");
+      } else {
+        panel.setAttribute("hidden", "");
+      }
+    });
+
+    store.activeInterfacePanelId = panelId;
+
+    if (persist && storage) {
+      try {
+        storage.setItem(INTERFACE_TAB_STORAGE_KEY, panelId);
+      } catch (error) {
+        /* ignore storage errors */
+      }
+    }
+  };
+
+  let storedPanelId = null;
+  if (storage) {
+    try {
+      storedPanelId = storage.getItem(INTERFACE_TAB_STORAGE_KEY);
+    } catch (error) {
+      storedPanelId = null;
+    }
+  }
+
+  const defaultPanelId = panelsById.has("debug-panel")
+    ? "debug-panel"
+    : tabs[0].dataset.tabTarget;
+
+  const initialPanelId =
+    storedPanelId && panelsById.has(storedPanelId)
+      ? storedPanelId
+      : defaultPanelId;
+
+  setActive(initialPanelId, { persist: false });
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => {
+      const targetId = tab.dataset.tabTarget;
+      if (targetId) {
+        setActive(targetId);
+      }
+    });
+
+    tab.addEventListener("keydown", (event) => {
+      if (
+        event.key !== "ArrowRight" &&
+        event.key !== "ArrowDown" &&
+        event.key !== "ArrowLeft" &&
+        event.key !== "ArrowUp" &&
+        event.key !== "Home" &&
+        event.key !== "End"
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      let nextIndex = index;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        nextIndex = (index + 1) % tabs.length;
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        nextIndex = (index - 1 + tabs.length) % tabs.length;
+      } else if (event.key === "Home") {
+        nextIndex = 0;
+      } else if (event.key === "End") {
+        nextIndex = tabs.length - 1;
+      }
+
+      const nextTab = tabs[nextIndex];
+      if (!nextTab) {
+        return;
+      }
+      const targetId = nextTab.dataset.tabTarget;
+      if (targetId) {
+        setActive(targetId, { focusTab: true });
+      }
+    });
+  });
+
+  store.interfaceTabs = tabs;
+  store.interfacePanels = panelList;
 }
 
 function initializeDebugPanelToggle() {
@@ -1136,6 +1289,7 @@ store.updateWorldConfigUI = () => syncWorldResetControls();
 store.setCameraLock = setCameraLock;
 store.toggleCameraLock = toggleCameraLock;
 
+initializeInterfaceTabs();
 initializeDebugPanelToggle();
 attachLatencyInputListener();
 initializeWorldResetControls();
