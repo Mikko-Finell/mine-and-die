@@ -144,15 +144,16 @@ snapshot path:
   sequence numbers plus a `resync` flag, and the client dedupe cache consumes
   those fields to discard duplicates and protect against out-of-order batches
   without guessing from tick counters.【F:server/hub.go†L617-L664】【F:server/messages.go†L13-L35】【F:client/patches.js†L720-L964】【F:client/__tests__/patches.test.js†L1-L520】
+* ✅ **Replay validation tooling** – the diagnostics drawer surfaces patch
+  baseline ticks, applied patch counts, error summaries, and entity totals by
+  reading from the background patch state, letting QA compare snapshot and diff
+  pipelines without inspecting the console.【F:client/index.html†L288-L341】【F:client/main.js†L401-L620】
 
 ## Suggested next steps
 
-1. **Replay validation tooling** – surface the background patch state in the
-   diagnostics drawer so QA can compare snapshot-vs-diff outputs without opening
-   the console.
-2. **Keyframe recovery** – plumb the server's journal keyframes through to the
+1. **Keyframe recovery** – plumb the server's journal keyframes through to the
    client and teach the patch runner to resynchronise from a full snapshot when a
    diff references an unknown entity.
-3. **Switch-over rehearsal** – gate the render loop behind a feature flag that
+2. **Switch-over rehearsal** – gate the render loop behind a feature flag that
    can swap between full snapshots and the patch-driven state to smoke test the
    final migration path.
