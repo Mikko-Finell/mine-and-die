@@ -7,6 +7,12 @@ import {
   updateRectZoneInstance,
 } from "./js-effects/effects/rectZone.js";
 import { EffectLayer } from "./js-effects/types.js";
+import {
+  RENDER_MODE_PATCH,
+  RENDER_MODE_SNAPSHOT,
+} from "./render-modes.js";
+
+export { RENDER_MODE_PATCH, RENDER_MODE_SNAPSHOT } from "./render-modes.js";
 
 /**
  * render.js bridges authoritative simulation state to visuals: it lerps actors,
@@ -40,6 +46,53 @@ if (typeof EffectLayer !== "object" || typeof EffectLayer.ActorOverlay !== "numb
 const ACTOR_OVERLAY_LAYER = EffectLayer.ActorOverlay;
 const GROUND_EFFECT_MAX_LAYER = ACTOR_OVERLAY_LAYER - 1;
 
+function isPlainObject(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function toEntriesMap(source) {
+  if (isPlainObject(source)) {
+    return source;
+  }
+  return Object.create(null);
+}
+
+function toEffectArray(source) {
+  if (Array.isArray(source)) {
+    return source;
+  }
+  if (isPlainObject(source)) {
+    return Object.values(source);
+  }
+  return [];
+}
+
+function resolveRenderState(store) {
+  const wantsPatchMode = store?.renderMode === RENDER_MODE_PATCH;
+  const patchedState = wantsPatchMode ? store?.patchState?.patched : null;
+  if (wantsPatchMode && isPlainObject(patchedState)) {
+    return {
+      mode: RENDER_MODE_PATCH,
+      players: toEntriesMap(patchedState.players),
+      npcs: toEntriesMap(patchedState.npcs),
+      effects: toEffectArray(patchedState.effects),
+      groundItems: toEntriesMap(patchedState.groundItems),
+      tick: patchedState.tick,
+      sequence: patchedState.sequence,
+    };
+  }
+
+  return {
+    mode: RENDER_MODE_SNAPSHOT,
+    players: toEntriesMap(store?.players),
+    npcs: toEntriesMap(store?.npcs),
+    effects: Array.isArray(store?.effects) ? store.effects : [],
+    groundItems: toEntriesMap(store?.groundItems),
+    tick: store?.lastTick ?? null,
+    sequence: null,
+  };
+}
+
 function ensureEffectManager(store) {
   if (!(store.effectManager instanceof EffectManager)) {
     store.effectManager = new EffectManager();
@@ -56,11 +109,22 @@ function registerDefaultEffectTriggers(manager) {
   manager.registerTrigger("blood-splatter", handleBloodSplatterTrigger);
 }
 
-function syncEffectsByType(store, manager, type, definition, onUpdate) {
+function syncEffectsByType(
+  store,
+  manager,
+  type,
+  definition,
+  onUpdate,
+  effectsOverride
+) {
   if (!manager || typeof type !== "string" || type.length === 0) {
     return;
   }
-  const effects = Array.isArray(store.effects) ? store.effects : [];
+  const effects = Array.isArray(effectsOverride)
+    ? effectsOverride
+    : Array.isArray(store.effects)
+      ? store.effects
+      : [];
   const definitionType =
     definition && typeof definition.type === "string" && definition.type.length > 0
       ? definition.type
@@ -157,7 +221,7 @@ function getWorldDimensions(store) {
   return { width, height };
 }
 
-function updateCamera(store) {
+function updateCamera(store, renderState) {
   if (!store.camera) {
     store.camera = { x: 0, y: 0, lockOnPlayer: true };
   }
@@ -168,7 +232,9 @@ function updateCamera(store) {
 
   if (camera.lockOnPlayer && store.playerId) {
     const target =
-      store.displayPlayers[store.playerId] || store.players[store.playerId];
+      store.displayPlayers[store.playerId] ||
+      renderState.players?.[store.playerId] ||
+      store.players?.[store.playerId];
     if (target) {
       camera.x = target.x - viewportWidth / 2;
       camera.y = target.y - viewportHeight / 2;
@@ -188,8 +254,14 @@ export function startRenderLoop(store) {
     const dt = Math.min((now - store.lastTimestamp) / 1000, 0.2);
     store.lastTimestamp = now;
 
+    const renderState = resolveRenderState(store);
     const lerpAmount = Math.min(1, dt * store.LERP_RATE);
-    Object.entries(store.players).forEach(([id, player]) => {
+
+    const renderPlayers = renderState.players;
+    Object.entries(renderPlayers).forEach(([id, player]) => {
+      if (!player) {
+        return;
+      }
       if (!store.displayPlayers[id]) {
         store.displayPlayers[id] = { x: player.x, y: player.y };
       }
@@ -199,12 +271,16 @@ export function startRenderLoop(store) {
     });
 
     Object.keys(store.displayPlayers).forEach((id) => {
-      if (!store.players[id]) {
+      if (!renderPlayers[id]) {
         delete store.displayPlayers[id];
       }
     });
 
-    Object.entries(store.npcs).forEach(([id, npc]) => {
+    const renderNPCs = renderState.npcs;
+    Object.entries(renderNPCs).forEach(([id, npc]) => {
+      if (!npc) {
+        return;
+      }
       if (!store.displayNPCs[id]) {
         store.displayNPCs[id] = { x: npc.x, y: npc.y };
       }
@@ -214,14 +290,14 @@ export function startRenderLoop(store) {
     });
 
     Object.keys(store.displayNPCs).forEach((id) => {
-      if (!store.npcs[id]) {
+      if (!renderNPCs[id]) {
         delete store.displayNPCs[id];
       }
     });
 
-    updateCamera(store);
+    updateCamera(store, renderState);
 
-    drawScene(store, dt, now);
+    drawScene(store, renderState, dt, now);
     requestAnimationFrame(gameLoop);
   }
 
@@ -229,7 +305,7 @@ export function startRenderLoop(store) {
 }
 
 // drawScene paints the background, obstacles, effects, and players.
-function drawScene(store, frameDt, frameNow) {
+function drawScene(store, renderState, frameDt, frameNow) {
   const { ctx, canvas } = store;
   ctx.fillStyle = "#020617";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -282,6 +358,7 @@ function drawScene(store, frameDt, frameNow) {
 
   const effectPass = prepareEffectPass(
     store,
+    renderState,
     frameDt,
     frameNow,
     viewportWidth,
@@ -293,8 +370,8 @@ function drawScene(store, frameDt, frameNow) {
     resetDrawn: true,
   });
 
-  drawGroundItems(store);
-  drawNPCs(store);
+  drawGroundItems(store, renderState);
+  drawNPCs(store, renderState);
 
   Object.entries(store.displayPlayers).forEach(([id, position]) => {
     ctx.fillStyle = id === store.playerId ? "#38bdf8" : "#f97316";
@@ -305,7 +382,7 @@ function drawScene(store, frameDt, frameNow) {
       store.PLAYER_SIZE
     );
 
-    const player = store.players[id];
+    const player = renderState.players?.[id] || store.players?.[id];
     if (player && typeof player.maxHealth === "number" && player.maxHealth > 0 && typeof player.health === "number") {
       drawHealthBar(ctx, store, position, player, id);
     }
@@ -335,14 +412,20 @@ function drawScene(store, frameDt, frameNow) {
   ctx.restore();
 }
 
-function drawGroundItems(store) {
+function drawGroundItems(store, renderState) {
   const { ctx } = store;
   if (!ctx || !store || typeof store !== "object") {
     return;
   }
-  const items = store.groundItems && typeof store.groundItems === "object"
-    ? Object.values(store.groundItems)
-    : [];
+  const source = renderState?.groundItems;
+  let items = [];
+  if (Array.isArray(source)) {
+    items = source;
+  } else if (isPlainObject(source)) {
+    items = Object.values(source);
+  } else if (isPlainObject(store.groundItems)) {
+    items = Object.values(store.groundItems);
+  }
   if (!items || items.length === 0) {
     return;
   }
@@ -405,7 +488,7 @@ function drawGroundItems(store) {
   }
 }
 
-function drawNPCs(store) {
+function drawNPCs(store, renderState) {
   const { ctx } = store;
   Object.entries(store.displayNPCs).forEach(([id, position]) => {
     ctx.fillStyle = "#a855f7";
@@ -416,7 +499,7 @@ function drawNPCs(store) {
       store.PLAYER_SIZE
     );
 
-    const npc = store.npcs[id];
+    const npc = renderState.npcs?.[id] || store.npcs?.[id];
     if (
       npc &&
       typeof npc.maxHealth === "number" &&
@@ -480,7 +563,14 @@ function drawHealthBar(ctx, store, position, player, id) {
 }
 
 // prepareEffectPass syncs effect instances and returns the frame context.
-function prepareEffectPass(store, frameDt, frameNow, viewportWidth, viewportHeight) {
+function prepareEffectPass(
+  store,
+  renderState,
+  frameDt,
+  frameNow,
+  viewportWidth,
+  viewportHeight
+) {
   if (!store || !store.ctx) {
     return null;
   }
@@ -502,20 +592,31 @@ function prepareEffectPass(store, frameDt, frameNow, viewportWidth, viewportHeig
     manager.triggerAll(triggers, { store });
   }
 
-  syncEffectsByType(store, manager, "attack", MeleeSwingEffectDefinition);
+  const effects = Array.isArray(renderState?.effects) ? renderState.effects : [];
+
+  syncEffectsByType(
+    store,
+    manager,
+    "attack",
+    MeleeSwingEffectDefinition,
+    undefined,
+    effects
+  );
   syncEffectsByType(
     store,
     manager,
     "fire",
     FireEffectDefinition,
-    updateFireInstanceTransform
+    updateFireInstanceTransform,
+    effects
   );
   syncEffectsByType(
     store,
     manager,
     "fireball",
     FireballZoneEffectDefinition,
-    (instance, effect, state) => updateRectZoneInstance(instance, effect, state)
+    (instance, effect, state) => updateRectZoneInstance(instance, effect, state),
+    effects
   );
 
   const camera = store.camera || { x: 0, y: 0 };

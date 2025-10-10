@@ -9,6 +9,13 @@ import {
 } from "./network.js";
 import { createPatchState } from "./patches.js";
 import { startRenderLoop } from "./render.js";
+import {
+  RENDER_MODE_PATCH,
+  RENDER_MODE_SNAPSHOT,
+  normalizeRenderMode,
+  isRenderMode,
+  getValidRenderModes,
+} from "./render-modes.js";
 import { registerInputHandlers } from "./input.js";
 import { createVendorBanner } from "./vendor/example-banner.js";
 
@@ -176,6 +183,7 @@ const store = {
   currentFacing: "down",
   isPathActive: false,
   activePathTarget: null,
+  renderMode: RENDER_MODE_SNAPSHOT,
   heartbeatTimer: null,
   lastTimestamp: performance.now(),
   latencyInputListener: null,
@@ -241,6 +249,43 @@ window.debugNetworkStats = () => {
   console.info(`[network] ${tickLabel} · ${rttLabel}`);
   return { tick: tickValue, rttMs: rttValue };
 };
+
+function applyRenderMode(nextMode) {
+  const resolved =
+    typeof nextMode === "string" ? normalizeRenderMode(nextMode) : nextMode;
+  const finalMode = isRenderMode(resolved)
+    ? resolved
+    : null;
+  if (!finalMode) {
+    console.warn(
+      `[render] Unknown mode "${nextMode}". Expected ` +
+        `${getValidRenderModes().join(" or ")}.`,
+    );
+    return store.renderMode;
+  }
+  if (store.renderMode === finalMode) {
+    console.info(`[render] Already using ${finalMode} rendering.`);
+    return finalMode;
+  }
+  store.renderMode = finalMode;
+  store.displayPlayers = {};
+  store.displayNPCs = {};
+  console.info(`[render] Switched to ${finalMode} rendering.`);
+  if (typeof store.updateDiagnostics === "function") {
+    store.updateDiagnostics();
+  }
+  return finalMode;
+}
+
+store.setRenderMode = applyRenderMode;
+
+window.debugSetRenderMode = (mode) => applyRenderMode(mode);
+window.debugToggleRenderMode = () =>
+  applyRenderMode(
+    store.renderMode === RENDER_MODE_PATCH
+      ? RENDER_MODE_SNAPSHOT
+      : RENDER_MODE_PATCH,
+  );
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
