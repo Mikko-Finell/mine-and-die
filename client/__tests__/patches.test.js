@@ -97,6 +97,37 @@ function freezeState(state) {
   return state;
 }
 
+function withRetryAttempts(state, sequence, attempts) {
+  const pendingRequests =
+    state.pendingKeyframeRequests instanceof Map
+      ? new Map(state.pendingKeyframeRequests)
+      : new Map();
+  const normalizedSeq = Math.floor(sequence);
+  const existing = pendingRequests.get(normalizedSeq) || {};
+  pendingRequests.set(normalizedSeq, {
+    attempts,
+    nextRetryAt: null,
+    firstRequestedAt:
+      typeof existing.firstRequestedAt === "number" && Number.isFinite(existing.firstRequestedAt)
+        ? existing.firstRequestedAt
+        : Date.now(),
+  });
+  const pendingReplays = Array.isArray(state.pendingReplays)
+    ? state.pendingReplays.map((entry) => {
+        if (!entry || entry.sequence !== normalizedSeq) {
+          return entry ? { ...entry } : entry;
+        }
+        const requests = Math.max(attempts, Number.isFinite(entry.requests) ? entry.requests : 1);
+        return { ...entry, requests };
+      })
+    : [];
+  return {
+    ...state,
+    pendingKeyframeRequests: pendingRequests,
+    pendingReplays,
+  };
+}
+
 describe("updatePatchState", () => {
   it("builds a baseline and patched snapshot when no patches are provided", () => {
     const initial = freezeState(createPatchState());
@@ -618,11 +649,14 @@ describe("updatePatchState", () => {
 
     expect(requestLog).toEqual([11]);
     expect(deferred.lastAppliedPatchCount).toBe(0);
-    expect(
-      deferred.pendingKeyframeRequests instanceof Set
-        ? deferred.pendingKeyframeRequests.has(11)
-        : false,
-    ).toBe(true);
+    expect(deferred.pendingKeyframeRequests instanceof Map).toBe(true);
+    const pendingMeta =
+      deferred.pendingKeyframeRequests instanceof Map
+        ? deferred.pendingKeyframeRequests.get(11)
+        : null;
+    expect(pendingMeta && typeof pendingMeta.firstRequestedAt === "number").toBe(true);
+    expect(pendingMeta?.attempts).toBe(1);
+    expect(pendingMeta?.nextRetryAt).toBe(null);
     expect(Array.isArray(deferred.pendingReplays) ? deferred.pendingReplays.length : 0).toBe(1);
     expect(Object.keys(deferred.patched.npcs)).toEqual([]);
 
@@ -644,7 +678,7 @@ describe("updatePatchState", () => {
     expect(requestLog).toEqual([11]);
     expect(replayed.lastAppliedPatchCount).toBe(1);
     expect(
-      replayed.pendingKeyframeRequests instanceof Set ? replayed.pendingKeyframeRequests.size : 0,
+      replayed.pendingKeyframeRequests instanceof Map ? replayed.pendingKeyframeRequests.size : 0,
     ).toBe(0);
     expect(Array.isArray(replayed.pendingReplays) ? replayed.pendingReplays.length : 0).toBe(0);
     expect(replayed.baseline.npcs["npc-99"].health).toBe(9);
@@ -652,6 +686,65 @@ describe("updatePatchState", () => {
     expect(replayed.patched.npcs["npc-99"].maxHealth).toBe(14);
     expect(replayed.lastRecovery && replayed.lastRecovery.status).toBe("recovered");
     expect(replayed.errors).toEqual([]);
+  });
+
+  it("ignores duplicate keyframes after applying the deferred replay", () => {
+    const seeded = freezeState(
+      updatePatchState(createPatchState(), deepFreeze({ t: 4, sequence: 4, players: [makePlayer()] }), {
+        source: "join",
+      }),
+    );
+
+    const missingPatch = deepFreeze({
+      sequence: 5,
+      keyframeSeq: 5,
+      patches: [
+        {
+          kind: PATCH_KIND_PLAYER_HEALTH,
+          entityId: "player-1",
+          payload: { health: 4, maxHealth: 10 },
+        },
+      ],
+    });
+
+    const deferred = freezeState(
+      updatePatchState(seeded, missingPatch, {
+        source: "state",
+        requestKeyframe: () => {},
+      }),
+    );
+
+    const keyframePayload = deepFreeze({
+      type: "keyframe",
+      sequence: 5,
+      t: 5,
+      players: [makePlayer({ id: "player-1", health: 7, maxHealth: 10 })],
+      npcs: [],
+      effects: [],
+      groundItems: [],
+    });
+
+    const replayed = freezeState(
+      updatePatchState(deferred, keyframePayload, { source: "keyframe", requestKeyframe: () => {} }),
+    );
+    const duplicate = updatePatchState(replayed, keyframePayload, {
+      source: "keyframe",
+      requestKeyframe: () => {},
+    });
+
+    expect(
+      duplicate.pendingKeyframeRequests instanceof Map ? duplicate.pendingKeyframeRequests.size : 0,
+    ).toBe(0);
+    expect(Array.isArray(duplicate.pendingReplays) ? duplicate.pendingReplays.length : 0).toBe(0);
+    expect(duplicate.lastAppliedPatchCount).toBe(replayed.lastAppliedPatchCount);
+    expect(Array.isArray(duplicate.recoveryLog) ? duplicate.recoveryLog.length : 0).toBe(
+      Array.isArray(replayed.recoveryLog) ? replayed.recoveryLog.length : 0,
+    );
+    expect(
+      duplicate.resolvedKeyframeSequences instanceof Set
+        ? duplicate.resolvedKeyframeSequences.has(5)
+        : false,
+    ).toBe(true);
   });
 
   it("escalates to resync when a keyframe nack reports expiry", () => {
@@ -692,8 +785,8 @@ describe("updatePatchState", () => {
     expect(nack.resyncRequested).toBe(true);
     expect(nack.keyframeNackCounts?.expired).toBe(1);
     expect(
-      nack.pendingKeyframeRequests instanceof Set ? nack.pendingKeyframeRequests.has(6) : false,
-    ).toBe(false);
+      nack.pendingKeyframeRequests instanceof Map ? nack.pendingKeyframeRequests.size : 0,
+    ).toBe(0);
     expect(Array.isArray(nack.pendingReplays) ? nack.pendingReplays.length : 0).toBe(0);
     expect(nack.lastRecovery?.status).toBe("expired");
   });
@@ -735,11 +828,57 @@ describe("updatePatchState", () => {
 
     expect(nack.resyncRequested).toBe(false);
     expect(nack.keyframeNackCounts?.rate_limited).toBe(1);
-    expect(
-      nack.pendingKeyframeRequests instanceof Set ? nack.pendingKeyframeRequests.has(8) : false,
-    ).toBe(false);
+    expect(nack.pendingKeyframeRequests instanceof Map).toBe(true);
+    const pendingMeta =
+      nack.pendingKeyframeRequests instanceof Map
+        ? nack.pendingKeyframeRequests.get(8)
+        : null;
+    expect(pendingMeta).not.toBeNull();
+    expect(pendingMeta?.attempts).toBe(1);
+    expect(typeof pendingMeta?.nextRetryAt).toBe("number");
+    expect(pendingMeta && pendingMeta.nextRetryAt > pendingMeta.firstRequestedAt).toBe(true);
     expect(Array.isArray(nack.pendingReplays) ? nack.pendingReplays.length : 0).toBe(1);
     expect(nack.pendingReplays[0].sequence).toBe(8);
     expect(nack.lastRecovery?.status).toBe("rate_limited");
+  });
+
+  it("escalates to resync when rate-limited retries exceed the cap", () => {
+    const seeded = freezeState(
+      updatePatchState(
+        createPatchState(),
+        deepFreeze({ t: 3, sequence: 3, players: [makePlayer()] }),
+        { source: "join" },
+      ),
+    );
+
+    const pending = freezeState(
+      updatePatchState(
+        seeded,
+        deepFreeze({
+          sequence: 8,
+          keyframeSeq: 8,
+          patches: [
+            {
+              kind: PATCH_KIND_PLAYER_HEALTH,
+              entityId: "player-1",
+              payload: { health: 9, maxHealth: 10 },
+            },
+          ],
+        }),
+        { source: "state", requestKeyframe: () => {} },
+      ),
+    );
+
+    const nackPayload = deepFreeze({ type: "keyframeNack", sequence: 8, reason: "rate_limited" });
+    const nack1 = freezeState(updatePatchState(pending, nackPayload, { source: "keyframe" }));
+    const retriedOnce = freezeState(withRetryAttempts(nack1, 8, 2));
+    const nack2 = freezeState(updatePatchState(retriedOnce, nackPayload, { source: "keyframe" }));
+    const retriedTwice = freezeState(withRetryAttempts(nack2, 8, 3));
+    const nack3 = updatePatchState(retriedTwice, nackPayload, { source: "keyframe" });
+
+    expect(nack3.resyncRequested).toBe(true);
+    expect(nack3.keyframeNackCounts?.rate_limited).toBe(3);
+    expect(Array.isArray(nack3.pendingReplays) ? nack3.pendingReplays.length : 0).toBe(0);
+    expect(nack3.pendingKeyframeRequests instanceof Map ? nack3.pendingKeyframeRequests.size : 0).toBe(0);
   });
 });

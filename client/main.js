@@ -194,8 +194,7 @@ const store = {
   effects: [],
   pendingEffectTriggers: [],
   processedEffectTriggerIds: new Set(),
-  keyframeRetryTimers: new Map(),
-  keyframeRetryAttempts: new Map(),
+  keyframeRetryTimer: null,
   camera: {
     x: 0,
     y: 0,
@@ -614,17 +613,18 @@ function updateDiagnostics() {
 
       entitiesText = entityParts.filter(Boolean).join(" · ");
 
-      const pendingRequestCount =
-        patchState.pendingKeyframeRequests instanceof Set
-          ? patchState.pendingKeyframeRequests.size
-          : 0;
+      const pendingRequestMap =
+        patchState.pendingKeyframeRequests instanceof Map
+          ? patchState.pendingKeyframeRequests
+          : null;
+      const pendingRequestCount = pendingRequestMap ? pendingRequestMap.size : 0;
       const lastRecoveryEntry = Array.isArray(patchState.recoveryLog) && patchState.recoveryLog.length > 0
         ? patchState.recoveryLog[patchState.recoveryLog.length - 1]
         : patchState.lastRecovery && typeof patchState.lastRecovery === "object"
           ? patchState.lastRecovery
           : null;
-      const pendingSeqs = patchState.pendingKeyframeRequests instanceof Set
-        ? Array.from(patchState.pendingKeyframeRequests).filter((value) =>
+      const pendingSeqs = pendingRequestMap
+        ? Array.from(pendingRequestMap.keys()).filter((value) =>
             typeof value === "number" && Number.isFinite(value),
           )
         : [];
