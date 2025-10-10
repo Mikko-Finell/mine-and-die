@@ -50,28 +50,30 @@
 
 **4.1 Visibility & Execution**
 
-* Market data (listings/prices) is **read-only globally** from any location.
-* Creating or fulfilling orders requires physical presence in a **safe zone** (see world rules).
+* Market data (listings/prices) and order execution are **available globally** through the player interface.  
+  Players can open the market tab at any time to browse, list, buy, or cancel orders.
+* **Safe zones** (see *Ecology — Celestial Shards*) simply provide a **risk-free environment** for extended market or inventory management.  
+  Trading itself is **not spatially restricted**—players may transact from anywhere, at their own risk.
 
 **4.2 Order Types**
 
 * **Sell listings** for concrete items (non-fungible or fungible).
-* **Buy orders (optional)** for **fungible** resources of identical type/quality (e.g., ore grade N).
-
-  * Fungibility is defined by item type + quality tags; items that do not match exactly cannot auto-settle into fungible orders.
+* **Buy orders (optional)** for **fungible** resources of identical type/quality (e.g., ore grade N).  
+  Fungibility is defined by item type + quality tags; items that do not match exactly cannot auto-settle into fungible orders.
 
 **4.3 Escrow & Settlement**
 
-* When listing or matching inside a safe zone, the market acts as **escrow** only:
-
-  * Seller’s item and buyer’s gold are locked until the match finalizes.
-  * On match, the engine transfers **item ↔ gold** directly **between player inventories**.
-* **No system fees**; if servers enable fees, they must route to a player-owned entity (never burned).
+* When a match occurs, the market engine acts as **escrow**:
+  * Seller’s item and buyer’s gold are locked until finalization.
+  * On completion, the engine transfers **item ↔ gold** directly between the two player inventories.
+* **No system fees** by default; if servers enable fees, they must route to a player-owned entity (never burned).
 
 **4.4 No NPC Logistics**
 
 * Engine provides no NPC caravans, banks, or insurance.
-* All item movement is performed by players.
+* All item movement is performed by players, even when the trade was executed remotely.
+* Servers may optionally implement localized terminals or auction halls for flavor or role-play purposes,  
+  but these are purely cosmetic and **not required** for core market access.
 
 ---
 
