@@ -71,8 +71,9 @@
 **4.4 No NPC Logistics**
 
 * Engine provides no NPC caravans, banks, or insurance.
-* All item movement is performed by players, even when the trade was executed remotely.
-* Servers may optionally implement localized terminals or auction halls for flavor or role-play purposes,  
+* Market settlement **teleports items and gold directly** between matched player inventories; transport risk only applies to
+  goods carried outside of market trades.
+* Servers may optionally implement localized terminals or auction halls for flavor or role-play purposes,
   but these are purely cosmetic and **not required** for core market access.
 
 ---
