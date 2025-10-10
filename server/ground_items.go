@@ -192,10 +192,14 @@ func (w *World) dropAllInventory(actor *actorState, reason string) int {
 			return nil
 		})
 	} else if npc, ok := w.npcs[actor.ID]; ok {
-		_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
-			stacks = inv.DrainAll()
-			return nil
-		})
+		if reason == "death" {
+			stacks = actor.Inventory.DrainAll()
+		} else {
+			_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
+				stacks = inv.DrainAll()
+				return nil
+			})
+		}
 	} else {
 		stacks = actor.Inventory.DrainAll()
 	}
@@ -224,10 +228,14 @@ func (w *World) dropAllItemsOfType(actor *actorState, itemType ItemType, reason 
 			return nil
 		})
 	} else if npc, ok := w.npcs[actor.ID]; ok {
-		_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
-			total = inv.RemoveAllOf(itemType)
-			return nil
-		})
+		if reason == "death" {
+			total = actor.Inventory.RemoveAllOf(itemType)
+		} else {
+			_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
+				total = inv.RemoveAllOf(itemType)
+				return nil
+			})
+		}
 	} else {
 		total = actor.Inventory.RemoveAllOf(itemType)
 	}

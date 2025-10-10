@@ -877,8 +877,13 @@ func (w *World) stopProjectile(eff *effectState, now time.Time, opts projectileS
 
 	p := eff.Projectile
 	if p.RemainingRange != 0 {
+		// Reset the remaining travel budget without emitting a patch. The effect is
+		// going to expire immediately, so clients would reject a params patch for an
+		// entity that disappears in the same batch.
 		p.RemainingRange = 0
-		w.SetEffectParam(eff, "remainingRange", 0)
+		if eff.Params != nil {
+			eff.Params["remainingRange"] = 0
+		}
 	}
 
 	if p.ExpiryResolved {
