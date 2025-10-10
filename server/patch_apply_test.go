@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"mine-and-die/server/logging"
+	stats "mine-and-die/server/stats"
 )
 
 const floatEpsilon = 1e-6
@@ -27,7 +28,7 @@ func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 3},
 		}}},
-	}}}
+	}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	basePlayer.intentX = 0.5
 	basePlayer.intentY = -0.5
 	w.AddPlayer(basePlayer)
@@ -39,7 +40,7 @@ func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 		Facing:    FacingDown,
 		Health:    50,
 		MaxHealth: 80,
-	}}}
+	}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	secondary.intentX = 0
 	secondary.intentY = 1
 	w.AddPlayer(secondary)
@@ -188,7 +189,7 @@ func TestApplyPatchesNoop(t *testing.T) {
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 1},
 		}}},
-	}}}
+	}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	player.intentX = 1
 	player.intentY = 0
 	w.AddPlayer(player)

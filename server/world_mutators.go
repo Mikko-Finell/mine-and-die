@@ -1,6 +1,10 @@
 package main
 
-import "math"
+import (
+	"math"
+
+	stats "mine-and-die/server/stats"
+)
 
 const positionEpsilon = 1e-6
 const healthEpsilon = 1e-6
@@ -71,7 +75,7 @@ func (w *World) setActorIntent(actor *actorState, version *uint64, entityID stri
 	w.appendPatch(PatchPlayerIntent, entityID, PlayerIntentPayload{DX: dx, DY: dy})
 }
 
-func (w *World) setActorHealth(actor *actorState, version *uint64, entityID string, kind PatchKind, fallbackMax float64, health float64) {
+func (w *World) setActorHealth(actor *actorState, version *uint64, entityID string, kind PatchKind, computedMax float64, health float64) {
 	if w == nil || actor == nil || version == nil || entityID == "" {
 		return
 	}
@@ -80,9 +84,9 @@ func (w *World) setActorHealth(actor *actorState, version *uint64, entityID stri
 		return
 	}
 
-	max := actor.MaxHealth
+	max := computedMax
 	if max <= 0 {
-		max = fallbackMax
+		max = actor.MaxHealth
 	}
 	if max <= 0 {
 		max = health
@@ -95,11 +99,14 @@ func (w *World) setActorHealth(actor *actorState, version *uint64, entityID stri
 		health = max
 	}
 
-	if math.Abs(actor.Health-health) < healthEpsilon {
+	maxDiff := math.Abs(actor.MaxHealth - max)
+	healthDiff := math.Abs(actor.Health - health)
+	if maxDiff < healthEpsilon && healthDiff < healthEpsilon {
 		return
 	}
 
 	actor.Health = health
+	actor.MaxHealth = max
 	*version++
 
 	w.appendPatch(kind, entityID, HealthPayload{Health: health, MaxHealth: max})
@@ -195,7 +202,9 @@ func (w *World) SetHealth(playerID string, health float64) {
 		return
 	}
 
-	w.setActorHealth(&player.actorState, &player.version, playerID, PatchPlayerHealth, playerMaxHealth, health)
+	player.stats.Resolve(w.currentTick)
+	max := player.stats.GetDerived(stats.DerivedMaxHealth)
+	w.setActorHealth(&player.actorState, &player.version, playerID, PatchPlayerHealth, max, health)
 }
 
 // MutateInventory applies the provided mutation to a player's inventory while
@@ -253,7 +262,9 @@ func (w *World) SetNPCHealth(npcID string, health float64) {
 		return
 	}
 
-	w.setActorHealth(&npc.actorState, &npc.version, npcID, PatchNPCHealth, playerMaxHealth, health)
+	npc.stats.Resolve(w.currentTick)
+	max := npc.stats.GetDerived(stats.DerivedMaxHealth)
+	w.setActorHealth(&npc.actorState, &npc.version, npcID, PatchNPCHealth, max, health)
 }
 
 // MutateNPCInventory applies a mutation to an NPC inventory with versioning and patches.

@@ -1,6 +1,10 @@
 package main
 
-import "time"
+import (
+	"time"
+
+	stats "mine-and-die/server/stats"
+)
 
 // NPCType enumerates the available neutral enemy archetypes.
 type NPCType string
@@ -20,6 +24,7 @@ type NPC struct {
 
 type npcState struct {
 	actorState
+	stats            stats.Component
 	Type             NPCType
 	ExperienceReward int
 	AIState          uint8

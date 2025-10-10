@@ -15,6 +15,7 @@ import (
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
 	loggingnetwork "mine-and-die/server/logging/network"
+	stats "mine-and-die/server/stats"
 )
 
 // Hub coordinates subscribers and orchestrates the deterministic world simulation.
@@ -141,6 +142,9 @@ func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 		)
 	}
 
+	statsComp := stats.DefaultComponent(stats.ArchetypePlayer)
+	maxHealth := statsComp.GetDerived(stats.DerivedMaxHealth)
+
 	return &playerState{
 		actorState: actorState{
 			Actor: Actor{
@@ -148,11 +152,12 @@ func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 				X:         defaultSpawnX,
 				Y:         defaultSpawnY,
 				Facing:    defaultFacing,
-				Health:    playerMaxHealth,
-				MaxHealth: playerMaxHealth,
+				Health:    maxHealth,
+				MaxHealth: maxHealth,
 				Inventory: inventory,
 			},
 		},
+		stats:         statsComp,
 		lastHeartbeat: now,
 		cooldowns:     make(map[string]time.Time),
 		path:          playerPathState{ArriveRadius: defaultPlayerArriveRadius},

@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"mine-and-die/server/logging"
+	stats "mine-and-die/server/stats"
 )
 
 func TestNPCRemovalPurgesPatches(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-test", Health: 50, MaxHealth: 50}}, Type: NPCTypeGoblin}
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-test", Health: 50, MaxHealth: 50}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin), Type: NPCTypeGoblin}
 	w.npcs[npc.ID] = npc
 
 	tile := tileForPosition(npc.X, npc.Y)
@@ -76,12 +77,12 @@ func TestEffectExpiryPurgesPatches(t *testing.T) {
 func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 	hub := newHub()
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-patch", Facing: FacingDown}}}
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-patch", Facing: FacingDown, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 
 	hub.mu.Lock()
 	hub.world.AddPlayer(player)
 	hub.world.appendPatch(PatchPlayerPos, player.ID, PlayerPosPayload{X: 3, Y: 4})
-	hub.world.appendPatch(PatchNPCHealth, "npc-phantom", NPCHealthPayload{Health: 0, MaxHealth: playerMaxHealth})
+	hub.world.appendPatch(PatchNPCHealth, "npc-phantom", NPCHealthPayload{Health: 0, MaxHealth: baselinePlayerMaxHealth})
 	hub.world.appendPatch(PatchPlayerFacing, player.ID, PlayerFacingPayload{Facing: FacingUp})
 	hub.mu.Unlock()
 

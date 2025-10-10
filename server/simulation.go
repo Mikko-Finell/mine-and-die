@@ -10,6 +10,7 @@ import (
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
+	stats "mine-and-die/server/stats"
 )
 
 // CommandType enumerates the supported simulation commands.
@@ -83,6 +84,30 @@ type World struct {
 	groundItems       map[string]*groundItemState
 	groundItemsByTile map[groundTileKey]map[ItemType]*groundItemState
 	journal           Journal
+}
+
+func (w *World) resolveStats(tick uint64) {
+	for _, player := range w.players {
+		player.stats.Resolve(tick)
+		w.syncMaxHealth(&player.actorState, &player.version, player.ID, PatchPlayerHealth, &player.stats)
+	}
+	for _, npc := range w.npcs {
+		npc.stats.Resolve(tick)
+		w.syncMaxHealth(&npc.actorState, &npc.version, npc.ID, PatchNPCHealth, &npc.stats)
+	}
+}
+
+func (w *World) syncMaxHealth(actor *actorState, version *uint64, entityID string, kind PatchKind, comp *stats.Component) {
+	if w == nil || actor == nil || version == nil || comp == nil || entityID == "" {
+		return
+	}
+
+	maxHealth := comp.GetDerived(stats.DerivedMaxHealth)
+	if maxHealth <= 0 {
+		return
+	}
+
+	w.setActorHealth(actor, version, entityID, kind, maxHealth, actor.Health)
 }
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
@@ -171,6 +196,8 @@ func (w *World) AddPlayer(state *playerState) {
 	if state == nil {
 		return
 	}
+	state.stats.Resolve(w.currentTick)
+	w.syncMaxHealth(&state.actorState, &state.version, state.ID, PatchPlayerHealth, &state.stats)
 	w.players[state.ID] = state
 }
 
@@ -217,6 +244,8 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	}
 
 	w.currentTick = tick
+
+	w.resolveStats(tick)
 
 	aiCommands := w.runAI(tick, now)
 	if len(aiCommands) > 0 {
@@ -559,6 +588,9 @@ func (w *World) spawnGoblinAt(x, y float64, waypoints []vec2, goldQty, potionQty
 		}
 	}
 
+	statsComp := stats.DefaultComponent(stats.ArchetypeGoblin)
+	maxHealth := statsComp.GetDerived(stats.DerivedMaxHealth)
+
 	goblin := &npcState{
 		actorState: actorState{
 			Actor: Actor{
@@ -566,11 +598,12 @@ func (w *World) spawnGoblinAt(x, y float64, waypoints []vec2, goldQty, potionQty
 				X:         x,
 				Y:         y,
 				Facing:    defaultFacing,
-				Health:    60,
-				MaxHealth: 60,
+				Health:    maxHealth,
+				MaxHealth: maxHealth,
 				Inventory: inventory,
 			},
 		},
+		stats:            statsComp,
 		Type:             NPCTypeGoblin,
 		ExperienceReward: 25,
 		Waypoints:        append([]vec2(nil), waypoints...),
@@ -668,6 +701,9 @@ func (w *World) spawnExtraGoblins(count int) {
 func (w *World) spawnRatAt(x, y float64) {
 	w.nextNPCID++
 	id := fmt.Sprintf("npc-rat-%d", w.nextNPCID)
+	statsComp := stats.DefaultComponent(stats.ArchetypeRat)
+	maxHealth := statsComp.GetDerived(stats.DerivedMaxHealth)
+
 	rat := &npcState{
 		actorState: actorState{
 			Actor: Actor{
@@ -675,11 +711,12 @@ func (w *World) spawnRatAt(x, y float64) {
 				X:         x,
 				Y:         y,
 				Facing:    defaultFacing,
-				Health:    18,
-				MaxHealth: 18,
+				Health:    maxHealth,
+				MaxHealth: maxHealth,
 				Inventory: NewInventory(),
 			},
 		},
+		stats:            statsComp,
 		Type:             NPCTypeRat,
 		ExperienceReward: 8,
 		Home:             vec2{X: x, Y: y},

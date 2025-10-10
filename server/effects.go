@@ -208,7 +208,7 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 			if player, ok := w.players[target.ID]; ok && player != nil {
 				max := player.MaxHealth
 				if max <= 0 {
-					max = playerMaxHealth
+					max = baselinePlayerMaxHealth
 				}
 				next := player.Health + delta
 				if math.IsNaN(next) || math.IsInf(next, 0) {
@@ -227,7 +227,7 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 			} else if npc, ok := w.npcs[target.ID]; ok && npc != nil {
 				max := npc.MaxHealth
 				if max <= 0 {
-					max = playerMaxHealth
+					max = baselinePlayerMaxHealth
 				}
 				next := npc.Health + delta
 				if math.IsNaN(next) || math.IsInf(next, 0) {

@@ -35,6 +35,19 @@ server/
     serialization.go  // helpers for snapshot payloads and diff packing
 ```
 
+### Current Implementation Notes
+- `stats.Component` is embedded inside both `playerState` and `npcState` and seeded via `stats.DefaultComponent` during world
+  initialization, mirroring the archetype defaults defined in `registry.go`.
+- Baseline archetypes include **Player**, **Goblin**, and **Rat** with attribute totals tuned so `DerivedMaxHealth` aligns with
+  previous constants (100, 60, and 18 respectively).
+- Derived formulas implemented for milestone one follow deterministic linear/exponential curves:
+  - `MaxHealth = might * 5`
+  - `MaxMana = 45 + resonance * 3.5`
+  - Damage scalars use `1 + coeff * (1 - decay^attribute)` with a shared decay ratio.
+  - Accuracy, evasion, cast speed, cooldown rate, and stagger resist apply clamped linear scalars using the registry constants.
+- `World.resolveStats` now runs at the start of each tick to refresh totals and clamps, while `World.SetHealth` and
+  `World.SetNPCHealth` clamp against the resolved `DerivedMaxHealth` values before emitting patches.
+
 ### Core Types
 - `type StatID uint8` — enumerates primary attributes (`Might`, `Resonance`, `Focus`, `Speed`) and any derived IDs we explicitly track.
 - `type Layer uint8` — defines modifier layers: `Base`, `Permanent`, `Equipment`, `Temporary`, `Environment`, `Admin`.
@@ -61,7 +74,7 @@ type playerState struct {
 }
 ```
 The component owns:
-- Current base attributes (defaults seeded from species archetype or `playerMaxHealth`).
+- Current base attributes (defaults seeded from species archetype definitions).
 - Layer stacks for permanent boosters, equipment, transient effects, environment buffs, and admin overrides.
 - `sources map[Layer]map[SourceKey]StatDelta` storing per-source additive/multiplicative/override payloads for deterministic equip/unequip. Removal simply deletes the key, causing a layer version bump and recompute.
 - Derived stat cache (HP, Mana, Accuracy, etc.).
