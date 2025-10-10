@@ -724,11 +724,11 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	if h.telemetry != nil {
 		h.telemetry.RecordKeyframeJournal(record.Size, record.OldestSequence, record.NewestSequence)
 	}
-	stdlog.Printf("[journal] add sequence=%d tick=%d size=%d", seq, tick, record.Size)
-	for _, eviction := range record.Evicted {
-		stdlog.Printf("[journal] evict sequence=%d tick=%d size=%d reason=%s", eviction.Sequence, eviction.Tick, record.Size, eviction.Reason)
-	}
 	if h.telemetry != nil && h.telemetry.DebugEnabled() {
+		stdlog.Printf("[journal] add sequence=%d tick=%d size=%d", seq, tick, record.Size)
+		for _, eviction := range record.Evicted {
+			stdlog.Printf("[journal] evict sequence=%d tick=%d size=%d reason=%s", eviction.Sequence, eviction.Tick, record.Size, eviction.Reason)
+		}
 		stdlog.Printf("[journal] window size=%d oldest=%d newest=%d", record.Size, record.OldestSequence, record.NewestSequence)
 	}
 
