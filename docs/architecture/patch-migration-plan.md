@@ -174,3 +174,33 @@ snapshot path:
 
 No open items. Continue exercising the patch renderer during playtests and add
 new tasks here as follow-up issues surface.
+
+## Snapshot → patch → client → render audit
+
+Recent QA reports highlighted positional "rewind" when the keyframe cadence is
+greater than one tick. Replaying the full pipeline clarifies why the issue only
+appears once we lean on incremental broadcasts:
+
+1. The server advances the simulation, drains the mutation journal, and decides
+   whether to attach a fresh snapshot to the next `state` message. When the
+   cadence defers snapshots, the payload still includes `KeyframeSeq` so clients
+   can resolve patches against the last keyframe the journal recorded.【F:server/hub.go†L731-L999】
+2. `syncPatchTestingState` on the client rebuilds its working baseline from the
+   payload. Without snapshot arrays it falls back to the cached keyframe, then
+   applies the batch of diffs by cloning that baseline for each message.【F:client/patches.js†L904-L986】【F:client/patches.js†L1114-L1324】
+3. The network layer feeds the patched view into `applyStateSnapshot`, and the
+   renderer interpolates from that authoritative data when the diagnostics mode
+   points rendering at the diff container.【F:client/network.js†L1224-L1259】
+
+Under a high cadence the server emits facing-only patches while a player is in
+motion. Step 2 reconstructs each frame from the old keyframe, so the moment a
+diff omits position data the player snaps back to the cached coordinates until
+the next positional patch arrives. We captured the regression in
+`client/__tests__/patches.test.js` by walking two steps away from the keyframe,
+applying a facing update, and asserting that the patched state jumps back to the
+baseline before the following positional patch moves it forward again.【F:client/__tests__/patches.test.js†L829-L925】
+
+This test now exercises the full snapshot → patch → client → render chain that
+QA reported and should fail once we implement a cumulative baseline for
+patch-only updates. Leave the behaviour in place for now; the regression test
+documents the failure mode until we fix the playback model.

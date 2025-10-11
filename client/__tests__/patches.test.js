@@ -826,6 +826,104 @@ describe("updatePatchState", () => {
     expect(next.totalDeferredPatchCount).toBe(0);
   });
 
+  it("regresses to the cached keyframe when cadence skips snapshots", () => {
+    const seeded = freezeState(
+      updatePatchState(
+        createPatchState(),
+        deepFreeze({
+          t: 90,
+          sequence: 90,
+          players: [makePlayer({ x: 10, y: 10, facing: "right" })],
+        }),
+        { source: "join" },
+      ),
+    );
+
+    const forwardStep = freezeState(
+      updatePatchState(
+        seeded,
+        deepFreeze({
+          t: 91,
+          sequence: 91,
+          keyframeSeq: 90,
+          patches: [
+            {
+              kind: PATCH_KIND_PLAYER_POS,
+              entityId: "player-1",
+              payload: { x: 12, y: 10 },
+            },
+          ],
+        }),
+        { source: "state" },
+      ),
+    );
+
+    expect(forwardStep.patched.players["player-1"].x).toBe(12);
+
+    const diagonal = freezeState(
+      updatePatchState(
+        forwardStep,
+        deepFreeze({
+          t: 92,
+          sequence: 92,
+          keyframeSeq: 90,
+          patches: [
+            {
+              kind: PATCH_KIND_PLAYER_POS,
+              entityId: "player-1",
+              payload: { x: 14, y: 12 },
+            },
+          ],
+        }),
+        { source: "state" },
+      ),
+    );
+
+    expect(diagonal.patched.players["player-1"].x).toBe(14);
+    expect(diagonal.patched.players["player-1"].y).toBe(12);
+
+    const facingPatch = deepFreeze({
+      t: 93,
+      sequence: 93,
+      keyframeSeq: 90,
+      patches: [
+        {
+          kind: PATCH_KIND_PLAYER_FACING,
+          entityId: "player-1",
+          payload: { facing: "up" },
+        },
+      ],
+    });
+
+    const regressed = updatePatchState(diagonal, facingPatch, { source: "state" });
+
+    expect(regressed.patched.players["player-1"].facing).toBe("up");
+    // Known bug: the player snaps back to the cached keyframe location until the next
+    // positional patch arrives, producing the visible rewind effect during sharp turns.
+    expect(regressed.patched.players["player-1"].x).toBe(10);
+    expect(regressed.patched.players["player-1"].y).toBe(10);
+
+    const recovery = updatePatchState(
+      regressed,
+      deepFreeze({
+        t: 94,
+        sequence: 94,
+        keyframeSeq: 90,
+        patches: [
+          {
+            kind: PATCH_KIND_PLAYER_POS,
+            entityId: "player-1",
+            payload: { x: 16, y: 14 },
+          },
+        ],
+      }),
+      { source: "state" },
+    );
+
+    expect(recovery.patched.players["player-1"].x).toBe(16);
+    expect(recovery.patched.players["player-1"].y).toBe(14);
+  });
+
   it("applies patches against the latest view while waiting for a keyframe", () => {
     const requests = [];
     let baseline = updatePatchState(
