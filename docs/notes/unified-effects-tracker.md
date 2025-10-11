@@ -8,6 +8,9 @@ questions.
 
 ## How to Use This Document
 
+* **Review the shared architecture references** in
+  [`docs/architecture/effect-system-unification.md`](../architecture/effect-system-unification.md)
+  before you pick up work so the contract assumptions stay aligned.
 * **Pick a phase** whose status is `Ready to Start` or `In Progress` and choose a
   deliverable with an open action item.
 * **Create or link PRs** under the “Action Items” column so anyone can see what
@@ -51,8 +54,30 @@ Statuses use the following scale:
 | --- | --- | --- | --- |
 | Auto producer map | Complete | :white_check_mark: Implemented `tools/effects/build_producer_map`; run `npm run effects:map` to refresh `effects_producer_map.json`. | Script documents coverage in `docs/architecture/effects.md`; map checked in under repo root. |
 | Current wire audit | Complete | :white_check_mark: Documented `Hub.marshalState` payload flow and sequencing in `docs/architecture/effects.md`. | Notes & payload examples live under the new “marshalState payload layout” section. |
-| Baseline tests to preserve | Not Started | Enumerate regression tests (file + test name) tied to effect behaviour. | Start with `server/main_test.go` coverage; mark tests red-listed for migration. |
+| Baseline tests to preserve | Complete | :white_check_mark: Catalogued effect regression coverage in `server/main_test.go`. | Red list documented below for migration guardrails. |
 | Telemetry (current system) | Not Started | Define metrics, decide aggregation surface, and note implementation plan. | Prior dashboard requirement removed—focus on counters & logging first. |
+
+#### Phase 0 Red List — Effect Regression Tests
+
+* `server/main_test.go:TestMeleeAttackCreatesEffectAndRespectsCooldown` — verifies melee swings spawn the attack effect, enforce cooldowns, and generate unique IDs.
+* `server/main_test.go:TestMeleeAttackDealsDamage` — asserts melee hitboxes apply expected damage to other players.
+* `server/main_test.go:TestMeleeAttackCanDefeatGoblin` — covers NPC damage resolution and death from melee effects.
+* `server/main_test.go:TestMeleeAttackAgainstGoldOreAwardsCoin` — ensures melee mining triggers resource drops through effect handling.
+* `server/main_test.go:TestLavaAppliesBurningCondition` — validates hazard tick damage, burning condition persistence, and follower visuals.
+* `server/main_test.go:TestTriggerFireballCreatesProjectile` — confirms trigger pipeline spawns projectile effects with travel state.
+* `server/main_test.go:TestFireballDealsDamageOnHit` — exercises projectile collision damage to players.
+* `server/main_test.go:TestHealthDeltaHealingClampsToMax` — checks healing effect maths clamp to max health.
+* `server/main_test.go:TestHealthDamageClampsToZero` — guards lethal damage floors when applying attack effects.
+* `server/main_test.go:TestProjectileExplodeOnImpactSpawnsAreaEffect` — ensures impact explosions spawn and register IDs.
+* `server/main_test.go:TestProjectileExplodeOnExpirySpawnsAreaEffect` — covers expiry-triggered area effects.
+* `server/main_test.go:TestFireballExpiresOnObstacleCollision` — verifies projectile effects terminate on obstacle contact.
+* `server/main_test.go:TestProjectileStopPolicies` — keeps piercing vs. stop-on-hit policy behaviour deterministic.
+* `server/main_test.go:TestProjectileMaxTargetsLimit` — guards maximum target hit tracking and expiry.
+* `server/main_test.go:TestProjectileObstacleImpactExplosion` — checks obstacle collisions spawn configured AoE effects.
+* `server/main_test.go:TestProjectileExpiryExplosionPolicy` — documents whiff-only vs. always-on expiry explosion rules.
+* `server/main_test.go:TestProjectileBoundsAndLifetimeExpiry` — ensures projectiles expire when leaving bounds or exceeding lifetime.
+* `server/main_test.go:TestProjectileSpawnDefaults` — guards default projectile parameters when definitions omit overrides.
+* `server/main_test.go:TestProjectileOwnerImmunity` — prevents projectiles from damaging their owner through effect resolution.
 
 ### Phase 1 — Contract Types & Authoritative Manager (Server)
 
@@ -110,6 +135,7 @@ Statuses use the following scale:
 
 | Date | Update | Author |
 | --- | --- | --- |
+| 2025-10-12 | Catalogued effect regression test red list and closed the Phase 0 baseline test deliverable. | gpt-5-codex |
 | 2025-10-11 | Recorded snapshot payload audit and marked the Phase 0 wire documentation deliverable complete. | gpt-5-codex |
 | 2025-02-14 | Initial tracker created. Phase 0 map tooling marked Ready to Start with recommended first PR. | gpt-5-codex |
 
