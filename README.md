@@ -1,95 +1,53 @@
-# mine-and-die
+# Mine & Die
 
-Mine & Die is an experimental browser-based arena where players race to extract gold, fight over territory, and live with permadeath consequences. A Go backend simulates the world at a steady tick rate, while a lightweight JavaScript client renders the action in real time.
+Mine & Die is a browser-based PvP extraction prototype. A Go 1.24 server simulates the world at ~15 Hz, serves static assets, and drives an authoritative WebSocket stream. A lightweight HTML/ESM client renders the arena, captures input, and mirrors simulation snapshots in real time.
 
-## Documentation Map
-- [Project Overview](docs/README.md)
-- [Server Architecture](docs/architecture/server.md)
-- [Client Architecture](docs/architecture/client.md)
-- [Effects & Conditions](docs/architecture/effects.md)
-- [Testing & Troubleshooting](docs/architecture/testing.md)
-- [Contributor Guidelines](AGENTS.md)
-- [AI System](docs/architecture/ai.md)
+## At a Glance
+- **Server** – Go HTTP service plus Gorilla WebSocket hub, deterministic world step, finite-state AI executor, and `/diagnostics` telemetry. See [Server Architecture](docs/architecture/server.md) and [AI System](docs/architecture/ai.md).
+- **Client** – `<canvas>` renderer, intent/input handlers, latency HUD, and diagnostics drawer delivered as static ES modules. See [Client Architecture](docs/architecture/client.md).
+- **Protocol** – `POST /join` bootstrap followed by a single `/ws?id=…` channel for intents, actions, state snapshots, and heartbeats. Message contracts live in [Networking](docs/architecture/networking.md).
 
-Use these documents as the primary reference when extending gameplay, networking, or presentation.
+## Repository Layout
+- `server/` – Authoritative simulation, hub, HTTP handlers, finite-state AI runtime, and regression tests.
+- `client/` – Canvas renderer, input + HUD logic, inventory UI, and WebSocket client.
+- `docs/` – Architecture notes, gameplay design, and troubleshooting references (start with [docs/README.md](docs/README.md)).
+- `tools/js-effects/` – React playground and build tooling for the effect library (outputs synced into `client/js-effects/`).
+- `technical_debt.md` – Ongoing cleanup backlog and investigation notes.
 
-## Effects Playground & Tooling
-
-The JavaScript effects library and its React playground now live under `tools/js-effects/`. Use the npm scripts at the reposito
-ry root to work with them:
-
-- `npm run dev` launches the playground for interactive effect iteration.
-- `npm run build` compiles all workspace packages and synchronises the ESM build output into `client/js-effects/` for consumpti
-on by the game client.
-
-## Server Layout
-The Go module under `server/` is now split by responsibility so contributors can jump straight to the area they need:
-
-- `constants.go` – Shared world and timing constants.
-- `main.go` – HTTP wiring, endpoint registration, and WebSocket loop bootstrap.
-- `hub.go` – Core state container plus join/subscribe/disconnect flows, the command queue, and the simulation ticker.
-- `simulation.go` – World data model, per-tick system orchestration, and combat/effect systems.
-- `player.go` – Player-facing types, facing math, and intent bookkeeping.
-- `npc.go` – Neutral enemy definitions, snapshots, and seeding helpers.
-- `ai_types.go` – Shared AI structs used by the finite state machine executor.
-- `ai_library.go` – Loads author-authored FSM configs, validates them, and compiles compact runtime data.
-- `ai_executor.go` – Evaluates NPC state machines each tick and enqueues deterministic commands.
-- `movement.go` – Movement helpers, collision resolution, and clamp utilities.
-- `obstacles.go` – Procedural world generation and geometry helpers.
-- `effects.go` – Ability cooldowns, projectiles, environmental hazards, and effect lifecycle management.
-- `inventory.go` – Item and stack management utilities.
-- `messages.go` – JSON payload contracts for `/join`, `/ws`, and heartbeat acknowledgements.
-
-## Core Concepts
-- **Finite Gold Deposits** – Gold mines spawn with fixed capacities, deplete permanently when exhausted, and occasionally respawn elsewhere to keep the global supply scarce.
-- **Mining & Loss** – Extracted gold becomes a physical inventory item that drops on death alongside the rest of a player's belongings.
-- **Safe Zones & Marketplace** – Trading is only risk-free inside marked tiles; the global market can be browsed remotely but orders require safe-zone presence.
-- **Faction Hierarchy** – Four ranks (King → Noble → Knight → Citizen) form a tree. Superiors manage direct subordinates and configure tax rates.
-- **Hierarchical Taxation** – Any gold income automatically routes percentage cuts up the faction chain, with succession-by-kill reassigning positions on lethal coups.
-
-## Runtime Contract
-1. Clients `POST /join` to receive a snapshot containing their player ID, all known players, obstacles, active effects, and any queued fire-and-forget effect triggers.
-2. A WebSocket connection (`/ws?id=<player-id>`) delivers `state` messages ~15× per second, each bundling live effects plus one-shot `effectTriggers` generated since the previous tick.
-3. Clients send `{ type: "input", dx, dy, facing }` whenever movement intent changes, `{ type: "path", x, y }` for click-to-move navigation, `{ type: "cancelPath" }` when manual control resumes, and `{ type: "action", action }` for abilities. The hub stages these as simulation commands.
-4. Heartbeats (`{ type: "heartbeat", sentAt }`) flow every ~2 seconds; the hub records the timing as a command and missing three in a row disconnects the session.
-5. `/diagnostics` exposes a JSON summary of tick rate, heartbeat interval, and per-player timing data.
-
-## Command Pipeline
-- **Commands** – Each inbound message becomes a typed command (`Move`, `Action`, `Heartbeat`) stored until the next tick. Commands capture the issuing tick, player ID, and structured payload so the simulation runs deterministically.
-- **AI pass** – Before staging player commands, the server runs finite state machines for every NPC whose cadence is due. The executor reads compiled configs from `server/ai_configs/`, evaluates transitions using pre-resolved IDs, and enqueues standard `Command` structs (movement, facing, abilities). This keeps the hot path lock-free and avoids string lookups during the tick.
-- **World step** – `World.Step` consumes staged commands, updates intents/heartbeats, advances movement, resolves collisions, executes abilities, applies hazards, and prunes stale actors.
-  The hub broadcasts the resulting snapshots to every subscriber each tick.
-
-## AI System
-NPC behaviour is authored as declarative finite state machines. Designers write JSON configs (see `server/ai_configs/`) describing states, transition conditions, and action lists. At startup the server compiles these configs into ID-based tables so the runtime never performs string lookups or reflection. Each tick the executor:
-
-1. Sorts NPC IDs for deterministic iteration and checks the `NextDecisionAt` cadence gate.
-2. Evaluates transitions in order, applying the first matching condition and updating the NPC's active state when it changes.
-3. Executes the state's actions, which only enqueue standard commands (`CommandMove`, `CommandAction`, etc.).
-4. Updates per-NPC blackboards (timer bookkeeping, waypoint indices, stuck counters) and schedules the next evaluation tick.
-
-The initial `goblin` patrol uses a simple `Patrol ↔ Wait` loop (`server/ai_configs/goblin.json`). The new `rat` archetype demonstrates random roaming and flee logic powered by `setRandomDestination`, `nonRatWithin`, and `moveAway` without changing the tick loop—just add a config and tests.
-
-## Getting Started
-1. **Install dependencies** – Go ≥ 1.22 is required. Node.js is optional for future tooling.
+## Setup
+1. **Install prerequisites** – Go 1.24.x (matches `server/go.mod`). Node.js ≥ 18 is optional for running Vitest or the effects playground.
 2. **Run the server**
    ```bash
    cd server
    go run .
    ```
-3. **Open the client** – Visit [http://localhost:8080](http://localhost:8080) in your browser.
-4. **Stop the server** – Press `Ctrl+C` in the terminal running `go run .`.
-
-The Go server serves static assets straight from `client/`, so refreshing the browser picks up any changes immediately.
+   The process listens on `http://localhost:8080`, serving both the API and static client files.
+3. **Open the client** – Visit `http://localhost:8080` in a browser. Refresh to pick up any HTML/CSS/JS edits.
+4. **Stop** – Press `Ctrl+C` in the terminal running the server.
 
 ## Testing
-Run both the client and server suites before submitting changes:
-```bash
-npm test
-cd server
-go test ./...
-```
-The JavaScript tests use Vitest to spot-check brittle client helpers; we are not pursuing full browser coverage and the effects playground tooling does not require dedicated tests. The Go tests continue to exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.
+- Go regression tests:
+  ```bash
+  cd server
+  go test ./...
+  ```
+- Client/unit tests (optional, via Vitest):
+  ```bash
+  npm test
+  ```
+
+## Runtime Flow
+1. Clients call `POST /join` to receive player metadata, world configuration, active actors/effects, and queued one-shot triggers.
+2. The browser immediately upgrades to `/ws?id=<player-id>` and receives ~15 Hz `state` snapshots plus incremental diff metadata.
+3. Input changes emit `input` commands; click-to-move adds `path`/`cancelPath`; ability keys send `action`; diagnostics helpers issue `console` messages. Each payload includes the client’s last acknowledged tick.
+4. The hub drains staged commands, advances AI finite state machines, applies movement, collision, effects, hazards, and inventory, then broadcasts the fresh snapshot to all peers.
+5. Heartbeats every ~2 seconds keep latency metrics current and disconnect any client that misses three intervals (~6 s).
+
+For deeper coverage of systems, see [Effects & Conditions](docs/architecture/effects.md), [Items](docs/architecture/items.md), and [Testing & Troubleshooting](docs/architecture/testing.md).
+
+## Tooling Notes
+- `npm run dev` runs the effects playground in `tools/js-effects/` for iterating on combat visuals.
+- `npm run build` rebuilds the effects workspace and syncs the distributable into `client/js-effects/`.
 
 ## Roadmap
 High-level milestone tracking lives here for quick reference. Dive into
