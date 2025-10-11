@@ -569,6 +569,51 @@ func TestWorldRespectsConfiguredDimensions(t *testing.T) {
 	}
 }
 
+func TestEnsurePlayerPathProducesDiagonalWaypoint(t *testing.T) {
+	width := navCellSize * 4
+	height := navCellSize * 4
+	w := &World{
+		players: make(map[string]*playerState),
+		npcs:    make(map[string]*npcState),
+		journal: newJournal(0, 0),
+		config:  worldConfig{Width: width, Height: height},
+	}
+	grid := newNavGrid(nil, width, height)
+	if grid == nil {
+		t.Fatalf("expected navigation grid to initialize")
+	}
+
+	player := newTestPlayerState("diagonal-player")
+	start := grid.worldPos(1, 1)
+	player.X = start.X
+	player.Y = start.Y
+	w.players[player.ID] = player
+
+	goal := grid.worldPos(2, 2)
+	target := vec2{X: goal.X, Y: goal.Y}
+	if !w.ensurePlayerPath(player, target, 0) {
+		t.Fatalf("expected ensurePlayerPath to succeed with open grid")
+	}
+	if len(player.path.Path) == 0 {
+		t.Fatalf("expected path to contain waypoints")
+	}
+	if len(player.path.Path) != 1 {
+		t.Fatalf("expected a single diagonal step, got %d", len(player.path.Path))
+	}
+
+	waypoint := player.path.Path[0]
+	dx := waypoint.X - player.X
+	dy := waypoint.Y - player.Y
+	if math.Abs(dx) <= 1 || math.Abs(dy) <= 1 {
+		t.Fatalf("expected diagonal waypoint, got dx=%.2f dy=%.2f", dx, dy)
+	}
+
+	w.followPlayerPath(player, 0)
+	if math.Abs(player.intentX) <= 1e-6 || math.Abs(player.intentY) <= 1e-6 {
+		t.Fatalf("expected followPlayerPath to emit diagonal intent, got dx=%.2f dy=%.2f", player.intentX, player.intentY)
+	}
+}
+
 func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = nil

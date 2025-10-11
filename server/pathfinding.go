@@ -5,6 +5,24 @@ import (
 	"math"
 )
 
+type navNeighbor struct {
+	col      int
+	row      int
+	cost     float64
+	diagonal bool
+}
+
+var navNeighborOffsets = [...]navNeighbor{
+	{col: 0, row: -1, cost: 1, diagonal: false},
+	{col: 1, row: 0, cost: 1, diagonal: false},
+	{col: 0, row: 1, cost: 1, diagonal: false},
+	{col: -1, row: 0, cost: 1, diagonal: false},
+	{col: 1, row: -1, cost: math.Sqrt2, diagonal: true},
+	{col: 1, row: 1, cost: math.Sqrt2, diagonal: true},
+	{col: -1, row: 1, cost: math.Sqrt2, diagonal: true},
+	{col: -1, row: -1, cost: math.Sqrt2, diagonal: true},
+}
+
 const (
 	navCellSize             = 32.0
 	pathNodeReachedEpsilon  = playerHalf * 0.75
@@ -87,6 +105,32 @@ func (g *navGrid) worldPos(col, row int) vec2 {
 	}
 }
 
+func (g *navGrid) canTraverseDiagonal(current navPoint, delta navNeighbor, blocked map[int]struct{}) bool {
+	if g == nil || !delta.diagonal {
+		return true
+	}
+	horizCol := current.col + delta.col
+	horizRow := current.row
+	vertCol := current.col
+	vertRow := current.row + delta.row
+	if !g.inBounds(horizCol, horizRow) || !g.inBounds(vertCol, vertRow) {
+		return false
+	}
+	if !g.walkable[g.index(horizCol, horizRow)] || !g.walkable[g.index(vertCol, vertRow)] {
+		return false
+	}
+	if blocked == nil {
+		return true
+	}
+	if _, exists := blocked[g.index(horizCol, horizRow)]; exists {
+		return false
+	}
+	if _, exists := blocked[g.index(vertCol, vertRow)]; exists {
+		return false
+	}
+	return true
+}
+
 func (g *navGrid) locate(x, y float64) (int, int, bool) {
 	if g == nil || g.cols == 0 || g.rows == 0 {
 		return 0, 0, false
@@ -133,9 +177,12 @@ func (g *navGrid) closestWalkable(col, row int, blocked map[int]struct{}) (int, 
 				return current.col, current.row, true
 			}
 		}
-		for _, delta := range [...]struct{ col, row int }{{0, -1}, {1, 0}, {0, 1}, {-1, 0}} {
+		for _, delta := range navNeighborOffsets {
 			nc := current.col + delta.col
 			nr := current.row + delta.row
+			if delta.diagonal && !g.canTraverseDiagonal(navPoint{col: current.col, row: current.row}, delta, blocked) {
+				continue
+			}
 			if !g.inBounds(nc, nr) {
 				continue
 			}
@@ -156,7 +203,12 @@ type navPoint struct {
 }
 
 func (g *navGrid) heuristic(a, b navPoint) float64 {
-	return math.Abs(float64(a.col-b.col)) + math.Abs(float64(a.row-b.row))
+	dx := math.Abs(float64(a.col - b.col))
+	dy := math.Abs(float64(a.row - b.row))
+	if dx > dy {
+		return dx + (math.Sqrt2-1)*dy
+	}
+	return dy + (math.Sqrt2-1)*dx
 }
 
 type pathNode struct {
@@ -215,7 +267,10 @@ func (g *navGrid) astar(start, goal navPoint, blocked map[int]struct{}) ([]navPo
 			return reconstructPath(current), true
 		}
 
-		for _, delta := range [...]struct{ col, row int }{{0, -1}, {1, 0}, {0, 1}, {-1, 0}} {
+		for _, delta := range navNeighborOffsets {
+			if delta.diagonal && !g.canTraverseDiagonal(current.point, delta, blocked) {
+				continue
+			}
 			nc := current.point.col + delta.col
 			nr := current.point.row + delta.row
 			if !g.inBounds(nc, nr) {
@@ -233,7 +288,7 @@ func (g *navGrid) astar(start, goal navPoint, blocked map[int]struct{}) ([]navPo
 			if _, seen := closed[idx]; seen {
 				continue
 			}
-			tentativeG := current.g + 1
+			tentativeG := current.g + delta.cost
 			if prev, ok := gScore[idx]; ok && tentativeG >= prev {
 				continue
 			}

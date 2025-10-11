@@ -79,6 +79,8 @@ Navigation uses a coarse grid planner shared with players (`npc_path.go`):
 - `updateBlackboard` tracks per-waypoint distance, the best progress achieved so far, and stall counters. If progress stagnates, `reachedWaypoint` gradually relaxes the acceptable radius so patrols keep moving even when geometry interferes (`ai_executor.go`).
 - Separate fields (`PathLastDistance`, `PathStallTicks`, `PathRecalcTick`) prevent thrashing by delaying replans until meaningful time has passed.
 
+The navigation grid now evaluates all eight neighboring cells during search, applying an octile heuristic and `sqrt(2)` step cost to diagonals. Diagonal hops are only permitted when the orthogonal flank tiles are free of static obstacles and dynamic blockers, preventing agents from cutting corners through occupied gaps. Player and NPC path followers already normalize arbitrary movement vectors, so the resulting diagonal waypoints translate directly into diagonal intents.
+
 ## Ability and timer management
 
 Abilities are mapped from config strings to internal IDs during compilation. When `useAbility` runs, the executor:
