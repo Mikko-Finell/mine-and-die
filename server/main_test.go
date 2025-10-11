@@ -225,7 +225,7 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	}
 	hub.mu.Unlock()
 
-	data, _, err := hub.marshalState(players, npcs, effects, triggers, groundItems, true)
+	data, _, err := hub.marshalState(players, npcs, effects, triggers, groundItems, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}

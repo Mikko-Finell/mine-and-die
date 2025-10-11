@@ -9,9 +9,10 @@ import (
 
 func TestStateMessage_ContainsTick(t *testing.T) {
 	hub := newHub()
+	hub.keyframeInterval = 1
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -61,6 +62,7 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 
 func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 	hub := newHub()
+	hub.keyframeInterval = 1
 	dt := 1.0 / float64(tickRate)
 
 	ticks := make([]uint64, 0, 3)
@@ -68,7 +70,7 @@ func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		hub.advance(time.Now(), dt)
 
-		data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
+		data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 		if err != nil {
 			t.Fatalf("marshalState returned error: %v", err)
 		}
@@ -127,9 +129,10 @@ func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 
 func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
 	hub := newHub()
+	hub.keyframeInterval = 1
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -214,16 +217,17 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 
 func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 	hub := newHub()
+	hub.keyframeInterval = 1
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
 
 	assertResyncFlag(t, data, true)
 
-	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true)
+	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error for steady broadcast: %v", err)
 	}
@@ -232,14 +236,14 @@ func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 
 	hub.ResetWorld(defaultWorldConfig())
 
-	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true)
+	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error after reset: %v", err)
 	}
 
 	assertResyncFlag(t, data, true)
 
-	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true)
+	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error on follow-up broadcast: %v", err)
 	}
@@ -274,12 +278,13 @@ func assertResyncFlag(t *testing.T, raw []byte, expected bool) {
 
 func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 	hub := newHub()
+	hub.keyframeInterval = 1
 
 	hub.mu.Lock()
 	hub.world.journal.AppendPatch(Patch{Kind: PatchPlayerPos, EntityID: "player-1"})
 	hub.mu.Unlock()
 
-	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, false); err != nil {
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true); err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
 
@@ -290,7 +295,7 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 	}
 	hub.mu.Unlock()
 
-	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true); err != nil {
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true); err != nil {
 		t.Fatalf("marshalState returned error when draining: %v", err)
 	}
 
@@ -304,8 +309,9 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 
 func TestMarshalStateRecordsKeyframe(t *testing.T) {
 	hub := newHub()
+	hub.keyframeInterval = 1
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -353,8 +359,9 @@ func TestMarshalStateRecordsKeyframe(t *testing.T) {
 
 func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
 	hub := newHub()
+	hub.keyframeInterval = 1
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -379,8 +386,9 @@ func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
 func TestHandleKeyframeRequestExpired(t *testing.T) {
 	t.Setenv(envJournalCapacity, "1")
 	hub := newHub()
+	hub.keyframeInterval = 1
 
-	first, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
+	first, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -389,7 +397,7 @@ func TestHandleKeyframeRequestExpired(t *testing.T) {
 		t.Fatalf("failed to decode payload: %v", err)
 	}
 
-	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true); err != nil {
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true); err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
 

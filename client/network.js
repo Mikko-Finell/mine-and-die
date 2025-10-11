@@ -481,11 +481,85 @@ function normalizeGroundItems(items) {
 
 export { normalizeWorldConfig, normalizeGroundItems };
 
-export function applyStateSnapshot(prev, payload) {
+function clonePlayersFromMap(map) {
+  if (!map || typeof map !== "object") {
+    return {};
+  }
+  const players = {};
+  for (const [id, entry] of Object.entries(map)) {
+    if (!entry || typeof entry !== "object" || typeof id !== "string") {
+      continue;
+    }
+    players[id] = {
+      ...entry,
+      id,
+      facing: normalizeFacing(entry.facing),
+    };
+  }
+  return players;
+}
+
+function cloneNPCsFromMap(map) {
+  if (!map || typeof map !== "object") {
+    return {};
+  }
+  const npcs = {};
+  for (const [id, entry] of Object.entries(map)) {
+    if (!entry || typeof entry !== "object" || typeof id !== "string") {
+      continue;
+    }
+    npcs[id] = {
+      ...entry,
+      id,
+      facing: normalizeFacing(entry.facing),
+    };
+  }
+  return npcs;
+}
+
+function cloneEffectsFromMap(map) {
+  if (!map || typeof map !== "object") {
+    return [];
+  }
+  const effects = [];
+  for (const entry of Object.values(map)) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    effects.push({ ...entry });
+  }
+  return effects;
+}
+
+function cloneGroundItemsFromMap(map) {
+  if (!map || typeof map !== "object") {
+    return {};
+  }
+  const items = {};
+  for (const [id, entry] of Object.entries(map)) {
+    if (!entry || typeof entry !== "object" || typeof id !== "string") {
+      continue;
+    }
+    const x = Number(entry.x);
+    const y = Number(entry.y);
+    const qty = Number(entry.qty);
+    items[id] = {
+      ...entry,
+      id,
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      qty: Number.isFinite(qty) ? qty : 0,
+    };
+  }
+  return items;
+}
+
+export function applyStateSnapshot(prev, payload, patchedState) {
   const previousState = prev && typeof prev === "object" ? prev : {};
   const snapshot = payload && typeof payload === "object" ? payload : {};
+  const patched = patchedState && typeof patchedState === "object" ? patchedState : null;
 
-  const players = {};
+  let players = {};
   if (Array.isArray(snapshot.players)) {
     for (const entry of snapshot.players) {
       if (!entry || typeof entry !== "object" || typeof entry.id !== "string") {
@@ -496,9 +570,13 @@ export function applyStateSnapshot(prev, payload) {
         facing: normalizeFacing(entry.facing),
       };
     }
+  } else if (patched?.players) {
+    players = clonePlayersFromMap(patched.players);
+  } else if (previousState.players && typeof previousState.players === "object") {
+    players = clonePlayersFromMap(previousState.players);
   }
 
-  const npcs = {};
+  let npcs = {};
   if (Array.isArray(snapshot.npcs)) {
     for (const entry of snapshot.npcs) {
       if (!entry || typeof entry !== "object" || typeof entry.id !== "string") {
@@ -509,12 +587,27 @@ export function applyStateSnapshot(prev, payload) {
         facing: normalizeFacing(entry.facing),
       };
     }
+  } else if (patched?.npcs) {
+    npcs = cloneNPCsFromMap(patched.npcs);
+  } else if (previousState.npcs && typeof previousState.npcs === "object") {
+    npcs = cloneNPCsFromMap(previousState.npcs);
   }
 
   const obstacles = Array.isArray(snapshot.obstacles)
     ? snapshot.obstacles.slice()
-    : [];
-  const effects = Array.isArray(snapshot.effects) ? snapshot.effects.slice() : [];
+    : Array.isArray(previousState.obstacles)
+      ? previousState.obstacles.slice()
+      : [];
+  let effects = Array.isArray(snapshot.effects) ? snapshot.effects.slice() : null;
+  if (!effects) {
+    if (patched?.effects) {
+      effects = cloneEffectsFromMap(patched.effects);
+    } else if (Array.isArray(previousState.effects)) {
+      effects = previousState.effects.slice();
+    } else {
+      effects = [];
+    }
+  }
 
   const result = {
     players,
@@ -524,12 +617,25 @@ export function applyStateSnapshot(prev, payload) {
     hasLocalPlayer: false,
   };
 
+  let groundItemsState = {};
+  if (Array.isArray(snapshot.groundItems)) {
+    groundItemsState = normalizeGroundItems(snapshot.groundItems);
+  } else if (patched?.groundItems) {
+    groundItemsState = cloneGroundItemsFromMap(patched.groundItems);
+  } else if (previousState.groundItems && typeof previousState.groundItems === "object") {
+    groundItemsState = cloneGroundItemsFromMap(previousState.groundItems);
+  }
+  result.groundItems = groundItemsState;
+
   let lastTick = null;
   if (Object.prototype.hasOwnProperty.call(snapshot, "t")) {
     const tickValue = snapshot.t;
     if (typeof tickValue === "number" && Number.isFinite(tickValue) && tickValue >= 0) {
       lastTick = Math.floor(tickValue);
     }
+  }
+  if (lastTick === null && patched && typeof patched.tick === "number" && Number.isFinite(patched.tick)) {
+    lastTick = Math.floor(patched.tick);
   }
   if (lastTick === null && previousState && typeof previousState === "object") {
     const priorTick = previousState.lastTick;
@@ -541,6 +647,8 @@ export function applyStateSnapshot(prev, payload) {
 
   if (snapshot.config) {
     result.worldConfig = normalizeWorldConfig(snapshot.config);
+  } else if (previousState.worldConfig) {
+    result.worldConfig = { ...previousState.worldConfig };
   }
 
   const localId = typeof previousState.playerId === "string" ? previousState.playerId : null;
@@ -1065,15 +1173,18 @@ export function connectEvents(store) {
     const payload = parsed.data;
     handleProtocolVersion(payload, `${parsed.type} message`);
     if (parsed.type === "state") {
-        const snapshot = applyStateSnapshot(store, payload);
-
-        syncPatchTestingState(store, payload, "state");
+        const patchState = syncPatchTestingState(store, payload, "state");
+        const patchedView =
+          patchState && typeof patchState === "object" && patchState.patched
+            ? patchState.patched
+            : null;
+        const snapshot = applyStateSnapshot(store, payload, patchedView);
 
         store.players = snapshot.players;
         store.npcs = snapshot.npcs;
         store.obstacles = snapshot.obstacles;
         store.effects = snapshot.effects;
-        store.groundItems = normalizeGroundItems(payload.groundItems);
+        store.groundItems = snapshot.groundItems || {};
         queueEffectTriggers(store, payload.effectTriggers);
 
         if (snapshot.worldConfig) {

@@ -292,7 +292,7 @@ describe("applyStateSnapshot", () => {
       config: { width: 1200, height: 900 },
     };
 
-    const result = applyStateSnapshot({ playerId: "local" }, payload);
+    const result = applyStateSnapshot({ playerId: "local" }, payload, null);
 
     expect(result.players.local.facing).toBe("down");
     expect(result.players.ally.facing).toBe("left");
@@ -316,7 +316,7 @@ describe("applyStateSnapshot", () => {
       npcs: undefined,
       obstacles: "invalid",
       effects: 42,
-    });
+    }, null);
 
     expect(result.players).toEqual({});
     expect(result.npcs).toEqual({});
@@ -329,7 +329,7 @@ describe("applyStateSnapshot", () => {
 
   it("surfaces missing local player without throwing", () => {
     const payload = { players: [{ id: "other", facing: "up" }] };
-    const result = applyStateSnapshot({ playerId: "ghost" }, payload);
+    const result = applyStateSnapshot({ playerId: "ghost" }, payload, null);
 
     expect(result.hasLocalPlayer).toBe(false);
     expect(result.currentFacing).toBeUndefined();
@@ -339,9 +339,42 @@ describe("applyStateSnapshot", () => {
     const result = applyStateSnapshot({ playerId: "local", lastTick: 7 }, {
       players: [],
       t: 42,
-    });
+    }, null);
 
     expect(result.lastTick).toBe(42);
+  });
+
+  it("falls back to patched state when snapshot omits arrays", () => {
+    const patched = {
+      players: {
+        alpha: { id: "alpha", x: 1, y: 2, facing: "left" },
+      },
+      npcs: {
+        goblin: { id: "goblin", x: 3, y: 4, facing: "up" },
+      },
+      effects: {
+        spark: { id: "spark", ttl: 5 },
+      },
+      groundItems: {
+        stack: { id: "stack", x: 10, y: 20, qty: 3 },
+      },
+      tick: 99,
+    };
+
+    const previous = {
+      playerId: "alpha",
+      worldConfig: { width: 800, height: 600 },
+    };
+
+    const result = applyStateSnapshot(previous, { t: null }, patched);
+
+    expect(result.players.alpha.facing).toBe("left");
+    expect(result.npcs.goblin.facing).toBe("up");
+    expect(result.effects).toEqual([{ id: "spark", ttl: 5 }]);
+    expect(result.groundItems.stack.qty).toBe(3);
+    expect(result.lastTick).toBe(99);
+    expect(result.worldConfig.width).toBe(800);
+    expect(result.hasLocalPlayer).toBe(true);
   });
 });
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -32,7 +33,16 @@ func main() {
 		}
 	}()
 
-	hub := newHub(router)
+	hubCfg := defaultHubConfig()
+	if raw := os.Getenv("KEYFRAME_INTERVAL_TICKS"); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			hubCfg.KeyframeInterval = value
+		} else {
+			stdlog.Printf("invalid KEYFRAME_INTERVAL_TICKS=%q: %v", raw, err)
+		}
+	}
+
+	hub := newHubWithConfig(hubCfg, router)
 	stop := make(chan struct{})
 	go hub.RunSimulation(stop)
 	defer close(stop)
@@ -152,6 +162,7 @@ func main() {
 		cfg = cfg.normalized()
 
 		players, npcs, effects := hub.ResetWorld(cfg)
+		hub.forceKeyframe()
 		go hub.broadcastState(players, npcs, effects, nil, nil)
 
 		response := struct {
@@ -217,11 +228,12 @@ func main() {
 			return
 		}
 
-		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, snapshotEffects, nil, snapshotGroundItems, false)
+		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, snapshotEffects, nil, snapshotGroundItems, false, true)
 		if err != nil {
 			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
+				hub.forceKeyframe()
 				go hub.broadcastState(players, npcs, effects, nil, nil)
 			}
 			return
@@ -233,6 +245,7 @@ func main() {
 			sub.mu.Unlock()
 			players, npcs, effects := hub.Disconnect(playerID)
 			if players != nil {
+				hub.forceKeyframe()
 				go hub.broadcastState(players, npcs, effects, nil, nil)
 			}
 			return
@@ -247,6 +260,7 @@ func main() {
 			if err != nil {
 				players, npcs, effects := hub.Disconnect(playerID)
 				if players != nil {
+					hub.forceKeyframe()
 					go hub.broadcastState(players, npcs, effects, nil, nil)
 				}
 				return
@@ -309,6 +323,7 @@ func main() {
 					sub.mu.Unlock()
 					players, npcs, effects := hub.Disconnect(playerID)
 					if players != nil {
+						hub.forceKeyframe()
 						go hub.broadcastState(players, npcs, effects, nil, nil)
 					}
 					return
@@ -330,6 +345,7 @@ func main() {
 					sub.mu.Unlock()
 					players, npcs, effects := hub.Disconnect(playerID)
 					if players != nil {
+						hub.forceKeyframe()
 						go hub.broadcastState(players, npcs, effects, nil, nil)
 					}
 					return
@@ -360,6 +376,7 @@ func main() {
 					sub.mu.Unlock()
 					players, npcs, effects := hub.Disconnect(playerID)
 					if players != nil {
+						hub.forceKeyframe()
 						go hub.broadcastState(players, npcs, effects, nil, nil)
 					}
 					return

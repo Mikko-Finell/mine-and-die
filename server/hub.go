@@ -32,7 +32,12 @@ type Hub struct {
 	tick   atomic.Uint64
 	seq    atomic.Uint64
 
-	resyncNext atomic.Bool
+	keyframeInterval int
+	lastKeyframeSeq  atomic.Uint64
+	lastKeyframeTick atomic.Uint64
+
+	resyncNext        atomic.Bool
+	forceKeyframeNext atomic.Bool
 
 	commandsMu      sync.Mutex // protects pendingCommands between network handlers and the tick loop
 	pendingCommands []Command  // staged commands applied in order at the next simulation step
@@ -100,8 +105,20 @@ func (l *keyframeRateLimiter) allow(now time.Time) bool {
 	return true
 }
 
+type hubConfig struct {
+	KeyframeInterval int
+}
+
+func defaultHubConfig() hubConfig {
+	return hubConfig{KeyframeInterval: 30}
+}
+
 // newHub creates a hub with empty maps and a freshly generated world.
 func newHub(pubs ...logging.Publisher) *Hub {
+	return newHubWithConfig(defaultHubConfig(), pubs...)
+}
+
+func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 	cfg := defaultWorldConfig().normalized()
 	var pub logging.Publisher
 	if len(pubs) > 0 && pubs[0] != nil {
@@ -110,14 +127,22 @@ func newHub(pubs ...logging.Publisher) *Hub {
 	if pub == nil {
 		pub = logging.NopPublisher{}
 	}
-	return &Hub{
-		world:           newWorld(cfg, pub),
-		subscribers:     make(map[string]*subscriber),
-		pendingCommands: make([]Command, 0),
-		config:          cfg,
-		publisher:       pub,
-		telemetry:       newTelemetryCounters(),
+	interval := hubCfg.KeyframeInterval
+	if interval < 1 {
+		interval = 1
 	}
+
+	hub := &Hub{
+		world:            newWorld(cfg, pub),
+		subscribers:      make(map[string]*subscriber),
+		pendingCommands:  make([]Command, 0),
+		config:           cfg,
+		publisher:        pub,
+		telemetry:        newTelemetryCounters(),
+		keyframeInterval: interval,
+	}
+	hub.forceKeyframe()
+	return hub
 }
 
 func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
@@ -191,6 +216,7 @@ func (h *Hub) Join() joinResponse {
 		nil,
 	)
 
+	h.forceKeyframe()
 	go h.broadcastState(players, npcs, effects, nil, groundItems)
 
 	return joinResponse{Ver: ProtocolVersion, ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, GroundItems: groundItems, Config: cfg, Resync: true}
@@ -222,6 +248,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 
 	h.tick.Store(0)
 	h.resyncNext.Store(true)
+	h.forceKeyframe()
 
 	return players, npcs, effects
 }
@@ -739,18 +766,41 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 }
 
 // marshalState serializes a world snapshot into the outbound state payload format.
-func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool) ([]byte, int, error) {
+func (h *Hub) forceKeyframe() {
+	h.forceKeyframeNext.Store(true)
+}
+
+func (h *Hub) shouldIncludeSnapshot() bool {
+	if h.keyframeInterval <= 1 {
+		return true
+	}
+	if h.forceKeyframeNext.CompareAndSwap(true, false) {
+		return true
+	}
+	interval := uint64(h.keyframeInterval)
+	if interval == 0 {
+		return true
+	}
+	tick := h.tick.Load()
+	last := h.lastKeyframeTick.Load()
+	if last == 0 {
+		return true
+	}
+	return tick >= last && tick-last >= interval
+}
+
+func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	h.mu.Lock()
-	shouldFlushTriggers := false
-	if players == nil || npcs == nil || effects == nil {
+	if (players == nil || npcs == nil || effects == nil) && includeSnapshot {
 		now := time.Now()
 		players, npcs, effects = h.world.Snapshot(now)
-		shouldFlushTriggers = true
+		if triggers == nil {
+			triggers = h.world.flushEffectTriggersLocked()
+		}
+	} else if triggers == nil {
+		triggers = make([]EffectTrigger, 0)
 	}
-	if shouldFlushTriggers && triggers == nil {
-		triggers = h.world.flushEffectTriggersLocked()
-	}
-	if groundItems == nil {
+	if groundItems == nil && includeSnapshot {
 		groundItems = h.world.GroundItemsSnapshot()
 	}
 	var patches []Patch
@@ -759,7 +809,10 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	} else {
 		patches = h.world.snapshotPatchesLocked()
 	}
-	obstacles := append([]Obstacle(nil), h.world.obstacles...)
+	obstacles := []Obstacle(nil)
+	if includeSnapshot {
+		obstacles = append([]Obstacle(nil), h.world.obstacles...)
+	}
 	cfg := h.config
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
@@ -769,84 +822,111 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	if patches == nil {
 		patches = make([]Patch, 0)
 	}
-	if players == nil {
-		players = make([]Player, 0)
+
+	if len(patches) > 0 {
+		alivePlayers := players
+		aliveNPCs := npcs
+		aliveEffects := effects
+		aliveItems := groundItems
+		total := len(alivePlayers) + len(aliveNPCs) + len(aliveEffects)
+		if aliveItems != nil {
+			total += len(aliveItems)
+		}
+		if total > 0 {
+			alive := make(map[string]struct{}, total)
+			for _, player := range alivePlayers {
+				if player.ID == "" {
+					continue
+				}
+				alive[player.ID] = struct{}{}
+			}
+			for _, npc := range aliveNPCs {
+				if npc.ID == "" {
+					continue
+				}
+				alive[npc.ID] = struct{}{}
+			}
+			for _, eff := range aliveEffects {
+				if eff.ID == "" {
+					continue
+				}
+				alive[eff.ID] = struct{}{}
+			}
+			for _, item := range aliveItems {
+				if item.ID == "" {
+					continue
+				}
+				alive[item.ID] = struct{}{}
+			}
+			filtered := patches[:0]
+			for _, patch := range patches {
+				if patch.EntityID == "" {
+					continue
+				}
+				if _, ok := alive[patch.EntityID]; !ok {
+					continue
+				}
+				filtered = append(filtered, patch)
+			}
+			patches = filtered
+		}
 	}
-	if npcs == nil {
-		npcs = make([]NPC, 0)
-	}
-	if effects == nil {
-		effects = make([]Effect, 0)
+
+	if includeSnapshot {
+		if players == nil {
+			players = make([]Player, 0)
+		}
+		if npcs == nil {
+			npcs = make([]NPC, 0)
+		}
+		if effects == nil {
+			effects = make([]Effect, 0)
+		}
+	} else {
+		players = nil
+		npcs = nil
+		effects = nil
 	}
 	if triggers == nil {
 		triggers = make([]EffectTrigger, 0)
 	}
-	if groundItems == nil {
+	if includeSnapshot && groundItems == nil {
 		groundItems = make([]GroundItem, 0)
+	} else if !includeSnapshot {
+		groundItems = nil
 	}
 	if obstacles == nil {
 		obstacles = make([]Obstacle, 0)
 	}
 
-	if len(patches) > 0 {
-		alive := make(map[string]struct{}, len(players)+len(npcs)+len(effects)+len(groundItems))
-		for _, player := range players {
-			if player.ID == "" {
-				continue
-			}
-			alive[player.ID] = struct{}{}
+	keyframeSeq := h.lastKeyframeSeq.Load()
+	if includeSnapshot {
+		frame := keyframe{
+			Tick:        tick,
+			Sequence:    seq,
+			Players:     players,
+			NPCs:        npcs,
+			Obstacles:   obstacles,
+			Effects:     effects,
+			GroundItems: groundItems,
+			Config:      cfg,
 		}
-		for _, npc := range npcs {
-			if npc.ID == "" {
-				continue
-			}
-			alive[npc.ID] = struct{}{}
+		record := journal.RecordKeyframe(frame)
+		h.lastKeyframeSeq.Store(seq)
+		h.lastKeyframeTick.Store(tick)
+		keyframeSeq = seq
+		if h.telemetry != nil {
+			h.telemetry.RecordKeyframeJournal(record.Size, record.OldestSequence, record.NewestSequence)
 		}
-		for _, eff := range effects {
-			if eff.ID == "" {
-				continue
+		if h.telemetry != nil && h.telemetry.DebugEnabled() {
+			stdlog.Printf("[journal] add sequence=%d tick=%d size=%d", seq, tick, record.Size)
+			for _, eviction := range record.Evicted {
+				stdlog.Printf("[journal] evict sequence=%d tick=%d size=%d reason=%s", eviction.Sequence, eviction.Tick, record.Size, eviction.Reason)
 			}
-			alive[eff.ID] = struct{}{}
+			stdlog.Printf("[journal] window size=%d oldest=%d newest=%d", record.Size, record.OldestSequence, record.NewestSequence)
 		}
-		for _, item := range groundItems {
-			if item.ID == "" {
-				continue
-			}
-			alive[item.ID] = struct{}{}
-		}
-		filtered := patches[:0]
-		for _, patch := range patches {
-			if patch.EntityID == "" {
-				continue
-			}
-			if _, ok := alive[patch.EntityID]; !ok {
-				continue
-			}
-			filtered = append(filtered, patch)
-		}
-		patches = filtered
-	}
-
-	frame := keyframe{
-		Tick:        tick,
-		Sequence:    seq,
-		Players:     players,
-		NPCs:        npcs,
-		Obstacles:   obstacles,
-		Effects:     effects,
-		GroundItems: groundItems,
-		Config:      cfg,
-	}
-	record := journal.RecordKeyframe(frame)
-	if h.telemetry != nil {
-		h.telemetry.RecordKeyframeJournal(record.Size, record.OldestSequence, record.NewestSequence)
-	}
-	if h.telemetry != nil && h.telemetry.DebugEnabled() {
-		stdlog.Printf("[journal] add sequence=%d tick=%d size=%d", seq, tick, record.Size)
-		for _, eviction := range record.Evicted {
-			stdlog.Printf("[journal] evict sequence=%d tick=%d size=%d reason=%s", eviction.Sequence, eviction.Tick, record.Size, eviction.Reason)
-		}
-		stdlog.Printf("[journal] window size=%d oldest=%d newest=%d", record.Size, record.OldestSequence, record.NewestSequence)
+	} else if keyframeSeq == 0 {
+		keyframeSeq = seq
 	}
 
 	msg := stateMessage{
@@ -861,7 +941,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		Patches:        patches,
 		Tick:           tick,
 		Sequence:       seq,
-		KeyframeSeq:    seq,
+		KeyframeSeq:    keyframeSeq,
 		ServerTime:     time.Now().UnixMilli(),
 		Config:         cfg,
 	}
@@ -977,7 +1057,8 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 
 // broadcastState sends the latest world snapshot to every subscriber.
 func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem) {
-	data, entities, err := h.marshalState(players, npcs, effects, triggers, groundItems, true)
+	includeSnapshot := h.shouldIncludeSnapshot()
+	data, entities, err := h.marshalState(players, npcs, effects, triggers, groundItems, true, includeSnapshot)
 	if err != nil {
 		stdlog.Printf("failed to marshal state message: %v", err)
 		return
@@ -999,6 +1080,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 			stdlog.Printf("failed to send update to %s: %v", id, err)
 			players, npcs, effects := h.Disconnect(id)
 			if players != nil {
+				h.forceKeyframe()
 				go h.broadcastState(players, npcs, effects, nil, nil)
 			}
 		}
