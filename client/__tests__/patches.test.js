@@ -243,7 +243,7 @@ describe("updatePatchState", () => {
     expect(patched.inventory.slots).toEqual([
       { slot: 0, item: { type: "gold", quantity: 3 } },
     ]);
-    expect(result.baseline.players["player-1"].x).toBe(1);
+    expect(result.baseline.players["player-1"].x).toBe(5);
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(3);
@@ -313,9 +313,9 @@ describe("updatePatchState", () => {
     expect(effect.params).toEqual({ remaining: 0.5, speed: 2 });
     const groundItem = result.patched.groundItems["ground-1"];
     expect(groundItem).toMatchObject({ x: 2, y: 3, qty: 7 });
-    expect(result.baseline.npcs["npc-1"].x).toBe(4);
-    expect(result.baseline.effects["effect-1"].x).toBe(6);
-    expect(result.baseline.groundItems["ground-1"].qty).toBe(3);
+    expect(result.baseline.npcs["npc-1"].x).toBe(14);
+    expect(result.baseline.effects["effect-1"].x).toBe(9);
+    expect(result.baseline.groundItems["ground-1"].qty).toBe(7);
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(7);
@@ -686,7 +686,7 @@ describe("updatePatchState", () => {
       replayed.pendingKeyframeRequests instanceof Map ? replayed.pendingKeyframeRequests.size : 0,
     ).toBe(0);
     expect(Array.isArray(replayed.pendingReplays) ? replayed.pendingReplays.length : 0).toBe(0);
-    expect(replayed.baseline.npcs["npc-99"].health).toBe(9);
+    expect(replayed.baseline.npcs["npc-99"].health).toBe(7);
     expect(replayed.patched.npcs["npc-99"].health).toBe(7);
     expect(replayed.patched.npcs["npc-99"].maxHealth).toBe(14);
     expect(replayed.lastRecovery && replayed.lastRecovery.status).toBe("recovered");
@@ -898,10 +898,8 @@ describe("updatePatchState", () => {
     const regressed = updatePatchState(diagonal, facingPatch, { source: "state" });
 
     expect(regressed.patched.players["player-1"].facing).toBe("up");
-    // Known bug: the player snaps back to the cached keyframe location until the next
-    // positional patch arrives, producing the visible rewind effect during sharp turns.
-    expect(regressed.patched.players["player-1"].x).toBe(10);
-    expect(regressed.patched.players["player-1"].y).toBe(10);
+    expect(regressed.patched.players["player-1"].x).toBe(14);
+    expect(regressed.patched.players["player-1"].y).toBe(12);
 
     const recovery = updatePatchState(
       regressed,
@@ -1178,5 +1176,62 @@ describe("updatePatchState", () => {
     expect(nack3.keyframeNackCounts?.rate_limited).toBe(3);
     expect(Array.isArray(nack3.pendingReplays) ? nack3.pendingReplays.length : 0).toBe(0);
     expect(nack3.pendingKeyframeRequests instanceof Map ? nack3.pendingKeyframeRequests.size : 0).toBe(0);
+  });
+
+  it("maintains forward motion between sparse keyframes", () => {
+    const keyframePayload = deepFreeze({
+      type: "keyframe",
+      keyframeSeq: 10,
+      sequence: 10,
+      t: 10,
+      players: [makePlayer({ x: 0, y: 0, facing: "right" })],
+    });
+    const seeded = updatePatchState(createPatchState(), keyframePayload, { source: "broadcast" });
+
+    const movePayload = deepFreeze({
+      type: "patch",
+      keyframeSeq: 10,
+      sequence: 11,
+      patches: [
+        {
+          kind: PATCH_KIND_PLAYER_POS,
+          entityId: "player-1",
+          payload: { x: 2, y: 3 },
+        },
+      ],
+    });
+    const afterMove = updatePatchState(seeded, movePayload, { source: "broadcast" });
+
+    expect(afterMove.baseline.players["player-1"]).toMatchObject({ x: 2, y: 3 });
+    expect(afterMove.patched.players["player-1"]).toMatchObject({ x: 2, y: 3 });
+    expect(afterMove.baseline.sequence).toBe(11);
+    expect(afterMove.patched.sequence).toBe(11);
+
+    const facingPayload = deepFreeze({
+      type: "patch",
+      keyframeSeq: 10,
+      sequence: 12,
+      patches: [
+        {
+          kind: PATCH_KIND_PLAYER_FACING,
+          entityId: "player-1",
+          payload: { facing: "down" },
+        },
+      ],
+    });
+    const afterFacing = updatePatchState(afterMove, facingPayload, { source: "broadcast" });
+
+    expect(afterFacing.baseline.players["player-1"]).toMatchObject({
+      x: 2,
+      y: 3,
+      facing: "down",
+    });
+    expect(afterFacing.patched.players["player-1"]).toMatchObject({
+      x: 2,
+      y: 3,
+      facing: "down",
+    });
+    expect(afterFacing.baseline.sequence).toBe(12);
+    expect(afterFacing.patched.sequence).toBe(12);
   });
 });

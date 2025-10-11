@@ -1316,7 +1316,51 @@ export function updatePatchState(previousState, payload, options = {}) {
   } else if (normalizedKeyframeSeq !== null) {
     const cached = getCachedKeyframe(keyframes, keyframeSeq);
     if (cached) {
-      baseline = cached;
+      const patchSequence = baseline.sequence;
+      const patchTick = baseline.tick;
+      const cumulative = cloneBaselineSnapshot(state.baseline);
+      if (cumulative) {
+        const mergeMaps = (target, source, cloneEntry) => {
+          if (!target || typeof target !== "object") {
+            return;
+          }
+          if (!source || typeof source !== "object") {
+            return;
+          }
+          for (const entry of Object.values(source)) {
+            const cloned = cloneEntry(entry);
+            if (!cloned || !cloned.id) {
+              continue;
+            }
+            if (!Object.hasOwn(target, cloned.id)) {
+              target[cloned.id] = cloned;
+            }
+          }
+        };
+        mergeMaps(cumulative.players, cached.players, clonePlayerView);
+        mergeMaps(cumulative.npcs, cached.npcs, cloneNPCView);
+        mergeMaps(cumulative.effects, cached.effects, cloneEffectView);
+        mergeMaps(cumulative.groundItems, cached.groundItems, cloneGroundItemView);
+        baseline = cumulative;
+      } else {
+        baseline = cached;
+      }
+      if (patchSequence !== null && patchSequence !== undefined) {
+        baseline.sequence = patchSequence;
+      }
+      if (patchTick !== null && patchTick !== undefined) {
+        const normalizedTick = coerceTick(patchTick);
+        if (normalizedTick !== null) {
+          if (
+            baseline.tick === null ||
+            baseline.tick === undefined ||
+            !Number.isFinite(baseline.tick) ||
+            baseline.tick < normalizedTick
+          ) {
+            baseline.tick = normalizedTick;
+          }
+        }
+      }
     } else if (!replaying) {
       const patchedFallback = cloneBaselineSnapshot(state.patched);
       const baselineFallback = patchedFallback || cloneBaselineSnapshot(state.baseline);
@@ -1601,6 +1645,17 @@ export function updatePatchState(previousState, payload, options = {}) {
   const trimmedRecoveries = trimRecoveryLog(recoveryLog);
   const resolvedTick = nextTick !== null ? nextTick : previousTick;
   const resolvedSequence = nextSequence !== null ? nextSequence : previousSequence;
+
+  baseline.players = clonePlayersMap(patchResult.players);
+  baseline.npcs = cloneNPCsMap(patchResult.npcs);
+  baseline.effects = cloneEffectsMap(patchResult.effects);
+  baseline.groundItems = cloneGroundItemsMap(patchResult.groundItems);
+  if (resolvedTick !== null) {
+    baseline.tick = resolvedTick;
+  }
+  if (resolvedSequence !== null) {
+    baseline.sequence = resolvedSequence;
+  }
 
   return {
     baseline: {
