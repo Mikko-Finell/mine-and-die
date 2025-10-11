@@ -42,6 +42,7 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 - [Server Architecture](./architecture/server.md) – Tick loop, data structures, actions, and diagnostics.
 - [Client Architecture](./architecture/client.md) – Store layout, rendering flow, and network helpers.
 - [Effects & Conditions](./architecture/effects.md) – How the authoritative effect pipeline maps to client visuals.
+- [Item System](./architecture/items.md) – Canonical definitions, catalog export, and fungibility-aware runtime integration.
 - [Logging](./architecture/logging.md) – Publisher/router design plus event catalog.
 - [AI System](./architecture/ai.md) – Behaviour configs, executor flow, and extension tips.
 - [Stats System](./architecture/stats.md) – Layered attributes, mutation flow, and integration points for combat.

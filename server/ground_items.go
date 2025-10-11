@@ -11,11 +11,12 @@ import (
 
 // GroundItem represents a stack of items that exists in the world.
 type GroundItem struct {
-	ID   string   `json:"id"`
-	Type ItemType `json:"type"`
-	X    float64  `json:"x"`
-	Y    float64  `json:"y"`
-	Qty  int      `json:"qty"`
+	ID             string   `json:"id"`
+	Type           ItemType `json:"type"`
+	FungibilityKey string   `json:"fungibility_key"`
+	X              float64  `json:"x"`
+	Y              float64  `json:"y"`
+	Qty            int      `json:"qty"`
 }
 
 type groundTileKey struct {
@@ -74,14 +75,24 @@ func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason stri
 	tile := tileForPosition(actor.X, actor.Y)
 	x, y := w.scatterGroundItemPosition(actor, tile)
 	if w.groundItemsByTile == nil {
-		w.groundItemsByTile = make(map[groundTileKey]map[ItemType]*groundItemState)
+		w.groundItemsByTile = make(map[groundTileKey]map[string]*groundItemState)
 	}
 	itemsByType := w.groundItemsByTile[tile]
 	if itemsByType == nil {
-		itemsByType = make(map[ItemType]*groundItemState)
+		itemsByType = make(map[string]*groundItemState)
 		w.groundItemsByTile[tile] = itemsByType
 	}
-	if existing := itemsByType[stack.Type]; existing != nil {
+	key := stack.FungibilityKey
+	if key == "" {
+		if def, ok := ItemDefinitionFor(stack.Type); ok {
+			stack.FungibilityKey = def.FungibilityKey
+			key = stack.FungibilityKey
+		}
+	}
+	if key == "" {
+		return nil
+	}
+	if existing := itemsByType[key]; existing != nil {
 		w.SetGroundItemQuantity(existing, existing.Qty+stack.Quantity)
 		existing.tile = tile
 		w.SetGroundItemPosition(existing, x, y)
@@ -91,11 +102,11 @@ func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason stri
 	w.nextGroundItemID++
 	id := fmt.Sprintf("ground-%d", w.nextGroundItemID)
 	item := &groundItemState{
-		GroundItem: GroundItem{ID: id, Type: stack.Type, X: x, Y: y, Qty: stack.Quantity},
+		GroundItem: GroundItem{ID: id, Type: stack.Type, FungibilityKey: stack.FungibilityKey, X: x, Y: y, Qty: stack.Quantity},
 		tile:       tile,
 	}
 	w.groundItems[id] = item
-	itemsByType[stack.Type] = item
+	itemsByType[key] = item
 	w.logGoldDrop(actor, stack, reason, id)
 	return item
 }
@@ -146,7 +157,7 @@ func (w *World) removeGroundItem(item *groundItemState) {
 	}
 	delete(w.groundItems, item.ID)
 	if itemsByType, ok := w.groundItemsByTile[item.tile]; ok {
-		delete(itemsByType, item.Type)
+		delete(itemsByType, item.FungibilityKey)
 		if len(itemsByType) == 0 {
 			delete(w.groundItemsByTile, item.tile)
 		}
@@ -217,24 +228,31 @@ func (w *World) dropAllItemsOfType(actor *actorState, itemType ItemType, reason 
 	if w == nil || actor == nil || itemType == "" {
 		return 0
 	}
-	var total int
+	var removed []ItemStack
 	if _, ok := w.players[actor.ID]; ok {
 		_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
-			total = inv.RemoveAllOf(itemType)
+			removed = inv.RemoveAllOf(itemType)
 			return nil
 		})
 	} else if npc, ok := w.npcs[actor.ID]; ok {
 		_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
-			total = inv.RemoveAllOf(itemType)
+			removed = inv.RemoveAllOf(itemType)
 			return nil
 		})
 	} else {
-		total = actor.Inventory.RemoveAllOf(itemType)
+		removed = actor.Inventory.RemoveAllOf(itemType)
 	}
-	if total <= 0 {
+	if len(removed) == 0 {
 		return 0
 	}
-	w.upsertGroundItem(actor, ItemStack{Type: itemType, Quantity: total}, reason)
+	total := 0
+	for _, stack := range removed {
+		if stack.Type == "" || stack.Quantity <= 0 {
+			continue
+		}
+		w.upsertGroundItem(actor, stack, reason)
+		total += stack.Quantity
+	}
 	return total
 }
 

@@ -90,7 +90,7 @@ Players track `Health` and `MaxHealth`. Effect helpers share the `Effect` struct
 
 ### Inventory System
 - Each `Player` carries an `Inventory` composed of ordered slots. The ordering is preserved in snapshots so clients can surface drag-and-drop later on.
-- `ItemStack` values automatically merge when the same `ItemType` is added twice, supporting infinite stacking for resources like gold.
+- `ItemStack` values merge only when the definition is stackable and the incoming stack shares the same `fungibility_key`, preserving deterministic trade identity for resources like gold.
 - `Inventory.MoveSlot` and `Inventory.RemoveQuantity` centralize reordering and stack splitting logic. Both operate while holding the hub mutex to keep state consistent.
 - `Inventory.Clone` is used when broadcasting player snapshots to avoid data races between the simulation and JSON encoding.
 

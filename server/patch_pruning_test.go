@@ -15,12 +15,13 @@ func TestNPCRemovalPurgesPatches(t *testing.T) {
 	w.npcs[npc.ID] = npc
 
 	tile := tileForPosition(npc.X, npc.Y)
-	existing := &groundItemState{GroundItem: GroundItem{ID: "ground-existing", Type: ItemTypeGold, Qty: 1}, tile: tile}
+	def, _ := ItemDefinitionFor(ItemTypeGold)
+	existing := &groundItemState{GroundItem: GroundItem{ID: "ground-existing", Type: ItemTypeGold, FungibilityKey: def.FungibilityKey, Qty: 1}, tile: tile}
 	w.groundItems[existing.ID] = existing
 	if w.groundItemsByTile == nil {
-		w.groundItemsByTile = make(map[groundTileKey]map[ItemType]*groundItemState)
+		w.groundItemsByTile = make(map[groundTileKey]map[string]*groundItemState)
 	}
-	w.groundItemsByTile[tile] = map[ItemType]*groundItemState{ItemTypeGold: existing}
+	w.groundItemsByTile[tile] = map[string]*groundItemState{def.FungibilityKey: existing}
 
 	w.SetNPCHealth(npc.ID, 0)
 	if err := w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {

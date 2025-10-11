@@ -2,50 +2,11 @@ package main
 
 import "fmt"
 
-// ItemType represents a unique identifier for an item kind.
-type ItemType string
-
-const (
-	ItemTypeGold         ItemType = "gold"
-	ItemTypeHealthPotion ItemType = "health_potion"
-	ItemTypeRatTail      ItemType = "rat_tail"
-)
-
-// ItemDefinition describes metadata for an item kind that can appear in the world.
-type ItemDefinition struct {
-	Type        ItemType `json:"type"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-}
-
-var itemCatalog = map[ItemType]ItemDefinition{
-	ItemTypeGold: {
-		Type:        ItemTypeGold,
-		Name:        "Gold Coin",
-		Description: "Currency minted by the colony. Stackable with no limits.",
-	},
-	ItemTypeHealthPotion: {
-		Type:        ItemTypeHealthPotion,
-		Name:        "Lesser Healing Potion",
-		Description: "Restores a small amount of health when consumed.",
-	},
-	ItemTypeRatTail: {
-		Type:        ItemTypeRatTail,
-		Name:        "Rat Tail",
-		Description: "A matted tail harvested from an oversized rat.",
-	},
-}
-
-// ItemDefinitionFor fetches the definition for a given item type.
-func ItemDefinitionFor(itemType ItemType) (ItemDefinition, bool) {
-	def, ok := itemCatalog[itemType]
-	return def, ok
-}
-
-// ItemStack represents a quantity of a specific item type.
+// ItemStack represents a quantity of a specific item type and fungibility key.
 type ItemStack struct {
-	Type     ItemType `json:"type"`
-	Quantity int      `json:"quantity"`
+	Type           ItemType `json:"type"`
+	FungibilityKey string   `json:"fungibility_key"`
+	Quantity       int      `json:"quantity"`
 }
 
 // InventorySlot stores an item stack at a specific position. The slot index is
@@ -81,12 +42,23 @@ func (inv *Inventory) AddStack(stack ItemStack) (int, error) {
 	if stack.Quantity <= 0 {
 		return -1, fmt.Errorf("quantity must be positive, got %d", stack.Quantity)
 	}
-	if _, ok := ItemDefinitionFor(stack.Type); !ok {
+	def, ok := ItemDefinitionFor(stack.Type)
+	if !ok {
 		return -1, fmt.Errorf("unknown item type %q", stack.Type)
 	}
 
-	for i := range inv.Slots {
-		if inv.Slots[i].Item.Type == stack.Type {
+	if stack.FungibilityKey == "" {
+		stack.FungibilityKey = def.FungibilityKey
+	}
+	if stack.FungibilityKey != def.FungibilityKey {
+		return -1, fmt.Errorf("fungibility key %q does not match definition %q", stack.FungibilityKey, def.FungibilityKey)
+	}
+
+	if def.Stackable {
+		for i := range inv.Slots {
+			if inv.Slots[i].Item.FungibilityKey != stack.FungibilityKey {
+				continue
+			}
 			inv.Slots[i].Item.Quantity += stack.Quantity
 			return inv.Slots[i].Slot, nil
 		}
@@ -142,7 +114,7 @@ func (inv *Inventory) RemoveQuantity(slotIndex int, quantity int) (ItemStack, er
 	}
 
 	slot.Item.Quantity -= quantity
-	removed := ItemStack{Type: slot.Item.Type, Quantity: quantity}
+	removed := ItemStack{Type: slot.Item.Type, FungibilityKey: slot.Item.FungibilityKey, Quantity: quantity}
 
 	if slot.Item.Quantity == 0 {
 		inv.Slots = append(inv.Slots[:slotIndex], inv.Slots[slotIndex+1:]...)
@@ -168,12 +140,12 @@ func (inv Inventory) QuantityOf(itemType ItemType) int {
 	return total
 }
 
-// RemoveAllOf removes every stack of the provided item type and returns the total quantity removed.
-func (inv *Inventory) RemoveAllOf(itemType ItemType) int {
+// RemoveAllOf removes every stack of the provided item type and returns the stacks removed.
+func (inv *Inventory) RemoveAllOf(itemType ItemType) []ItemStack {
 	if inv == nil {
-		return 0
+		return nil
 	}
-	total := 0
+	var removed []ItemStack
 	for i := len(inv.Slots) - 1; i >= 0; i-- {
 		slot := inv.Slots[i]
 		if slot.Item.Type != itemType {
@@ -183,11 +155,11 @@ func (inv *Inventory) RemoveAllOf(itemType ItemType) int {
 		if qty <= 0 {
 			continue
 		}
-		if removed, err := inv.RemoveQuantity(i, qty); err == nil {
-			total += removed.Quantity
+		if stack, err := inv.RemoveQuantity(i, qty); err == nil && stack.Quantity > 0 {
+			removed = append(removed, stack)
 		}
 	}
-	return total
+	return removed
 }
 
 // DrainAll removes every stack from the inventory, returning the collected items.
