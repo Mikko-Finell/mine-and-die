@@ -88,4 +88,5 @@ Mine & Die is a small realtime prototype:
 ## Pull Request Expectations
 - Include a brief summary plus testing notes in your PR body.
 - Run automated tests relevant to your change set (`cd server && go test ./...` at minimum).
+- Documentation-only changes do not require running automated tests.
 - Document new features, endpoints, or gameplay rules in the appropriate doc file under `docs/`.
