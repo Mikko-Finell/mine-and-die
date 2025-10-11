@@ -187,46 +187,33 @@ and disappears when full snapshots are sent every tick.
 
 ### Root cause
 
-The issue arises from how the client rebuilds its authoritative baseline between
-keyframes. When a new `state` message arrives without a full snapshot:
+Early patch-mode builds reused the cached keyframe referenced by each broadcast
+as the working baseline. That static snapshot carried the keyframe’s
+coordinates and `sequence` value forward, so facing-only or effect-only diffs
+would roll entities back to the cached position until a positional patch or new
+keyframe arrived.【F:client/network.js†L1221-L1259】 The server stream itself was
+sound—the rewind came entirely from the client’s replay model.
 
-1. `updatePatchState` reuses the cached keyframe referenced by `keyframeSeq` as
-   the working baseline.【F:client/patches.js†L1268-L1445】
-2. Patches are applied against this static baseline rather than the cumulative
-   world state. The baseline’s `sequence` remains frozen, so deduplication may
-   skip legitimate updates and any properties omitted from the patch (for
-   example, position during a facing change) revert to the cached keyframe
-   values.【F:client/patches.js†L1510-L1640】
-3. The renderer reads this partially updated view and interpolates toward stale
-   coordinates until the next positional patch or keyframe arrives, producing
-   the visible rewind and delayed or missing ability effects.【F:client/network.js†L1221-L1259】
+### Resolution
 
-This is an architectural flaw in the client’s patch-replay model, not a server
-serialization error. The server correctly emits monotonic sequences and
-consistent keyframe pointers.
+The client now keeps an entity-scoped baseline that survives between broadcasts:
 
-### Supporting regression
+* `updatePatchState` prefers the cumulative baseline stored on `state.baseline`
+  when applying new patches, only seeding missing entities from the cached
+  keyframe instead of replacing the entire snapshot.【F:client/patches.js†L1317-L1344】
+* After each replay the patched view is cloned back into the baseline and its
+  tick/sequence counters advance so deduplication keys compare against the
+  latest state rather than the original keyframe metadata.【F:client/patches.js†L1649-L1675】
+* When hydrating from a cached keyframe the client now preserves the broadcast’s
+  sequence and tick hints, keeping recovery semantics intact without freezing
+  the baseline metadata.【F:client/patches.js†L1348-L1361】
 
-`client/__tests__/patches.test.js` now includes
-`it("regresses to the cached keyframe when cadence skips snapshots", …)` which:
+Together these adjustments eliminate the rewind-return artefact while preserving
+keyframe recovery behaviour.
 
-1. Seeds a keyframe baseline and advances one player via a positional patch.
-2. Applies a facing-only patch while reusing the same `keyframeSeq`.
-3. Asserts that the player’s position regresses to the keyframe coordinates
-   before advancing again once a new positional patch arrives.【F:client/__tests__/patches.test.js†L829-L919】
+### Regression coverage
 
-The test reliably reproduces the rewind-return cycle in isolation and guards
-against accidental regression masking.
-
-### Next steps
-
-* Rework patch replay to maintain a cumulative, entity-scoped baseline instead of
-  cloning from the last keyframe for each message.
-* Treat missing entities in patch batches as keyframe recovery candidates rather
-  than hard errors.
-* Advance the baseline’s sequence with each successful patch application so
-  deduplication compares against the latest state, not the static keyframe.
-
-These adjustments should eliminate positional flicker, restore ability-effect
-visibility under high cadence, and bring patch-only playback to parity with
-snapshot-every-tick behaviour.
+`client/__tests__/patches.test.js` now locks in the forward-only behaviour with
+`it("maintains forward motion between sparse keyframes", …)` and updates the
+cadence regression scenario to confirm that facing-only patches keep cumulative
+coordinates instead of snapping back to the cached keyframe.【F:client/__tests__/patches.test.js†L1181-L1235】【F:client/__tests__/patches.test.js†L842-L902】
