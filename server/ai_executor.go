@@ -290,6 +290,7 @@ func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action ai
 	if cfg == nil || npc == nil {
 		return
 	}
+	width, height := w.dimensions()
 	var params aiMoveTowardParams
 	if int(action.paramIndex) < len(cfg.moveTowardParams) {
 		params = cfg.moveTowardParams[action.paramIndex]
@@ -313,8 +314,8 @@ func (w *World) actionMoveToward(cfg *aiCompiledConfig, npc *npcState, action ai
 		ok = true
 	case aiMoveTargetVector:
 		target = vec2{
-			X: clamp(npc.X+params.Vector.X, playerHalf, worldWidth-playerHalf),
-			Y: clamp(npc.Y+params.Vector.Y, playerHalf, worldHeight-playerHalf),
+			X: clamp(npc.X+params.Vector.X, playerHalf, width-playerHalf),
+			Y: clamp(npc.Y+params.Vector.Y, playerHalf, height-playerHalf),
 		}
 		ok = true
 	default:
@@ -517,6 +518,7 @@ func (w *World) actionSetRandomDestination(cfg *aiCompiledConfig, npc *npcState,
 		npc.Home = center
 	}
 	attempts := 6
+	width, height := w.dimensions()
 	for i := 0; i < attempts; i++ {
 		angle := w.randomAngle()
 		distance := w.randomDistance(minRadius, radius)
@@ -524,8 +526,8 @@ func (w *World) actionSetRandomDestination(cfg *aiCompiledConfig, npc *npcState,
 			distance = radius
 		}
 		target := vec2{
-			X: clamp(center.X+math.Cos(angle)*distance, playerHalf, worldWidth-playerHalf),
-			Y: clamp(center.Y+math.Sin(angle)*distance, playerHalf, worldHeight-playerHalf),
+			X: clamp(center.X+math.Cos(angle)*distance, playerHalf, width-playerHalf),
+			Y: clamp(center.Y+math.Sin(angle)*distance, playerHalf, height-playerHalf),
 		}
 		if w.ensureNPCPath(npc, target, tick) {
 			return
@@ -581,9 +583,10 @@ func (w *World) actionMoveAwayFromTarget(cfg *aiCompiledConfig, npc *npcState, a
 	if goalDist <= 0 {
 		goalDist = distance
 	}
+	width, height := w.dimensions()
 	target := vec2{
-		X: clamp(npc.X+dx*goalDist, playerHalf, worldWidth-playerHalf),
-		Y: clamp(npc.Y+dy*goalDist, playerHalf, worldHeight-playerHalf),
+		X: clamp(npc.X+dx*goalDist, playerHalf, width-playerHalf),
+		Y: clamp(npc.Y+dy*goalDist, playerHalf, height-playerHalf),
 	}
 	w.ensureNPCPath(npc, target, tick)
 }
