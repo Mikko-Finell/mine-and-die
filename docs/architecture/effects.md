@@ -81,6 +81,14 @@ payloads become tracked instances inside the js-effects runtime.
 During each render pass the effect manager consumes pending triggers, updates
 all tracked instances, and draws layered visuals on the canvas.
 
+## Effect Producer Inventory
+
+Run `npm run build:effects-producer-map` whenever you need an up-to-date inventory of every server helper that spawns an effect, enqueues a trigger, or applies condition-driven damage. The command executes `tools/effects/build_producer_map`, which walks the `server/` package and writes `effects_producer_map.json` at the repository root.
+
+The generated JSON lists each method, the kinds of payloads it produces (`active-effect`, `trigger`, or `direct-application`), the effect or trigger types it instantiates, and whether it touches cooldown, logging, or journal guardrails. Pass `--csv <path>` to the tool when you also need a spreadsheet-friendly export.
+
+Use this inventory before changing producer behaviour so you can confirm downstream systems (logging, cooldown enforcement, journal guards) stay in sync.
+
 ## Extending the System
 
 When adding a new ability or condition:

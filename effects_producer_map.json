@@ -1,0 +1,344 @@
+[
+  {
+    "file": "server/conditions.go",
+    "function": "applyConditionDamage",
+    "line": 224,
+    "deliveryKinds": [
+      "direct-application"
+    ],
+    "effectTypes": [
+      "effectTypeBurningTick"
+    ]
+  },
+  {
+    "file": "server/conditions.go",
+    "function": "attachConditionEffect",
+    "line": 247,
+    "deliveryKinds": [
+      "active-effect"
+    ],
+    "effectTypes": [
+      "effectType",
+      "spec.EffectType"
+    ],
+    "invariants": {
+      "journal": [
+        "SetEffectParam",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "triggerMeleeAttack",
+    "line": 380,
+    "deliveryKinds": [
+      "active-effect",
+      "direct-application",
+      "trigger"
+    ],
+    "effectTypes": [
+      "effectTypeAttack",
+      "spec.EffectType"
+    ],
+    "triggerTypes": [
+      "effectTypeBloodSplatter"
+    ],
+    "invariants": {
+      "cooldowns": [
+        "cooldownReady"
+      ],
+      "logging": [
+        "loggingcombat.AttackOverlap",
+        "loggingeconomy.ItemGrantFailed"
+      ],
+      "journal": [
+        "QueueEffectTrigger",
+        "SetEffectParam",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "triggerFireball",
+    "line": 503,
+    "deliveryKinds": [
+      "active-effect"
+    ],
+    "effectTypes": [
+      "spec.EffectType",
+      "tpl.Type"
+    ],
+    "invariants": {
+      "cooldowns": [
+        "cooldownReady"
+      ],
+      "journal": [
+        "SetEffectParam",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "spawnProjectile",
+    "line": 508,
+    "deliveryKinds": [
+      "active-effect"
+    ],
+    "effectTypes": [
+      "spec.EffectType",
+      "tpl.Type"
+    ],
+    "invariants": {
+      "cooldowns": [
+        "cooldownReady"
+      ],
+      "journal": [
+        "SetEffectParam",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "advanceEffects",
+    "line": 660,
+    "deliveryKinds": [
+      "active-effect",
+      "direct-application",
+      "trigger"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ],
+    "triggerTypes": [
+      "effectTypeBloodSplatter"
+    ],
+    "invariants": {
+      "logging": [
+        "loggingcombat.AttackOverlap"
+      ],
+      "journal": [
+        "QueueEffectTrigger",
+        "SetEffectParam",
+        "SetEffectPosition",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "advanceProjectiles",
+    "line": 668,
+    "deliveryKinds": [
+      "active-effect",
+      "direct-application",
+      "trigger"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ],
+    "triggerTypes": [
+      "effectTypeBloodSplatter"
+    ],
+    "invariants": {
+      "logging": [
+        "loggingcombat.AttackOverlap"
+      ],
+      "journal": [
+        "QueueEffectTrigger",
+        "SetEffectParam",
+        "SetEffectPosition",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "advanceProjectile",
+    "line": 685,
+    "deliveryKinds": [
+      "active-effect",
+      "direct-application",
+      "trigger"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ],
+    "triggerTypes": [
+      "effectTypeBloodSplatter"
+    ],
+    "invariants": {
+      "logging": [
+        "loggingcombat.AttackOverlap"
+      ],
+      "journal": [
+        "QueueEffectTrigger",
+        "SetEffectParam",
+        "SetEffectPosition",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "stopProjectile",
+    "line": 874,
+    "deliveryKinds": [
+      "active-effect"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ],
+    "invariants": {
+      "journal": [
+        "SetEffectParam"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "triggerExpiryExplosion",
+    "line": 904,
+    "deliveryKinds": [
+      "active-effect"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ]
+  },
+  {
+    "file": "server/effects.go",
+    "function": "spawnAreaEffectAt",
+    "line": 922,
+    "deliveryKinds": [
+      "active-effect"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ]
+  },
+  {
+    "file": "server/effects.go",
+    "function": "maybeExplodeOnExpiry",
+    "line": 963,
+    "deliveryKinds": [
+      "active-effect"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ],
+    "invariants": {
+      "journal": [
+        "SetEffectParam"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "pruneEffects",
+    "line": 995,
+    "deliveryKinds": [
+      "active-effect"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ],
+    "invariants": {
+      "journal": [
+        "SetEffectParam",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "applyEffectHitPlayer",
+    "line": 1013,
+    "deliveryKinds": [
+      "direct-application"
+    ]
+  },
+  {
+    "file": "server/effects.go",
+    "function": "applyEffectHitNPC",
+    "line": 1020,
+    "deliveryKinds": [
+      "active-effect",
+      "direct-application",
+      "trigger"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ],
+    "triggerTypes": [
+      "effectTypeBloodSplatter"
+    ],
+    "invariants": {
+      "journal": [
+        "QueueEffectTrigger",
+        "SetEffectParam",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/effects.go",
+    "function": "maybeSpawnBloodSplatter",
+    "line": 1032,
+    "deliveryKinds": [
+      "active-effect",
+      "trigger"
+    ],
+    "effectTypes": [
+      "spec.EffectType"
+    ],
+    "triggerTypes": [
+      "effectTypeBloodSplatter"
+    ],
+    "invariants": {
+      "journal": [
+        "QueueEffectTrigger",
+        "SetEffectParam",
+        "purgeEntityPatches"
+      ]
+    }
+  },
+  {
+    "file": "server/simulation.go",
+    "function": "Step",
+    "line": 241,
+    "deliveryKinds": [
+      "active-effect",
+      "direct-application",
+      "trigger"
+    ],
+    "effectTypes": [
+      "effectTypeAttack",
+      "spec.EffectType",
+      "tpl.Type"
+    ],
+    "triggerTypes": [
+      "effectTypeBloodSplatter"
+    ],
+    "invariants": {
+      "cooldowns": [
+        "cooldownReady"
+      ],
+      "logging": [
+        "logging.EntityKind",
+        "loggingcombat.AttackOverlap",
+        "loggingeconomy.ItemGrantFailed",
+        "logginglifecycle.PlayerDisconnected"
+      ],
+      "journal": [
+        "QueueEffectTrigger",
+        "SetEffectParam",
+        "SetEffectPosition",
+        "purgeEntityPatches"
+      ]
+    }
+  }
+]
