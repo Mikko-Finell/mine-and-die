@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "npm --prefix tools/js-effects run dev",
     "build": "npm --prefix tools/js-effects run build && node tools/js-effects/scripts/sync-dist-to-client.mjs",
-    "test": "vitest"
+    "test": "vitest",
+    "effects:map": "./tools/effects/build_producer_map"
   },
   "dependencies": {
     "lit": "^3.2.0"

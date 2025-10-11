@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GO_CMD=${GO_CMD:-go}
+cd "$SCRIPT_DIR"
+exec "$GO_CMD" run ./cmd/build_producer_map --root "$SCRIPT_DIR/../.." "$@"

@@ -49,7 +49,7 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Auto producer map | Ready to Start | :white_check_mark: First PR should implement `tools/effects/build_producer_map` and generate `effects_producer_map.json`. | Roadmap requires CI script; coordinate with `package.json` scripts and document usage in `docs/architecture/effects.md`. |
+| Auto producer map | Complete | :white_check_mark: Implemented `tools/effects/build_producer_map`; run `npm run effects:map` to refresh `effects_producer_map.json`. | Script documents coverage in `docs/architecture/effects.md`; map checked in under repo root. |
 | Current wire audit | Not Started | Document current `Hub.marshalState` snapshot contents and sequencing. | Capture ordering of `Effects[]` vs. `EffectTriggers[]`; include examples from current server. |
 | Baseline tests to preserve | Not Started | Enumerate regression tests (file + test name) tied to effect behaviour. | Start with `server/main_test.go` coverage; mark tests red-listed for migration. |
 | Telemetry (current system) | Not Started | Define metrics, decide aggregation surface, and note implementation plan. | Prior dashboard requirement removed—focus on counters & logging first. |
