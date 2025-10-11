@@ -53,6 +53,8 @@ type subscriber struct {
 const (
 	keyframeLimiterCapacity  = 3
 	keyframeLimiterRefillPer = 2.0 // tokens per second
+
+	commandQueueWarningStep = 256
 )
 
 type keyframeLookupStatus int
@@ -1100,7 +1102,12 @@ func (h *Hub) TelemetrySnapshot() telemetrySnapshot {
 func (h *Hub) enqueueCommand(cmd Command) {
 	h.commandsMu.Lock()
 	h.pendingCommands = append(h.pendingCommands, cmd)
+	queueLen := len(h.pendingCommands)
 	h.commandsMu.Unlock()
+
+	if commandQueueWarningStep > 0 && queueLen >= commandQueueWarningStep && queueLen%commandQueueWarningStep == 0 {
+		stdlog.Printf("[backpressure] pendingCommands=%d with no guardrails; add queue limits before wider testing", queueLen)
+	}
 }
 
 func (h *Hub) drainCommands() []Command {
