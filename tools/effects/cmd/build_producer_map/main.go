@@ -52,6 +52,57 @@ type valueInfo struct {
 	triggerTypes []string
 }
 
+type scope struct {
+	env    map[string]*valueInfo
+	locals map[string]struct{}
+}
+
+func newScope(parent map[string]*valueInfo) *scope {
+	sc := &scope{
+		env:    copyEnv(parent),
+		locals: make(map[string]struct{}),
+	}
+	return sc
+}
+
+func wrapScope(env map[string]*valueInfo) *scope {
+	if env == nil {
+		env = make(map[string]*valueInfo)
+	}
+	return &scope{
+		env:    env,
+		locals: make(map[string]struct{}),
+	}
+}
+
+func (sc *scope) inherit(locals map[string]struct{}) {
+	if sc == nil || len(locals) == 0 {
+		return
+	}
+	for name := range locals {
+		sc.locals[name] = struct{}{}
+	}
+}
+
+func (sc *scope) define(name string, vi *valueInfo) {
+	if sc == nil || name == "" {
+		return
+	}
+	if sc.env == nil {
+		sc.env = make(map[string]*valueInfo)
+	}
+	sc.env[name] = vi
+	sc.locals[name] = struct{}{}
+}
+
+func (sc *scope) isLocal(name string) bool {
+	if sc == nil || name == "" {
+		return false
+	}
+	_, ok := sc.locals[name]
+	return ok
+}
+
 func main() {
 	rootFlag := flag.String("root", "..", "project root")
 	outFlag := flag.String("out", "", "output file (default <root>/effects_producer_map.json)")
@@ -207,136 +258,207 @@ func processBlock(block *ast.BlockStmt, env map[string]*valueInfo, info *functio
 	if block == nil {
 		return
 	}
+	child := newScope(env)
 	for _, stmt := range block.List {
-		processStmt(stmt, copyEnv(env), info)
+		processStmt(stmt, child, info)
 	}
+	mergeExisting(env, child)
 }
 
-func processStmt(stmt ast.Stmt, env map[string]*valueInfo, info *functionInfo) {
+func processStmt(stmt ast.Stmt, sc *scope, info *functionInfo) {
 	switch s := stmt.(type) {
 	case *ast.AssignStmt:
-		processAssign(s, env, info)
+		processAssign(s, sc, info)
 	case *ast.BlockStmt:
-		processBlock(s, env, info)
+		processBlock(s, sc.env, info)
 	case *ast.ExprStmt:
-		processExpr(s.X, env, info)
+		processExpr(s.X, sc.env, info)
 	case *ast.IfStmt:
+		sharedScope := wrapScope(copyEnv(sc.env))
 		if s.Init != nil {
-			processStmt(s.Init, copyEnv(env), info)
+			processStmt(s.Init, sharedScope, info)
 		}
-		processExpr(s.Cond, env, info)
-		processBlock(s.Body, copyEnv(env), info)
+		processExpr(s.Cond, sharedScope.env, info)
+		branchScopes := []*scope{}
+		thenScope := wrapScope(copyEnv(sharedScope.env))
+		thenScope.inherit(sharedScope.locals)
+		processBlock(s.Body, thenScope.env, info)
+		branchScopes = append(branchScopes, thenScope)
 		if s.Else != nil {
+			elseScope := wrapScope(copyEnv(sharedScope.env))
+			elseScope.inherit(sharedScope.locals)
 			switch els := s.Else.(type) {
 			case *ast.BlockStmt:
-				processBlock(els, copyEnv(env), info)
+				processBlock(els, elseScope.env, info)
 			default:
-				processStmt(els, copyEnv(env), info)
+				processStmt(els, elseScope, info)
 			}
+			branchScopes = append(branchScopes, elseScope)
+		} else {
+			untouched := wrapScope(copyEnv(sharedScope.env))
+			untouched.inherit(sharedScope.locals)
+			branchScopes = append(branchScopes, untouched)
 		}
+		joinInto(sc.env, branchScopes...)
 	case *ast.ForStmt:
+		loopScope := wrapScope(copyEnv(sc.env))
 		if s.Init != nil {
-			processStmt(s.Init, copyEnv(env), info)
+			processStmt(s.Init, loopScope, info)
 		}
 		if s.Cond != nil {
-			processExpr(s.Cond, env, info)
+			processExpr(s.Cond, loopScope.env, info)
 		}
 		if s.Post != nil {
-			processStmt(s.Post, copyEnv(env), info)
+			postScope := wrapScope(copyEnv(loopScope.env))
+			processStmt(s.Post, postScope, info)
+			mergeExisting(loopScope.env, postScope)
 		}
-		processBlock(s.Body, copyEnv(env), info)
+		processBlock(s.Body, loopScope.env, info)
+		mergeExisting(sc.env, loopScope)
 	case *ast.RangeStmt:
+		processExpr(s.X, sc.env, info)
+		rangeScope := wrapScope(copyEnv(sc.env))
 		if s.Key != nil {
-			// clear target from env to avoid leaking outer scope entries
-			if ident, ok := s.Key.(*ast.Ident); ok && ident.Name != "_" {
-				delete(env, ident.Name)
+			if ident, ok := s.Key.(*ast.Ident); ok && ident.Name != "_" && s.Tok == token.DEFINE {
+				rangeScope.define(ident.Name, nil)
 			}
 		}
 		if s.Value != nil {
-			if ident, ok := s.Value.(*ast.Ident); ok && ident.Name != "_" {
-				delete(env, ident.Name)
+			if ident, ok := s.Value.(*ast.Ident); ok && ident.Name != "_" && s.Tok == token.DEFINE {
+				rangeScope.define(ident.Name, nil)
 			}
 		}
-		processExpr(s.X, env, info)
-		processBlock(s.Body, copyEnv(env), info)
+		processBlock(s.Body, rangeScope.env, info)
+		mergeExisting(sc.env, rangeScope)
 	case *ast.ReturnStmt:
 		for _, expr := range s.Results {
-			processExpr(expr, env, info)
+			processExpr(expr, sc.env, info)
 		}
 	case *ast.DeferStmt:
-		processExpr(s.Call, env, info)
+		processExpr(s.Call, sc.env, info)
 	case *ast.GoStmt:
-		processExpr(s.Call, env, info)
+		processExpr(s.Call, sc.env, info)
 	case *ast.IncDecStmt:
 		processIncDec(s, info)
 	case *ast.SwitchStmt:
+		switchScope := wrapScope(copyEnv(sc.env))
 		if s.Init != nil {
-			processStmt(s.Init, copyEnv(env), info)
+			processStmt(s.Init, switchScope, info)
 		}
 		if s.Tag != nil {
-			processExpr(s.Tag, env, info)
+			processExpr(s.Tag, switchScope.env, info)
 		}
+		branchScopes := []*scope{}
+		hasDefault := false
 		for _, stmt := range s.Body.List {
 			if cc, ok := stmt.(*ast.CaseClause); ok {
+				caseScope := wrapScope(copyEnv(switchScope.env))
+				caseScope.inherit(switchScope.locals)
 				for _, expr := range cc.List {
-					processExpr(expr, env, info)
+					processExpr(expr, caseScope.env, info)
 				}
-				processStmtList(cc.Body, copyEnv(env), info)
+				processStmtList(cc.Body, caseScope.env, info)
+				branchScopes = append(branchScopes, caseScope)
+				if len(cc.List) == 0 {
+					hasDefault = true
+				}
 			}
 		}
+		if !hasDefault {
+			untouched := wrapScope(copyEnv(switchScope.env))
+			untouched.inherit(switchScope.locals)
+			branchScopes = append(branchScopes, untouched)
+		}
+		joinInto(sc.env, branchScopes...)
 	case *ast.TypeSwitchStmt:
+		switchScope := wrapScope(copyEnv(sc.env))
 		if s.Init != nil {
-			processStmt(s.Init, copyEnv(env), info)
+			processStmt(s.Init, switchScope, info)
 		}
 		if s.Assign != nil {
-			processStmt(s.Assign, copyEnv(env), info)
+			processStmt(s.Assign, switchScope, info)
 		}
+		branchScopes := []*scope{}
+		hasDefault := false
 		for _, stmt := range s.Body.List {
 			if cc, ok := stmt.(*ast.CaseClause); ok {
-				processStmtList(cc.Body, copyEnv(env), info)
+				caseScope := wrapScope(copyEnv(switchScope.env))
+				caseScope.inherit(switchScope.locals)
+				processStmtList(cc.Body, caseScope.env, info)
+				branchScopes = append(branchScopes, caseScope)
+				if len(cc.List) == 0 {
+					hasDefault = true
+				}
 			}
 		}
+		if !hasDefault {
+			untouched := wrapScope(copyEnv(switchScope.env))
+			untouched.inherit(switchScope.locals)
+			branchScopes = append(branchScopes, untouched)
+		}
+		joinInto(sc.env, branchScopes...)
 	case *ast.SelectStmt:
+		branchScopes := []*scope{}
 		for _, comm := range s.Body.List {
 			if cc, ok := comm.(*ast.CommClause); ok {
+				clauseScope := wrapScope(copyEnv(sc.env))
 				if cc.Comm != nil {
-					processStmt(cc.Comm, copyEnv(env), info)
+					processStmt(cc.Comm, clauseScope, info)
 				}
-				processStmtList(cc.Body, copyEnv(env), info)
+				processStmtList(cc.Body, clauseScope.env, info)
+				branchScopes = append(branchScopes, clauseScope)
 			}
 		}
+		if len(branchScopes) == 0 {
+			untouched := wrapScope(copyEnv(sc.env))
+			branchScopes = append(branchScopes, untouched)
+		}
+		joinInto(sc.env, branchScopes...)
 	}
 }
 
 func processStmtList(stmts []ast.Stmt, env map[string]*valueInfo, info *functionInfo) {
-	for _, stmt := range stmts {
-		processStmt(stmt, copyEnv(env), info)
+	if len(stmts) == 0 {
+		return
 	}
+	child := newScope(env)
+	for _, stmt := range stmts {
+		processStmt(stmt, child, info)
+	}
+	mergeExisting(env, child)
 }
 
-func processAssign(assign *ast.AssignStmt, env map[string]*valueInfo, info *functionInfo) {
+func processAssign(assign *ast.AssignStmt, sc *scope, info *functionInfo) {
 	for i, lhs := range assign.Lhs {
 		if i >= len(assign.Rhs) {
 			break
 		}
 		if ident, ok := lhs.(*ast.Ident); ok && ident.Name != "_" {
 			rhs := assign.Rhs[i]
-			vi := extractValueInfo(rhs, env, info)
+			vi := extractValueInfo(rhs, sc.env, info)
 			if vi != nil {
-				env[ident.Name] = vi
+				if assign.Tok == token.DEFINE {
+					if sc.isLocal(ident.Name) {
+						sc.env[ident.Name] = vi
+					} else {
+						sc.define(ident.Name, vi)
+					}
+				} else {
+					sc.env[ident.Name] = vi
+				}
 			}
 		}
 	}
 	if len(assign.Rhs) == 1 {
 		if call, ok := assign.Rhs[0].(*ast.CallExpr); ok {
 			if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "append" {
-				handleAppendCall(call, env, info)
+				handleAppendCall(call, sc.env, info)
 				return
 			}
 		}
 	}
 	for _, expr := range assign.Rhs {
-		processExpr(expr, env, info)
+		processExpr(expr, sc.env, info)
 	}
 }
 
@@ -622,6 +744,105 @@ func exprToString(expr ast.Expr) string {
 		return v.Op.String() + exprToString(v.X)
 	}
 	return ""
+}
+
+func mergeExisting(parent map[string]*valueInfo, child *scope) {
+	if parent == nil || len(parent) == 0 || child == nil || len(child.env) == 0 {
+		return
+	}
+	for name := range parent {
+		if child.isLocal(name) {
+			continue
+		}
+		if v, ok := child.env[name]; ok {
+			parent[name] = v
+		}
+	}
+}
+
+func joinInto(env map[string]*valueInfo, branches ...*scope) {
+	if env == nil || len(env) == 0 || len(branches) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	for _, key := range keys {
+		var candidate *valueInfo
+		consistent := true
+		preserve := false
+		for i, branch := range branches {
+			if branch == nil || branch.env == nil {
+				consistent = false
+				break
+			}
+			if branch.isLocal(key) {
+				preserve = true
+				break
+			}
+			val, ok := branch.env[key]
+			if !ok {
+				consistent = false
+				break
+			}
+			if i == 0 {
+				candidate = val
+				continue
+			}
+			if !valueInfoEqual(candidate, val) {
+				consistent = false
+				break
+			}
+		}
+		if preserve {
+			continue
+		}
+		if consistent {
+			env[key] = candidate
+		} else {
+			delete(env, key)
+		}
+	}
+}
+
+func valueInfoEqual(a, b *valueInfo) bool {
+	if a == b {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if !stringSliceEqual(a.effectTypes, b.effectTypes) {
+		return false
+	}
+	if !stringSliceEqual(a.triggerTypes, b.triggerTypes) {
+		return false
+	}
+	return true
+}
+
+func stringSliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	if len(a) == 0 {
+		return true
+	}
+	counts := make(map[string]int, len(a))
+	for _, v := range a {
+		counts[v]++
+	}
+	for _, v := range b {
+		if remaining, ok := counts[v]; !ok {
+			return false
+		} else if remaining == 1 {
+			delete(counts, v)
+		} else {
+			counts[v] = remaining - 1
+		}
+	}
+	return len(counts) == 0
 }
 
 func copyEnv(env map[string]*valueInfo) map[string]*valueInfo {
