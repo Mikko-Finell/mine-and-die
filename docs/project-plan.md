@@ -92,7 +92,7 @@ Our short-term mission is to **stabilize the core loop**, **align messaging with
 
 ## 8. Cross-Functional Coordination
 
-- **Engineering:** Twice-weekly syncs on reliability and telemetry progress; maintain shared Grafana-style dashboard for tick and queue metrics.  
+- **Engineering:** Twice-weekly syncs on reliability and telemetry progress; circulate shared tick/queue telemetry summaries.
 - **Design / UX:** Co-own onboarding, destructive-action messaging, and diagnostic overlays.
 - **QA:** Build regression checklist and automated smoke tests; schedule playtest runs after Milestone A completion.  
 - **Comms / Marketing:** Publish “Prototype Status” article updating feature claims while preserving aspirational roadmap context.【F:technical_debt.md†L19-23】  
