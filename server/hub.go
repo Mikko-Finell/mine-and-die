@@ -32,9 +32,10 @@ type Hub struct {
 	tick   atomic.Uint64
 	seq    atomic.Uint64
 
-	keyframeInterval int
-	lastKeyframeSeq  atomic.Uint64
-	lastKeyframeTick atomic.Uint64
+	defaultKeyframeInterval int
+	keyframeInterval        atomic.Int64
+	lastKeyframeSeq         atomic.Uint64
+	lastKeyframeTick        atomic.Uint64
 
 	resyncNext        atomic.Bool
 	forceKeyframeNext atomic.Bool
@@ -135,14 +136,15 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 	}
 
 	hub := &Hub{
-		world:            newWorld(cfg, pub),
-		subscribers:      make(map[string]*subscriber),
-		pendingCommands:  make([]Command, 0),
-		config:           cfg,
-		publisher:        pub,
-		telemetry:        newTelemetryCounters(),
-		keyframeInterval: interval,
+		world:                   newWorld(cfg, pub),
+		subscribers:             make(map[string]*subscriber),
+		pendingCommands:         make([]Command, 0),
+		config:                  cfg,
+		publisher:               pub,
+		telemetry:               newTelemetryCounters(),
+		defaultKeyframeInterval: interval,
 	}
+	hub.keyframeInterval.Store(int64(interval))
 	hub.forceKeyframe()
 	return hub
 }
@@ -221,7 +223,18 @@ func (h *Hub) Join() joinResponse {
 	h.forceKeyframe()
 	go h.broadcastState(players, npcs, effects, nil, groundItems)
 
-	return joinResponse{Ver: ProtocolVersion, ID: playerID, Players: players, NPCs: npcs, Obstacles: obstacles, Effects: effects, GroundItems: groundItems, Config: cfg, Resync: true}
+	return joinResponse{
+		Ver:              ProtocolVersion,
+		ID:               playerID,
+		Players:          players,
+		NPCs:             npcs,
+		Obstacles:        obstacles,
+		Effects:          effects,
+		GroundItems:      groundItems,
+		Config:           cfg,
+		Resync:           true,
+		KeyframeInterval: h.CurrentKeyframeInterval(),
+	}
 }
 
 // ResetWorld replaces the current world with a freshly generated instance.
@@ -772,15 +785,50 @@ func (h *Hub) forceKeyframe() {
 	h.forceKeyframeNext.Store(true)
 }
 
+func (h *Hub) CurrentKeyframeInterval() int {
+	if h == nil {
+		return 1
+	}
+	value := int(h.keyframeInterval.Load())
+	if value <= 0 {
+		if h.defaultKeyframeInterval > 0 {
+			return h.defaultKeyframeInterval
+		}
+		return 1
+	}
+	return value
+}
+
+func (h *Hub) SetKeyframeInterval(interval int) int {
+	if h == nil {
+		return 1
+	}
+	normalized := interval
+	if normalized < 1 {
+		normalized = h.defaultKeyframeInterval
+	}
+	if normalized < 1 {
+		normalized = 1
+	}
+	current := h.CurrentKeyframeInterval()
+	if current == normalized {
+		return current
+	}
+	h.keyframeInterval.Store(int64(normalized))
+	h.forceKeyframe()
+	return normalized
+}
+
 func (h *Hub) shouldIncludeSnapshot() bool {
-	if h.keyframeInterval <= 1 {
+	interval := h.CurrentKeyframeInterval()
+	if interval <= 1 {
 		return true
 	}
 	if h.forceKeyframeNext.CompareAndSwap(true, false) {
 		return true
 	}
-	interval := uint64(h.keyframeInterval)
-	if interval == 0 {
+	interval64 := uint64(interval)
+	if interval64 == 0 {
 		return true
 	}
 	tick := h.tick.Load()
@@ -788,7 +836,7 @@ func (h *Hub) shouldIncludeSnapshot() bool {
 	if last == 0 {
 		return true
 	}
-	return tick >= last && tick-last >= interval
+	return tick >= last && tick-last >= interval64
 }
 
 func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
@@ -931,21 +979,23 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		keyframeSeq = seq
 	}
 
+	currentInterval := h.CurrentKeyframeInterval()
 	msg := stateMessage{
-		Ver:            ProtocolVersion,
-		Type:           "state",
-		Players:        players,
-		NPCs:           npcs,
-		Obstacles:      obstacles,
-		Effects:        effects,
-		EffectTriggers: triggers,
-		GroundItems:    groundItems,
-		Patches:        patches,
-		Tick:           tick,
-		Sequence:       seq,
-		KeyframeSeq:    keyframeSeq,
-		ServerTime:     time.Now().UnixMilli(),
-		Config:         cfg,
+		Ver:              ProtocolVersion,
+		Type:             "state",
+		Players:          players,
+		NPCs:             npcs,
+		Obstacles:        obstacles,
+		Effects:          effects,
+		EffectTriggers:   triggers,
+		GroundItems:      groundItems,
+		Patches:          patches,
+		Tick:             tick,
+		Sequence:         seq,
+		KeyframeSeq:      keyframeSeq,
+		ServerTime:       time.Now().UnixMilli(),
+		Config:           cfg,
+		KeyframeInterval: currentInterval,
 	}
 	if resync {
 		msg.Resync = true

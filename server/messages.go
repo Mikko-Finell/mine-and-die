@@ -1,35 +1,37 @@
 package main
 
 type joinResponse struct {
-	Ver            int             `json:"ver"`
-	ID             string          `json:"id"`
-	Players        []Player        `json:"players"`
-	NPCs           []NPC           `json:"npcs"`
-	Obstacles      []Obstacle      `json:"obstacles"`
-	Effects        []Effect        `json:"effects"`
-	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
-	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
-	Patches        []Patch         `json:"patches,omitempty"`
-	Config         worldConfig     `json:"config"`
-	Resync         bool            `json:"resync"`
+	Ver              int             `json:"ver"`
+	ID               string          `json:"id"`
+	Players          []Player        `json:"players"`
+	NPCs             []NPC           `json:"npcs"`
+	Obstacles        []Obstacle      `json:"obstacles"`
+	Effects          []Effect        `json:"effects"`
+	EffectTriggers   []EffectTrigger `json:"effectTriggers,omitempty"`
+	GroundItems      []GroundItem    `json:"groundItems,omitempty"`
+	Patches          []Patch         `json:"patches,omitempty"`
+	Config           worldConfig     `json:"config"`
+	Resync           bool            `json:"resync"`
+	KeyframeInterval int             `json:"keyframeInterval,omitempty"`
 }
 
 type stateMessage struct {
-	Ver            int             `json:"ver"`
-	Type           string          `json:"type"`
-	Players        []Player        `json:"players,omitempty"`
-	NPCs           []NPC           `json:"npcs,omitempty"`
-	Obstacles      []Obstacle      `json:"obstacles,omitempty"`
-	Effects        []Effect        `json:"effects,omitempty"`
-	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
-	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
-	Patches        []Patch         `json:"patches"`
-	Tick           uint64          `json:"t"`
-	Sequence       uint64          `json:"sequence"`
-	KeyframeSeq    uint64          `json:"keyframeSeq"`
-	ServerTime     int64           `json:"serverTime"`
-	Config         worldConfig     `json:"config"`
-	Resync         bool            `json:"resync,omitempty"`
+	Ver              int             `json:"ver"`
+	Type             string          `json:"type"`
+	Players          []Player        `json:"players,omitempty"`
+	NPCs             []NPC           `json:"npcs,omitempty"`
+	Obstacles        []Obstacle      `json:"obstacles,omitempty"`
+	Effects          []Effect        `json:"effects,omitempty"`
+	EffectTriggers   []EffectTrigger `json:"effectTriggers,omitempty"`
+	GroundItems      []GroundItem    `json:"groundItems,omitempty"`
+	Patches          []Patch         `json:"patches"`
+	Tick             uint64          `json:"t"`
+	Sequence         uint64          `json:"sequence"`
+	KeyframeSeq      uint64          `json:"keyframeSeq"`
+	ServerTime       int64           `json:"serverTime"`
+	Config           worldConfig     `json:"config"`
+	Resync           bool            `json:"resync,omitempty"`
+	KeyframeInterval int             `json:"keyframeInterval,omitempty"`
 }
 
 type keyframeMessage struct {
@@ -53,19 +55,20 @@ type keyframeNackMessage struct {
 }
 
 type clientMessage struct {
-	Ver         int     `json:"ver,omitempty"`
-	Type        string  `json:"type"`
-	DX          float64 `json:"dx"`
-	DY          float64 `json:"dy"`
-	Facing      string  `json:"facing"`
-	X           float64 `json:"x"`
-	Y           float64 `json:"y"`
-	SentAt      int64   `json:"sentAt"`
-	Action      string  `json:"action"`
-	Cmd         string  `json:"cmd"`
-	Qty         int     `json:"qty"`
-	Ack         *uint64 `json:"ack"`
-	KeyframeSeq *uint64 `json:"keyframeSeq"`
+	Ver              int     `json:"ver,omitempty"`
+	Type             string  `json:"type"`
+	DX               float64 `json:"dx"`
+	DY               float64 `json:"dy"`
+	Facing           string  `json:"facing"`
+	X                float64 `json:"x"`
+	Y                float64 `json:"y"`
+	SentAt           int64   `json:"sentAt"`
+	Action           string  `json:"action"`
+	Cmd              string  `json:"cmd"`
+	Qty              int     `json:"qty"`
+	Ack              *uint64 `json:"ack"`
+	KeyframeSeq      *uint64 `json:"keyframeSeq"`
+	KeyframeInterval *int    `json:"keyframeInterval,omitempty"`
 }
 
 type consoleAckMessage struct {

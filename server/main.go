@@ -382,6 +382,13 @@ func main() {
 					return
 				}
 				sub.mu.Unlock()
+			case "keyframeCadence":
+				requested := 0
+				if msg.KeyframeInterval != nil {
+					requested = *msg.KeyframeInterval
+				}
+				applied := hub.SetKeyframeInterval(requested)
+				stdlog.Printf("[keyframe] player=%s requested cadence=%d", playerID, applied)
 			default:
 				stdlog.Printf("unknown message type %q from %s", msg.Type, playerID)
 			}
