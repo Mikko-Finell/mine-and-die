@@ -92,38 +92,22 @@ go test ./...
 The JavaScript tests use Vitest to spot-check brittle client helpers; we are not pursuing full browser coverage and the effects playground tooling does not require dedicated tests. The Go tests continue to exercise join flow, intent handling, collision resolution, effect lifecycles, and heartbeat tracking.
 
 ## Roadmap
-The core mining loop, melee/projectile combat, and lava-driven conditions are already
-implemented (see the server, client, and effects documentation). The remaining
-milestones focus on systems that have not shipped yet.
+High-level milestone tracking lives here for quick reference. Dive into
+[`docs/project-milestones.md`](docs/project-milestones.md) for the full scope,
+dependencies, and acceptance criteria for each phase.
 
-### Milestone 1 – Gold resource loop
-- **Server**
-  - Represent finite-capacity gold deposits, support depletion/despawning, and broadcast respawn events.
-- **Client**
-  - Visualise deposit state, depletion, and respawn timings so players can prioritise contested sites.
-- **Systems & Economy**
-  - Ensure mining actions transfer gold into inventories and trigger the faction tax pipeline.
-- **Documentation**
-  - Capture depletion rules, respawn cadence, and player-facing scarcity expectations.
-
-### Milestone 2 – Safe zones & market interaction
-- **Server**
-  - Authoritative safe-zone definitions that disable PvP and gate market interactions.
-  - Implement escrowed buy/sell order matching with direct inventory transfers.
-- **Client**
-  - Surface safe-zone boundaries, market listings, and order-fulfilment flows tied to on-tile presence.
-- **Systems & Economy**
-  - Enforce remote market browsing with location-locked order execution, keeping transactions synchronous with taxation.
-- **Documentation**
-  - Expand references for safe-zone behaviour, market usage, and risk expectations when travelling with gold.
-
-### Milestone 3 – Faction hierarchy & succession
-- **Server**
-  - Persist faction trees with King/Noble/Knight/Citizen ranks, promotion powers, and configurable tax percentages.
-  - Handle succession-by-kill to immediately reassign positions and subordinate tax streams.
-- **Client**
-  - Provide hierarchy management tools, tax visibility, and coup feedback for kill-based promotions.
-- **Systems & Economy**
-  - Integrate tax routing with every gold acquisition path and maintain subordinate reassignment when members leave.
-- **Documentation**
-  - Maintain faction governance, taxation configuration, and succession rules in the design docs.
+1. **Milestone 1 – Core Stats & Itemization Backbone** → Establishes the stat
+   taxonomy, equippable items, and inventory plumbing that underpin every other
+   system.
+2. **Milestone 2 – Crafting & Resource Loop** → Introduces resource gathering
+   and recipes so materials can be transformed into functional gear.
+3. **Milestone 3 – Stat Progression & Boost Items** → Adds long-term character
+   growth through crafted boosters that permanently raise stats.
+4. **Milestone 4 – Combat MVP** → Delivers deterministic real-time combat with
+   hit resolution, NPC encounters, and basic logging for tuning.
+5. **Milestone 5 – Economy & Market System** → Connects mining, trading, and
+   taxation into a cohesive gold circulation loop.
+6. **Milestone 6 – Factions & Tax Hierarchy** → Layers on political structures
+   so factions can earn and manage income across the playerbase.
+7. **Milestone 7 – Balance & Integration Pass** → Harmonises tuning across
+   systems and locks in analytics to support wider playtests.
