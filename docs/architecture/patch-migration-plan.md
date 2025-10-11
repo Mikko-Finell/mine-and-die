@@ -217,3 +217,33 @@ keyframe recovery behaviour.
 `it("maintains forward motion between sparse keyframes", …)` and updates the
 cadence regression scenario to confirm that facing-only patches keep cumulative
 coordinates instead of snapping back to the cached keyframe.【F:client/__tests__/patches.test.js†L1181-L1235】【F:client/__tests__/patches.test.js†L842-L902】
+
+### Outstanding issue: effect patches that precede their keyframe
+
+Sparse keyframes expose a second gap that remains unfixed: effect parameter
+patches can arrive before the client has ever seen the matching effect entity.
+`updatePatchState` currently logs an `unknown entity for patch` error and drops
+the payload, leaving the effect invisible until a later keyframe repopulates
+the baseline.【F:client/__tests__/patches.test.js†L772-L816】 This behaviour is
+intentional for the moment—the new regression test ensures we can reliably
+reproduce the condition while iterating on a fix.
+
+#### Why it happens
+
+The server emits effect parameter diffs (e.g. remaining travel time, tint, or
+velocity hints) the moment an effect spawns. When keyframes are sparse, the
+client may only have the cached player/NPC baseline available; the effect
+itself has not yet been introduced via a keyframe or an entity-creation patch.
+Because the replay model refuses to materialise entities from deltas alone, the
+incoming patch finds no baseline entry and is rejected as a defensive guard.
+
+#### Proposed solution
+
+When the patch stream references an unknown effect, we should stage a placeholder
+entity in the baseline and request the authoritative keyframe in parallel.
+Future diffs can then layer onto the placeholder once the keyframe arrives or
+retrofit the patch when the recovery response materialises, keeping effect
+visuals alive without forcing a full resynchronisation. Coordinated fixes will
+either add a dedicated creation patch from the server or teach the client to
+promote effect metadata from `effect_params` payloads so the renderer receives
+something meaningful immediately.
