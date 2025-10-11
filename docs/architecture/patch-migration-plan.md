@@ -175,32 +175,58 @@ snapshot path:
 No open items. Continue exercising the patch renderer during playtests and add
 new tasks here as follow-up issues surface.
 
-## Snapshot → patch → client → render audit
+## Keyframe cadence regression analysis
 
-Recent QA reports highlighted positional "rewind" when the keyframe cadence is
-greater than one tick. Replaying the full pipeline clarifies why the issue only
-appears once we lean on incremental broadcasts:
+### Context
 
-1. The server advances the simulation, drains the mutation journal, and decides
-   whether to attach a fresh snapshot to the next `state` message. When the
-   cadence defers snapshots, the payload still includes `KeyframeSeq` so clients
-   can resolve patches against the last keyframe the journal recorded.【F:server/hub.go†L731-L999】
-2. `syncPatchTestingState` on the client rebuilds its working baseline from the
-   payload. Without snapshot arrays it falls back to the cached keyframe, then
-   applies the batch of diffs by cloning that baseline for each message.【F:client/patches.js†L904-L986】【F:client/patches.js†L1114-L1324】
-3. The network layer feeds the patched view into `applyStateSnapshot`, and the
-   renderer interpolates from that authoritative data when the diagnostics mode
-   points rendering at the diff container.【F:client/network.js†L1224-L1259】
+Increasing the keyframe cadence above one tick introduces a visible
+"rewind-return" effect: players momentarily snap backward to a prior position or
+lose transient visuals such as melee and projectile effects before snapping back
+to the correct state. The defect is reproducible in patch-only broadcast mode
+and disappears when full snapshots are sent every tick.
 
-Under a high cadence the server emits facing-only patches while a player is in
-motion. Step 2 reconstructs each frame from the old keyframe, so the moment a
-diff omits position data the player snaps back to the cached coordinates until
-the next positional patch arrives. We captured the regression in
-`client/__tests__/patches.test.js` by walking two steps away from the keyframe,
-applying a facing update, and asserting that the patched state jumps back to the
-baseline before the following positional patch moves it forward again.【F:client/__tests__/patches.test.js†L829-L925】
+### Root cause
 
-This test now exercises the full snapshot → patch → client → render chain that
-QA reported and should fail once we implement a cumulative baseline for
-patch-only updates. Leave the behaviour in place for now; the regression test
-documents the failure mode until we fix the playback model.
+The issue arises from how the client rebuilds its authoritative baseline between
+keyframes. When a new `state` message arrives without a full snapshot:
+
+1. `updatePatchState` reuses the cached keyframe referenced by `keyframeSeq` as
+   the working baseline.【F:client/patches.js†L1268-L1445】
+2. Patches are applied against this static baseline rather than the cumulative
+   world state. The baseline’s `sequence` remains frozen, so deduplication may
+   skip legitimate updates and any properties omitted from the patch (for
+   example, position during a facing change) revert to the cached keyframe
+   values.【F:client/patches.js†L1510-L1640】
+3. The renderer reads this partially updated view and interpolates toward stale
+   coordinates until the next positional patch or keyframe arrives, producing
+   the visible rewind and delayed or missing ability effects.【F:client/network.js†L1221-L1259】
+
+This is an architectural flaw in the client’s patch-replay model, not a server
+serialization error. The server correctly emits monotonic sequences and
+consistent keyframe pointers.
+
+### Supporting regression
+
+`client/__tests__/patches.test.js` now includes
+`it("regresses to the cached keyframe when cadence skips snapshots", …)` which:
+
+1. Seeds a keyframe baseline and advances one player via a positional patch.
+2. Applies a facing-only patch while reusing the same `keyframeSeq`.
+3. Asserts that the player’s position regresses to the keyframe coordinates
+   before advancing again once a new positional patch arrives.【F:client/__tests__/patches.test.js†L829-L919】
+
+The test reliably reproduces the rewind-return cycle in isolation and guards
+against accidental regression masking.
+
+### Next steps
+
+* Rework patch replay to maintain a cumulative, entity-scoped baseline instead of
+  cloning from the last keyframe for each message.
+* Treat missing entities in patch batches as keyframe recovery candidates rather
+  than hard errors.
+* Advance the baseline’s sequence with each successful patch application so
+  deduplication compares against the latest state, not the static keyframe.
+
+These adjustments should eliminate positional flicker, restore ability-effect
+visibility under high cadence, and bring patch-only playback to parity with
+snapshot-every-tick behaviour.
