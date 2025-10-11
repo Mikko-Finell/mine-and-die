@@ -1,4 +1,4 @@
-import { LitElement, html } from "./vendor/lit.js";
+import { LitElement, html, nothing } from "./vendor/lit.js";
 import {
   joinGame,
   resetWorld,
@@ -36,66 +36,578 @@ if (!customElements.get("lit-probe")) {
   customElements.define("lit-probe", LitProbeElement);
 }
 
+const renderDebugPanelContent = () => html`
+  <header class="debug-panel__header">
+    <div class="debug-panel__heading">
+      <h2 class="debug-panel__title">Testing &amp; Debug</h2>
+      <p class="debug-panel__subtitle">
+        Inspect the simulation, tweak latency, and manage the world state while you test.
+      </p>
+    </div>
+    <button
+      id="debug-panel-toggle"
+      type="button"
+      class="debug-panel__toggle"
+      aria-controls="debug-panel-body"
+      aria-expanded="true"
+    >
+      Hide panel
+    </button>
+  </header>
+  <div id="debug-panel-body" class="debug-panel__body">
+    <div class="debug-panel__summary">
+      <div class="debug-panel__status">
+        <span class="debug-panel__status-label">Session status</span>
+        <span id="status" class="debug-panel__status-text" aria-live="polite"
+          >Preparing session…</span
+        >
+      </div>
+      <div class="debug-panel__metrics">
+        <div class="debug-metric">
+          <span class="debug-metric__label">Observed latency</span>
+          <span id="latency-display" class="debug-metric__value" aria-live="polite">—</span>
+        </div>
+        <div class="debug-metric">
+          <span class="debug-metric__label">UI framework</span>
+          <lit-probe aria-live="polite"></lit-probe>
+        </div>
+        <label class="debug-metric debug-metric--input" for="latency-input">
+          <span class="debug-metric__label">Simulated latency</span>
+          <div class="debug-metric__input">
+            <input
+              type="number"
+              id="latency-input"
+              min="0"
+              step="10"
+              value="0"
+              inputmode="numeric"
+              aria-describedby="latency-input-hint"
+            />
+            <span class="debug-metric__suffix">ms</span>
+          </div>
+          <span id="latency-input-hint" class="debug-metric__hint"
+            >Inject artificial delay to mimic slower connections.</span
+          >
+        </label>
+      </div>
+    </div>
+    <div class="debug-panel__sections">
+      <details class="debug-section" open>
+        <summary class="debug-section__summary">Live diagnostics</summary>
+        <div class="debug-section__content">
+          <div id="diagnostics" class="diagnostics-grid">
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Connection</span>
+              <span id="diag-connection" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Players tracked</span>
+              <span id="diag-players" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Last state update</span>
+              <span id="diag-state-age" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Server tick</span>
+              <span id="diag-tick" class="diagnostic-stat__value">Tick: —</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Input vector</span>
+              <span id="diag-intent" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Last input send</span>
+              <span id="diag-intent-age" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Heartbeat</span>
+              <span id="diag-heartbeat" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Latency (observed)</span>
+              <span id="diag-latency" class="diagnostic-stat__value">RTT: —</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Simulated latency</span>
+              <span id="diag-sim-latency" class="diagnostic-stat__value">0 ms</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Messages sent</span>
+              <span id="diag-messages" class="diagnostic-stat__value">none</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Patch baseline</span>
+              <span id="diag-patch-baseline" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Patch batch</span>
+              <span id="diag-patch-batch" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Patched entities</span>
+              <span id="diag-patch-entities" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Patch recovery</span>
+              <span id="diag-patch-recovery" class="diagnostic-stat__value">—</span>
+            </div>
+          </div>
+        </div>
+      </details>
+      <details class="debug-section">
+        <summary class="debug-section__summary">Console commands</summary>
+        <div class="debug-section__content">
+          <div class="debug-console">
+            <button
+              type="button"
+              class="debug-console__button"
+              @click=${() => window.debugDropGold(100)}
+            >
+              Drop 100 gold
+            </button>
+            <button
+              type="button"
+              class="debug-console__button"
+              @click=${() => window.debugPickupGold()}
+            >
+              Pickup gold
+            </button>
+            <button
+              type="button"
+              class="debug-console__button"
+              @click=${() => window.debugNetworkStats()}
+            >
+              Network stats → console
+            </button>
+          </div>
+        </div>
+      </details>
+      <details class="debug-section">
+        <summary class="debug-section__summary">Rendering mode</summary>
+        <div class="debug-section__content">
+          <div class="debug-render">
+            <button
+              type="button"
+              class="debug-render__button"
+              @click=${() => window.debugSetRenderMode("snapshot")}
+            >
+              Force full snapshots
+            </button>
+            <button
+              type="button"
+              class="debug-render__button"
+              @click=${() => window.debugSetRenderMode("patch")}
+            >
+              Force incremental patches
+            </button>
+            <button
+              type="button"
+              class="debug-render__button"
+              @click=${() => window.debugToggleRenderMode()}
+            >
+              Toggle mode
+            </button>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+`;
+
+const renderWorldControlsContent = () => html`
+  <h2>World controls</h2>
+  <form id="world-reset-form" class="world-reset-form">
+    <div class="world-reset-grid">
+      <div class="world-reset-toggle">
+        <label class="world-reset-toggle__item">
+          <input
+            id="world-reset-obstacles"
+            name="obstacles"
+            type="checkbox"
+            checked
+            class="world-reset-toggle__input"
+          />
+          <span class="world-reset-toggle__label">Obstacles</span>
+          <span class="world-reset-toggle__hint"
+            >Enable procedural rock walls.</span
+          >
+        </label>
+        <label class="world-reset-toggle__item">
+          <input
+            id="world-reset-npcs"
+            name="npcs"
+            type="checkbox"
+            checked
+            class="world-reset-toggle__input"
+          />
+          <span class="world-reset-toggle__label">NPCs</span>
+          <span class="world-reset-toggle__hint"
+            >Spawn goblins and rats to fight.</span
+          >
+        </label>
+        <label class="world-reset-toggle__item">
+          <input
+            id="world-reset-lava"
+            name="lava"
+            type="checkbox"
+            checked
+            class="world-reset-toggle__input"
+          />
+          <span class="world-reset-toggle__label">Lava geysers</span>
+          <span class="world-reset-toggle__hint"
+            >Place environmental hazards around the map.</span
+          >
+        </label>
+        <label class="world-reset-toggle__item">
+          <input
+            id="world-reset-gold-mines"
+            name="goldMines"
+            type="checkbox"
+            checked
+            class="world-reset-toggle__input"
+          />
+          <span class="world-reset-toggle__label">Gold mines</span>
+          <span class="world-reset-toggle__hint"
+            >Seed ore veins and interactable deposits.</span
+          >
+        </label>
+      </div>
+      <div class="world-reset-quantities">
+        <label class="world-reset-quantity">
+          <span class="world-reset-quantity__label">Obstacles</span>
+          <input
+            id="world-reset-obstacles-count"
+            name="obstaclesCount"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+            value="2"
+            class="world-reset-quantity__input"
+            aria-label="Obstacle count"
+          />
+          <span class="world-reset-quantity__hint"
+            >Choose how many rock walls to generate.</span
+          >
+        </label>
+        <label class="world-reset-quantity">
+          <span class="world-reset-quantity__label">Goblins</span>
+          <input
+            id="world-reset-goblins-count"
+            name="goblinCount"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+            value="2"
+            class="world-reset-quantity__input"
+            aria-label="Goblin count"
+          />
+          <span class="world-reset-quantity__hint"
+            >Choose how many goblins spawn.</span
+          >
+        </label>
+        <label class="world-reset-quantity">
+          <span class="world-reset-quantity__label">Rats</span>
+          <input
+            id="world-reset-rats-count"
+            name="ratCount"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+            value="1"
+            class="world-reset-quantity__input"
+            aria-label="Rat count"
+          />
+          <span class="world-reset-quantity__hint"
+            >Choose how many rats spawn.</span
+          >
+        </label>
+        <label class="world-reset-quantity">
+          <span class="world-reset-quantity__label">Lava geysers</span>
+          <input
+            id="world-reset-lava-count"
+            name="lavaCount"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+            value="3"
+            class="world-reset-quantity__input"
+            aria-label="Lava geyser count"
+          />
+          <span class="world-reset-quantity__hint"
+            >Choose how many geysers erupt.</span
+          >
+        </label>
+        <label class="world-reset-quantity">
+          <span class="world-reset-quantity__label">Gold mines</span>
+          <input
+            id="world-reset-gold-mines-count"
+            name="goldMineCount"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+            value="1"
+            class="world-reset-quantity__input"
+            aria-label="Gold mine count"
+          />
+          <span class="world-reset-quantity__hint"
+            >Choose how many ore veins are generated.</span
+          >
+        </label>
+      </div>
+    </div>
+  </form>
+`;
+
+const renderInventoryContent = () => html`
+  <h2>Inventory</h2>
+  <div id="inventory-grid" class="inventory-grid" role="list"></div>
+`;
+
+const INTERFACE_TAB_STORAGE_KEY = "mine-and-die.interface-panel";
+
+const INTERFACE_PANELS = [
+  {
+    id: "debug-panel",
+    tabId: "interface-tab-telemetry",
+    label: "Telemetry",
+    panelClass: "debug-panel",
+    ariaLabel: "Testing and debug tools",
+    dataCollapsed: "false",
+    renderContent: renderDebugPanelContent,
+  },
+  {
+    id: "world-controls-panel",
+    tabId: "interface-tab-world",
+    label: "World Controls",
+    panelClass: "",
+    ariaLabel: null,
+    dataCollapsed: null,
+    renderContent: renderWorldControlsContent,
+  },
+  {
+    id: "inventory-panel",
+    tabId: "interface-tab-inventory",
+    label: "Inventory",
+    panelClass: "inventory-panel",
+    ariaLabel: null,
+    dataCollapsed: null,
+    renderContent: renderInventoryContent,
+  },
+];
+
+const PANEL_IDS = new Set(INTERFACE_PANELS.map((panel) => panel.id));
+const DEFAULT_PANEL_ID = "debug-panel";
+
+class GameClientApp extends LitElement {
+  static properties = {
+    activePanelId: { type: String },
+  };
+
+  constructor() {
+    super();
+    this.activePanelId = DEFAULT_PANEL_ID;
+    this.#pendingFocusId = null;
+  }
+
+  createRenderRoot() {
+    return this;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    const stored = this.#readStoredPanelId();
+    if (stored && PANEL_IDS.has(stored)) {
+      this.setActivePanel(stored, { notify: false });
+    } else if (!this.activePanelId || !PANEL_IDS.has(this.activePanelId)) {
+      this.setActivePanel(DEFAULT_PANEL_ID, { notify: false });
+    }
+  }
+
+  updated() {
+    if (!this.#pendingFocusId) {
+      return;
+    }
+    const focusTarget = this.querySelector(
+      `[data-panel-id="${this.#pendingFocusId}"]`,
+    );
+    this.#pendingFocusId = null;
+    if (focusTarget && typeof focusTarget.focus === "function") {
+      focusTarget.focus();
+    }
+  }
+
+  setActivePanel(panelId, options = {}) {
+    if (!PANEL_IDS.has(panelId)) {
+      return;
+    }
+    const { focus = false, notify = true } = options;
+    const changed = this.activePanelId !== panelId;
+    this.activePanelId = panelId;
+    if (focus) {
+      this.#pendingFocusId = panelId;
+      if (!changed) {
+        this.requestUpdate();
+      }
+    }
+    this.#persistPanelId(panelId);
+    if (notify && (changed || focus)) {
+      this.dispatchEvent(
+        new CustomEvent("interface-panel-change", {
+          detail: { panelId },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+  }
+
+  handleTabKeydown(event, index) {
+    const key = event.key;
+    if (
+      key !== "ArrowRight" &&
+      key !== "ArrowDown" &&
+      key !== "ArrowLeft" &&
+      key !== "ArrowUp" &&
+      key !== "Home" &&
+      key !== "End"
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const panelCount = INTERFACE_PANELS.length;
+    let nextIndex = index;
+    if (key === "ArrowRight" || key === "ArrowDown") {
+      nextIndex = (index + 1) % panelCount;
+    } else if (key === "ArrowLeft" || key === "ArrowUp") {
+      nextIndex = (index - 1 + panelCount) % panelCount;
+    } else if (key === "Home") {
+      nextIndex = 0;
+    } else if (key === "End") {
+      nextIndex = panelCount - 1;
+    }
+    const nextPanel = INTERFACE_PANELS[nextIndex];
+    if (nextPanel) {
+      this.setActivePanel(nextPanel.id, { focus: true });
+    }
+  }
+
+  render() {
+    const activeId = PANEL_IDS.has(this.activePanelId)
+      ? this.activePanelId
+      : DEFAULT_PANEL_ID;
+    return html`
+      <section class="interface-tabs" aria-label="Interface panels">
+        <div class="interface-tabs__list" role="tablist">
+          ${INTERFACE_PANELS.map((panel, index) => {
+            const isActive = panel.id === activeId;
+            const tabClasses = ["interface-tabs__tab"];
+            if (isActive) {
+              tabClasses.push("interface-tabs__tab--active");
+            }
+            return html`
+              <button
+                id=${panel.tabId}
+                class=${tabClasses.join(" ")}
+                type="button"
+                role="tab"
+                aria-selected=${String(isActive)}
+                aria-controls=${panel.id}
+                tabindex=${isActive ? "0" : "-1"}
+                data-panel-id=${panel.id}
+                @click=${() => this.setActivePanel(panel.id)}
+                @keydown=${(event) => this.handleTabKeydown(event, index)}
+              >
+                ${panel.label}
+              </button>
+            `;
+          })}
+        </div>
+        ${INTERFACE_PANELS.map((panel) => {
+          const isActive = panel.id === activeId;
+          const panelClasses = ["interface-tabs__panel"];
+          if (panel.panelClass) {
+            panelClasses.push(panel.panelClass);
+          }
+          if (isActive) {
+            panelClasses.push("interface-tabs__panel--active");
+          }
+          const ariaLabel = panel.ariaLabel ?? nothing;
+          const dataCollapsed = panel.dataCollapsed ?? nothing;
+          return html`
+            <section
+              id=${panel.id}
+              class=${panelClasses.join(" ")}
+              role="tabpanel"
+              tabindex=${isActive ? "0" : "-1"}
+              aria-labelledby=${panel.tabId}
+              aria-label=${ariaLabel}
+              data-collapsed=${dataCollapsed}
+              ?hidden=${!isActive}
+            >
+              ${panel.renderContent()}
+            </section>
+          `;
+        })}
+      </section>
+    `;
+  }
+
+  #readStoredPanelId() {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        return window.localStorage.getItem(INTERFACE_TAB_STORAGE_KEY);
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }
+
+  #persistPanelId(panelId) {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.setItem(INTERFACE_TAB_STORAGE_KEY, panelId);
+      }
+    } catch (error) {
+      /* ignore storage errors */
+    }
+  }
+
+  #pendingFocusId;
+}
+
+if (!customElements.get("game-client-app")) {
+  customElements.define("game-client-app", GameClientApp);
+}
+
 console.debug(createVendorBanner("example-banner"));
 
-const statusEl = document.getElementById("status");
-const latencyDisplay = document.getElementById("latency-display");
-const debugPanel = document.getElementById("debug-panel");
-const debugPanelBody = document.getElementById("debug-panel-body");
-const debugPanelToggle = document.getElementById("debug-panel-toggle");
-const canvas = document.getElementById("game-canvas");
-const ctx = canvas.getContext("2d");
-const latencyInput = document.getElementById("latency-input");
-const inventoryPanel = document.getElementById("inventory-panel");
-const inventoryGrid = document.getElementById("inventory-grid");
-const hudTick = document.getElementById("hud-tick");
-const hudRtt = document.getElementById("hud-rtt");
-const worldResetForm = document.getElementById("world-reset-form");
-const worldResetStatus = document.getElementById("world-reset-status");
-const worldResetObstacles = document.getElementById("world-reset-obstacles");
-const worldResetObstaclesCount = document.getElementById(
-  "world-reset-obstacles-count",
-);
-const worldResetNPCs = document.getElementById("world-reset-npcs");
-const worldResetGoblinsCount = document.getElementById(
-  "world-reset-goblins-count",
-);
-const worldResetRatsCount = document.getElementById("world-reset-rats-count");
-const worldResetLava = document.getElementById("world-reset-lava");
-const worldResetLavaCount = document.getElementById("world-reset-lava-count");
-const worldResetGoldMines = document.getElementById("world-reset-gold-mines");
-const worldResetGoldMineCount = document.getElementById(
-  "world-reset-gold-mines-count",
-);
-const worldResetSeed = document.getElementById("world-reset-seed");
-
-const interfaceTabButtons = Array.from(
-  document.querySelectorAll("[data-interface-tab]"),
-);
-const interfaceTabPanels = Array.from(
-  document.querySelectorAll("[data-interface-panel]"),
-);
-
 const diagnosticsEls = {
-  connection: document.getElementById("diag-connection"),
-  players: document.getElementById("diag-players"),
-  stateAge: document.getElementById("diag-state-age"),
-  tick: document.getElementById("diag-tick"),
-  intent: document.getElementById("diag-intent"),
-  intentAge: document.getElementById("diag-intent-age"),
-  heartbeat: document.getElementById("diag-heartbeat"),
-  latency: document.getElementById("diag-latency"),
-  simLatency: document.getElementById("diag-sim-latency"),
-  messages: document.getElementById("diag-messages"),
-  patchBaseline: document.getElementById("diag-patch-baseline"),
-  patchBatch: document.getElementById("diag-patch-batch"),
-  patchEntities: document.getElementById("diag-patch-entities"),
-  patchRecovery: document.getElementById("diag-patch-recovery"),
+  connection: null,
+  players: null,
+  stateAge: null,
+  tick: null,
+  intent: null,
+  intentAge: null,
+  heartbeat: null,
+  latency: null,
+  simLatency: null,
+  messages: null,
+  patchBaseline: null,
+  patchBatch: null,
+  patchEntities: null,
+  patchRecovery: null,
 };
 
 const hudNetworkEls = {
-  tick: hudTick,
-  rtt: hudRtt,
+  tick: null,
+  rtt: null,
 };
 
 const DEFAULT_INVENTORY_SLOTS = 4;
@@ -126,8 +638,6 @@ const WORLD_RESET_CONFIG_KEYS = [
   "seed",
 ];
 
-const INTERFACE_TAB_STORAGE_KEY = "mine-and-die.interface-panel";
-
 const DEFAULT_WORLD_CONFIG = {
   obstacles: true,
   obstaclesCount: 2,
@@ -145,34 +655,31 @@ const DEFAULT_WORLD_CONFIG = {
 };
 
 const store = {
-  statusEl,
-  canvas,
-  ctx,
-  latencyInput,
-  latencyDisplay,
-  debugPanel,
-  debugPanelBody,
-  debugPanelToggle,
+  statusEl: null,
+  canvas: null,
+  ctx: null,
+  latencyInput: null,
+  latencyDisplay: null,
+  debugPanel: null,
+  debugPanelBody: null,
+  debugPanelToggle: null,
   diagnosticsEls,
   hudNetworkEls,
-  inventoryPanel,
-  inventoryGrid,
-  interfaceTabs: interfaceTabButtons,
-  interfacePanels: interfaceTabPanels,
-  activeInterfacePanelId: null,
-  worldResetForm,
-  worldResetStatusEl: worldResetStatus,
+  inventoryPanel: null,
+  inventoryGrid: null,
+  worldResetForm: null,
+  worldResetStatusEl: null,
   worldResetInputs: {
-    obstacles: worldResetObstacles,
-    obstaclesCount: worldResetObstaclesCount,
-    npcs: worldResetNPCs,
-    goblinCount: worldResetGoblinsCount,
-    ratCount: worldResetRatsCount,
-    lava: worldResetLava,
-    lavaCount: worldResetLavaCount,
-    goldMines: worldResetGoldMines,
-    goldMineCount: worldResetGoldMineCount,
-    seed: worldResetSeed,
+    obstacles: null,
+    obstaclesCount: null,
+    npcs: null,
+    goblinCount: null,
+    ratCount: null,
+    lava: null,
+    lavaCount: null,
+    goldMines: null,
+    goldMineCount: null,
+    seed: null,
   },
   worldResetDirtyFields: {
     obstacles: false,
@@ -187,8 +694,8 @@ const store = {
     seed: false,
   },
   TILE_SIZE: 40,
-  GRID_WIDTH: canvas.width / 40,
-  GRID_HEIGHT: canvas.height / 40,
+  GRID_WIDTH: 0,
+  GRID_HEIGHT: 0,
   WORLD_WIDTH: DEFAULT_WORLD_CONFIG.width,
   WORLD_HEIGHT: DEFAULT_WORLD_CONFIG.height,
   PLAYER_SIZE: 28,
@@ -356,147 +863,6 @@ function initializeCanvasPathing() {
   };
   store.canvas.addEventListener("pointerdown", handlePointerDown);
   store.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
-}
-
-function initializeInterfaceTabs() {
-  if (!Array.isArray(store.interfaceTabs) || store.interfaceTabs.length === 0) {
-    return;
-  }
-
-  const panelsById = new Map();
-  const panelList = [];
-  for (const panel of store.interfacePanels || []) {
-    if (panel && panel.id) {
-      panelsById.set(panel.id, panel);
-      panelList.push(panel);
-    }
-  }
-
-  const tabs = store.interfaceTabs.filter((tab) => {
-    const targetId = tab?.dataset?.tabTarget;
-    return Boolean(targetId && panelsById.has(targetId));
-  });
-
-  if (tabs.length === 0 || panelList.length === 0) {
-    return;
-  }
-
-  const getStorage = () => {
-    try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        return window.localStorage;
-      }
-    } catch (error) {
-      return null;
-    }
-    return null;
-  };
-
-  const storage = getStorage();
-
-  const setActive = (panelId, options = {}) => {
-    if (!panelId || !panelsById.has(panelId)) {
-      return;
-    }
-
-    const { focusTab = false, persist = true } = options;
-
-    tabs.forEach((tab) => {
-      const isActive = tab.dataset.tabTarget === panelId;
-      tab.classList.toggle("interface-tabs__tab--active", isActive);
-      tab.setAttribute("aria-selected", String(isActive));
-      tab.setAttribute("tabindex", isActive ? "0" : "-1");
-      if (isActive && focusTab) {
-        tab.focus();
-      }
-    });
-
-    panelList.forEach((panel) => {
-      const isActive = panel.id === panelId;
-      panel.classList.toggle("interface-tabs__panel--active", isActive);
-      if (isActive) {
-        panel.removeAttribute("hidden");
-      } else {
-        panel.setAttribute("hidden", "");
-      }
-    });
-
-    store.activeInterfacePanelId = panelId;
-
-    if (persist && storage) {
-      try {
-        storage.setItem(INTERFACE_TAB_STORAGE_KEY, panelId);
-      } catch (error) {
-        /* ignore storage errors */
-      }
-    }
-  };
-
-  let storedPanelId = null;
-  if (storage) {
-    try {
-      storedPanelId = storage.getItem(INTERFACE_TAB_STORAGE_KEY);
-    } catch (error) {
-      storedPanelId = null;
-    }
-  }
-
-  const defaultPanelId = panelsById.has("debug-panel")
-    ? "debug-panel"
-    : tabs[0].dataset.tabTarget;
-
-  const initialPanelId =
-    storedPanelId && panelsById.has(storedPanelId)
-      ? storedPanelId
-      : defaultPanelId;
-
-  setActive(initialPanelId, { persist: false });
-
-  tabs.forEach((tab, index) => {
-    tab.addEventListener("click", () => {
-      const targetId = tab.dataset.tabTarget;
-      if (targetId) {
-        setActive(targetId);
-      }
-    });
-
-    tab.addEventListener("keydown", (event) => {
-      if (
-        event.key !== "ArrowRight" &&
-        event.key !== "ArrowDown" &&
-        event.key !== "ArrowLeft" &&
-        event.key !== "ArrowUp" &&
-        event.key !== "Home" &&
-        event.key !== "End"
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-      let nextIndex = index;
-      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-        nextIndex = (index + 1) % tabs.length;
-      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-        nextIndex = (index - 1 + tabs.length) % tabs.length;
-      } else if (event.key === "Home") {
-        nextIndex = 0;
-      } else if (event.key === "End") {
-        nextIndex = tabs.length - 1;
-      }
-
-      const nextTab = tabs[nextIndex];
-      if (!nextTab) {
-        return;
-      }
-      const targetId = nextTab.dataset.tabTarget;
-      if (targetId) {
-        setActive(targetId, { focusTab: true });
-      }
-    });
-  });
-
-  store.interfaceTabs = tabs;
-  store.interfacePanels = panelList;
 }
 
 function initializeDebugPanelToggle() {
@@ -1306,16 +1672,90 @@ store.updateWorldConfigUI = () => syncWorldResetControls();
 store.setCameraLock = setCameraLock;
 store.toggleCameraLock = toggleCameraLock;
 
-initializeInterfaceTabs();
-initializeDebugPanelToggle();
-attachLatencyInputListener();
-initializeWorldResetControls();
-initializeCanvasPathing();
-setSimulatedLatency(store, 0);
-updateDiagnostics();
-renderStatus();
-renderInventory();
+async function bootstrap() {
+  await customElements.whenDefined("game-client-app");
+  const appElement = document.querySelector("game-client-app");
+  if (appElement?.updateComplete) {
+    try {
+      await appElement.updateComplete;
+    } catch (error) {
+      console.warn("Failed to await game-client-app render", error);
+    }
+  }
 
-registerInputHandlers(store);
-startRenderLoop(store);
-joinGame(store);
+  const diagnosticsMapping = [
+    ["connection", "diag-connection"],
+    ["players", "diag-players"],
+    ["stateAge", "diag-state-age"],
+    ["tick", "diag-tick"],
+    ["intent", "diag-intent"],
+    ["intentAge", "diag-intent-age"],
+    ["heartbeat", "diag-heartbeat"],
+    ["latency", "diag-latency"],
+    ["simLatency", "diag-sim-latency"],
+    ["messages", "diag-messages"],
+    ["patchBaseline", "diag-patch-baseline"],
+    ["patchBatch", "diag-patch-batch"],
+    ["patchEntities", "diag-patch-entities"],
+    ["patchRecovery", "diag-patch-recovery"],
+  ];
+
+  diagnosticsMapping.forEach(([key, id]) => {
+    store.diagnosticsEls[key] = document.getElementById(id);
+  });
+
+  store.statusEl = document.getElementById("status");
+  store.latencyDisplay = document.getElementById("latency-display");
+  store.latencyInput = document.getElementById("latency-input");
+  store.debugPanel = document.getElementById("debug-panel");
+  store.debugPanelBody = document.getElementById("debug-panel-body");
+  store.debugPanelToggle = document.getElementById("debug-panel-toggle");
+  store.inventoryPanel = document.getElementById("inventory-panel");
+  store.inventoryGrid = document.getElementById("inventory-grid");
+
+  const canvas = document.getElementById("game-canvas");
+  store.canvas = canvas;
+  store.ctx = canvas ? canvas.getContext("2d") : null;
+  if (canvas) {
+    store.GRID_WIDTH = canvas.width / store.TILE_SIZE;
+    store.GRID_HEIGHT = canvas.height / store.TILE_SIZE;
+  }
+
+  store.hudNetworkEls.tick = document.getElementById("hud-tick");
+  store.hudNetworkEls.rtt = document.getElementById("hud-rtt");
+
+  store.worldResetForm = document.getElementById("world-reset-form");
+  store.worldResetStatusEl = document.getElementById("world-reset-status");
+  const worldInputs = store.worldResetInputs;
+  worldInputs.obstacles = document.getElementById("world-reset-obstacles");
+  worldInputs.obstaclesCount = document.getElementById(
+    "world-reset-obstacles-count",
+  );
+  worldInputs.npcs = document.getElementById("world-reset-npcs");
+  worldInputs.goblinCount = document.getElementById("world-reset-goblins-count");
+  worldInputs.ratCount = document.getElementById("world-reset-rats-count");
+  worldInputs.lava = document.getElementById("world-reset-lava");
+  worldInputs.lavaCount = document.getElementById("world-reset-lava-count");
+  worldInputs.goldMines = document.getElementById("world-reset-gold-mines");
+  worldInputs.goldMineCount = document.getElementById(
+    "world-reset-gold-mines-count",
+  );
+  worldInputs.seed = document.getElementById("world-reset-seed");
+
+  initializeDebugPanelToggle();
+  attachLatencyInputListener();
+  initializeWorldResetControls();
+  initializeCanvasPathing();
+  setSimulatedLatency(store, 0);
+  updateDiagnostics();
+  renderStatus();
+  renderInventory();
+
+  registerInputHandlers(store);
+  startRenderLoop(store);
+  joinGame(store);
+}
+
+bootstrap().catch((error) => {
+  console.error("Failed to bootstrap game client", error);
+});
