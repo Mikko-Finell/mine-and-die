@@ -1,4 +1,4 @@
-import { LitElement, html } from "lit";
+import { LitElement, html } from "./vendor/lit.js";
 import {
   joinGame,
   resetWorld,
