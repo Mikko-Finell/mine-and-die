@@ -1157,6 +1157,28 @@ function updateDiagnostics() {
 
       batchText = `Applied ${appliedCount} · ${formatErrorLabel()}`;
 
+      const deferredRecent = toNonNegativeInt(patchState.deferredPatchCount);
+      const deferredTotal = toNonNegativeInt(patchState.totalDeferredPatchCount);
+      const deferredLatency =
+        typeof patchState.lastDeferredReplayLatencyMs === "number" &&
+        Number.isFinite(patchState.lastDeferredReplayLatencyMs) &&
+        patchState.lastDeferredReplayLatencyMs >= 0
+          ? Math.floor(patchState.lastDeferredReplayLatencyMs)
+          : null;
+      const deferredLabels = [];
+      if (deferredRecent > 0) {
+        deferredLabels.push(`deferred ${deferredRecent}`);
+      }
+      if (deferredTotal > 0) {
+        deferredLabels.push(`total ${deferredTotal}`);
+      }
+      if (deferredLatency !== null) {
+        deferredLabels.push(`replay ${deferredLatency} ms`);
+      }
+      if (deferredLabels.length > 0) {
+        batchText += ` · ${deferredLabels.join(" · ")}`;
+      }
+
       const countEntries = (record) => {
         if (!record || typeof record !== "object") {
           return 0;

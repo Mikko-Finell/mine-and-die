@@ -675,7 +675,24 @@ function clonePendingReplays(replays) {
   if (!Array.isArray(replays) || replays.length === 0) {
     return [];
   }
-  return replays.map((entry) => ({ ...entry }));
+  const normalized = [];
+  for (const entry of replays) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const deferredCount = Number.isFinite(entry.deferredCount) && entry.deferredCount > 0
+      ? Math.floor(entry.deferredCount)
+      : 0;
+    const deferredAt = Number.isFinite(entry.deferredAt) && entry.deferredAt >= 0
+      ? Math.floor(entry.deferredAt)
+      : null;
+    normalized.push({
+      ...entry,
+      deferredCount,
+      deferredAt,
+    });
+  }
+  return normalized;
 }
 
 function cloneNackCounts(counts) {
@@ -1012,6 +1029,9 @@ export function createPatchState() {
     recoveryLog: [],
     keyframeNackCounts: {},
     resyncRequested: false,
+    deferredPatchCount: 0,
+    totalDeferredPatchCount: 0,
+    lastDeferredReplayLatencyMs: null,
   };
 }
 
@@ -1051,7 +1071,7 @@ export function updatePatchState(previousState, payload, options = {}) {
     : clonePatchHistory(previousHistory);
 
   const baselineFromPayload = buildBaselineFromSnapshot(payload || {});
-  const patchList = Array.isArray(payload?.patches) ? payload.patches : [];
+  let patchList = Array.isArray(payload?.patches) ? payload.patches : [];
   const previousTick = Number.isFinite(state.lastTick) && state.lastTick >= 0
     ? Math.floor(state.lastTick)
     : null;
@@ -1075,6 +1095,16 @@ export function updatePatchState(previousState, payload, options = {}) {
     ? { ...state.lastRecovery }
     : null;
   let resyncRequested = false;
+  const previousTotalDeferred = Number.isFinite(state.totalDeferredPatchCount) && state.totalDeferredPatchCount >= 0
+    ? Math.floor(state.totalDeferredPatchCount)
+    : 0;
+  const previousDeferredLatency = Number.isFinite(state.lastDeferredReplayLatencyMs) &&
+      state.lastDeferredReplayLatencyMs >= 0
+    ? Math.floor(state.lastDeferredReplayLatencyMs)
+    : null;
+  let deferredPatchCountForUpdate = 0;
+  let totalDeferredPatches = previousTotalDeferred;
+  let deferredReplayLatencyMs = previousDeferredLatency;
 
   const keyframeSeq = readKeyframeSequence(payload);
   const keyframeTick = readKeyframeTick(payload);
@@ -1122,6 +1152,9 @@ export function updatePatchState(previousState, payload, options = {}) {
       keyframeNackCounts: nackCounts,
       resyncRequested,
       resolvedKeyframeSequences: resolvedSequences,
+      deferredPatchCount: deferredPatchCountForUpdate,
+      totalDeferredPatchCount: totalDeferredPatches,
+      lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
     };
   }
 
@@ -1250,6 +1283,9 @@ export function updatePatchState(previousState, payload, options = {}) {
         keyframeNackCounts: nackCounts,
         resyncRequested,
         resolvedKeyframeSequences: resolvedSequences,
+        deferredPatchCount: deferredPatchCountForUpdate,
+        totalDeferredPatchCount: totalDeferredPatches,
+        lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
       };
     }
 
@@ -1273,12 +1309,18 @@ export function updatePatchState(previousState, payload, options = {}) {
       keyframeNackCounts: nackCounts,
       resyncRequested,
       resolvedKeyframeSequences: resolvedSequences,
+      deferredPatchCount: deferredPatchCountForUpdate,
+      totalDeferredPatchCount: totalDeferredPatches,
+      lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
     };
   } else if (normalizedKeyframeSeq !== null) {
     const cached = getCachedKeyframe(keyframes, keyframeSeq);
     if (cached) {
       baseline = cached;
     } else if (!replaying) {
+      const patchedFallback = cloneBaselineSnapshot(state.patched);
+      const baselineFallback = patchedFallback || cloneBaselineSnapshot(state.baseline);
+      const fallbackBaseline = baselineFallback;
       if (!pendingRequests.has(normalizedKeyframeSeq)) {
         pendingRequests.set(normalizedKeyframeSeq, {
           attempts: 1,
@@ -1317,29 +1359,112 @@ export function updatePatchState(previousState, payload, options = {}) {
           keyframeTick: keyframeTick ?? baseline.tick ?? null,
           requests: 1,
           lastRateLimitedAt: null,
+          deferredCount: 0,
+          deferredAt: null,
         });
       }
-      const trimmedErrors = trimErrors(historyEntries, errorLimit);
-      const trimmedRecoveries = trimRecoveryLog(recoveryLog);
-      return {
-        baseline: state.baseline,
-        patched: state.patched,
-        lastAppliedPatchCount: 0,
-        lastError,
-        errors: trimmedErrors,
-        lastUpdateSource: source,
-        lastTick: previousTick,
-        lastSequence: previousSequence,
-        patchHistory: history,
-        keyframes,
-        pendingKeyframeRequests: pendingRequests,
-        pendingReplays,
-        lastRecovery,
-        recoveryLog: trimmedRecoveries,
-        keyframeNackCounts: nackCounts,
-        resyncRequested,
-        resolvedKeyframeSequences: resolvedSequences,
-      };
+      if (fallbackBaseline) {
+        const fallbackPlayers = fallbackBaseline.players || Object.create(null);
+        const fallbackNPCs = fallbackBaseline.npcs || Object.create(null);
+        const fallbackEffects = fallbackBaseline.effects || Object.create(null);
+        const fallbackGroundItems = fallbackBaseline.groundItems || Object.create(null);
+        const fallbackViewMaps = {
+          players: fallbackPlayers,
+          npcs: fallbackNPCs,
+          effects: fallbackEffects,
+          groundItems: fallbackGroundItems,
+        };
+
+        const replayablePatches = [];
+        const deferredPatches = [];
+        for (const rawPatch of patchList) {
+          const envelope = normalizePatchEnvelope(rawPatch);
+          if (!envelope) {
+            replayablePatches.push(rawPatch);
+            continue;
+          }
+          const handlerEntry = PATCH_HANDLERS[envelope.kind];
+          if (!handlerEntry) {
+            replayablePatches.push(rawPatch);
+            continue;
+          }
+          const viewMap = fallbackViewMaps[handlerEntry.target];
+          const entityKnown =
+            viewMap && typeof viewMap === "object"
+              ? Object.hasOwn(viewMap, envelope.entityId)
+              : false;
+          if (entityKnown) {
+            replayablePatches.push(rawPatch);
+          } else {
+            deferredPatches.push(rawPatch);
+          }
+        }
+
+        if (deferredPatches.length > 0) {
+          deferredPatchCountForUpdate += deferredPatches.length;
+          totalDeferredPatches += deferredPatches.length;
+          const replayEntryIndex = pendingReplays.findIndex(
+            (entry) => entry && entry.sequence === normalizedKeyframeSeq,
+          );
+          if (replayEntryIndex !== -1) {
+            const replayEntry = pendingReplays[replayEntryIndex];
+            replayEntry.deferredCount = deferredPatches.length;
+            replayEntry.deferredAt = now;
+          }
+        }
+
+        patchList = replayablePatches;
+
+        if (previousTick !== null) {
+          if (
+            fallbackBaseline.tick === null ||
+            !Number.isFinite(fallbackBaseline.tick) ||
+            fallbackBaseline.tick < previousTick
+          ) {
+            fallbackBaseline.tick = previousTick;
+          } else {
+            fallbackBaseline.tick = Math.floor(fallbackBaseline.tick);
+          }
+        }
+        if (previousSequence !== null) {
+          if (
+            fallbackBaseline.sequence === null ||
+            !Number.isFinite(fallbackBaseline.sequence) ||
+            fallbackBaseline.sequence < previousSequence
+          ) {
+            fallbackBaseline.sequence = previousSequence;
+          } else {
+            fallbackBaseline.sequence = Math.floor(fallbackBaseline.sequence);
+          }
+        }
+
+        baseline = fallbackBaseline;
+      } else {
+        const trimmedErrors = trimErrors(historyEntries, errorLimit);
+        const trimmedRecoveries = trimRecoveryLog(recoveryLog);
+        return {
+          baseline: state.baseline,
+          patched: state.patched,
+          lastAppliedPatchCount: 0,
+          lastError,
+          errors: trimmedErrors,
+          lastUpdateSource: source,
+          lastTick: previousTick,
+          lastSequence: previousSequence,
+          patchHistory: history,
+          keyframes,
+          pendingKeyframeRequests: pendingRequests,
+          pendingReplays,
+          lastRecovery,
+          recoveryLog: trimmedRecoveries,
+          keyframeNackCounts: nackCounts,
+          resyncRequested,
+          resolvedKeyframeSequences: resolvedSequences,
+          deferredPatchCount: deferredPatchCountForUpdate,
+          totalDeferredPatchCount: totalDeferredPatches,
+          lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
+        };
+      }
     }
   }
 
@@ -1347,6 +1472,16 @@ export function updatePatchState(previousState, payload, options = {}) {
     const replayIndex = pendingReplays.findIndex((entry) => entry.sequence === keyframeSeq);
     if (replayIndex !== -1) {
       const replayEntry = pendingReplays.splice(replayIndex, 1)[0];
+      if (
+        replayEntry &&
+        Number.isFinite(replayEntry.deferredCount) &&
+        replayEntry.deferredCount > 0 &&
+        Number.isFinite(replayEntry.deferredAt) &&
+        replayEntry.deferredAt >= 0
+      ) {
+        const latency = Math.max(0, now - Math.floor(replayEntry.deferredAt));
+        deferredReplayLatencyMs = latency;
+      }
       const replayState = {
         ...state,
         patchHistory: history,
@@ -1358,6 +1493,9 @@ export function updatePatchState(previousState, payload, options = {}) {
         errors: historyEntries,
         lastError,
         resolvedKeyframeSequences: resolvedSequences,
+        deferredPatchCount: deferredPatchCountForUpdate,
+        totalDeferredPatchCount: totalDeferredPatches,
+        lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
       };
       return updatePatchState(replayState, replayEntry.payload, {
         ...options,
@@ -1408,6 +1546,9 @@ export function updatePatchState(previousState, payload, options = {}) {
       keyframeNackCounts: nackCounts,
       resyncRequested,
       resolvedKeyframeSequences: resolvedSequences,
+      deferredPatchCount: deferredPatchCountForUpdate,
+      totalDeferredPatchCount: totalDeferredPatches,
+      lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
     };
   }
 
@@ -1438,6 +1579,9 @@ export function updatePatchState(previousState, payload, options = {}) {
       recoveryLog: trimmedRecoveries,
       keyframeNackCounts: nackCounts,
       resyncRequested,
+      deferredPatchCount: deferredPatchCountForUpdate,
+      totalDeferredPatchCount: totalDeferredPatches,
+      lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
     };
   }
 
@@ -1490,6 +1634,9 @@ export function updatePatchState(previousState, payload, options = {}) {
     keyframeNackCounts: nackCounts,
     resyncRequested,
     resolvedKeyframeSequences: resolvedSequences,
+    deferredPatchCount: deferredPatchCountForUpdate,
+    totalDeferredPatchCount: totalDeferredPatches,
+    lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
   };
 }
 

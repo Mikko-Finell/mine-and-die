@@ -644,6 +644,7 @@ describe("updatePatchState", () => {
     const deferred = updatePatchState(seeded, missingNPCPatch, {
       source: "state",
       requestKeyframe: (sequence) => requestLog.push(sequence),
+      now: 100,
     });
     freezeState(deferred);
 
@@ -659,6 +660,9 @@ describe("updatePatchState", () => {
     expect(pendingMeta?.nextRetryAt).toBe(null);
     expect(Array.isArray(deferred.pendingReplays) ? deferred.pendingReplays.length : 0).toBe(1);
     expect(Object.keys(deferred.patched.npcs)).toEqual([]);
+    expect(deferred.deferredPatchCount).toBe(1);
+    expect(deferred.totalDeferredPatchCount).toBe(1);
+    expect(deferred.lastDeferredReplayLatencyMs).toBeNull();
 
     const keyframePayload = deepFreeze({
       type: "keyframe",
@@ -673,6 +677,7 @@ describe("updatePatchState", () => {
     const replayed = updatePatchState(deferred, keyframePayload, {
       source: "keyframe",
       requestKeyframe: (sequence) => requestLog.push(sequence),
+      now: 160,
     });
 
     expect(requestLog).toEqual([11]);
@@ -686,6 +691,189 @@ describe("updatePatchState", () => {
     expect(replayed.patched.npcs["npc-99"].maxHealth).toBe(14);
     expect(replayed.lastRecovery && replayed.lastRecovery.status).toBe("recovered");
     expect(replayed.errors).toEqual([]);
+    expect(replayed.deferredPatchCount).toBe(0);
+    expect(replayed.totalDeferredPatchCount).toBe(1);
+    expect(replayed.lastDeferredReplayLatencyMs).toBe(60);
+  });
+
+  it("queues effect patches until their keyframe arrives", () => {
+    const seeded = updatePatchState(
+      createPatchState(),
+      deepFreeze({
+        t: 8,
+        sequence: 8,
+        players: [makePlayer()],
+        effects: [],
+        groundItems: [],
+        npcs: [],
+      }),
+      { source: "join" },
+    );
+
+    const deferredPayload = deepFreeze({
+      sequence: 9,
+      keyframeSeq: 9,
+      patches: [
+        {
+          kind: PATCH_KIND_EFFECT_POS,
+          entityId: "effect-42",
+          payload: { x: 99, y: 77 },
+        },
+        {
+          kind: PATCH_KIND_EFFECT_PARAMS,
+          entityId: "effect-42",
+          payload: { params: { remaining: 0.5, strength: 2 } },
+        },
+      ],
+    });
+
+    const deferred = updatePatchState(seeded, deferredPayload, {
+      source: "state",
+      requestKeyframe: () => {},
+      now: 500,
+    });
+
+    expect(Object.keys(deferred.patched.effects)).toEqual([]);
+    expect(deferred.deferredPatchCount).toBe(2);
+    expect(deferred.totalDeferredPatchCount).toBe(2);
+    expect(deferred.lastDeferredReplayLatencyMs).toBeNull();
+    expect(Array.isArray(deferred.pendingReplays) ? deferred.pendingReplays.length : 0).toBe(1);
+    const queuedReplay = Array.isArray(deferred.pendingReplays)
+      ? deferred.pendingReplays.find((entry) => entry && entry.sequence === 9)
+      : null;
+    expect(queuedReplay?.deferredCount).toBe(2);
+
+    const keyframePayload = deepFreeze({
+      type: "keyframe",
+      sequence: 9,
+      t: 9,
+      players: [makePlayer()],
+      npcs: [],
+      groundItems: [],
+      effects: [makeEffect({ id: "effect-42", x: 10, y: 10, params: { remaining: 1, strength: 1 } })],
+    });
+
+    const replayed = updatePatchState(deferred, keyframePayload, {
+      source: "keyframe",
+      requestKeyframe: () => {},
+      now: 560,
+    });
+
+    expect(Object.keys(replayed.patched.effects)).toEqual(["effect-42"]);
+    expect(replayed.patched.effects["effect-42"].x).toBe(99);
+    expect(replayed.patched.effects["effect-42"].y).toBe(77);
+    expect(replayed.patched.effects["effect-42"].params.remaining).toBe(0.5);
+    expect(replayed.patched.effects["effect-42"].params.strength).toBe(2);
+    expect(replayed.deferredPatchCount).toBe(0);
+    expect(replayed.totalDeferredPatchCount).toBe(2);
+    expect(replayed.lastDeferredReplayLatencyMs).toBe(60);
+  });
+
+  it("keeps tick and sequence monotonic when replaying from a fallback snapshot", () => {
+    const seeded = updatePatchState(
+      createPatchState(),
+      deepFreeze({ t: 20, sequence: 20, players: [makePlayer({ x: 5, y: 5 })] }),
+      { source: "join" },
+    );
+
+    const mutated = {
+      ...seeded,
+      baseline: {
+        ...seeded.baseline,
+        tick: 18,
+        sequence: 18,
+        players: { ...seeded.baseline.players },
+        npcs: { ...seeded.baseline.npcs },
+        effects: { ...seeded.baseline.effects },
+        groundItems: { ...seeded.baseline.groundItems },
+      },
+      patched: {
+        ...seeded.patched,
+        tick: 19,
+        sequence: 19,
+        players: { ...seeded.patched.players },
+        npcs: { ...seeded.patched.npcs },
+        effects: { ...seeded.patched.effects },
+        groundItems: { ...seeded.patched.groundItems },
+      },
+      lastTick: 20,
+      lastSequence: 20,
+    };
+
+    const payload = deepFreeze({
+      sequence: 21,
+      keyframeSeq: 21,
+      patches: [
+        {
+          kind: PATCH_KIND_PLAYER_POS,
+          entityId: "player-1",
+          payload: { x: 33, y: 44 },
+        },
+      ],
+    });
+
+    const next = updatePatchState(mutated, payload, {
+      source: "state",
+      requestKeyframe: () => {},
+      now: 900,
+    });
+
+    expect(next.patched.players["player-1"].x).toBe(33);
+    expect(next.patched.players["player-1"].y).toBe(44);
+    expect(next.lastTick).toBe(20);
+    expect(next.lastSequence).toBe(20);
+    expect(next.deferredPatchCount).toBe(0);
+    expect(next.totalDeferredPatchCount).toBe(0);
+  });
+
+  it("applies patches against the latest view while waiting for a keyframe", () => {
+    const requests = [];
+    let baseline = updatePatchState(
+      createPatchState(),
+      deepFreeze({ t: 12, sequence: 12, players: [makePlayer({ x: 4, y: 6 })] }),
+      { source: "state" },
+    );
+    if (baseline?.keyframes && baseline.keyframes.map instanceof Map) {
+      baseline = {
+        ...baseline,
+        keyframes: { ...baseline.keyframes, map: new Map() },
+      };
+    }
+
+    const patchPayload = deepFreeze({
+      t: 13,
+      sequence: 13,
+      keyframeSeq: 12,
+      patches: [
+        {
+          kind: PATCH_KIND_PLAYER_POS,
+          entityId: "player-1",
+          payload: { x: 9, y: 11 },
+        },
+      ],
+    });
+
+    const next = updatePatchState(baseline, patchPayload, {
+      source: "state",
+      now: 1000,
+      requestKeyframe: (sequence, tick) => {
+        requests.push({ sequence, tick });
+      },
+    });
+
+    expect(next.patched.players["player-1"].x).toBe(9);
+    expect(next.patched.players["player-1"].y).toBe(11);
+    expect(requests).toEqual([{ sequence: 12, tick: 13 }]);
+    const pending =
+      next.pendingKeyframeRequests instanceof Map
+        ? next.pendingKeyframeRequests.get(12)
+        : null;
+    expect(pending?.attempts).toBe(1);
+    expect(Array.isArray(next.pendingReplays) ? next.pendingReplays.length : 0).toBe(1);
+    expect(next.deferredPatchCount).toBe(0);
+    expect(next.totalDeferredPatchCount).toBe(0);
+    expect(next.lastTick).toBe(12);
+    expect(next.lastSequence).toBe(12);
   });
 
   it("ignores duplicate keyframes after applying the deferred replay", () => {
@@ -745,6 +933,18 @@ describe("updatePatchState", () => {
         ? duplicate.resolvedKeyframeSequences.has(5)
         : false,
     ).toBe(true);
+  });
+
+  it("safely ignores patch payloads without snapshot data when baseline is empty", () => {
+    const state = createPatchState();
+    const payload = deepFreeze({ sequence: 2, keyframeSeq: 2, patches: [] });
+    const result = updatePatchState(state, payload, { source: "state" });
+
+    expect(result).toBeTruthy();
+    expect(result.lastAppliedPatchCount).toBe(0);
+    expect(result.errors).toEqual([]);
+    expect(result.baseline && typeof result.baseline).toBe("object");
+    expect(Object.keys(result.baseline?.players || {})).toEqual([]);
   });
 
   it("escalates to resync when a keyframe nack reports expiry", () => {
