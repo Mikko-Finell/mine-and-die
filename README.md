@@ -4,12 +4,12 @@ Mine & Die is an experimental browser-based arena where players race to extract 
 
 ## Documentation Map
 - [Project Overview](docs/README.md)
-- [Server Architecture](docs/server.md)
-- [Client Architecture](docs/client.md)
-- [Effects & Conditions](docs/effects.md)
-- [Testing & Troubleshooting](docs/testing.md)
+- [Server Architecture](docs/architecture/server.md)
+- [Client Architecture](docs/architecture/client.md)
+- [Effects & Conditions](docs/architecture/effects.md)
+- [Testing & Troubleshooting](docs/architecture/testing.md)
 - [Contributor Guidelines](AGENTS.md)
-- [AI System](docs/ai.md)
+- [AI System](docs/architecture/ai.md)
 
 Use these documents as the primary reference when extending gameplay, networking, or presentation.
 
