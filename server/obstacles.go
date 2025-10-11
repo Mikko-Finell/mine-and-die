@@ -32,6 +32,7 @@ func (w *World) generateObstacles(count int) []Obstacle {
 		rng := w.subsystemRNG("obstacles.base")
 		attempts := 0
 		maxAttempts := baseCount * 20
+		worldW, worldH := w.dimensions()
 
 		for len(obstacles) < baseCount && attempts < maxAttempts {
 			attempts++
@@ -40,19 +41,19 @@ func (w *World) generateObstacles(count int) []Obstacle {
 			height := obstacleMinHeight + rng.Float64()*(obstacleMaxHeight-obstacleMinHeight)
 
 			globalMinX := obstacleSpawnMargin
-			globalMaxX := worldWidth - obstacleSpawnMargin - width
+			globalMaxX := worldW - obstacleSpawnMargin - width
 			globalMinY := obstacleSpawnMargin
-			globalMaxY := worldHeight - obstacleSpawnMargin - height
+			globalMaxY := worldH - obstacleSpawnMargin - height
 			if globalMaxX <= globalMinX || globalMaxY <= globalMinY {
 				break
 			}
 
-			minX, maxX := centralTopLeftRange(worldWidth, defaultSpawnX, obstacleSpawnMargin, width)
+			minX, maxX := centralTopLeftRange(worldW, defaultSpawnX, obstacleSpawnMargin, width)
 			if maxX <= minX {
 				minX = globalMinX
 				maxX = globalMaxX
 			}
-			minY, maxY := centralTopLeftRange(worldHeight, defaultSpawnY, obstacleSpawnMargin, height)
+			minY, maxY := centralTopLeftRange(worldH, defaultSpawnY, obstacleSpawnMargin, height)
 			if maxY <= minY {
 				minY = globalMinY
 				maxY = globalMaxY
@@ -118,6 +119,7 @@ func (w *World) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.R
 	ores := make([]Obstacle, 0, count)
 	attempts := 0
 	maxAttempts := count * 30
+	worldW, worldH := w.dimensions()
 
 	for len(ores) < count && attempts < maxAttempts {
 		attempts++
@@ -126,19 +128,19 @@ func (w *World) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.R
 		height := goldOreMinSize + rng.Float64()*(goldOreMaxSize-goldOreMinSize)
 
 		globalMinX := obstacleSpawnMargin
-		globalMaxX := worldWidth - obstacleSpawnMargin - width
+		globalMaxX := worldW - obstacleSpawnMargin - width
 		globalMinY := obstacleSpawnMargin
-		globalMaxY := worldHeight - obstacleSpawnMargin - height
+		globalMaxY := worldH - obstacleSpawnMargin - height
 		if globalMaxX <= globalMinX || globalMaxY <= globalMinY {
 			break
 		}
 
-		minX, maxX := centralTopLeftRange(worldWidth, defaultSpawnX, obstacleSpawnMargin, width)
+		minX, maxX := centralTopLeftRange(worldW, defaultSpawnX, obstacleSpawnMargin, width)
 		if maxX <= minX {
 			minX = globalMinX
 			maxX = globalMaxX
 		}
-		minY, maxY := centralTopLeftRange(worldHeight, defaultSpawnY, obstacleSpawnMargin, height)
+		minY, maxY := centralTopLeftRange(worldH, defaultSpawnY, obstacleSpawnMargin, height)
 		if maxY <= minY {
 			minY = globalMinY
 			maxY = globalMaxY

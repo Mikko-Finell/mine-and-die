@@ -3,13 +3,14 @@ package main
 import "math"
 
 func (w *World) computePathFrom(startX, startY float64, ignoreID string, target vec2) ([]vec2, vec2, bool) {
-	grid := newNavGrid(w.obstacles)
+	width, height := w.dimensions()
+	grid := newNavGrid(w.obstacles, width, height)
 	if grid == nil {
 		return nil, vec2{}, false
 	}
 	target = vec2{
-		X: clamp(target.X, playerHalf, worldWidth-playerHalf),
-		Y: clamp(target.Y, playerHalf, worldHeight-playerHalf),
+		X: clamp(target.X, playerHalf, width-playerHalf),
+		Y: clamp(target.Y, playerHalf, height-playerHalf),
 	}
 	blocked := w.buildDynamicBlockers(grid, ignoreID)
 	path, ok := grid.findPath(startX, startY, target, blocked)
@@ -36,8 +37,8 @@ func (w *World) computePathFrom(startX, startY float64, ignoreID string, target 
 	var bestGoal vec2
 	for _, offset := range offsets {
 		alt := vec2{
-			X: clamp(target.X+offset.X, playerHalf, worldWidth-playerHalf),
-			Y: clamp(target.Y+offset.Y, playerHalf, worldHeight-playerHalf),
+			X: clamp(target.X+offset.X, playerHalf, width-playerHalf),
+			Y: clamp(target.Y+offset.Y, playerHalf, height-playerHalf),
 		}
 		if math.Hypot(alt.X-target.X, alt.Y-target.Y) < 1 {
 			continue

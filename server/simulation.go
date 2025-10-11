@@ -357,13 +357,14 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 
 	actorsForCollisions := make([]*actorState, 0, len(w.players)+len(w.npcs))
 	proposedPlayerStates := make(map[string]*actorState, len(w.players))
+	width, height := w.dimensions()
 	// Movement system.
 	for id, player := range w.players {
 		// Operate on a copy so player coordinates can be committed via
 		// SetPosition after all collision resolution completes.
 		scratch := player.actorState
 		if player.intentX != 0 || player.intentY != 0 {
-			moveActorWithObstacles(&scratch, dt, w.obstacles)
+			moveActorWithObstacles(&scratch, dt, w.obstacles, width, height)
 		}
 		proposedPlayerStates[id] = &scratch
 		actorsForCollisions = append(actorsForCollisions, &scratch)
@@ -374,13 +375,13 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 		initialNPCPositions[id] = vec2{X: npc.X, Y: npc.Y}
 		scratch := npc.actorState
 		if npc.intentX != 0 || npc.intentY != 0 {
-			moveActorWithObstacles(&scratch, dt, w.obstacles)
+			moveActorWithObstacles(&scratch, dt, w.obstacles, width, height)
 		}
 		proposedNPCStates[id] = &scratch
 		actorsForCollisions = append(actorsForCollisions, &scratch)
 	}
 
-	resolveActorCollisions(actorsForCollisions, w.obstacles)
+	resolveActorCollisions(actorsForCollisions, w.obstacles, width, height)
 
 	proposedPositions := make(map[string]vec2, len(proposedPlayerStates))
 	for id, state := range proposedPlayerStates {
@@ -638,7 +639,7 @@ func (w *World) initializeGoblinState(goblin *npcState) {
 	goblin.Blackboard.NextDecisionAt = 0
 	goblin.Blackboard.LastWaypointIndex = -1
 
-	resolveObstaclePenetration(&goblin.actorState, w.obstacles)
+	resolveObstaclePenetration(&goblin.actorState, w.obstacles, w.width(), w.height())
 	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
 	w.npcs[goblin.ID] = goblin
 }
@@ -649,25 +650,26 @@ func (w *World) spawnExtraGoblins(count int) {
 	}
 	rng := w.subsystemRNG("npcs.extraGoblin")
 	const patrolRadius = 60.0
+	width, height := w.dimensions()
 	minX := obstacleSpawnMargin + patrolRadius
-	maxX := worldWidth - obstacleSpawnMargin - patrolRadius
+	maxX := width - obstacleSpawnMargin - patrolRadius
 	if maxX <= minX {
 		minX = playerHalf + patrolRadius
-		maxX = worldWidth - playerHalf - patrolRadius
+		maxX = width - playerHalf - patrolRadius
 	}
 	minY := obstacleSpawnMargin + patrolRadius
-	maxY := worldHeight - obstacleSpawnMargin - patrolRadius
+	maxY := height - obstacleSpawnMargin - patrolRadius
 	if maxY <= minY {
 		minY = playerHalf + patrolRadius
-		maxY = worldHeight - playerHalf - patrolRadius
+		maxY = height - playerHalf - patrolRadius
 	}
 
-	centralMinX, centralMaxX := centralCenterRange(worldWidth, defaultSpawnX, obstacleSpawnMargin, patrolRadius)
+	centralMinX, centralMaxX := centralCenterRange(width, defaultSpawnX, obstacleSpawnMargin, patrolRadius)
 	if centralMaxX >= centralMinX {
 		minX = centralMinX
 		maxX = centralMaxX
 	}
-	centralMinY, centralMaxY := centralCenterRange(worldHeight, defaultSpawnY, obstacleSpawnMargin, patrolRadius)
+	centralMinY, centralMaxY := centralCenterRange(height, defaultSpawnY, obstacleSpawnMargin, patrolRadius)
 	if centralMaxY >= centralMinY {
 		minY = centralMinY
 		maxY = centralMaxY
@@ -683,10 +685,10 @@ func (w *World) spawnExtraGoblins(count int) {
 			y = minY + rng.Float64()*(maxY-minY)
 		}
 
-		topLeftX := clamp(x-patrolRadius, playerHalf, worldWidth-playerHalf)
-		topLeftY := clamp(y-patrolRadius, playerHalf, worldHeight-playerHalf)
-		topRightX := clamp(x+patrolRadius, playerHalf, worldWidth-playerHalf)
-		bottomY := clamp(y+patrolRadius, playerHalf, worldHeight-playerHalf)
+		topLeftX := clamp(x-patrolRadius, playerHalf, width-playerHalf)
+		topLeftY := clamp(y-patrolRadius, playerHalf, height-playerHalf)
+		topRightX := clamp(x+patrolRadius, playerHalf, width-playerHalf)
+		bottomY := clamp(y+patrolRadius, playerHalf, height-playerHalf)
 
 		waypoints := []vec2{
 			{X: topLeftX, Y: topLeftY},
@@ -753,7 +755,7 @@ func (w *World) initializeRatState(rat *npcState) {
 	rat.Blackboard.NextDecisionAt = 0
 	rat.Blackboard.LastWaypointIndex = -1
 
-	resolveObstaclePenetration(&rat.actorState, w.obstacles)
+	resolveObstaclePenetration(&rat.actorState, w.obstacles, w.width(), w.height())
 	rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
 	w.npcs[rat.ID] = rat
 }
@@ -763,8 +765,9 @@ func (w *World) spawnExtraRats(count int) {
 		return
 	}
 	rng := w.subsystemRNG("npcs.extra")
-	minX, maxX := centralCenterRange(worldWidth, defaultSpawnX, obstacleSpawnMargin, playerHalf)
-	minY, maxY := centralCenterRange(worldHeight, defaultSpawnY, obstacleSpawnMargin, playerHalf)
+	width, height := w.dimensions()
+	minX, maxX := centralCenterRange(width, defaultSpawnX, obstacleSpawnMargin, playerHalf)
+	minY, maxY := centralCenterRange(height, defaultSpawnY, obstacleSpawnMargin, playerHalf)
 
 	for i := 0; i < count; i++ {
 		x := minX

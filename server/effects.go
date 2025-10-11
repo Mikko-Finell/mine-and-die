@@ -720,7 +720,8 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
 		return
 	}
 
-	if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldWidth || eff.Effect.Y+eff.Effect.Height > worldHeight {
+	worldW, worldH := w.dimensions()
+	if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldW || eff.Effect.Y+eff.Effect.Height > worldH {
 		w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
 		return
 	}

@@ -499,7 +499,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	hub.world.SetIntent(moverID, 1, 0)
 
 	boundaryState := newTestPlayerState(boundaryID)
-	boundaryState.X = worldWidth - playerHalf - 5
+	boundaryState.X = hub.world.width() - playerHalf - 5
 	boundaryState.Y = 100
 	boundaryState.lastHeartbeat = now
 	hub.world.AddPlayer(boundaryState)
@@ -523,9 +523,49 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	if boundary == nil {
 		t.Fatalf("updated snapshot missing boundary player")
 	}
-	expectedBoundaryX := worldWidth - playerHalf
+	expectedBoundaryX := hub.world.width() - playerHalf
 	if boundary.X != expectedBoundaryX {
 		t.Fatalf("expected boundary player to clamp to %.1f, got %.1f", expectedBoundaryX, boundary.X)
+	}
+}
+
+func TestWorldRespectsConfiguredDimensions(t *testing.T) {
+	cfg := defaultWorldConfig()
+	cfg.Width = 960
+	cfg.Height = 540
+	w := newWorld(cfg, logging.NopPublisher{})
+	w.obstacles = nil
+
+	mover := newTestPlayerState("custom-bound")
+	mover.X = cfg.Width - playerHalf - 2
+	mover.Y = cfg.Height / 2
+	mover.intentX = 1
+	moveActorWithObstacles(&mover.actorState, 1, nil, w.width(), w.height())
+	expectedClamp := cfg.Width - playerHalf
+	if math.Abs(mover.X-expectedClamp) > 1e-6 {
+		t.Fatalf("expected mover to clamp at %.1f, got %.6f", expectedClamp, mover.X)
+	}
+
+	pathPlayer := newTestPlayerState("custom-path")
+	pathPlayer.X = playerHalf
+	pathPlayer.Y = playerHalf
+	w.players[pathPlayer.ID] = pathPlayer
+	target := vec2{X: cfg.Width + 200, Y: cfg.Height + 200}
+	if !w.ensurePlayerPath(pathPlayer, target, 0) {
+		t.Fatalf("expected ensurePlayerPath to succeed for uncluttered world")
+	}
+	if math.Abs(pathPlayer.path.PathTarget.X-(cfg.Width-playerHalf)) > 1e-6 {
+		t.Fatalf("expected path target X to clamp to %.1f, got %.6f", cfg.Width-playerHalf, pathPlayer.path.PathTarget.X)
+	}
+	if math.Abs(pathPlayer.path.PathTarget.Y-(cfg.Height-playerHalf)) > 1e-6 {
+		t.Fatalf("expected path target Y to clamp to %.1f, got %.6f", cfg.Height-playerHalf, pathPlayer.path.PathTarget.Y)
+	}
+
+	grid := newNavGrid(nil, w.width(), w.height())
+	expectedCols := int(math.Ceil(w.width() / navCellSize))
+	expectedRows := int(math.Ceil(w.height() / navCellSize))
+	if grid.cols != expectedCols || grid.rows != expectedRows {
+		t.Fatalf("expected grid to be %dx%d, got %dx%d", expectedCols, expectedRows, grid.cols, grid.rows)
 	}
 }
 
@@ -1644,7 +1684,7 @@ func TestProjectileBoundsAndLifetimeExpiry(t *testing.T) {
 		now := time.Now()
 
 		shooter := newTestPlayerState("bounds-shooter")
-		shooter.X = worldWidth - playerHalf - 30
+		shooter.X = hub.world.width() - playerHalf - 30
 		shooter.Y = 300
 		shooter.Facing = FacingRight
 		shooter.lastHeartbeat = now

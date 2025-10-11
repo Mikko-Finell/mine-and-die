@@ -17,11 +17,13 @@ type navGrid struct {
 	cols, rows int
 	cellSize   float64
 	walkable   []bool
+	width      float64
+	height     float64
 }
 
-func newNavGrid(obstacles []Obstacle) *navGrid {
-	cols := int(math.Ceil(worldWidth / navCellSize))
-	rows := int(math.Ceil(worldHeight / navCellSize))
+func newNavGrid(obstacles []Obstacle, width, height float64) *navGrid {
+	cols := int(math.Ceil(width / navCellSize))
+	rows := int(math.Ceil(height / navCellSize))
 	if cols <= 0 {
 		cols = 1
 	}
@@ -33,13 +35,15 @@ func newNavGrid(obstacles []Obstacle) *navGrid {
 		rows:     rows,
 		cellSize: navCellSize,
 		walkable: make([]bool, cols*rows),
+		width:    width,
+		height:   height,
 	}
 
 	for row := 0; row < rows; row++ {
 		for col := 0; col < cols; col++ {
 			cx := (float64(col) + 0.5) * grid.cellSize
 			cy := (float64(row) + 0.5) * grid.cellSize
-			if cx < playerHalf || cx > worldWidth-playerHalf || cy < playerHalf || cy > worldHeight-playerHalf {
+			if cx < playerHalf || cx > width-playerHalf || cy < playerHalf || cy > height-playerHalf {
 				continue
 			}
 			blocked := false
@@ -87,8 +91,16 @@ func (g *navGrid) locate(x, y float64) (int, int, bool) {
 	if g == nil || g.cols == 0 || g.rows == 0 {
 		return 0, 0, false
 	}
-	clampedX := clamp(x, 0, worldWidth-1)
-	clampedY := clamp(y, 0, worldHeight-1)
+	maxX := g.width - 1
+	if maxX < 0 {
+		maxX = 0
+	}
+	maxY := g.height - 1
+	if maxY < 0 {
+		maxY = 0
+	}
+	clampedX := clamp(x, 0, maxX)
+	clampedY := clamp(y, 0, maxY)
 	col := int(clampedX / g.cellSize)
 	row := int(clampedY / g.cellSize)
 	if !g.inBounds(col, row) {

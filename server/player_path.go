@@ -107,9 +107,10 @@ func (w *World) ensurePlayerPath(player *playerState, target vec2, tick uint64) 
 	if player == nil {
 		return false
 	}
+	width, height := w.dimensions()
 	player.path.PathTarget = vec2{
-		X: clamp(target.X, playerHalf, worldWidth-playerHalf),
-		Y: clamp(target.Y, playerHalf, worldHeight-playerHalf),
+		X: clamp(target.X, playerHalf, width-playerHalf),
+		Y: clamp(target.Y, playerHalf, height-playerHalf),
 	}
 	path, goal, ok := w.computePlayerPath(player, player.path.PathTarget)
 	if !ok {

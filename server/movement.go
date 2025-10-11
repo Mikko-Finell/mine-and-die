@@ -3,7 +3,7 @@ package main
 import "math"
 
 // moveActorWithObstacles advances an actor while clamping speed, bounds, and walls.
-func moveActorWithObstacles(state *actorState, dt float64, obstacles []Obstacle) {
+func moveActorWithObstacles(state *actorState, dt float64, obstacles []Obstacle, width, height float64) {
 	dx := state.intentX
 	dy := state.intentY
 	length := math.Hypot(dx, dy)
@@ -15,24 +15,24 @@ func moveActorWithObstacles(state *actorState, dt float64, obstacles []Obstacle)
 	deltaX := dx * moveSpeed * dt
 	deltaY := dy * moveSpeed * dt
 
-	newX := clamp(state.X+deltaX, playerHalf, worldWidth-playerHalf)
+	newX := clamp(state.X+deltaX, playerHalf, width-playerHalf)
 	if deltaX != 0 {
-		newX = resolveAxisMoveX(state.X, state.Y, newX, deltaX, obstacles)
+		newX = resolveAxisMoveX(state.X, state.Y, newX, deltaX, obstacles, width)
 	}
 
-	newY := clamp(state.Y+deltaY, playerHalf, worldHeight-playerHalf)
+	newY := clamp(state.Y+deltaY, playerHalf, height-playerHalf)
 	if deltaY != 0 {
-		newY = resolveAxisMoveY(newX, state.Y, newY, deltaY, obstacles)
+		newY = resolveAxisMoveY(newX, state.Y, newY, deltaY, obstacles, height)
 	}
 
 	state.X = newX
 	state.Y = newY
 
-	resolveObstaclePenetration(state, obstacles)
+	resolveObstaclePenetration(state, obstacles, width, height)
 }
 
 // resolveAxisMoveX applies horizontal movement while stopping at obstacle edges.
-func resolveAxisMoveX(oldX, oldY, proposedX, deltaX float64, obstacles []Obstacle) float64 {
+func resolveAxisMoveX(oldX, oldY, proposedX, deltaX float64, obstacles []Obstacle, width float64) float64 {
 	newX := proposedX
 	for _, obs := range obstacles {
 		if obs.Type == obstacleTypeLava {
@@ -56,11 +56,11 @@ func resolveAxisMoveX(oldX, oldY, proposedX, deltaX float64, obstacles []Obstacl
 			}
 		}
 	}
-	return clamp(newX, playerHalf, worldWidth-playerHalf)
+	return clamp(newX, playerHalf, width-playerHalf)
 }
 
 // resolveAxisMoveY applies vertical movement while stopping at obstacle edges.
-func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacle) float64 {
+func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacle, height float64) float64 {
 	newY := proposedY
 	for _, obs := range obstacles {
 		if obs.Type == obstacleTypeLava {
@@ -84,11 +84,11 @@ func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacl
 			}
 		}
 	}
-	return clamp(newY, playerHalf, worldHeight-playerHalf)
+	return clamp(newY, playerHalf, height-playerHalf)
 }
 
 // resolveObstaclePenetration nudges an actor out of overlapping obstacles.
-func resolveObstaclePenetration(state *actorState, obstacles []Obstacle) {
+func resolveObstaclePenetration(state *actorState, obstacles []Obstacle, width, height float64) {
 	for _, obs := range obstacles {
 		if obs.Type == obstacleTypeLava {
 			continue
@@ -144,13 +144,13 @@ func resolveObstaclePenetration(state *actorState, obstacles []Obstacle) {
 			}
 		}
 
-		state.X = clamp(state.X, playerHalf, worldWidth-playerHalf)
-		state.Y = clamp(state.Y, playerHalf, worldHeight-playerHalf)
+		state.X = clamp(state.X, playerHalf, width-playerHalf)
+		state.Y = clamp(state.Y, playerHalf, height-playerHalf)
 	}
 }
 
 // resolveActorCollisions separates overlapping actors while respecting walls.
-func resolveActorCollisions(actors []*actorState, obstacles []Obstacle) {
+func resolveActorCollisions(actors []*actorState, obstacles []Obstacle, width, height float64) {
 	if len(actors) < 2 {
 		return
 	}
@@ -189,13 +189,13 @@ func resolveActorCollisions(actors []*actorState, obstacles []Obstacle) {
 				p2.X += nx * overlap
 				p2.Y += ny * overlap
 
-				p1.X = clamp(p1.X, playerHalf, worldWidth-playerHalf)
-				p1.Y = clamp(p1.Y, playerHalf, worldHeight-playerHalf)
-				p2.X = clamp(p2.X, playerHalf, worldWidth-playerHalf)
-				p2.Y = clamp(p2.Y, playerHalf, worldHeight-playerHalf)
+				p1.X = clamp(p1.X, playerHalf, width-playerHalf)
+				p1.Y = clamp(p1.Y, playerHalf, height-playerHalf)
+				p2.X = clamp(p2.X, playerHalf, width-playerHalf)
+				p2.Y = clamp(p2.Y, playerHalf, height-playerHalf)
 
-				resolveObstaclePenetration(p1, obstacles)
-				resolveObstaclePenetration(p2, obstacles)
+				resolveObstaclePenetration(p1, obstacles, width, height)
+				resolveObstaclePenetration(p2, obstacles, width, height)
 
 				adjusted = true
 			}
