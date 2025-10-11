@@ -17,10 +17,10 @@ type joinResponse struct {
 type stateMessage struct {
 	Ver            int             `json:"ver"`
 	Type           string          `json:"type"`
-	Players        []Player        `json:"players"`
-	NPCs           []NPC           `json:"npcs"`
-	Obstacles      []Obstacle      `json:"obstacles"`
-	Effects        []Effect        `json:"effects"`
+	Players        []Player        `json:"players,omitempty"`
+	NPCs           []NPC           `json:"npcs,omitempty"`
+	Obstacles      []Obstacle      `json:"obstacles,omitempty"`
+	Effects        []Effect        `json:"effects,omitempty"`
 	EffectTriggers []EffectTrigger `json:"effectTriggers,omitempty"`
 	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
 	Patches        []Patch         `json:"patches"`

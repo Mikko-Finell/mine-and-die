@@ -168,6 +168,7 @@ snapshot path:
   and the renderer reads from the patch container for players, NPCs, effects,
   and ground items when patch mode is active so QA can smoke test the diff
   pipeline without code edits.【F:client/main.js†L13-L314】【F:client/render.js†L1-L618】【F:client/render-modes.js†L1-L24】
+* ✅ **Patch-first broadcasts** – steady-state `state` messages now rely on journalled diffs with configurable keyframe intervals, and the client mirrors patch baselines when snapshots are omitted. 【F:server/main.go†L35-L122】【F:server/hub.go†L707-L1078】【F:client/network.js†L557-L1218】
 
 ## Suggested next steps
 

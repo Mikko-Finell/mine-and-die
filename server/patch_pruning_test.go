@@ -87,7 +87,7 @@ func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 	hub.world.appendPatch(PatchPlayerFacing, player.ID, PlayerFacingPayload{Facing: FacingUp})
 	hub.mu.Unlock()
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}

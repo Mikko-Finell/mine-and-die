@@ -6,7 +6,7 @@ This document describes how the Mine & Die client and server communicate today. 
 
 1. **Join handshake** – The browser performs a `POST /join` to create a player slot and fetch an initial snapshot. The response includes the assigned `id`, the current actors (`players`, `npcs`), static world data (`obstacles`), active effects, pending one-shot `effectTriggers`, any dropped `groundItems`, and the authoritative world configuration object. 【F:server/messages.go†L4-L12】【F:client/network.js†L943-L1020】
 2. **WebSocket upgrade** – After storing the join payload the client opens `/ws?id={playerId}` using `ws://` or `wss://` based on the page protocol. On success the server immediately publishes a `state` message so late joiners start from the latest tick. 【F:server/main.go†L211-L233】【F:client/network.js†L698-L726】
-3. **Steady state** – The hub advances the simulation at 15 Hz and sends snapshot broadcasts. Clients keep their session alive by submitting input/ability/console messages plus heartbeat pings every two seconds. Players missing three intervals (~6 s) are culled from the world. 【F:server/hub.go†L504-L567】【F:server/constants.go†L7-L17】【F:client/network.js†L916-L999】【F:server/simulation.go†L344-L372】
+3. **Steady state** – The hub advances the simulation at 15 Hz, drains the patch journal, and emits incremental updates each tick. Full snapshots are recorded and broadcast as keyframes on a configurable cadence so clients can rebuild their baselines without replaying the entire history. Clients keep their session alive by submitting input/ability/console messages plus heartbeat pings every two seconds. Players missing three intervals (~6 s) are culled from the world. 【F:server/hub.go†L707-L1078】【F:server/constants.go†L7-L17】【F:client/network.js†L1096-L1218】【F:server/simulation.go†L344-L372】
 
 If the socket drops the client tears down local state and re-runs the join flow after a short delay. 【F:client/network.js†L1030-L1070】
 
@@ -22,13 +22,15 @@ If the socket drops the client tears down local state and re-runs the join flow 
 
 | Type | Description |
 | --- | --- |
-| `state` | Primary snapshot broadcast. Includes `players`, `npcs`, `obstacles`, `effects`, optional `effectTriggers`, optional `groundItems`, incremental `patches`, the current tick (`t`), monotonic `sequence`/`keyframeSeq`, the `serverTime` of emission, the world configuration, and a `resync` flag. Sent on every tick and immediately after subscribe/reset events. 【F:server/messages.go†L14-L32】【F:server/hub.go†L547-L633】【F:client/network.js†L1043-L1124】 |
+| `state` | Primary patch broadcast. Always contains incremental `patches`, the current tick (`t`), monotonic `sequence`, the `keyframeSeq` of the most recent full snapshot, `serverTime`, the world configuration, and a `resync` flag. Full entity arrays (`players`, `npcs`, `obstacles`, `effects`, `groundItems`) accompany resyncs and scheduled keyframes; patch-only ticks omit those fields to minimise bandwidth. Effect triggers continue to flow with whichever mode the server selected. 【F:server/messages.go†L14-L32】【F:server/hub.go†L707-L1078】【F:client/network.js†L1096-L1218】 |
 | `heartbeat` | Reply to client heartbeats containing `serverTime`, the echoed `clientTime`, and the computed `rtt` (milliseconds). 【F:server/messages.go†L40-L45】【F:server/main.go†L276-L315】 |
 | `console_ack` | Response for debug console commands with `status`, optional `reason`, the affected quantity, and the target ground stack ID when relevant. Triggered by `drop_gold` / `pickup_gold`. 【F:server/messages.go†L31-L38】【F:server/hub.go†L312-L444】 |
-| `keyframe` | Snapshot replay used by the patch pipeline. Carries a full frame (`players`, `npcs`, `obstacles`, `effects`, `groundItems`, `config`) plus the requested `sequence`/`t` so the client can rebuild its baseline. 【F:server/messages.go†L35-L45】【F:server/hub.go†L600-L820】【F:client/network.js†L887-L1141】 |
+| `keyframe` | Snapshot replay used by the patch pipeline. Carries a full frame (`players`, `npcs`, `obstacles`, `effects`, `groundItems`, `config`) plus the requested `sequence`/`t` so the client can rebuild its baseline. 【F:server/messages.go†L35-L45】【F:server/hub.go†L831-L1037】【F:client/network.js†L905-L1169】 |
 | `keyframeNack` | Indicates that a requested keyframe was rate limited or expired. Includes the original `sequence` and a string `reason`. 【F:server/messages.go†L48-L53】【F:server/hub.go†L600-L820】【F:client/network.js†L887-L1141】 |
 
 The client queues transient `effectTriggers` to drive visuals once and ignores duplicates using a processed-ID set. 【F:client/network.js†L577-L620】
+
+> **Keyframe cadence:** The Go server reads `KEYFRAME_INTERVAL_TICKS` at startup to control how often it records and broadcasts full snapshots. Lower values increase keyframe frequency (and payload size); higher values favour lean patch streams with occasional baselines. 【F:server/main.go†L35-L88】【F:server/hub.go†L707-L1078】
 
 ## Client → Server Messages
 
