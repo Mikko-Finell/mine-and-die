@@ -2,8 +2,13 @@ package main
 
 import "testing"
 
-func TestInventoryAddStackMergesByType(t *testing.T) {
+func TestInventoryAddStackMergesByFungibilityKey(t *testing.T) {
 	inv := NewInventory()
+
+	def, ok := ItemDefinitionFor(ItemTypeGold)
+	if !ok {
+		t.Fatalf("missing item definition for gold")
+	}
 
 	slot, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 10})
 	if err != nil {
@@ -15,6 +20,9 @@ func TestInventoryAddStackMergesByType(t *testing.T) {
 	if len(inv.Slots) != 1 {
 		t.Fatalf("expected inventory to have 1 slot, got %d", len(inv.Slots))
 	}
+	if inv.Slots[slot].Item.FungibilityKey != def.FungibilityKey {
+		t.Fatalf("expected fungibility key %q, got %q", def.FungibilityKey, inv.Slots[slot].Item.FungibilityKey)
+	}
 
 	mergedSlot, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 5})
 	if err != nil {
@@ -25,6 +33,26 @@ func TestInventoryAddStackMergesByType(t *testing.T) {
 	}
 	if inv.Slots[slot].Item.Quantity != 15 {
 		t.Fatalf("expected merged quantity of 15, got %d", inv.Slots[slot].Item.Quantity)
+	}
+}
+
+func TestInventoryAddStackRejectsMismatchedFungibilityKey(t *testing.T) {
+	inv := NewInventory()
+	if _, err := inv.AddStack(ItemStack{Type: ItemTypeGold, FungibilityKey: "custom", Quantity: 1}); err == nil {
+		t.Fatalf("expected error when fungibility key does not match definition")
+	}
+}
+
+func TestInventoryNonStackableCreatesNewSlot(t *testing.T) {
+	inv := NewInventory()
+	if _, err := inv.AddStack(ItemStack{Type: ItemTypeIronDagger, Quantity: 1}); err != nil {
+		t.Fatalf("unexpected error adding dagger: %v", err)
+	}
+	if _, err := inv.AddStack(ItemStack{Type: ItemTypeIronDagger, Quantity: 1}); err != nil {
+		t.Fatalf("unexpected error adding second dagger: %v", err)
+	}
+	if len(inv.Slots) != 2 {
+		t.Fatalf("expected non-stackable item to occupy separate slots, got %d", len(inv.Slots))
 	}
 }
 
@@ -108,12 +136,12 @@ func TestInventoryDrainAllClearsSlots(t *testing.T) {
 	if len(drained) != 2 {
 		t.Fatalf("expected two drained stacks, got %d", len(drained))
 	}
-	if drained[0].Type == drained[1].Type {
-		t.Fatalf("expected drained stacks to preserve distinct item types")
-	}
 	totals := map[ItemType]int{}
 	for _, stack := range drained {
 		totals[stack.Type] += stack.Quantity
+		if stack.FungibilityKey == "" {
+			t.Fatalf("expected drained stack to include fungibility key")
+		}
 	}
 	if totals[ItemTypeGold] != 5 {
 		t.Fatalf("expected drained gold quantity 5, got %d", totals[ItemTypeGold])
