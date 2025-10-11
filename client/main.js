@@ -1,3 +1,4 @@
+import { LitElement, html } from "lit";
 import {
   joinGame,
   resetWorld,
@@ -18,6 +19,22 @@ import {
 } from "./render-modes.js";
 import { registerInputHandlers } from "./input.js";
 import { createVendorBanner } from "./vendor/example-banner.js";
+
+class LitProbeElement extends LitElement {
+  createRenderRoot() {
+    return this;
+  }
+
+  render() {
+    return html`<span class="debug-metric__value" data-lit-status
+      >Lit ready</span
+    >`;
+  }
+}
+
+if (!customElements.get("lit-probe")) {
+  customElements.define("lit-probe", LitProbeElement);
+}
 
 console.debug(createVendorBanner("example-banner"));
 
