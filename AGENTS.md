@@ -69,6 +69,7 @@ Mine & Die is a small realtime prototype:
 - **General:**
   - Update the relevant markdown in `docs/` when changing behaviour that affects contributors or runtime assumptions.
   - Keep diagnostics (`/diagnostics`, HUD) in sync with new fields or metrics you add.
+  - If a task description directs you to read specific documentation, complete that reading before you begin writing code.
 - **Effects:**
   - The js-effects `EffectManager` is the sole authority for effect lifecycles. Do not introduce
     per-type stores, timers, or cleanup sets in client code—use `syncEffectsByType` alongside
