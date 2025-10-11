@@ -536,6 +536,56 @@ function cloneBaselineSnapshot(baseline) {
   };
 }
 
+function mergeBaselineSnapshot(target, addition) {
+  const hasTarget = target && typeof target === "object";
+  const hasAddition = addition && typeof addition === "object";
+  if (!hasTarget && !hasAddition) {
+    return null;
+  }
+  if (!hasTarget) {
+    return cloneBaselineSnapshot(addition);
+  }
+  if (!hasAddition) {
+    return target;
+  }
+
+  const normalizeTick = coerceTick(addition.tick);
+  if (target.tick === null && normalizeTick !== null) {
+    target.tick = normalizeTick;
+  }
+  const normalizeSequence = coerceTick(addition.sequence);
+  if (target.sequence === null && normalizeSequence !== null) {
+    target.sequence = normalizeSequence;
+  }
+
+  const mergeMaps = (field, cloner) => {
+    const targetMap =
+      target[field] && typeof target[field] === "object"
+        ? target[field]
+        : (target[field] = Object.create(null));
+    const sourceMap = addition[field];
+    if (!sourceMap || typeof sourceMap !== "object") {
+      return;
+    }
+    for (const view of Object.values(sourceMap)) {
+      const cloned = cloner(view);
+      if (!cloned || !cloned.id) {
+        continue;
+      }
+      if (!Object.hasOwn(targetMap, cloned.id)) {
+        targetMap[cloned.id] = cloned;
+      }
+    }
+  };
+
+  mergeMaps("players", clonePlayerView);
+  mergeMaps("npcs", cloneNPCView);
+  mergeMaps("effects", cloneEffectView);
+  mergeMaps("groundItems", cloneGroundItemView);
+
+  return target;
+}
+
 function rememberKeyframeSnapshot(cache, baseline) {
   if (!cache || !(cache.map instanceof Map)) {
     return null;
@@ -1071,6 +1121,8 @@ export function updatePatchState(previousState, payload, options = {}) {
     : clonePatchHistory(previousHistory);
 
   const baselineFromPayload = buildBaselineFromSnapshot(payload || {});
+  const payloadSequence = baselineFromPayload.sequence;
+  const payloadTick = baselineFromPayload.tick;
   let patchList = Array.isArray(payload?.patches) ? payload.patches : [];
   const previousTick = Number.isFinite(state.lastTick) && state.lastTick >= 0
     ? Math.floor(state.lastTick)
@@ -1111,7 +1163,14 @@ export function updatePatchState(previousState, payload, options = {}) {
   const hasSnapshot = hasExplicitEntityArrays(payload);
   const messageType = typeof payload?.type === "string" ? payload.type : null;
 
+  const patchedSnapshot = cloneBaselineSnapshot(state.patched);
+  const previousBaselineSnapshot = cloneBaselineSnapshot(state.baseline);
+  const stateFallbackSnapshot = patchedSnapshot || previousBaselineSnapshot;
+
   let baseline = baselineFromPayload;
+  if (!hasSnapshot && stateFallbackSnapshot) {
+    baseline = stateFallbackSnapshot;
+  }
   if (hasSnapshot && keyframeSeq !== null) {
     baseline.sequence = keyframeSeq;
   } else if (baseline.sequence === null && keyframeSeq !== null) {
@@ -1119,6 +1178,37 @@ export function updatePatchState(previousState, payload, options = {}) {
   }
   if (baseline.tick === null && keyframeTick !== null) {
     baseline.tick = keyframeTick;
+  }
+  if (payloadSequence !== null) {
+    baseline.sequence = payloadSequence;
+  }
+  if (payloadTick !== null) {
+    baseline.tick = payloadTick;
+  }
+  const incomingTick = payloadTick !== null ? payloadTick : null;
+  const incomingSequenceForOrder =
+    payloadSequence !== null ? payloadSequence : baseline.sequence;
+  if (!shouldResetHistory && previousTick !== null) {
+    if (
+      baseline.tick === null ||
+      !Number.isFinite(baseline.tick) ||
+      baseline.tick < previousTick
+    ) {
+      baseline.tick = previousTick;
+    } else {
+      baseline.tick = Math.floor(baseline.tick);
+    }
+  }
+  if (!shouldResetHistory && previousSequence !== null) {
+    if (
+      baseline.sequence === null ||
+      !Number.isFinite(baseline.sequence) ||
+      baseline.sequence < previousSequence
+    ) {
+      baseline.sequence = previousSequence;
+    } else {
+      baseline.sequence = Math.floor(baseline.sequence);
+    }
   }
 
   const normalizedKeyframeSeq =
@@ -1315,7 +1405,9 @@ export function updatePatchState(previousState, payload, options = {}) {
     };
   } else if (normalizedKeyframeSeq !== null) {
     const cached = getCachedKeyframe(keyframes, keyframeSeq);
-    if (cached) {
+    if (stateFallbackSnapshot) {
+      baseline = mergeBaselineSnapshot(stateFallbackSnapshot, cached);
+    } else if (cached) {
       baseline = cached;
     } else if (!replaying) {
       const patchedFallback = cloneBaselineSnapshot(state.patched);
@@ -1509,6 +1601,14 @@ export function updatePatchState(previousState, payload, options = {}) {
 
   const nextTick = baseline.tick;
   const nextSequence = baseline.sequence;
+  const orderTick =
+    typeof incomingTick === "number" && Number.isFinite(incomingTick)
+      ? Math.floor(incomingTick)
+      : incomingTick;
+  const orderSequence =
+    typeof incomingSequenceForOrder === "number" && Number.isFinite(incomingSequenceForOrder)
+      ? Math.floor(incomingSequenceForOrder)
+      : incomingSequenceForOrder;
 
   const appendError = (kind, entityId, message, tickValue, sequenceValue) => {
     const entry = {
@@ -1524,8 +1624,8 @@ export function updatePatchState(previousState, payload, options = {}) {
     return entry;
   };
 
-  if (!shouldResetHistory && previousTick !== null && nextTick !== null && nextTick < previousTick) {
-    appendError(null, null, `out-of-order patch tick ${nextTick} < ${previousTick}`, nextTick, nextSequence);
+  if (!shouldResetHistory && previousTick !== null && orderTick !== null && orderTick < previousTick) {
+    appendError(null, null, `out-of-order patch tick ${orderTick} < ${previousTick}`, orderTick, nextSequence);
     const trimmedErrors = trimErrors(historyEntries, errorLimit);
     const trimmedRecoveries = trimRecoveryLog(recoveryLog);
     return {
@@ -1552,13 +1652,13 @@ export function updatePatchState(previousState, payload, options = {}) {
     };
   }
 
-  if (!shouldResetHistory && previousSequence !== null && nextSequence !== null && nextSequence < previousSequence) {
+  if (!shouldResetHistory && previousSequence !== null && orderSequence !== null && orderSequence < previousSequence) {
     appendError(
       null,
       null,
-      `out-of-order patch sequence ${nextSequence} < ${previousSequence}`,
-      nextTick,
-      nextSequence,
+      `out-of-order patch sequence ${orderSequence} < ${previousSequence}`,
+      orderTick,
+      orderSequence,
     );
     const trimmedErrors = trimErrors(historyEntries, errorLimit);
     const trimmedRecoveries = trimRecoveryLog(recoveryLog);
@@ -1597,6 +1697,93 @@ export function updatePatchState(previousState, payload, options = {}) {
     }
   }
 
+  if (
+    !hasSnapshot &&
+    normalizedKeyframeSeq !== null &&
+    !replaying &&
+    patchResult.errors.length > 0
+  ) {
+    let missingEntities = 0;
+    for (const error of patchResult.errors) {
+      if (error && error.message === "unknown entity for patch") {
+        missingEntities += 1;
+      }
+    }
+    if (missingEntities > 0) {
+      const requestAlreadyPending = pendingRequests.has(normalizedKeyframeSeq);
+      if (!requestAlreadyPending) {
+        pendingRequests.set(normalizedKeyframeSeq, {
+          attempts: 1,
+          nextRetryAt: null,
+          firstRequestedAt: now,
+        });
+        if (requestKeyframe) {
+          try {
+            requestKeyframe(normalizedKeyframeSeq, keyframeTick ?? baseline.tick ?? null, {
+              incrementAttempt: false,
+              firstRequestedAt: now,
+            });
+          } catch (err) {
+            // Ignore transport errors from diagnostics helpers.
+          }
+        }
+        const recoveryEntry = {
+          sequence: normalizedKeyframeSeq,
+          tick: keyframeTick ?? baseline.tick ?? null,
+          status: "requested",
+          requestedAt: now,
+          resolvedAt: null,
+          latencyMs: null,
+        };
+        lastRecovery = recoveryEntry;
+        recoveryLog.push({ ...recoveryEntry });
+      }
+
+      const replayEntryIndex = pendingReplays.findIndex(
+        (entry) => entry && entry.sequence === normalizedKeyframeSeq,
+      );
+      if (replayEntryIndex === -1) {
+        pendingReplays.push({
+          sequence: normalizedKeyframeSeq,
+          payload,
+          source,
+          keyframeTick: keyframeTick ?? baseline.tick ?? null,
+          requests: requestAlreadyPending ? 0 : 1,
+          lastRateLimitedAt: null,
+          deferredCount: missingEntities,
+          deferredAt: now,
+        });
+      } else {
+        const replayEntry = pendingReplays[replayEntryIndex];
+        replayEntry.payload = payload;
+        replayEntry.source = source;
+        replayEntry.keyframeTick = keyframeTick ?? baseline.tick ?? null;
+        replayEntry.deferredCount = missingEntities;
+        replayEntry.deferredAt = now;
+      }
+
+      deferredPatchCountForUpdate += missingEntities;
+      totalDeferredPatches += missingEntities;
+
+      let removedErrors = 0;
+      for (let index = historyEntries.length - 1; index >= 0 && removedErrors < missingEntities; index -= 1) {
+        const entry = historyEntries[index];
+        if (
+          entry &&
+          entry.message === "unknown entity for patch" &&
+          entry.sequence === baseline.sequence &&
+          entry.source === source
+        ) {
+          historyEntries.splice(index, 1);
+          removedErrors += 1;
+          if (lastError === entry) {
+            lastError = historyEntries.length > 0 ? historyEntries[historyEntries.length - 1] : null;
+          }
+        }
+      }
+    }
+  }
+
   const trimmedErrors = trimErrors(historyEntries, errorLimit);
   const trimmedRecoveries = trimRecoveryLog(recoveryLog);
   const resolvedTick = nextTick !== null ? nextTick : previousTick;
@@ -1604,16 +1791,16 @@ export function updatePatchState(previousState, payload, options = {}) {
 
   return {
     baseline: {
-      tick: baseline.tick,
-      sequence: baseline.sequence,
-      players: baseline.players,
-      npcs: baseline.npcs,
-      effects: baseline.effects,
-      groundItems: baseline.groundItems,
+      tick: resolvedTick,
+      sequence: resolvedSequence,
+      players: patchResult.players,
+      npcs: patchResult.npcs,
+      effects: patchResult.effects,
+      groundItems: patchResult.groundItems,
     },
     patched: {
-      tick: baseline.tick,
-      sequence: baseline.sequence,
+      tick: resolvedTick,
+      sequence: resolvedSequence,
       players: patchResult.players,
       npcs: patchResult.npcs,
       effects: patchResult.effects,

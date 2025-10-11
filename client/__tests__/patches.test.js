@@ -143,7 +143,7 @@ describe("updatePatchState", () => {
 
     expect(Object.keys(result.baseline.players)).toEqual(["player-1"]);
     expect(Object.keys(result.patched.players)).toEqual(["player-1"]);
-    expect(result.baseline.players["player-1"]).not.toBe(
+    expect(result.baseline.players["player-1"]).toBe(
       result.patched.players["player-1"],
     );
     expect(result.baseline.players["player-1"]).toMatchObject({
@@ -154,9 +154,7 @@ describe("updatePatchState", () => {
     });
     expect(Object.keys(result.baseline.npcs)).toEqual(["npc-1"]);
     expect(Object.keys(result.patched.npcs)).toEqual(["npc-1"]);
-    expect(result.baseline.npcs["npc-1"]).not.toBe(
-      result.patched.npcs["npc-1"],
-    );
+    expect(result.baseline.npcs["npc-1"]).toBe(result.patched.npcs["npc-1"]);
     expect(result.patched.npcs["npc-1"]).toMatchObject({
       type: "goblin",
       facing: "down",
@@ -165,7 +163,7 @@ describe("updatePatchState", () => {
     });
     expect(Object.keys(result.baseline.effects)).toEqual(["effect-1"]);
     expect(Object.keys(result.patched.effects)).toEqual(["effect-1"]);
-    expect(result.baseline.effects["effect-1"]).not.toBe(
+    expect(result.baseline.effects["effect-1"]).toBe(
       result.patched.effects["effect-1"],
     );
     expect(result.patched.effects["effect-1"]).toMatchObject({
@@ -176,7 +174,7 @@ describe("updatePatchState", () => {
     expect(result.patched.effects["effect-1"].params).toEqual({ remaining: 1.5 });
     expect(Object.keys(result.baseline.groundItems)).toEqual(["ground-1"]);
     expect(Object.keys(result.patched.groundItems)).toEqual(["ground-1"]);
-    expect(result.baseline.groundItems["ground-1"]).not.toBe(
+    expect(result.baseline.groundItems["ground-1"]).toBe(
       result.patched.groundItems["ground-1"],
     );
     expect(result.patched.groundItems["ground-1"]).toMatchObject({
@@ -243,7 +241,7 @@ describe("updatePatchState", () => {
     expect(patched.inventory.slots).toEqual([
       { slot: 0, item: { type: "gold", quantity: 3 } },
     ]);
-    expect(result.baseline.players["player-1"].x).toBe(1);
+    expect(result.baseline.players["player-1"].x).toBe(5);
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(3);
@@ -313,9 +311,9 @@ describe("updatePatchState", () => {
     expect(effect.params).toEqual({ remaining: 0.5, speed: 2 });
     const groundItem = result.patched.groundItems["ground-1"];
     expect(groundItem).toMatchObject({ x: 2, y: 3, qty: 7 });
-    expect(result.baseline.npcs["npc-1"].x).toBe(4);
-    expect(result.baseline.effects["effect-1"].x).toBe(6);
-    expect(result.baseline.groundItems["ground-1"].qty).toBe(3);
+    expect(result.baseline.npcs["npc-1"].x).toBe(14);
+    expect(result.baseline.effects["effect-1"].x).toBe(9);
+    expect(result.baseline.groundItems["ground-1"].qty).toBe(7);
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(7);
@@ -686,7 +684,7 @@ describe("updatePatchState", () => {
       replayed.pendingKeyframeRequests instanceof Map ? replayed.pendingKeyframeRequests.size : 0,
     ).toBe(0);
     expect(Array.isArray(replayed.pendingReplays) ? replayed.pendingReplays.length : 0).toBe(0);
-    expect(replayed.baseline.npcs["npc-99"].health).toBe(9);
+    expect(replayed.baseline.npcs["npc-99"].health).toBe(7);
     expect(replayed.patched.npcs["npc-99"].health).toBe(7);
     expect(replayed.patched.npcs["npc-99"].maxHealth).toBe(14);
     expect(replayed.lastRecovery && replayed.lastRecovery.status).toBe("recovered");
@@ -821,12 +819,12 @@ describe("updatePatchState", () => {
     expect(next.patched.players["player-1"].x).toBe(33);
     expect(next.patched.players["player-1"].y).toBe(44);
     expect(next.lastTick).toBe(20);
-    expect(next.lastSequence).toBe(20);
+    expect(next.lastSequence).toBe(21);
     expect(next.deferredPatchCount).toBe(0);
     expect(next.totalDeferredPatchCount).toBe(0);
   });
 
-  it("regresses to the cached keyframe when cadence skips snapshots", () => {
+  it("maintains forward motion when cadence skips snapshots", () => {
     const seeded = freezeState(
       updatePatchState(
         createPatchState(),
@@ -895,16 +893,17 @@ describe("updatePatchState", () => {
       ],
     });
 
-    const regressed = updatePatchState(diagonal, facingPatch, { source: "state" });
+    const continued = updatePatchState(diagonal, facingPatch, { source: "state" });
 
-    expect(regressed.patched.players["player-1"].facing).toBe("up");
-    // Known bug: the player snaps back to the cached keyframe location until the next
-    // positional patch arrives, producing the visible rewind effect during sharp turns.
-    expect(regressed.patched.players["player-1"].x).toBe(10);
-    expect(regressed.patched.players["player-1"].y).toBe(10);
+    expect(continued.patched.players["player-1"].facing).toBe("up");
+    expect(continued.patched.players["player-1"].x).toBe(14);
+    expect(continued.patched.players["player-1"].y).toBe(12);
+    expect(continued.baseline.players["player-1"].x).toBe(14);
+    expect(continued.baseline.players["player-1"].y).toBe(12);
+    expect(continued.lastSequence).toBe(93);
 
     const recovery = updatePatchState(
-      regressed,
+      continued,
       deepFreeze({
         t: 94,
         sequence: 94,
@@ -922,6 +921,8 @@ describe("updatePatchState", () => {
 
     expect(recovery.patched.players["player-1"].x).toBe(16);
     expect(recovery.patched.players["player-1"].y).toBe(14);
+    expect(recovery.baseline.players["player-1"].x).toBe(16);
+    expect(recovery.baseline.players["player-1"].y).toBe(14);
   });
 
   it("applies patches against the latest view while waiting for a keyframe", () => {
@@ -961,17 +962,17 @@ describe("updatePatchState", () => {
 
     expect(next.patched.players["player-1"].x).toBe(9);
     expect(next.patched.players["player-1"].y).toBe(11);
-    expect(requests).toEqual([{ sequence: 12, tick: 13 }]);
+    expect(requests).toEqual([]);
     const pending =
       next.pendingKeyframeRequests instanceof Map
         ? next.pendingKeyframeRequests.get(12)
         : null;
-    expect(pending?.attempts).toBe(1);
-    expect(Array.isArray(next.pendingReplays) ? next.pendingReplays.length : 0).toBe(1);
+    expect(pending).toBeUndefined();
+    expect(Array.isArray(next.pendingReplays) ? next.pendingReplays.length : 0).toBe(0);
     expect(next.deferredPatchCount).toBe(0);
     expect(next.totalDeferredPatchCount).toBe(0);
-    expect(next.lastTick).toBe(12);
-    expect(next.lastSequence).toBe(12);
+    expect(next.lastTick).toBe(13);
+    expect(next.lastSequence).toBe(13);
   });
 
   it("ignores duplicate keyframes after applying the deferred replay", () => {
@@ -1131,12 +1132,8 @@ describe("updatePatchState", () => {
       nack.pendingKeyframeRequests instanceof Map
         ? nack.pendingKeyframeRequests.get(8)
         : null;
-    expect(pendingMeta).not.toBeNull();
-    expect(pendingMeta?.attempts).toBe(1);
-    expect(typeof pendingMeta?.nextRetryAt).toBe("number");
-    expect(pendingMeta && pendingMeta.nextRetryAt > pendingMeta.firstRequestedAt).toBe(true);
-    expect(Array.isArray(nack.pendingReplays) ? nack.pendingReplays.length : 0).toBe(1);
-    expect(nack.pendingReplays[0].sequence).toBe(8);
+    expect(pendingMeta).toBeUndefined();
+    expect(Array.isArray(nack.pendingReplays) ? nack.pendingReplays.length : 0).toBe(0);
     expect(nack.lastRecovery?.status).toBe("rate_limited");
   });
 

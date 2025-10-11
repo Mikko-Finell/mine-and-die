@@ -218,15 +218,17 @@ consistent keyframe pointers.
 The test reliably reproduces the rewind-return cycle in isolation and guards
 against accidental regression masking.
 
-### Next steps
+### Resolution
 
-* Rework patch replay to maintain a cumulative, entity-scoped baseline instead of
-  cloning from the last keyframe for each message.
-* Treat missing entities in patch batches as keyframe recovery candidates rather
-  than hard errors.
-* Advance the baseline’s sequence with each successful patch application so
-  deduplication compares against the latest state, not the static keyframe.
+The client now maintains a cumulative baseline between sparse keyframes. Patch
+replay prefers the most recent patched view, merges cached keyframes only to
+backfill missing entities, and carries the incoming sequence forward so
+deduplication reflects the latest broadcast. When a patch references an
+unknown entity, the client requests a recovery keyframe, queues the replay, and
+removes the transient “unknown entity” error from diagnostics. Resync
+boundaries skip monotonic adjustments so explicit resets can lower ticks and
+sequences without tripping the out-of-order guard.
 
-These adjustments should eliminate positional flicker, restore ability-effect
-visibility under high cadence, and bring patch-only playback to parity with
+With these changes, forward motion stays smooth between keyframes, ability
+visuals no longer rewind, and sparse cadence testing aligns with
 snapshot-every-tick behaviour.
