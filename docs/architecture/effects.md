@@ -98,3 +98,23 @@ When adding a new ability or condition:
    type into `render.js` via `syncEffectsByType` or a trigger handler.
 5. **Document behaviour** – Update this file or other docs so future contributors
    understand the new mechanics and expected visuals.
+
+## Effect Producer Map
+
+The Phase 0 guardrail work introduced an automated inventory of every server
+function that spawns or mutates effects. Run the generator whenever you change
+effect-producing code so the shared map stays current:
+
+```sh
+npm run effects:map
+```
+
+The script (`tools/effects/build_producer_map`) parses the Go sources in
+`server/effects.go`, `server/conditions.go`, `server/world_mutators.go`, and
+`server/simulation.go`, then writes `effects_producer_map.json` at the repo root.
+Each entry lists the source file, function name, category tags (producer vs.
+mutation), inferred delivery kinds (melee, projectile, trigger, condition, etc.),
+and the invariants that function touches (cooldown guards, logging calls, journal
+patches, helper invocations). This index is the authoritative reference for
+effects migration planning—update it in the same commit as any gameplay change
+that affects effects so downstream tooling and documentation remain trustworthy.
