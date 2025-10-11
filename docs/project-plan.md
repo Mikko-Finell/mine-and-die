@@ -30,7 +30,7 @@ Our short-term mission is to **stabilize the core loop**, **align messaging with
 | Risk | Impact | Mitigation |
 |------|---------|-------------|
 | **Operational instability** – no backpressure on command queue; broadcast fan-out spawns uncontrolled goroutines. | Tick lag, server churn under load. | Implement per-player queue limits; centralize broadcaster; add latency telemetry.【F:technical_debt.md†L5-15】 |
-| **Unsafe resets** – `/world/reset` wipes state without confirmation. | Irreversible data loss during testing. | Add confirmation UI + role gating; restrict to debug mode.【F:technical_debt.md†L8-10】【F:technical_debt.md†L22-23】 |
+| **Intentional rapid resets** – `/world/reset` wipes state without confirmation. | Inventory loss remains possible during tests, but rapid iteration outweighs the risk for playtest tooling. | Keep the one-click reset workflow and emphasise the destructive behaviour in docs and playtest briefs.【F:technical_debt.md†L8-L12】【F:technical_debt.md†L22-L24】 |
 | **Testing blind spots** – HTTP handlers untested. | Regression risk in core endpoints. | Build `httptest.Server` coverage for `/join`, `/ws`, `/reset`. |
 | **Expectation mismatch** – roadmap claims not yet built. | Stakeholder confusion, player distrust. | Publish accurate status update; keep roadmap separate from shipped features.【F:technical_debt.md†L19-23】 |
 
@@ -59,7 +59,7 @@ Our short-term mission is to **stabilize the core loop**, **align messaging with
 
 | Workstream | Engineering Scope | Design / UX Scope | Product Goals |
 |-------------|-------------------|-------------------|----------------|
-| **Reliability Hardening** | Command queue limits, broadcast refactor, HTTP test suite, reset safeguards. | Confirmation UX, diagnostics copy polish. | Server stability under 20 concurrent players; zero unintended resets. |
+| **Reliability Hardening** | Command queue guardrails, broadcast refactor, HTTP test suite. | Diagnostics copy polish and destructive-action messaging. | Server stability under 20 concurrent players; zero unintended resets. |
 | **Gold Economy** | Deposit lifecycle (spawn → deplete → respawn), tax pipeline integration. | HUD cues for deposit states and scarcity. | Measure loop engagement (contested deposits/hour). |
 | **Safe Zones & Market** | PvP suppression, escrowed trades, new endpoints. | Safe-zone boundaries, market UI. | Diversify player motivations; validate market retention. |
 | **Faction Governance** | Data model for ranks/taxation, persistence hooks. | Hierarchy management UI, coup notifications. | Establish social competition loop. |
@@ -71,7 +71,7 @@ Our short-term mission is to **stabilize the core loop**, **align messaging with
 
 | Milestone | Target | Deliverables |
 |------------|---------|--------------|
-| **A – Stability Release** | Month 1-2 | Queue limits, broadcast centralization, reset safeguards, full HTTP coverage, doc alignment. |
+| **A – Stability Release** | Month 1-2 | Queue limits, broadcast centralization, full HTTP coverage, doc alignment. |
 | **B – Gold Economy Loop** | Month 3-4 | Deposit system, mining→inventory flow, economy telemetry MVP. |
 | **C – Safe Trade / Onboarding** | Month 5-6 | Safe-zone framework, market UI prototype, improved tutorial experience. |
 | **D – Faction Governance Alpha** | Month 7+ | Persistence layer, management UI, taxation pipeline integration. |
@@ -93,7 +93,7 @@ Our short-term mission is to **stabilize the core loop**, **align messaging with
 ## 8. Cross-Functional Coordination
 
 - **Engineering:** Twice-weekly syncs on reliability and telemetry progress; maintain shared Grafana-style dashboard for tick and queue metrics.  
-- **Design / UX:** Co-own onboarding, reset confirmation flows, and diagnostic overlays.  
+- **Design / UX:** Co-own onboarding, destructive-action messaging, and diagnostic overlays.
 - **QA:** Build regression checklist and automated smoke tests; schedule playtest runs after Milestone A completion.  
 - **Comms / Marketing:** Publish “Prototype Status” article updating feature claims while preserving aspirational roadmap context.【F:technical_debt.md†L19-23】  
 - **Product:** Maintain milestone tracking board, integrate telemetry KPIs into sprint reviews, and capture learnings in `docs/gameplay-design/`.
