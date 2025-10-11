@@ -3,6 +3,9 @@
 This document defines the unified framework for all combat and visual effects in the Mine & Die engine.
 It merges legacy ad-hoc mechanisms (melee swings, projectiles, burning ticks, blood decals) under a single **contract-driven** system where the server is authoritative and clients are purely visual.
 
+For a phase-by-phase execution plan see the [Unified Effect System — Synthesis Roadmap](./unified-effects-roadmap.md).
+Progress and open action items live in the [Unified Effects Migration Tracker](../notes/unified-effects-tracker.md).
+
 ---
 
 ## 1. Goals

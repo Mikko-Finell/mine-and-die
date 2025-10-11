@@ -2,6 +2,8 @@
 
 A single, executable plan that blends the strongest ideas: **contract-first types without big-bang rewrites**, **dual-write rollout**, **deterministic math**, **two-pass client ingestion**, **quantified parity gates**, and **tight observability**. Each phase has: Goal → Deliverables → Exit Criteria → PR Slicing.
 
+> **See also:** the contract specification in [Unified Effect System — Contract-Driven Architecture](./effect-system-unification.md) and the living status dashboard in [Unified Effects Migration Tracker](../notes/unified-effects-tracker.md).
+
 ---
 
 ## Phase 0 — Inventory, Observability, and Guardrails
