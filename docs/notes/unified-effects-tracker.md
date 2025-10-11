@@ -50,7 +50,7 @@ Statuses use the following scale:
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
 | Auto producer map | Complete | :white_check_mark: Implemented `tools/effects/build_producer_map`; run `npm run effects:map` to refresh `effects_producer_map.json`. | Script documents coverage in `docs/architecture/effects.md`; map checked in under repo root. |
-| Current wire audit | Not Started | Document current `Hub.marshalState` snapshot contents and sequencing. | Capture ordering of `Effects[]` vs. `EffectTriggers[]`; include examples from current server. |
+| Current wire audit | Complete | :white_check_mark: Documented `Hub.marshalState` payload flow and sequencing in `docs/architecture/effects.md`. | Notes & payload examples live under the new “marshalState payload layout” section. |
 | Baseline tests to preserve | Not Started | Enumerate regression tests (file + test name) tied to effect behaviour. | Start with `server/main_test.go` coverage; mark tests red-listed for migration. |
 | Telemetry (current system) | Not Started | Define metrics, decide aggregation surface, and note implementation plan. | Prior dashboard requirement removed—focus on counters & logging first. |
 
@@ -110,5 +110,6 @@ Statuses use the following scale:
 
 | Date | Update | Author |
 | --- | --- | --- |
+| 2025-10-11 | Recorded snapshot payload audit and marked the Phase 0 wire documentation deliverable complete. | gpt-5-codex |
 | 2025-02-14 | Initial tracker created. Phase 0 map tooling marked Ready to Start with recommended first PR. | gpt-5-codex |
 
