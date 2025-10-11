@@ -71,6 +71,149 @@ condition timer without custom code.
 The hub includes both arrays in every `state` payload sent over the WebSocket,
 and resets the trigger queue after broadcasting.
 
+### `marshalState` payload layout
+
+`Hub.marshalState` orchestrates every outbound payload. It hydrates the
+snapshot (players, NPCs, effects, ground items, obstacles) when
+`includeSnapshot` is `true`, and otherwise sets those fields to `nil` so the
+incremental payload omits them. Patches are always included, but the function
+either drains or snapshots them depending on the caller. Effect triggers are
+resolved regardless of whether a keyframe is being emitted, so one-shot visuals
+ride alongside incremental frames.【F:server/hub.go†L842-L977】
+
+The JSON layout mirrors the struct order in `stateMessage`, so consumers see the
+arrays in the following sequence during a full keyframe broadcast:
+
+1. `players`
+2. `npcs`
+3. `obstacles`
+4. `effects`
+5. `effectTriggers`
+6. `groundItems`
+7. `patches`
+
+Both the `/join` response and keyframe refreshes include the full set. Regular
+tick updates usually omit the first three arrays because their slices are `nil`
+when `includeSnapshot` is `false`, leaving clients to reuse the last keyframe.
+`effects` behaves the same way: when the hub decides to skip a keyframe, the
+field is omitted and only `effectTriggers` deliver transient visuals for that
+tick.【F:server/hub.go†L933-L977】【F:server/messages.go†L18-L46】
+
+`marshalState` also stamps every payload with a monotonically increasing
+`sequence` and tracks the most recent `keyframeSeq`. Initial state pushes set the
+`resync` flag because they do not drain patches; ongoing broadcasts clear the
+flag unless the hub explicitly schedules a resync. The `keyframeInterval`
+reported in the payload reflects the current cadence (default 1, meaning every
+tick is a keyframe) and is updated whenever the interval changes.【F:server/hub.go†L894-L1015】
+
+#### Example payloads
+
+Full keyframe (e.g., join handshake or forced refresh):
+
+```json
+{
+  "ver": 1,
+  "type": "state",
+  "players": [
+    {
+      "id": "player-1",
+      "x": 8.5,
+      "y": 4.0,
+      "facing": "down",
+      "health": 100,
+      "maxHealth": 100,
+      "inventory": {"slots": []},
+      "equipment": {"slots": []}
+    }
+  ],
+  "npcs": [
+    {
+      "id": "npc-keep-1",
+      "x": 6.0,
+      "y": 10.5,
+      "facing": "left",
+      "health": 50,
+      "maxHealth": 50,
+      "inventory": {"slots": []},
+      "equipment": {"slots": []},
+      "type": "goblin",
+      "aiControlled": true,
+      "experienceReward": 12
+    }
+  ],
+  "obstacles": [
+    {"id": "ore-17", "type": "gold-ore", "x": 9.0, "y": 4.0, "width": 1.0, "height": 1.0}
+  ],
+  "effects": [
+    {"id": "swing-42", "type": "meleeSwing", "owner": "player-1", "start": 1728656400123, "duration": 150, "x": 9.0, "y": 4.0, "width": 1.5, "height": 1.0}
+  ],
+  "effectTriggers": [
+    {"id": "blood-57", "type": "bloodSplatter", "start": 1728656400123, "x": 9.0, "y": 4.0}
+  ],
+  "groundItems": [
+    {"id": "ground-3", "type": "gold", "fungibility_key": "ore", "x": 9.0, "y": 4.0, "qty": 2}
+  ],
+  "patches": [],
+  "t": 318,
+  "sequence": 882,
+  "keyframeSeq": 882,
+  "serverTime": 1728656400123,
+  "config": {
+    "obstacles": true,
+    "obstaclesCount": 18,
+    "goldMines": true,
+    "goldMineCount": 4,
+    "npcs": true,
+    "goblinCount": 6,
+    "ratCount": 4,
+    "npcCount": 10,
+    "lava": true,
+    "lavaCount": 3,
+    "seed": "prototype",
+    "width": 64,
+    "height": 64
+  },
+  "resync": true,
+  "keyframeInterval": 1
+}
+```
+
+Incremental update (no keyframe):
+
+```json
+{
+  "ver": 1,
+  "type": "state",
+  "effectTriggers": [
+    {"id": "sparks-12", "type": "oreSparks", "start": 1728656400190, "x": 9.0, "y": 4.0}
+  ],
+  "patches": [],
+  "t": 319,
+  "sequence": 883,
+  "keyframeSeq": 882,
+  "serverTime": 1728656400190,
+  "config": {
+    "obstacles": true,
+    "obstaclesCount": 18,
+    "goldMines": true,
+    "goldMineCount": 4,
+    "npcs": true,
+    "goblinCount": 6,
+    "ratCount": 4,
+    "npcCount": 10,
+    "lava": true,
+    "lavaCount": 3,
+    "seed": "prototype",
+    "width": 64,
+    "height": 64
+  },
+  "keyframeInterval": 1
+}
+```
+
+Clients must retain the last keyframe to resolve entity state, then layer the
+latest triggers and patches each tick until a new keyframe arrives.
+
 ## Client Runtime
 
 The client stores the latest `effects` array and drains `effectTriggers` when it
