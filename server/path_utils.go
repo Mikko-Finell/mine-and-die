@@ -2,6 +2,21 @@ package main
 
 import "math"
 
+func pathTravelCost(startX, startY float64, path []vec2) float64 {
+	if len(path) == 0 {
+		return 0
+	}
+	cost := 0.0
+	prevX := startX
+	prevY := startY
+	for _, node := range path {
+		cost += math.Hypot(node.X-prevX, node.Y-prevY)
+		prevX = node.X
+		prevY = node.Y
+	}
+	return cost
+}
+
 func (w *World) computePathFrom(startX, startY float64, ignoreID string, target vec2) ([]vec2, vec2, bool) {
 	width, height := w.dimensions()
 	grid := newNavGrid(w.obstacles, width, height)
@@ -47,7 +62,7 @@ func (w *World) computePathFrom(startX, startY float64, ignoreID string, target 
 		if !ok {
 			continue
 		}
-		score := math.Hypot(alt.X-target.X, alt.Y-target.Y) + float64(len(candidate))
+		score := math.Hypot(alt.X-target.X, alt.Y-target.Y) + pathTravelCost(startX, startY, candidate)
 		if score < bestScore {
 			bestScore = score
 			bestGoal = alt
