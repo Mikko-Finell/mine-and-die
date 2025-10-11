@@ -615,6 +615,7 @@ export function applyStateSnapshot(prev, payload, patchedState) {
     obstacles,
     effects,
     hasLocalPlayer: false,
+    keyframeInterval: null,
   };
 
   let groundItemsState = {};
@@ -649,6 +650,22 @@ export function applyStateSnapshot(prev, payload, patchedState) {
     result.worldConfig = normalizeWorldConfig(snapshot.config);
   } else if (previousState.worldConfig) {
     result.worldConfig = { ...previousState.worldConfig };
+  }
+
+  if (Object.prototype.hasOwnProperty.call(snapshot, "keyframeInterval")) {
+    const intervalCandidate = Number(snapshot.keyframeInterval);
+    if (Number.isFinite(intervalCandidate) && intervalCandidate >= 1) {
+      result.keyframeInterval = Math.floor(intervalCandidate);
+    }
+  }
+  if (
+    result.keyframeInterval === null &&
+    previousState &&
+    typeof previousState === "object" &&
+    Number.isFinite(previousState.keyframeInterval) &&
+    previousState.keyframeInterval >= 1
+  ) {
+    result.keyframeInterval = Math.floor(previousState.keyframeInterval);
   }
 
   const localId = typeof previousState.playerId === "string" ? previousState.playerId : null;
@@ -1048,6 +1065,18 @@ export function sendMessage(store, payload, { onSent } = {}) {
   }
 }
 
+export function setKeyframeCadence(store, interval) {
+  if (!Number.isFinite(interval) || interval < 1) {
+    return;
+  }
+  const normalized = Math.floor(interval);
+  const message = {
+    type: "keyframeCadence",
+    keyframeInterval: normalized,
+  };
+  sendMessage(store, message);
+}
+
 // joinGame performs the `/join` handshake and seeds the local store.
 export async function joinGame(store) {
   if (store.isJoining) return;
@@ -1088,6 +1117,19 @@ export async function joinGame(store) {
     }
     if (typeof store.updateWorldConfigUI === "function") {
       store.updateWorldConfigUI();
+    }
+    const joinCadenceValue = Number(payload.keyframeInterval);
+    if (Number.isFinite(joinCadenceValue) && joinCadenceValue >= 1) {
+      const normalizedCadence = Math.floor(joinCadenceValue);
+      store.keyframeInterval = normalizedCadence;
+      if (!Number.isFinite(store.defaultKeyframeInterval)) {
+        store.defaultKeyframeInterval = normalizedCadence;
+      }
+    } else {
+      store.keyframeInterval = null;
+    }
+    if (typeof store.updateRenderModeUI === "function") {
+      store.updateRenderModeUI();
     }
     const fallbackSpawnX =
       typeof store.WORLD_WIDTH === "number"
@@ -1155,6 +1197,9 @@ export function connectEvents(store) {
   store.lastStateReceivedAt = null;
   store.lastTick = null;
   store.updateDiagnostics();
+  if (typeof store.updateRenderModeUI === "function") {
+    store.updateRenderModeUI();
+  }
 
   store.socket.onopen = () => {
     store.setStatusBase(`Connected as ${store.playerId}. Use WASD or click to move.`);
@@ -1162,6 +1207,9 @@ export function connectEvents(store) {
     sendCurrentIntent(store);
     startHeartbeat(store);
     store.updateDiagnostics();
+    if (typeof store.updateRenderModeUI === "function") {
+      store.updateRenderModeUI();
+    }
   };
 
   store.socket.onmessage = (event) => {
@@ -1229,6 +1277,16 @@ export function connectEvents(store) {
         }
         store.lastStateReceivedAt = Date.now();
         store.lastTick = snapshot.lastTick;
+        if (Number.isFinite(snapshot.keyframeInterval) && snapshot.keyframeInterval >= 1) {
+          const normalizedCadence = Math.floor(snapshot.keyframeInterval);
+          store.keyframeInterval = normalizedCadence;
+          if (!Number.isFinite(store.defaultKeyframeInterval)) {
+            store.defaultKeyframeInterval = normalizedCadence;
+          }
+          if (typeof store.updateRenderModeUI === "function") {
+            store.updateRenderModeUI();
+          }
+        }
         store.updateDiagnostics();
         if (store.renderInventory) {
           store.renderInventory();
@@ -1427,6 +1485,9 @@ function closeSocketSilently(store) {
     console.error("Failed to close socket", err);
   }
   store.socket = null;
+  if (typeof store.updateRenderModeUI === "function") {
+    store.updateRenderModeUI();
+  }
 }
 
 // scheduleReconnect queues another join attempt after a delay.
@@ -1460,6 +1521,9 @@ function handleConnectionLoss(store) {
   stopKeyframeRetryLoop(store);
   store.patchState = createPatchState();
   store.updateDiagnostics();
+  if (typeof store.updateRenderModeUI === "function") {
+    store.updateRenderModeUI();
+  }
   if (store.playerId === null) {
     return;
   }

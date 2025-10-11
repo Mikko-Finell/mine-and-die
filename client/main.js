@@ -4,6 +4,7 @@ import {
   resetWorld,
   sendMoveTo,
   sendConsoleCommand,
+  setKeyframeCadence,
   DEFAULT_WORLD_SEED,
   DEFAULT_WORLD_WIDTH,
   DEFAULT_WORLD_HEIGHT,
@@ -137,6 +138,10 @@ const renderDebugPanelContent = () => html`
               <span id="diag-messages" class="diagnostic-stat__value">none</span>
             </div>
             <div class="diagnostic-stat">
+              <span class="diagnostic-stat__label">Snapshot cadence</span>
+              <span id="diag-keyframe-cadence" class="diagnostic-stat__value">—</span>
+            </div>
+            <div class="diagnostic-stat">
               <span class="diagnostic-stat__label">Patch baseline</span>
               <span id="diag-patch-baseline" class="diagnostic-stat__value">—</span>
             </div>
@@ -201,6 +206,24 @@ const renderDebugPanelContent = () => html`
             >
               Force incremental patches
             </button>
+            <label
+              class="debug-metric debug-metric--input"
+              for="keyframe-cadence-input"
+            >
+              <span class="debug-metric__label">Snapshot cadence</span>
+              <div class="debug-metric__input">
+                <input
+                  type="number"
+                  id="keyframe-cadence-input"
+                  min="1"
+                  step="1"
+                  inputmode="numeric"
+                  aria-describedby="keyframe-cadence-hint"
+                />
+                <span class="debug-metric__suffix">ticks</span>
+              </div>
+              <span id="keyframe-cadence-hint" class="debug-metric__hint">Send a full snapshot every N ticks.</span>
+            </label>
             <button
               type="button"
               class="debug-render__button"
@@ -720,9 +743,13 @@ const store = {
   isPathActive: false,
   activePathTarget: null,
   renderMode: RENDER_MODE_SNAPSHOT,
+  keyframeInterval: null,
+  defaultKeyframeInterval: null,
   heartbeatTimer: null,
   lastTimestamp: performance.now(),
   latencyInputListener: null,
+  keyframeCadenceInput: null,
+  keyframeCadenceInputListener: null,
   keys: new Set(),
   directionOrder: [],
   lastStateReceivedAt: null,
@@ -786,6 +813,25 @@ window.debugNetworkStats = () => {
   return { tick: tickValue, rttMs: rttValue };
 };
 
+function ensureCadenceForMode(mode) {
+  if (typeof store.requestKeyframeCadence !== "function") {
+    return null;
+  }
+  if (mode === RENDER_MODE_SNAPSHOT) {
+    return store.requestKeyframeCadence(1);
+  }
+  if (mode === RENDER_MODE_PATCH) {
+    const fallback =
+      Number.isFinite(store.defaultKeyframeInterval) && store.defaultKeyframeInterval >= 1
+        ? Math.floor(store.defaultKeyframeInterval)
+        : null;
+    if (fallback !== null) {
+      return store.requestKeyframeCadence(fallback);
+    }
+  }
+  return null;
+}
+
 function applyRenderMode(nextMode) {
   const resolved =
     typeof nextMode === "string" ? normalizeRenderMode(nextMode) : nextMode;
@@ -799,6 +845,7 @@ function applyRenderMode(nextMode) {
     );
     return store.renderMode;
   }
+  ensureCadenceForMode(finalMode);
   if (store.renderMode === finalMode) {
     console.info(`[render] Already using ${finalMode} rendering.`);
     return finalMode;
@@ -809,6 +856,9 @@ function applyRenderMode(nextMode) {
   console.info(`[render] Switched to ${finalMode} rendering.`);
   if (typeof store.updateDiagnostics === "function") {
     store.updateDiagnostics();
+  }
+  if (typeof store.updateRenderModeUI === "function") {
+    store.updateRenderModeUI();
   }
   return finalMode;
 }
@@ -822,6 +872,7 @@ window.debugToggleRenderMode = () =>
       ? RENDER_MODE_SNAPSHOT
       : RENDER_MODE_PATCH,
   );
+window.debugSetSnapshotCadence = (value) => requestKeyframeCadence(value);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -1078,6 +1129,16 @@ function updateDiagnostics() {
       : "";
     const base = `${store.messagesSent} (${store.bytesSent} bytes)`;
     els.messages.textContent = lastSentText ? `${base} · ${lastSentText}` : base;
+  }
+
+  if (els.keyframeCadence) {
+    const cadenceValue =
+      Number.isFinite(store.keyframeInterval) && store.keyframeInterval >= 1
+        ? Math.floor(store.keyframeInterval)
+        : null;
+    els.keyframeCadence.textContent = cadenceValue
+      ? `${cadenceValue} tick${cadenceValue === 1 ? "" : "s"}`
+      : "—";
   }
 
   if (els.patchBaseline || els.patchBatch || els.patchEntities) {
@@ -1673,6 +1734,69 @@ function handleSimulatedLatencyInput() {
   }
 }
 
+function normalizeKeyframeCadence(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1) {
+    return null;
+  }
+  return Math.floor(numeric);
+}
+
+function requestKeyframeCadence(value) {
+  const normalized = normalizeKeyframeCadence(value);
+  if (normalized === null) {
+    console.warn(`[render] Invalid snapshot cadence "${value}".`);
+    return null;
+  }
+  const current =
+    Number.isFinite(store.keyframeInterval) && store.keyframeInterval >= 1
+      ? Math.floor(store.keyframeInterval)
+      : null;
+  if (current === normalized) {
+    console.info(
+      `[render] Snapshot cadence already ${normalized} tick${normalized === 1 ? "" : "s"}.`,
+    );
+    return normalized;
+  }
+  setKeyframeCadence(store, normalized);
+  store.keyframeInterval = normalized;
+  updateDiagnostics();
+  if (typeof store.updateRenderModeUI === "function") {
+    store.updateRenderModeUI();
+  }
+  console.info(
+    `[render] Requested snapshot cadence of ${normalized} tick${normalized === 1 ? "" : "s"}.`,
+  );
+  return normalized;
+}
+
+function handleKeyframeCadenceChange() {
+  if (!store.keyframeCadenceInput) {
+    return;
+  }
+  const raw = store.keyframeCadenceInput.value;
+  if (raw === "") {
+    const current =
+      Number.isFinite(store.keyframeInterval) && store.keyframeInterval >= 1
+        ? Math.floor(store.keyframeInterval)
+        : null;
+    if (current !== null) {
+      store.keyframeCadenceInput.value = String(current);
+    }
+    return;
+  }
+  const normalized = normalizeKeyframeCadence(raw);
+  if (normalized === null) {
+    const current =
+      Number.isFinite(store.keyframeInterval) && store.keyframeInterval >= 1
+        ? Math.floor(store.keyframeInterval)
+        : null;
+    store.keyframeCadenceInput.value = current !== null ? String(current) : "";
+    return;
+  }
+  requestKeyframeCadence(normalized);
+}
+
 // attachLatencyInputListener registers the diagnostics latency input handler.
 function attachLatencyInputListener() {
   if (!store.latencyInput) {
@@ -1685,14 +1809,58 @@ function attachLatencyInputListener() {
   store.latencyInput.addEventListener("input", store.latencyInputListener);
 }
 
+function attachKeyframeCadenceListener() {
+  if (!store.keyframeCadenceInput) {
+    return;
+  }
+  if (store.keyframeCadenceInputListener) {
+    store.keyframeCadenceInput.removeEventListener(
+      "change",
+      store.keyframeCadenceInputListener,
+    );
+  }
+  store.keyframeCadenceInputListener = () => handleKeyframeCadenceChange();
+  store.keyframeCadenceInput.addEventListener(
+    "change",
+    store.keyframeCadenceInputListener,
+  );
+}
+
+function syncRenderControls() {
+  const input = store.keyframeCadenceInput;
+  if (input) {
+    const current =
+      Number.isFinite(store.keyframeInterval) && store.keyframeInterval >= 1
+        ? Math.floor(store.keyframeInterval)
+        : null;
+    if (current !== null) {
+      input.value = String(current);
+    } else {
+      input.value = "";
+    }
+    const defaultCadence =
+      Number.isFinite(store.defaultKeyframeInterval) && store.defaultKeyframeInterval >= 1
+        ? Math.floor(store.defaultKeyframeInterval)
+        : null;
+    if (defaultCadence !== null && current === null) {
+      input.placeholder = String(defaultCadence);
+    } else if (defaultCadence === null) {
+      input.placeholder = "";
+    }
+    input.disabled = !store.socket || store.socket.readyState !== WebSocket.OPEN;
+  }
+}
+
 store.setStatusBase = setStatusBase;
 store.setLatency = setLatency;
 store.updateDiagnostics = updateDiagnostics;
 store.setSimulatedLatency = (value) => setSimulatedLatency(store, value);
 store.renderInventory = renderInventory;
 store.updateWorldConfigUI = () => syncWorldResetControls();
+store.updateRenderModeUI = () => syncRenderControls();
 store.setCameraLock = setCameraLock;
 store.toggleCameraLock = toggleCameraLock;
+store.requestKeyframeCadence = (value) => requestKeyframeCadence(value);
 
 async function bootstrap() {
   await customElements.whenDefined("game-client-app");
@@ -1716,6 +1884,7 @@ async function bootstrap() {
     ["latency", "diag-latency"],
     ["simLatency", "diag-sim-latency"],
     ["messages", "diag-messages"],
+    ["keyframeCadence", "diag-keyframe-cadence"],
     ["patchBaseline", "diag-patch-baseline"],
     ["patchBatch", "diag-patch-batch"],
     ["patchEntities", "diag-patch-entities"],
@@ -1729,6 +1898,7 @@ async function bootstrap() {
   store.statusEl = document.getElementById("status");
   store.latencyDisplay = document.getElementById("latency-display");
   store.latencyInput = document.getElementById("latency-input");
+  store.keyframeCadenceInput = document.getElementById("keyframe-cadence-input");
   store.debugPanel = document.getElementById("debug-panel");
   store.debugPanelBody = document.getElementById("debug-panel-body");
   store.debugPanelToggle = document.getElementById("debug-panel-toggle");
@@ -1766,9 +1936,13 @@ async function bootstrap() {
 
   initializeDebugPanelToggle();
   attachLatencyInputListener();
+  attachKeyframeCadenceListener();
   initializeWorldResetControls();
   initializeCanvasPathing();
   setSimulatedLatency(store, 0);
+  if (typeof store.updateRenderModeUI === "function") {
+    store.updateRenderModeUI();
+  }
   updateDiagnostics();
   renderStatus();
   renderInventory();

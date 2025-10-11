@@ -8,8 +8,8 @@ import (
 )
 
 func TestStateMessage_ContainsTick(t *testing.T) {
-	hub := newHub()
-	hub.keyframeInterval = 1
+        hub := newHub()
+        hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
@@ -61,8 +61,8 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 }
 
 func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
-	hub := newHub()
-	hub.keyframeInterval = 1
+        hub := newHub()
+        hub.SetKeyframeInterval(1)
 	dt := 1.0 / float64(tickRate)
 
 	ticks := make([]uint64, 0, 3)
@@ -128,8 +128,8 @@ func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 }
 
 func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
-	hub := newHub()
-	hub.keyframeInterval = 1
+    hub := newHub()
+    hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
@@ -216,8 +216,8 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 }
 
 func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
-	hub := newHub()
-	hub.keyframeInterval = 1
+    hub := newHub()
+    hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true)
@@ -277,8 +277,8 @@ func assertResyncFlag(t *testing.T, raw []byte, expected bool) {
 }
 
 func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
-	hub := newHub()
-	hub.keyframeInterval = 1
+    hub := newHub()
+    hub.SetKeyframeInterval(1)
 
 	hub.mu.Lock()
 	hub.world.journal.AppendPatch(Patch{Kind: PatchPlayerPos, EntityID: "player-1"})
@@ -308,8 +308,8 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 }
 
 func TestMarshalStateRecordsKeyframe(t *testing.T) {
-	hub := newHub()
-	hub.keyframeInterval = 1
+    hub := newHub()
+    hub.SetKeyframeInterval(1)
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true)
 	if err != nil {
@@ -358,8 +358,8 @@ func TestMarshalStateRecordsKeyframe(t *testing.T) {
 }
 
 func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
-	hub := newHub()
-	hub.keyframeInterval = 1
+    hub := newHub()
+    hub.SetKeyframeInterval(1)
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
@@ -385,8 +385,8 @@ func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
 
 func TestHandleKeyframeRequestExpired(t *testing.T) {
 	t.Setenv(envJournalCapacity, "1")
-	hub := newHub()
-	hub.keyframeInterval = 1
+    hub := newHub()
+    hub.SetKeyframeInterval(1)
 
 	first, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
