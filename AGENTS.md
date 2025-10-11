@@ -78,7 +78,7 @@ Mine & Die is a small realtime prototype:
     maps or queues.
   - When adding or tweaking definitions, update the TypeScript sources under
     `tools/js-effects/packages/effects-lib`, run `npm run build`, and refresh the relevant guidance in
-    `docs/client.md`.
+    `docs/architecture/client.md`.
 
 ## AI System Notes
 - NPC behaviours live in JSON configs under `server/ai_configs/`. Run `gofmt` after touching any Go helpers and keep configs free of trailing comments so the embed loader stays simple.
