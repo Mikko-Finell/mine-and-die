@@ -218,15 +218,16 @@ consistent keyframe pointers.
 The test reliably reproduces the rewind-return cycle in isolation and guards
 against accidental regression masking.
 
+### Resolution
+
+The client now treats the latest patched snapshot as the primary baseline and
+only merges cached keyframes when entities are missing. Keyframe requests reuse
+the broadcast tick and the baseline sequence advances with every patch batch, so
+dedupe history reflects the most recent broadcast. Regression coverage now
+verifies that facing-only diffs retain the latest position between sparse
+keyframes.【F:client/patches.js†L540-L676】【F:client/patches.js†L1128-L1365】【F:client/__tests__/patches.test.js†L803-L904】
+
 ### Next steps
 
-* Rework patch replay to maintain a cumulative, entity-scoped baseline instead of
-  cloning from the last keyframe for each message.
-* Treat missing entities in patch batches as keyframe recovery candidates rather
-  than hard errors.
-* Advance the baseline’s sequence with each successful patch application so
-  deduplication compares against the latest state, not the static keyframe.
-
-These adjustments should eliminate positional flicker, restore ability-effect
-visibility under high cadence, and bring patch-only playback to parity with
-snapshot-every-tick behaviour.
+No outstanding work. Continue monitoring patch-mode QA with sparse keyframes to
+ensure the cumulative baseline remains stable.

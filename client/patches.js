@@ -536,6 +536,126 @@ function cloneBaselineSnapshot(baseline) {
   };
 }
 
+function ensureBaselineMaps(baseline) {
+  if (!baseline || typeof baseline !== "object") {
+    return null;
+  }
+  if (!baseline.players || typeof baseline.players !== "object") {
+    baseline.players = Object.create(null);
+  }
+  if (!baseline.npcs || typeof baseline.npcs !== "object") {
+    baseline.npcs = Object.create(null);
+  }
+  if (!baseline.effects || typeof baseline.effects !== "object") {
+    baseline.effects = Object.create(null);
+  }
+  if (!baseline.groundItems || typeof baseline.groundItems !== "object") {
+    baseline.groundItems = Object.create(null);
+  }
+  return baseline;
+}
+
+function mergeEntityMaps(target, source) {
+  if (!target || typeof target !== "object") {
+    return;
+  }
+  if (!source || typeof source !== "object") {
+    return;
+  }
+  const keys = Object.keys(source);
+  for (const key of keys) {
+    if (!Object.hasOwn(target, key)) {
+      target[key] = source[key];
+    }
+  }
+}
+
+function mergeBaselineSnapshots(primary, fallback) {
+  if (primary === fallback) {
+    return ensureBaselineMaps(primary);
+  }
+  if (!primary && !fallback) {
+    return {
+      tick: null,
+      sequence: null,
+      players: Object.create(null),
+      npcs: Object.create(null),
+      effects: Object.create(null),
+      groundItems: Object.create(null),
+    };
+  }
+  if (!primary) {
+    return ensureBaselineMaps(cloneBaselineSnapshot(fallback));
+  }
+  const baseline = ensureBaselineMaps(primary);
+  if (!fallback) {
+    return baseline;
+  }
+  const source = ensureBaselineMaps(fallback);
+  mergeEntityMaps(baseline.players, source.players);
+  mergeEntityMaps(baseline.npcs, source.npcs);
+  mergeEntityMaps(baseline.effects, source.effects);
+  mergeEntityMaps(baseline.groundItems, source.groundItems);
+  if ((baseline.tick === null || baseline.tick === undefined) && source.tick !== null && source.tick !== undefined) {
+    baseline.tick = source.tick;
+  }
+  if ((baseline.sequence === null || baseline.sequence === undefined) &&
+      source.sequence !== null && source.sequence !== undefined) {
+    baseline.sequence = source.sequence;
+  }
+  return baseline;
+}
+
+function normalizeBaselineMetadata(baseline, metadata = {}) {
+  const normalized = ensureBaselineMaps(
+    baseline && typeof baseline === "object"
+      ? baseline
+      : {
+          tick: null,
+          sequence: null,
+          players: Object.create(null),
+          npcs: Object.create(null),
+          effects: Object.create(null),
+          groundItems: Object.create(null),
+        },
+  );
+  const {
+    payloadTick = null,
+    payloadSequence = null,
+    keyframeTick = null,
+    keyframeSequence = null,
+    previousTick = null,
+    previousSequence = null,
+  } = metadata;
+
+  const resolvedPayloadTick = coerceTick(payloadTick);
+  const resolvedPayloadSequence = coerceTick(payloadSequence);
+  const resolvedKeyframeTick = coerceTick(keyframeTick);
+  const resolvedKeyframeSequence = coerceTick(keyframeSequence);
+  const resolvedPreviousTick = coerceTick(previousTick);
+  const resolvedPreviousSequence = coerceTick(previousSequence);
+
+  if (resolvedPayloadTick !== null) {
+    normalized.tick = resolvedPayloadTick;
+  } else if ((normalized.tick === null || normalized.tick === undefined) && resolvedKeyframeTick !== null) {
+    normalized.tick = resolvedKeyframeTick;
+  } else if ((normalized.tick === null || normalized.tick === undefined) && resolvedPreviousTick !== null) {
+    normalized.tick = resolvedPreviousTick;
+  }
+
+  if (resolvedPayloadSequence !== null) {
+    normalized.sequence = resolvedPayloadSequence;
+  } else if ((normalized.sequence === null || normalized.sequence === undefined) &&
+      resolvedKeyframeSequence !== null) {
+    normalized.sequence = resolvedKeyframeSequence;
+  } else if ((normalized.sequence === null || normalized.sequence === undefined) &&
+      resolvedPreviousSequence !== null) {
+    normalized.sequence = resolvedPreviousSequence;
+  }
+
+  return normalized;
+}
+
 function rememberKeyframeSnapshot(cache, baseline) {
   if (!cache || !(cache.map instanceof Map)) {
     return null;
@@ -1071,6 +1191,10 @@ export function updatePatchState(previousState, payload, options = {}) {
     : clonePatchHistory(previousHistory);
 
   const baselineFromPayload = buildBaselineFromSnapshot(payload || {});
+  const previousPatched = cloneBaselineSnapshot(state.patched);
+  const previousBaselineSnapshot = previousPatched
+    ? null
+    : cloneBaselineSnapshot(state.baseline);
   let patchList = Array.isArray(payload?.patches) ? payload.patches : [];
   const previousTick = Number.isFinite(state.lastTick) && state.lastTick >= 0
     ? Math.floor(state.lastTick)
@@ -1111,7 +1235,9 @@ export function updatePatchState(previousState, payload, options = {}) {
   const hasSnapshot = hasExplicitEntityArrays(payload);
   const messageType = typeof payload?.type === "string" ? payload.type : null;
 
-  let baseline = baselineFromPayload;
+  let baseline = hasSnapshot
+    ? baselineFromPayload
+    : previousPatched || previousBaselineSnapshot || baselineFromPayload;
   if (hasSnapshot && keyframeSeq !== null) {
     baseline.sequence = keyframeSeq;
   } else if (baseline.sequence === null && keyframeSeq !== null) {
@@ -1156,6 +1282,13 @@ export function updatePatchState(previousState, payload, options = {}) {
       totalDeferredPatchCount: totalDeferredPatches,
       lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
     };
+  }
+
+  if (normalizedKeyframeSeq !== null) {
+    const cached = getCachedKeyframe(keyframes, keyframeSeq);
+    if (cached) {
+      baseline = mergeBaselineSnapshots(baseline, cached);
+    }
   }
 
   if (hasSnapshot) {
@@ -1313,14 +1446,15 @@ export function updatePatchState(previousState, payload, options = {}) {
       totalDeferredPatchCount: totalDeferredPatches,
       lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
     };
-  } else if (normalizedKeyframeSeq !== null) {
+  } else if (normalizedKeyframeSeq !== null && !replaying) {
     const cached = getCachedKeyframe(keyframes, keyframeSeq);
-    if (cached) {
-      baseline = cached;
-    } else if (!replaying) {
-      const patchedFallback = cloneBaselineSnapshot(state.patched);
-      const baselineFallback = patchedFallback || cloneBaselineSnapshot(state.baseline);
-      const fallbackBaseline = baselineFallback;
+    if (!cached) {
+      const fallbackBaseline = baseline
+        || previousPatched
+        || previousBaselineSnapshot
+        || cloneBaselineSnapshot(state.patched)
+        || cloneBaselineSnapshot(state.baseline)
+        || baselineFromPayload;
       if (!pendingRequests.has(normalizedKeyframeSeq)) {
         pendingRequests.set(normalizedKeyframeSeq, {
           attempts: 1,
@@ -1329,7 +1463,12 @@ export function updatePatchState(previousState, payload, options = {}) {
         });
         if (requestKeyframe) {
           try {
-            requestKeyframe(normalizedKeyframeSeq, keyframeTick ?? baseline.tick ?? null, {
+            const requestTick =
+              coerceTick(keyframeTick) ??
+              coerceTick(baselineFromPayload.tick) ??
+              coerceTick(baseline?.tick) ??
+              coerceTick(fallbackBaseline?.tick);
+            requestKeyframe(normalizedKeyframeSeq, requestTick, {
               incrementAttempt: false,
               firstRequestedAt: now,
             });
@@ -1364,6 +1503,7 @@ export function updatePatchState(previousState, payload, options = {}) {
         });
       }
       if (fallbackBaseline) {
+        baseline = mergeBaselineSnapshots(baseline, fallbackBaseline);
         const fallbackPlayers = fallbackBaseline.players || Object.create(null);
         const fallbackNPCs = fallbackBaseline.npcs || Object.create(null);
         const fallbackEffects = fallbackBaseline.effects || Object.create(null);
@@ -1437,8 +1577,6 @@ export function updatePatchState(previousState, payload, options = {}) {
             fallbackBaseline.sequence = Math.floor(fallbackBaseline.sequence);
           }
         }
-
-        baseline = fallbackBaseline;
       } else {
         const trimmedErrors = trimErrors(historyEntries, errorLimit);
         const trimmedRecoveries = trimRecoveryLog(recoveryLog);
@@ -1506,6 +1644,15 @@ export function updatePatchState(previousState, payload, options = {}) {
       });
     }
   }
+
+  baseline = normalizeBaselineMetadata(baseline, {
+    payloadTick: baselineFromPayload.tick,
+    payloadSequence: baselineFromPayload.sequence,
+    keyframeTick,
+    keyframeSequence: normalizedKeyframeSeq,
+    previousTick,
+    previousSequence,
+  });
 
   const nextTick = baseline.tick;
   const nextSequence = baseline.sequence;

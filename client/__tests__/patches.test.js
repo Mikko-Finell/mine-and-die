@@ -821,12 +821,12 @@ describe("updatePatchState", () => {
     expect(next.patched.players["player-1"].x).toBe(33);
     expect(next.patched.players["player-1"].y).toBe(44);
     expect(next.lastTick).toBe(20);
-    expect(next.lastSequence).toBe(20);
+    expect(next.lastSequence).toBe(21);
     expect(next.deferredPatchCount).toBe(0);
     expect(next.totalDeferredPatchCount).toBe(0);
   });
 
-  it("regresses to the cached keyframe when cadence skips snapshots", () => {
+  it("maintains forward motion between sparse keyframes", () => {
     const seeded = freezeState(
       updatePatchState(
         createPatchState(),
@@ -898,10 +898,9 @@ describe("updatePatchState", () => {
     const regressed = updatePatchState(diagonal, facingPatch, { source: "state" });
 
     expect(regressed.patched.players["player-1"].facing).toBe("up");
-    // Known bug: the player snaps back to the cached keyframe location until the next
-    // positional patch arrives, producing the visible rewind effect during sharp turns.
-    expect(regressed.patched.players["player-1"].x).toBe(10);
-    expect(regressed.patched.players["player-1"].y).toBe(10);
+    // The cumulative baseline keeps the player at the latest patched position.
+    expect(regressed.patched.players["player-1"].x).toBe(14);
+    expect(regressed.patched.players["player-1"].y).toBe(12);
 
     const recovery = updatePatchState(
       regressed,
@@ -970,8 +969,8 @@ describe("updatePatchState", () => {
     expect(Array.isArray(next.pendingReplays) ? next.pendingReplays.length : 0).toBe(1);
     expect(next.deferredPatchCount).toBe(0);
     expect(next.totalDeferredPatchCount).toBe(0);
-    expect(next.lastTick).toBe(12);
-    expect(next.lastSequence).toBe(12);
+    expect(next.lastTick).toBe(13);
+    expect(next.lastSequence).toBe(13);
   });
 
   it("ignores duplicate keyframes after applying the deferred replay", () => {
