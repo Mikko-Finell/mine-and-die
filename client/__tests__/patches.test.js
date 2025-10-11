@@ -769,6 +769,53 @@ describe("updatePatchState", () => {
     expect(replayed.lastDeferredReplayLatencyMs).toBe(60);
   });
 
+  it("records unknown entity errors when effect patches precede the keyframe", () => {
+    const seeded = updatePatchState(
+      createPatchState(),
+      deepFreeze({
+        t: 18,
+        sequence: 18,
+        players: [makePlayer()],
+        npcs: [],
+        effects: [],
+        groundItems: [],
+      }),
+      { source: "join" },
+    );
+    freezeState(seeded);
+
+    const payload = deepFreeze({
+      t: 19,
+      sequence: 20660,
+      keyframeSeq: 18,
+      patches: [
+        {
+          kind: PATCH_KIND_EFFECT_POS,
+          entityId: "effect-99",
+          payload: { x: 12, y: 34 },
+        },
+        {
+          kind: PATCH_KIND_EFFECT_PARAMS,
+          entityId: "effect-99",
+          payload: { params: { remaining: 0.5 } },
+        },
+      ],
+    });
+
+    const result = updatePatchState(seeded, payload, { source: "state" });
+
+    expect(result.lastAppliedPatchCount).toBe(0);
+    expect(Object.keys(result.baseline.effects)).toEqual([]);
+    expect(Object.keys(result.patched.effects)).toEqual([]);
+    expect(result.errors.some((error) => error.message === "unknown entity for patch")).toBe(true);
+    expect(result.lastError).toMatchObject({
+      kind: PATCH_KIND_EFFECT_PARAMS,
+      entityId: "effect-99",
+      message: "unknown entity for patch",
+      source: "state",
+    });
+  });
+
   it("keeps tick and sequence monotonic when replaying from a fallback snapshot", () => {
     const seeded = updatePatchState(
       createPatchState(),
