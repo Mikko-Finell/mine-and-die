@@ -132,6 +132,26 @@ func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityI
 	return nil
 }
 
+func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityID string, kind PatchKind, mutate func(eq *Equipment) error) error {
+	if w == nil || actor == nil || version == nil || entityID == "" || mutate == nil {
+		return nil
+	}
+
+	before := actor.Equipment.Clone()
+	if err := mutate(&actor.Equipment); err != nil {
+		actor.Equipment = before
+		return err
+	}
+
+	if equipmentsEqual(before, actor.Equipment) {
+		return nil
+	}
+
+	*version++
+	w.appendPatch(kind, entityID, EquipmentPayload{Slots: cloneEquipmentSlots(actor.Equipment.Slots)})
+	return nil
+}
+
 // positionsEqual reports whether two coordinate pairs are effectively the same.
 func positionsEqual(ax, ay, bx, by float64) bool {
 	return math.Abs(ax-bx) <= positionEpsilon && math.Abs(ay-by) <= positionEpsilon
@@ -221,6 +241,24 @@ func (w *World) MutateInventory(playerID string, mutate func(inv *Inventory) err
 	}
 
 	return w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, mutate)
+}
+
+// MutateEquipment applies the provided mutation to an actor's equipment while preserving patches.
+// The actor can be either a player or an NPC, and the correct patch kind is emitted automatically.
+func (w *World) MutateEquipment(entityID string, mutate func(eq *Equipment) error) error {
+	if w == nil || mutate == nil || entityID == "" {
+		return nil
+	}
+
+	if player, ok := w.players[entityID]; ok {
+		return w.mutateActorEquipment(&player.actorState, &player.version, entityID, PatchPlayerEquipment, mutate)
+	}
+
+	if npc, ok := w.npcs[entityID]; ok {
+		return w.mutateActorEquipment(&npc.actorState, &npc.version, entityID, PatchNPCEquipment, mutate)
+	}
+
+	return nil
 }
 
 // SetNPCPosition updates an NPC's position, bumps the version, and records a patch.

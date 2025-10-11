@@ -38,6 +38,7 @@ func newTestPlayerState(id string) *playerState {
 				ID:        id,
 				Facing:    defaultFacing,
 				Inventory: NewInventory(),
+				Equipment: NewEquipment(),
 				Health:    baselinePlayerMaxHealth,
 				MaxHealth: baselinePlayerMaxHealth,
 			},
@@ -1976,6 +1977,69 @@ func TestDeathDropsPlayerInventory(t *testing.T) {
 	}
 	if totals[ItemTypeHealthPotion] != 2 {
 		t.Fatalf("expected ground potion quantity 2, got %d", totals[ItemTypeHealthPotion])
+	}
+}
+
+func TestEquipConsoleCommandUpdatesStats(t *testing.T) {
+	hub := newHub()
+
+	playerID := "player-equip"
+	player := newTestPlayerState(playerID)
+	hub.world.AddPlayer(player)
+
+	if err := hub.world.MutateInventory(playerID, func(inv *Inventory) error {
+		inv.Slots = nil
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeIronDagger, Quantity: 1})
+		return err
+	}); err != nil {
+		t.Fatalf("failed to seed dagger: %v", err)
+	}
+
+	baseMight := player.stats.GetTotal(stats.StatMight)
+	baseHealth := player.stats.GetDerived(stats.DerivedMaxHealth)
+
+	ack, handled := hub.HandleConsoleCommand(playerID, "equip_slot", 0)
+	if !handled {
+		t.Fatalf("expected equip command to be handled")
+	}
+	if ack.Status != "ok" {
+		t.Fatalf("expected equip success, got %+v", ack)
+	}
+	if ack.Slot != string(EquipSlotMainHand) {
+		t.Fatalf("expected equip slot %s, got %s", EquipSlotMainHand, ack.Slot)
+	}
+
+	if player.stats.GetTotal(stats.StatMight) <= baseMight {
+		t.Fatalf("expected might to increase after equip")
+	}
+	equippedHealth := player.stats.GetDerived(stats.DerivedMaxHealth)
+	if equippedHealth <= baseHealth {
+		t.Fatalf("expected max health to increase, got %.2f <= %.2f", equippedHealth, baseHealth)
+	}
+	if _, ok := player.Equipment.Get(EquipSlotMainHand); !ok {
+		t.Fatalf("expected main hand to be occupied after equip")
+	}
+	if qty := player.Inventory.QuantityOf(ItemTypeIronDagger); qty != 0 {
+		t.Fatalf("expected inventory to consume dagger, remaining %d", qty)
+	}
+
+	unequipAck, handled := hub.HandleConsoleCommand(playerID, "unequip_slot", 0)
+	if !handled {
+		t.Fatalf("expected unequip command to be handled")
+	}
+	if unequipAck.Status != "ok" {
+		t.Fatalf("expected unequip success, got %+v", unequipAck)
+	}
+	if qty := player.Inventory.QuantityOf(ItemTypeIronDagger); qty != 1 {
+		t.Fatalf("expected dagger returned to inventory, got %d", qty)
+	}
+	player.stats.Resolve(hub.world.currentTick)
+	if player.stats.GetTotal(stats.StatMight) != baseMight {
+		t.Fatalf("expected might to return to baseline %.2f, got %.2f", baseMight, player.stats.GetTotal(stats.StatMight))
+	}
+	restoredHealth := player.stats.GetDerived(stats.DerivedMaxHealth)
+	if math.Abs(restoredHealth-baseHealth) > 1e-6 {
+		t.Fatalf("expected health to return to baseline %.2f, got %.2f", baseHealth, restoredHealth)
 	}
 }
 

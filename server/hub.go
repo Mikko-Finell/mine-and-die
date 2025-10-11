@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	stdlog "log"
 	"sync"
@@ -155,6 +156,7 @@ func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 				Health:    maxHealth,
 				MaxHealth: maxHealth,
 				Inventory: inventory,
+				Equipment: NewEquipment(),
 			},
 		},
 		stats:         statsComp,
@@ -459,6 +461,56 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 		}
 		go h.broadcastState(nil, nil, nil, nil, groundItems)
 		return ack, true
+	case "equip_slot":
+		if qty < 0 {
+			ack.Status = "error"
+			ack.Reason = "invalid_inventory_slot"
+			return ack, true
+		}
+		h.mu.Lock()
+		if _, ok := h.world.players[playerID]; !ok {
+			h.mu.Unlock()
+			ack.Status = "error"
+			ack.Reason = "unknown_actor"
+			return ack, true
+		}
+		slot, err := h.world.EquipFromInventory(playerID, qty)
+		h.mu.Unlock()
+		if err != nil {
+			ack.Status = "error"
+			ack.Reason = equipErrorReason(err)
+			return ack, true
+		}
+		ack.Status = "ok"
+		ack.Slot = string(slot)
+		go h.broadcastState(nil, nil, nil, nil, nil)
+		return ack, true
+	case "unequip_slot":
+		slot, ok := equipSlotFromOrdinal(qty)
+		if !ok {
+			ack.Status = "error"
+			ack.Reason = "invalid_equip_slot"
+			return ack, true
+		}
+		h.mu.Lock()
+		if _, exists := h.world.players[playerID]; !exists {
+			h.mu.Unlock()
+			ack.Status = "error"
+			ack.Reason = "unknown_actor"
+			return ack, true
+		}
+		item, err := h.world.UnequipToInventory(playerID, slot)
+		h.mu.Unlock()
+		if err != nil {
+			ack.Status = "error"
+			ack.Reason = equipErrorReason(err)
+			return ack, true
+		}
+		ack.Status = "ok"
+		ack.Slot = string(slot)
+		ack.Qty = item.Quantity
+		go h.broadcastState(nil, nil, nil, nil, nil)
+		return ack, true
 	case "pickup_gold":
 		h.mu.Lock()
 		player, ok := h.world.players[playerID]
@@ -555,6 +607,27 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 		ack.Status = "error"
 		ack.Reason = "unknown_command"
 		return ack, true
+	}
+}
+
+func equipErrorReason(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, errEquipUnknownActor):
+		return "unknown_actor"
+	case errors.Is(err, errEquipInvalidInventorySlot):
+		return "invalid_inventory_slot"
+	case errors.Is(err, errEquipEmptySlot):
+		return "empty_slot"
+	case errors.Is(err, errEquipNotEquippable):
+		return "not_equippable"
+	case errors.Is(err, errUnequipInvalidSlot):
+		return "invalid_equip_slot"
+	case errors.Is(err, errUnequipEmptySlot):
+		return "slot_empty"
+	default:
+		return "internal_error"
 	}
 }
 

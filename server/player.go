@@ -16,6 +16,7 @@ type Actor struct {
 	Health    float64         `json:"health"`
 	MaxHealth float64         `json:"maxHealth"`
 	Inventory Inventory       `json:"inventory"`
+	Equipment Equipment       `json:"equipment"`
 }
 
 // Player mirrors the actor state for human-controlled characters.
@@ -120,6 +121,7 @@ func (s *actorState) snapshotActor() Actor {
 		actor.Facing = defaultFacing
 	}
 	actor.Inventory = s.Inventory.Clone()
+	actor.Equipment = s.Equipment.Clone()
 	return actor
 }
 

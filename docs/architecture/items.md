@@ -45,6 +45,13 @@ cts mismatches, and only merges stacks when the definition is stackable **and** 
 - Slot operations (`MoveStacks`, `Drain`, `RemoveQuantity`) propagate stored keys so later merges remain consistent across the h
 ub, player state, and networking payloads.【F:server/inventory.go†L168-L218】
 
+### Equipment
+- `Equipment` maintains a deterministic slice of `EquippedItem` entries ordered by slot, enabling snapshots and patches to emit stable payloads.【F:server/equipment.go†L10-L120】
+- `equipmentDeltaForDefinition` maps canonical item modifiers onto `stats.LayerEquipment`, allowing equipping and unequipping to feed through the existing stat engine without bespoke maths.【F:server/equipment.go†L122-L145】【F:server/world_equipment.go†L19-L112】
+- `World.MutateEquipment` centralises patch-aware equipment mutations for both players and NPCs so downstream flows (death drops, scripted swaps) do not need separate helpers.【F:server/world_mutators.go†L230-L272】
+- `World.EquipFromInventory`/`World.UnequipToInventory` remove items from inventories, update the equipment container, adjust stats, and emit patches; helper commands `equip_slot` / `unequip_slot` surface the flow for diagnostics via the console handler.【F:server/world_equipment.go†L19-L112】【F:server/hub.go†L438-L520】
+- Death drops now drain equipped slots alongside inventories so ground stacks reflect the complete loadout state.【F:server/ground_items.go†L195-L232】
+
 ### Ground Items
 - `World.upsertGroundItem` indexes stacks by fungibility key, auto-populating keys from the catalog and merging counts in place 
 when definitions permit stacking.【F:server/ground_items.go†L1-L140】
@@ -55,9 +62,6 @@ when definitions permit stacking.【F:server/ground_items.go†L1-L140】
 - `server/inventory_test.go` exercises stacking based on the combined `stackable` flag and fungibility key while ensuring helper operations preserve stored keys.【F:server/inventory_test.go†L1-L95】
 
 ## Extension Roadmap
-- **Client schema consumption** – Decide whether to serve the catalog via HTTP or embed it during build so the UI stops reading 
-legacy presentation fields directly.
-- **Equipment & stats** – Implement equip slots, modifier application, and stat recalculation pipelines that consume the schema 
-data.
-- **Catalog authoring** – Expand coverage beyond the seed set and consider external authoring sources if hand-written definitio
-ns become cumbersome.
+- **Client schema consumption** – Decide whether to serve the catalog via HTTP or embed it during build so the UI stops reading legacy presentation fields directly.
+- **Equipment passives** – Layer triggered abilities and conditional bonuses on top of the existing modifier plumbing.
+- **Catalog authoring** – Expand coverage beyond the seed set and consider external authoring sources if hand-written definitions become cumbersome.

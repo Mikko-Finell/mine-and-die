@@ -76,6 +76,7 @@ type consoleAckMessage struct {
 	Reason  string `json:"reason,omitempty"`
 	Qty     int    `json:"qty,omitempty"`
 	StackID string `json:"stackId,omitempty"`
+	Slot    string `json:"slot,omitempty"`
 }
 
 type heartbeatMessage struct {

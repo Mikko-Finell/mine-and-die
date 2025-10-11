@@ -27,17 +27,21 @@ const (
 	PatchPlayerIntent PatchKind = "player_intent"
 	// PatchPlayerHealth updates a player's health pool.
 	PatchPlayerHealth PatchKind = "player_health"
-	// PatchPlayerInventory updates a player's inventory slots.
-	PatchPlayerInventory PatchKind = "player_inventory"
+        // PatchPlayerInventory updates a player's inventory slots.
+        PatchPlayerInventory PatchKind = "player_inventory"
+        // PatchPlayerEquipment updates a player's equipment loadout.
+        PatchPlayerEquipment PatchKind = "player_equipment"
 
-	// PatchNPCPos updates an NPC's position.
-	PatchNPCPos PatchKind = "npc_pos"
-	// PatchNPCFacing updates an NPC's facing direction.
-	PatchNPCFacing PatchKind = "npc_facing"
-	// PatchNPCHealth updates an NPC's health pool.
-	PatchNPCHealth PatchKind = "npc_health"
-	// PatchNPCInventory updates an NPC's inventory slots.
-	PatchNPCInventory PatchKind = "npc_inventory"
+        // PatchNPCPos updates an NPC's position.
+        PatchNPCPos PatchKind = "npc_pos"
+        // PatchNPCFacing updates an NPC's facing direction.
+        PatchNPCFacing PatchKind = "npc_facing"
+        // PatchNPCHealth updates an NPC's health pool.
+        PatchNPCHealth PatchKind = "npc_health"
+        // PatchNPCInventory updates an NPC's inventory slots.
+        PatchNPCInventory PatchKind = "npc_inventory"
+        // PatchNPCEquipment updates an NPC's equipment loadout.
+        PatchNPCEquipment PatchKind = "npc_equipment"
 
 	// PatchEffectPos updates an effect's position.
 	PatchEffectPos PatchKind = "effect_pos"
@@ -106,7 +110,7 @@ type NPCHealthPayload = HealthPayload
 
 // InventoryPayload captures the inventory slots for an entity patch.
 type InventoryPayload struct {
-	Slots []InventorySlot `json:"slots"`
+        Slots []InventorySlot `json:"slots"`
 }
 
 // PlayerInventoryPayload captures the inventory slots for a player patch.
@@ -114,6 +118,17 @@ type PlayerInventoryPayload = InventoryPayload
 
 // NPCInventoryPayload captures the inventory slots for an NPC patch.
 type NPCInventoryPayload = InventoryPayload
+
+// EquipmentPayload captures the equipped items for an entity patch.
+type EquipmentPayload struct {
+        Slots []EquippedItem `json:"slots"`
+}
+
+// PlayerEquipmentPayload captures the equipped items for a player patch.
+type PlayerEquipmentPayload = EquipmentPayload
+
+// NPCEquipmentPayload captures the equipped items for an NPC patch.
+type NPCEquipmentPayload = EquipmentPayload
 
 // EffectParamsPayload captures the mutable parameters for an effect patch.
 type EffectParamsPayload struct {
