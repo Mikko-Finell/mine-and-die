@@ -197,18 +197,36 @@ func (w *World) dropAllInventory(actor *actorState, reason string) int {
 		return 0
 	}
 	var stacks []ItemStack
+	var equipmentStacks []ItemStack
 	if _, ok := w.players[actor.ID]; ok {
 		_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
 			stacks = inv.DrainAll()
 			return nil
 		})
+		if player, ok := w.players[actor.ID]; ok {
+			equipmentStacks = w.drainEquipment(&player.actorState, &player.version, player.ID, PatchPlayerEquipment, PatchPlayerHealth, &player.stats)
+		}
 	} else if npc, ok := w.npcs[actor.ID]; ok {
 		_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
 			stacks = inv.DrainAll()
 			return nil
 		})
+		equipmentStacks = w.drainEquipment(&npc.actorState, &npc.version, npc.ID, PatchNPCEquipment, PatchNPCHealth, &npc.stats)
 	} else {
 		stacks = actor.Inventory.DrainAll()
+		drained := actor.Equipment.DrainAll()
+		if len(drained) > 0 {
+			equipmentStacks = make([]ItemStack, 0, len(drained))
+			for _, entry := range drained {
+				if entry.Item.Type == "" || entry.Item.Quantity <= 0 {
+					continue
+				}
+				equipmentStacks = append(equipmentStacks, entry.Item)
+			}
+		}
+	}
+	if len(equipmentStacks) > 0 {
+		stacks = append(stacks, equipmentStacks...)
 	}
 	if len(stacks) == 0 {
 		return 0
