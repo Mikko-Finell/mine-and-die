@@ -873,12 +873,13 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	cfg := h.config
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
-	effectManagerActive := enableContractEffectManager && h.world.effectManager != nil
+	effectManagerPresent := enableContractEffectManager && h.world.effectManager != nil
+	effectTransportEnabled := effectManagerPresent && enableContractEffectTransport
 	journal := &h.world.journal
 	h.mu.Unlock()
 
 	effectBatch := EffectEventBatch{}
-	if effectManagerActive {
+	if effectManagerPresent {
 		if drainPatches {
 			effectBatch = journal.DrainEffectEvents()
 		} else {
@@ -1017,15 +1018,17 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	if resync {
 		msg.Resync = true
 	}
-	msg.EffectSpawns = effectBatch.Spawns
-	msg.EffectUpdates = effectBatch.Updates
-	msg.EffectEnds = effectBatch.Ends
-	if len(effectBatch.LastSeqByID) > 0 {
-		msg.EffectSeqCursors = effectBatch.LastSeqByID
+	if effectTransportEnabled {
+		msg.EffectSpawns = effectBatch.Spawns
+		msg.EffectUpdates = effectBatch.Updates
+		msg.EffectEnds = effectBatch.Ends
+		if len(effectBatch.LastSeqByID) > 0 {
+			msg.EffectSeqCursors = effectBatch.LastSeqByID
+		}
 	}
 
 	entities := len(msg.Players) + len(msg.NPCs) + len(msg.Obstacles) + len(msg.Effects) + len(msg.EffectTriggers) + len(msg.GroundItems)
-	if len(msg.EffectSpawns) > 0 || len(msg.EffectUpdates) > 0 || len(msg.EffectEnds) > 0 {
+	if effectTransportEnabled && (len(msg.EffectSpawns) > 0 || len(msg.EffectUpdates) > 0 || len(msg.EffectEnds) > 0) {
 		entities += len(msg.EffectSpawns) + len(msg.EffectUpdates) + len(msg.EffectEnds)
 	}
 	data, err := json.Marshal(msg)

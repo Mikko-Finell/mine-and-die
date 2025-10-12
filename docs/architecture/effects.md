@@ -99,12 +99,28 @@ when `includeSnapshot` is `false`, leaving clients to reuse the last keyframe.
 field is omitted and only `effectTriggers` deliver transient visuals for that
 tick.【F:server/hub.go†L933-L977】【F:server/messages.go†L18-L46】
 
+When the unified contract transport is toggled on (via
+`enableContractEffectTransport` in [`server/constants.go`](../../server/constants.go)),
+`marshalState` also appends the dual-write lifecycle envelopes to the payload:
+
+1. `effect_spawned`
+2. `effect_update`
+3. `effect_ended`
+4. `effect_seq_cursors`
+
+These fields mirror the journal batch returned by
+`Journal.DrainEffectEvents`. They only appear when the contract manager is
+active *and* the transport flag is enabled so legacy clients do not encounter
+unexpected JSON members. The cursor map (`effect_seq_cursors`) supplies the
+latest `(effectID → seq)` pairs so downstream consumers can drop duplicates and
+stay in lockstep with the server.【F:server/hub.go†L876-L1031】【F:server/patches.go†L191-L432】
+
 `marshalState` also stamps every payload with a monotonically increasing
 `sequence` and tracks the most recent `keyframeSeq`. Initial state pushes set the
 `resync` flag because they do not drain patches; ongoing broadcasts clear the
 flag unless the hub explicitly schedules a resync. The `keyframeInterval`
 reported in the payload reflects the current cadence (default 1, meaning every
-tick is a keyframe) and is updated whenever the interval changes.【F:server/hub.go†L894-L1015】
+tick is a keyframe) and is updated whenever the interval changes.【F:server/hub.go†L894-L1031】
 
 #### Example payloads
 

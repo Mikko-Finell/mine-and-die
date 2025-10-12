@@ -216,9 +216,14 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 }
 
 func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
-	originalFlag := enableContractEffectManager
+	originalManager := enableContractEffectManager
+	originalTransport := enableContractEffectTransport
 	enableContractEffectManager = true
-	defer func() { enableContractEffectManager = originalFlag }()
+	enableContractEffectTransport = true
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractEffectTransport = originalTransport
+	}()
 
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
@@ -293,6 +298,55 @@ func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
 	}
 	if _, present := payload["effect_seq_cursors"]; present {
 		t.Fatalf("expected effect_seq_cursors to be cleared after broadcast")
+	}
+}
+
+func TestStateMessageOmitsEffectEventsWhenTransportDisabled(t *testing.T) {
+	originalManager := enableContractEffectManager
+	originalTransport := enableContractEffectTransport
+	enableContractEffectManager = true
+	enableContractEffectTransport = false
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractEffectTransport = originalTransport
+	}()
+
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+
+	if hub.world.effectManager == nil {
+		t.Fatalf("expected effect manager to be initialized when manager flag enabled")
+	}
+
+	hub.world.effectManager.EnqueueIntent(EffectIntent{
+		TypeID:   effectTypeAttack,
+		Delivery: DeliveryKindArea,
+		Geometry: EffectGeometry{Shape: GeometryShapeRect},
+	})
+
+	hub.advance(time.Now(), 1.0/float64(tickRate))
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+
+	if _, present := payload["effect_spawned"]; present {
+		t.Fatalf("expected effect_spawned to be gated when transport disabled")
+	}
+	if _, present := payload["effect_update"]; present {
+		t.Fatalf("expected effect_update to be gated when transport disabled")
+	}
+	if _, present := payload["effect_ended"]; present {
+		t.Fatalf("expected effect_ended to be gated when transport disabled")
+	}
+	if _, present := payload["effect_seq_cursors"]; present {
+		t.Fatalf("expected effect_seq_cursors to be gated when transport disabled")
 	}
 }
 
