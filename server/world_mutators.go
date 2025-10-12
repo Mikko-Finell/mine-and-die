@@ -334,6 +334,7 @@ func (w *World) SetEffectPosition(eff *effectState, x, y float64) {
 	eff.version++
 
 	w.appendPatch(PatchEffectPos, eff.ID, EffectPosPayload{X: x, Y: y})
+	w.recordEffectUpdate(eff, "position")
 }
 
 // SetEffectParam updates or inserts a parameter for an effect and records a patch when it changes.
@@ -354,6 +355,7 @@ func (w *World) SetEffectParam(eff *effectState, key string, value float64) {
 	eff.version++
 
 	w.appendPatch(PatchEffectParams, eff.ID, EffectParamsPayload{Params: cloneEffectParams(eff.Params)})
+	w.recordEffectUpdate(eff, "param")
 }
 
 // SetGroundItemPosition updates a ground item's position, bumps the version, and records a patch.

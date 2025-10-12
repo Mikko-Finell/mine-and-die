@@ -80,6 +80,7 @@ type World struct {
 	seed                string
 	publisher           logging.Publisher
 	currentTick         uint64
+	telemetry           *telemetryCounters
 
 	groundItems       map[string]*groundItemState
 	groundItemsByTile map[groundTileKey]map[string]*groundItemState
@@ -133,6 +134,7 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		rng:                 newDeterministicRNG(normalized.Seed, "world"),
 		seed:                normalized.Seed,
 		publisher:           publisher,
+		telemetry:           nil,
 		groundItems:         make(map[string]*groundItemState),
 		groundItemsByTile:   make(map[groundTileKey]map[string]*groundItemState),
 		journal:             newJournal(capacity, maxAge),
