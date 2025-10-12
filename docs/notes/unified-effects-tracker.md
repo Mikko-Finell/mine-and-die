@@ -84,7 +84,7 @@ Statuses use the following scale:
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
 | Contract types & enums | Complete | :white_check_mark: Added `server/effects_contract.go` with contract structs, enums, and deterministic transport payloads. | Mirrors `effect-system-unification.md` spec; includes `Seq`/`Tick`, `FollowMode`, `EndReason`, and `ReplicationSpec` scaffolding. |
-| Server EffectManager skeleton | In Progress | Introduce manager struct, enqueue API, and tick scaffolding behind feature flag. | Skeleton lives behind `enableContractEffectManager`; `server/effects_manager.go` queues intents and drains per tick while legacy triggers continue driving gameplay until spawn/update/end wiring lands. |
+| Server EffectManager skeleton | In Progress | Introduce manager struct, enqueue API, and tick scaffolding behind feature flag. Next slice wires spawn/update/end orchestration onto the skeleton. | Skeleton lives behind `enableContractEffectManager`; `server/effects_manager.go` now records both `totalEnqueued` and `totalDrained` counters each tick so we can verify the queue fully flushes while legacy triggers remain authoritative. |
 | Deterministic math helpers | Not Started | Implement fixed-point geometry utilities with table-driven tests. | Use integer quantization consistent with client expectations. |
 
 ### Phase 2 — Transport & Journal (Dual-Write Rollout)
@@ -133,11 +133,12 @@ Statuses use the following scale:
 
 ## Change Log
 
-| Date | Update | Author |
+| Entry | Update | Author |
 | --- | --- | --- |
-| 2025-10-14 | Landed unified contract structs/enums and deterministic transport events in `server/effects_contract.go`; marked the Phase 1 contract deliverable complete. | gpt-5-codex |
-| 2025-10-13 | Wired effect telemetry counters, exposed diagnostics metrics, and marked the Phase 0 telemetry deliverable complete. | gpt-5-codex |
-| 2025-10-12 | Catalogued effect regression test red list and closed the Phase 0 baseline test deliverable. | gpt-5-codex |
-| 2025-10-11 | Recorded snapshot payload audit and marked the Phase 0 wire documentation deliverable complete. | gpt-5-codex |
-| 2025-02-14 | Initial tracker created. Phase 0 map tooling marked Ready to Start with recommended first PR. | gpt-5-codex |
+| 6 | Hardened the server `EffectManager` skeleton by clearing staged intents every tick and tracking `totalDrained` alongside `totalEnqueued` to validate parity before spawn/update/end orchestration lands. | gpt-5-codex |
+| 5 | Landed unified contract structs/enums and deterministic transport events in `server/effects_contract.go`; marked the Phase 1 contract deliverable complete. | gpt-5-codex |
+| 4 | Wired effect telemetry counters, exposed diagnostics metrics, and marked the Phase 0 telemetry deliverable complete. | gpt-5-codex |
+| 3 | Catalogued effect regression test red list and closed the Phase 0 baseline test deliverable. | gpt-5-codex |
+| 2 | Recorded snapshot payload audit and marked the Phase 0 wire documentation deliverable complete. | gpt-5-codex |
+| 1 | Initial tracker created. Phase 0 map tooling marked Ready to Start with recommended first PR. | gpt-5-codex |
 
