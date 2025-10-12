@@ -67,6 +67,7 @@ type World struct {
 	npcs                map[string]*npcState
 	effects             []*effectState
 	effectTriggers      []EffectTrigger
+	effectManager       *EffectManager
 	obstacles           []Obstacle
 	effectBehaviors     map[string]effectBehavior
 	projectileTemplates map[string]*ProjectileTemplate
@@ -138,6 +139,9 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		groundItems:         make(map[string]*groundItemState),
 		groundItemsByTile:   make(map[groundTileKey]map[string]*groundItemState),
 		journal:             newJournal(capacity, maxAge),
+	}
+	if enableContractEffectManager {
+		w.effectManager = newEffectManager()
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
@@ -409,8 +413,24 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	for _, action := range stagedActions {
 		switch action.command.Name {
 		case effectTypeAttack:
+			if enableContractEffectManager && w.effectManager != nil {
+				w.effectManager.EnqueueIntent(EffectIntent{
+					TypeID:        effectTypeAttack,
+					Delivery:      DeliveryKindArea,
+					SourceActorID: action.actorID,
+					Geometry:      EffectGeometry{Shape: GeometryShapeRect},
+				})
+			}
 			w.triggerMeleeAttack(action.actorID, tick, now)
 		case effectTypeFireball:
+			if enableContractEffectManager && w.effectManager != nil {
+				w.effectManager.EnqueueIntent(EffectIntent{
+					TypeID:        effectTypeFireball,
+					Delivery:      DeliveryKindTarget,
+					SourceActorID: action.actorID,
+					Geometry:      EffectGeometry{Shape: GeometryShapeCircle},
+				})
+			}
 			w.triggerFireball(action.actorID, now)
 		}
 	}
@@ -426,6 +446,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 	w.applyEnvironmentalConditions(actorsForHazards, now)
 
 	w.advanceConditions(now)
+	if enableContractEffectManager && w.effectManager != nil {
+		w.effectManager.RunTick(Tick(int64(tick)))
+	}
 	w.advanceEffects(now, dt)
 	w.pruneEffects(now)
 	w.pruneDefeatedNPCs()
