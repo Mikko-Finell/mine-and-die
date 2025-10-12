@@ -85,7 +85,7 @@ Statuses use the following scale:
 | --- | --- | --- | --- |
 | Contract types & enums | Complete | :white_check_mark: Added `server/effects_contract.go` with contract structs, enums, and deterministic transport payloads. | Mirrors `effect-system-unification.md` spec; includes `Seq`/`Tick`, `FollowMode`, `EndReason`, and `ReplicationSpec` scaffolding. |
 | Server EffectManager skeleton | In Progress | Introduce manager struct, enqueue API, and tick scaffolding behind feature flag. Next slice wires spawn/update/end orchestration onto the skeleton. | Skeleton lives behind `enableContractEffectManager`; `server/effects_manager.go` now records both `totalEnqueued` and `totalDrained` counters each tick so we can verify the queue fully flushes while legacy triggers remain authoritative. |
-| Deterministic math helpers | Not Started | Implement fixed-point geometry utilities with table-driven tests. | Use integer quantization consistent with client expectations. |
+| Deterministic math helpers | Complete | :white_check_mark: Added fixed-point coordinate/geometry helpers in `server/effects_math.go` with table-driven tests covering AoE, segment, and capsule intersections. | Uses integer quantization consistent with client expectations. |
 
 ### Phase 2 — Transport & Journal (Dual-Write Rollout)
 
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 7 | Landed deterministic fixed-point math helpers (`server/effects_math.go`) plus table-driven coverage for AoE, segment, and capsule intersections to satisfy the Phase 1 math deliverable. | gpt-5-codex |
 | 6 | Hardened the server `EffectManager` skeleton by clearing staged intents every tick and tracking `totalDrained` alongside `totalEnqueued` to validate parity before spawn/update/end orchestration lands. | gpt-5-codex |
 | 5 | Landed unified contract structs/enums and deterministic transport events in `server/effects_contract.go`; marked the Phase 1 contract deliverable complete. | gpt-5-codex |
 | 4 | Wired effect telemetry counters, exposed diagnostics metrics, and marked the Phase 0 telemetry deliverable complete. | gpt-5-codex |
