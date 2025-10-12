@@ -60,3 +60,164 @@ func TestJournalEvictsByAge(t *testing.T) {
 		t.Fatalf("unexpected window after expiry: oldest=%d newest=%d", result.OldestSequence, result.NewestSequence)
 	}
 }
+
+func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
+	journal := newJournal(0, 0)
+	journal.AttachTelemetry(newTelemetryCounters())
+
+	extra := map[string]int{"damage": 15}
+	spawn := journal.RecordEffectSpawn(EffectSpawnEvent{
+		Tick: 10,
+		Instance: EffectInstance{
+			ID: "effect-1",
+			DeliveryState: EffectDeliveryState{
+				Geometry: EffectGeometry{Shape: GeometryShapeCircle, Radius: 4},
+			},
+			BehaviorState: EffectBehaviorState{TicksRemaining: 5, Extra: extra},
+			Replication:   ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true},
+		},
+	})
+
+	if spawn.Seq != 1 {
+		t.Fatalf("expected spawn sequence 1, got %d", spawn.Seq)
+	}
+	if spawn.Instance.ID != "effect-1" {
+		t.Fatalf("expected spawn instance id to be preserved")
+	}
+
+	extra["damage"] = 30
+	if spawn.Instance.BehaviorState.Extra["damage"] != 15 {
+		t.Fatalf("expected spawn clone to protect behavior state map")
+	}
+
+	params := map[string]int{"damage": 20}
+	update := journal.RecordEffectUpdate(EffectUpdateEvent{
+		Tick:   11,
+		ID:     "effect-1",
+		Params: params,
+	})
+	if update.Seq != 2 {
+		t.Fatalf("expected update sequence 2, got %d", update.Seq)
+	}
+	params["damage"] = 35
+	if update.Params["damage"] != 20 {
+		t.Fatalf("expected update params to be cloned from input")
+	}
+
+	end := journal.RecordEffectEnd(EffectEndEvent{Tick: 12, ID: "effect-1", Reason: EndReasonExpired})
+	if end.Seq != 3 {
+		t.Fatalf("expected end sequence 3, got %d", end.Seq)
+	}
+
+	snapshot := journal.SnapshotEffectEvents()
+	if len(snapshot.Spawns) != 1 || len(snapshot.Updates) != 1 || len(snapshot.Ends) != 1 {
+		t.Fatalf("expected snapshot to include all staged events: %+v", snapshot)
+	}
+	if snapshot.LastSeqByID["effect-1"] != 3 {
+		t.Fatalf("expected snapshot cursor to report last seq 3, got %d", snapshot.LastSeqByID["effect-1"])
+	}
+
+	drained := journal.DrainEffectEvents()
+	if len(drained.Spawns) != 1 || len(drained.Updates) != 1 || len(drained.Ends) != 1 {
+		t.Fatalf("expected drained batch to include one of each event, got %+v", drained)
+	}
+	if drained.LastSeqByID["effect-1"] != 3 {
+		t.Fatalf("expected drained cursor to report seq 3, got %d", drained.LastSeqByID["effect-1"])
+	}
+
+	// Subsequent drains should be empty until new events are recorded.
+	cleared := journal.DrainEffectEvents()
+	if len(cleared.Spawns) != 0 || len(cleared.Updates) != 0 || len(cleared.Ends) != 0 {
+		t.Fatalf("expected cleared batch after drain, got %+v", cleared)
+	}
+
+	respawn := journal.RecordEffectSpawn(EffectSpawnEvent{Tick: 20, Instance: EffectInstance{ID: "effect-1"}})
+	if respawn.Seq != 1 {
+		t.Fatalf("expected new spawn to reset sequence, got %d", respawn.Seq)
+	}
+}
+
+func TestJournalDropsNonMonotonicSequences(t *testing.T) {
+	journal := newJournal(0, 0)
+	telemetry := newTelemetryCounters()
+	journal.AttachTelemetry(telemetry)
+
+	spawn := journal.RecordEffectSpawn(EffectSpawnEvent{Tick: 1, Instance: EffectInstance{ID: "effect-1"}})
+	if spawn.Seq != 1 {
+		t.Fatalf("expected spawn sequence 1, got %d", spawn.Seq)
+	}
+
+	accepted := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 2, ID: "effect-1", Seq: 2})
+	if accepted.Seq != 2 {
+		t.Fatalf("expected update sequence 2, got %d", accepted.Seq)
+	}
+
+	duplicate := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 3, ID: "effect-1", Seq: 2})
+	if duplicate.ID != "" || duplicate.Seq != 0 {
+		t.Fatalf("expected duplicate sequence to be dropped, got %+v", duplicate)
+	}
+
+	regression := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 4, ID: "effect-1", Seq: 1})
+	if regression.ID != "" || regression.Seq != 0 {
+		t.Fatalf("expected regressed sequence to be dropped, got %+v", regression)
+	}
+
+	snapshot := telemetry.Snapshot()
+	if snapshot.JournalDrops[metricJournalNonMonotonicSeq] != 2 {
+		t.Fatalf("expected two non-monotonic drops, got %d", snapshot.JournalDrops[metricJournalNonMonotonicSeq])
+	}
+}
+
+func TestJournalDropsUnknownEffectUpdates(t *testing.T) {
+	journal := newJournal(0, 0)
+	telemetry := newTelemetryCounters()
+	journal.AttachTelemetry(telemetry)
+
+	dropped := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 5, ID: "effect-x", Seq: 1})
+	if dropped.ID != "" || dropped.Seq != 0 {
+		t.Fatalf("expected unknown effect update to be dropped, got %+v", dropped)
+	}
+
+	endDrop := journal.RecordEffectEnd(EffectEndEvent{Tick: 6, ID: "effect-x", Seq: 2})
+	if endDrop != (EffectEndEvent{}) {
+		t.Fatalf("expected unknown effect end to be dropped, got %+v", endDrop)
+	}
+
+	snapshot := telemetry.Snapshot()
+	if snapshot.JournalDrops[metricJournalUnknownIDUpdate] != 2 {
+		t.Fatalf("expected two unknown id drops, got %d", snapshot.JournalDrops[metricJournalUnknownIDUpdate])
+	}
+}
+
+func TestJournalDropsUpdatesAfterEnd(t *testing.T) {
+	journal := newJournal(0, 0)
+	telemetry := newTelemetryCounters()
+	journal.AttachTelemetry(telemetry)
+
+	journal.RecordEffectSpawn(EffectSpawnEvent{Tick: 10, Instance: EffectInstance{ID: "effect-1"}})
+	end := journal.RecordEffectEnd(EffectEndEvent{Tick: 12, ID: "effect-1"})
+	if end.Seq != 2 {
+		t.Fatalf("expected end sequence 2, got %d", end.Seq)
+	}
+
+	dropped := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 13, ID: "effect-1", Seq: 3})
+	if dropped.ID != "" || dropped.Seq != 0 {
+		t.Fatalf("expected update after end to be dropped, got %+v", dropped)
+	}
+
+	snapshot := telemetry.Snapshot()
+	if snapshot.JournalDrops[metricJournalUpdateAfterEnd] != 1 {
+		t.Fatalf("expected update-after-end metric to increment, got %d", snapshot.JournalDrops[metricJournalUpdateAfterEnd])
+	}
+
+	journal.DrainEffectEvents()
+
+	allowed := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 20, ID: "effect-1", Seq: 4})
+	if allowed.ID != "" || allowed.Seq != 0 {
+		t.Fatalf("expected update to unknown id after drain to be dropped, got %+v", allowed)
+	}
+	snapshot = telemetry.Snapshot()
+	if snapshot.JournalDrops[metricJournalUnknownIDUpdate] == 0 {
+		t.Fatalf("expected unknown id metric to increment after drain")
+	}
+}

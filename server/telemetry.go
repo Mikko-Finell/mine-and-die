@@ -113,6 +113,7 @@ type telemetryCounters struct {
 	effectsEndedTotal   layeredCounter
 	effectsActiveGauge  atomic.Int64
 	triggerEnqueued     simpleCounter
+	journalDrops        simpleCounter
 }
 
 type telemetrySnapshot struct {
@@ -128,6 +129,7 @@ type telemetrySnapshot struct {
 	KeyframeRequestLatencyMs uint64                          `json:"keyframeRequestLatencyMs"`
 	Effects                  telemetryEffectsSnapshot        `json:"effects"`
 	EffectTriggers           telemetryEffectTriggersSnapshot `json:"effectTriggers"`
+	JournalDrops             map[string]uint64               `json:"journalDrops,omitempty"`
 }
 
 type telemetryEffectsSnapshot struct {
@@ -256,6 +258,13 @@ func (t *telemetryCounters) RecordEffectTrigger(triggerType string) {
 	t.triggerEnqueued.add(triggerType, 1)
 }
 
+func (t *telemetryCounters) RecordJournalDrop(reason string) {
+	if t == nil {
+		return
+	}
+	t.journalDrops.add(reason, 1)
+}
+
 func (t *telemetryCounters) DebugEnabled() bool {
 	return t.debug
 }
@@ -281,5 +290,6 @@ func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 		EffectTriggers: telemetryEffectTriggersSnapshot{
 			EnqueuedTotal: t.triggerEnqueued.snapshot(),
 		},
+		JournalDrops: t.journalDrops.snapshot(),
 	}
 }
