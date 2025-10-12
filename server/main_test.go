@@ -1103,6 +1103,67 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	}
 }
 
+func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
+	originalFlag := enableContractEffectManager
+	enableContractEffectManager = true
+	defer func() { enableContractEffectManager = originalFlag }()
+
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world.obstacles = nil
+	attacker := newTestPlayerState("attacker")
+	attacker.X = 200
+	attacker.Y = 200
+	attacker.Facing = FacingRight
+	attacker.cooldowns = make(map[string]time.Time)
+	world.AddPlayer(attacker)
+
+	now := time.Now()
+	commands := []Command{
+		{ActorID: attacker.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeAttack}},
+		{ActorID: attacker.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeFireball}},
+	}
+
+	world.Step(1, now, 1.0/float64(tickRate), commands)
+
+	if world.effectManager == nil {
+		t.Fatalf("expected effect manager to be instantiated when feature flag enabled")
+	}
+	if world.effectManager.totalEnqueued != len(commands) {
+		t.Fatalf("expected %d intents to be enqueued, got %d", len(commands), world.effectManager.totalEnqueued)
+	}
+	if world.effectManager.totalDrained != world.effectManager.totalEnqueued {
+		t.Fatalf("expected total drained %d to match enqueued %d", world.effectManager.totalDrained, world.effectManager.totalEnqueued)
+	}
+	if len(world.effectManager.intentQueue) != 0 {
+		t.Fatalf("expected intent queue to be drained after RunTick, found %d remaining", len(world.effectManager.intentQueue))
+	}
+	if len(world.effectManager.instances) != 0 {
+		t.Fatalf("expected no instances to be tracked by skeleton manager, found %d", len(world.effectManager.instances))
+	}
+	if world.effectManager.lastTickProcessed != Tick(1) {
+		t.Fatalf("expected manager to record tick 1, got %d", world.effectManager.lastTickProcessed)
+	}
+
+	var meleeSpawned, projectileSpawned bool
+	for _, eff := range world.effects {
+		if eff == nil {
+			continue
+		}
+		if eff.Type == effectTypeAttack {
+			meleeSpawned = true
+		}
+		if eff.Type == effectTypeFireball {
+			projectileSpawned = true
+		}
+	}
+	if !meleeSpawned {
+		t.Fatalf("expected melee attack to spawn via legacy path while flag enabled")
+	}
+	if !projectileSpawned {
+		t.Fatalf("expected fireball to spawn via legacy path while flag enabled")
+	}
+}
+
 func TestFireballDealsDamageOnHit(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = nil
