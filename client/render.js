@@ -8,6 +8,10 @@ import {
 } from "./js-effects/effects/rectZone.js";
 import { EffectLayer } from "./js-effects/types.js";
 import {
+  ensureEffectRegistry,
+  mirrorEffectInstances,
+} from "./effect-manager-adapter.js";
+import {
   RENDER_MODE_PATCH,
   RENDER_MODE_SNAPSHOT,
 } from "./render-modes.js";
@@ -98,6 +102,7 @@ function ensureEffectManager(store) {
     store.effectManager = new EffectManager();
     store.__effectTriggersRegistered = false;
   }
+  ensureEffectRegistry(store);
   if (!store.__effectTriggersRegistered) {
     registerDefaultEffectTriggers(store.effectManager);
     store.__effectTriggersRegistered = true;
@@ -645,6 +650,7 @@ function prepareEffectPass(
   });
   manager.updateAll(frameContext);
   manager.collectDecals(frameContext.now);
+  mirrorEffectInstances(store, manager);
 
   const effectPass = { manager, frameContext };
   if (normalizedFrameNow !== null) {
