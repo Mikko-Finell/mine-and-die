@@ -1,36 +1,29 @@
-# Repository Agent Instructions
+# JS Effects Workspace Guidelines
+
+These instructions apply to every file beneath `tools/js-effects/`.
 
 ## Purpose
+The workspace houses the TypeScript source for the canvas effects runtime (`packages/effects-lib`) and the interactive playground (`apps/playground`). The compiled ESM output is consumed by `client/js-effects` in the main game.
 
-This workspace contains the JS Effects runtime library and its interactive playground. The goal is to keep the runtime (`packages/effects-lib`) framework-agnostic while showcasing its capabilities through the playground (`apps/playground`). Both packages share a TypeScript toolchain configured at the repository root.
+## Architecture Notes
+- **Runtime (`packages/effects-lib/`)**
+  - Export deterministic `EffectDefinition` objects that spawn `EffectInstance`s through the shared `EffectManager`.
+  - Instances advance with `update(frameContext)` and render via `draw(frameContext)`. Keep simulation logic out of draw calls.
+  - Always provide reasonable bounds from `getAABB()` to keep culling efficient.
+  - Document any new `EffectLayer`/`sublayer` values in both this file and the workspace README so host apps can respect draw order.
+  - Use the pooled helpers (`createPooled`) instead of ad-hoc object recycling.
+- **Playground (`apps/playground/`)**
+  - React app that exercises the runtime. `App.tsx` owns the animation loop and seeds the RNG each frame to preserve determinism.
+  - Wire new preset or option fields into the control schema so they can be tweaked live.
+  - Keep playground-only utilities isolated; reusable helpers should live in the runtime package.
+- **Shared config**
+  - `package.json` defines workspace scripts. New scripts must run from the workspace root and respect npm workspaces.
+  - `tsconfig.base.json` feeds both packages. Coordinate any compiler option changes with the game client before landing them.
 
-## Architectural Notes
-
-1. **Effects Runtime (`packages/effects-lib/`)
-   - Exposes `EffectDefinition` contracts that create long-lived `EffectInstance` objects.
-   - Instances advance their internal simulation via `update(frameContext)` and render with `draw(frameContext)`.
-   - Bounding boxes returned by `getAABB()` are critical for culling; keep them conservative but accurate when editing effects.
-   - Layering (`EffectLayer` + optional `sublayer`) controls draw order. New layers must be documented in both this file and the README.
-   - One-shot effects can expose `kind: "once"` and `handoffToDecal()`; returned `DecalSpec` objects are the only decal contract the library understands.
-   - Presets are represented as `EffectPreset` objects. Use `loadPreset` for validation and `createRandomGenerator` to keep RNG-driven effects deterministic.
-   - The shared `EffectManager` (spawn, cull, update, draw, collect decals, expose stats) and `createPooled` helpers live here for reuse across hosts.
-
-2. **Playground App (`apps/playground/`)
-   - Uses React for UI state and the shared `EffectManager` helper to orchestrate instances.
-   - The animation loop lives in `App.tsx`, seeds the shared RNG each frame, collects decals, and visualises manager stats for debugging culling behaviour.
-   - UI controls map to effect option keys. When introducing new options, wire them into the control schema so they can be tuned from the playground.
-
-3. **Shared Configuration**
-   - `package.json` at the root defines workspace scripts. Always add new scripts in a way that works from the repository root.
-   - `tsconfig.base.json` underpins TypeScript settings. Updates here affect every package and should be coordinated carefully.
-
-## Contribution Guidelines
-
-- Documentation must reflect architectural changes. If you adjust effect lifecycles, add new layers, or rework the manager flow, update both this file and `README.md`.
-- Avoid mixing playground-only utilities into `effects-lib`. Shared helpers should live in the library; debug-only or UI logic belongs in the app.
-- Respect the effect lifecycle separation: computation during `update`, rendering during `draw`. New code should not blur these boundaries.
-- Maintain deterministic behavior wherever possible. When optional randomness is required, surface it through the `EffectFrameContext` RNG hook.
-
-## Maintenance Instruction
-
-Always keep this AGENTS.md up to date.
+## Contribution Workflow
+- Run `npm install` once to hydrate the workspace, then use `npm run build` to emit the ESM artefacts consumed by the main repo.
+- Prefer TypeScript strictness—add typings instead of suppressing errors.
+- Update `README.md` or `tutorial.md` whenever you add capabilities, lifecycle hooks, or notable debugging tips.
+- Keep example assets lightweight and under version control; do not check in large binaries.
+- Ensure RNG-driven demos rely on the provided frame context RNG so behaviour matches the game client.
+- If you rename or add exports that the client relies on, update the generated build (`npm run build` at the game repo root) within the same PR.
