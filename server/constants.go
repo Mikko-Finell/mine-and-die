@@ -36,3 +36,9 @@ const (
 // it is incrementally wired into the simulation loop. Leave disabled to preserve
 // current gameplay behaviour until the unified pipeline is ready.
 var enableContractEffectManager = false
+
+// enableContractEffectTransport gates the dual-write transport for contract
+// effect events. Keep disabled until clients understand the `effect_spawned`,
+// `effect_update`, `effect_ended`, and `effect_seq_cursors` fields on the state
+// payload.
+var enableContractEffectTransport = false

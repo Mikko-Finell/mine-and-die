@@ -91,8 +91,8 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Journal events & storage | Complete | :white_check_mark: Journal records dual-write envelopes and hub drains `effect_spawned`/`effect_update`/`effect_ended` batches during state broadcasts. | `stateMessage` now mirrors contract batches (including `effect_seq_cursors`) behind `enableContractEffectManager`; follow-up resync hints move to dedicated deliverable. |
-| Hub/messages dual-write | In Progress | :hammer_and_wrench: `marshalState` now emits contract batches alongside legacy arrays when `enableContractEffectManager` is active. | Add explicit rollout toggle + documentation of the payload fields before enabling by default. |
+| Journal events & storage | Complete | :white_check_mark: Journal records dual-write envelopes and hub drains `effect_spawned`/`effect_update`/`effect_ended` batches during state broadcasts. | `stateMessage` now mirrors contract batches (including `effect_seq_cursors`) behind `enableContractEffectManager` + `enableContractEffectTransport`; follow-up resync hints move to dedicated deliverable. |
+| Hub/messages dual-write | Complete | :white_check_mark: Added `enableContractEffectTransport` rollout flag and documented the new payload members. | Transport fields stay gated until clients ingest them; see `docs/architecture/effects.md` for field descriptions. |
 | Resync policy & keyframe flow | Not Started | Document thresholds and implement resync hinting once journal events exist. | Add tests for lost-spawn recovery. |
 
 ### Phase 3 — Client Ingestion & Visual Manager
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 13 | Added an explicit transport rollout flag, documented the dual-write payload fields, and marked the hub/messages deliverable complete. | gpt-5-codex |
 | 12 | Threaded hub dual-write onto journal batches so state payloads emit contract event envelopes; updated tracker to reflect journal deliverable completion and ongoing dual-write rollout. | gpt-5-codex |
 | 11 | Added journal effect event storage, per-effect sequence cursors, and replay guidance; Phase 2 journal deliverable marked In Progress. | gpt-5-codex |
 | 10 | Added contract end policies (instant/duration/condition), owner-lost handling, and selective replication checks with dedicated lifecycle tests for melee, projectile, replication-off, and sequence monotonicity. | gpt-5-codex |
