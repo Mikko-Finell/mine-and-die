@@ -38,7 +38,7 @@ Statuses use the following scale:
 | --- | --- | --- | --- |
 | Phase 0 – Inventory, Observability, Guardrails | Ready to Start | Tooling & telemetry foundation before touching runtime. | Build and check in the automated effect producer map script. |
 | Phase 1 – Contract Types & Authoritative Manager | In Progress | Introduce contract types and manager while keeping behaviour identical. | Prototype EffectManager skeleton behind feature flag. |
-| Phase 2 – Transport & Journal (Dual-Write) | Not Started | Journal and broadcast new events alongside legacy payloads. | Design journal envelopes & toggles once Phase 1 scaffolding exists. |
+| Phase 2 – Transport & Journal (Dual-Write) | In Progress | Journal and broadcast new events alongside legacy payloads. | Finalize client/broadcast toggles and document stream contract before advancing to resync policy. |
 | Phase 3 – Client Ingestion & Visual Manager | Not Started | Client consumes new stream deterministically with two-pass ingestion. | Prototype JS EffectManager adapter after Phase 2 dual-write exists. |
 | Phase 4 – Producer Migration | Not Started | Port gameplay producers onto definitions with parity gates. | Pick one archetype (melee/projectile) for first contract-backed port. |
 | Phase 5 – Determinism & Performance Hardening | Not Started | Stress testing & budgets for the new system. | Define benchmark harness & thresholds post-contract rollout. |
@@ -91,8 +91,8 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Journal events & storage | In Progress | :hammer_and_wrench: Added journal APIs to record `effect_spawned`/`effect_update`/`effect_ended` envelopes with per-effect sequence cursors. | Next: thread EffectManager/hub dual-write into the new journal batch surface. |
-| Hub/messages dual-write | Not Started | Emit both legacy arrays and new event stream with configurable toggle. | Update client contracts in docs when toggling defaults. |
+| Journal events & storage | Complete | :white_check_mark: Journal records dual-write envelopes and hub drains `effect_spawned`/`effect_update`/`effect_ended` batches during state broadcasts. | `stateMessage` now mirrors contract batches (including `effect_seq_cursors`) behind `enableContractEffectManager`; follow-up resync hints move to dedicated deliverable. |
+| Hub/messages dual-write | In Progress | :hammer_and_wrench: `marshalState` now emits contract batches alongside legacy arrays when `enableContractEffectManager` is active. | Add explicit rollout toggle + documentation of the payload fields before enabling by default. |
 | Resync policy & keyframe flow | Not Started | Document thresholds and implement resync hinting once journal events exist. | Add tests for lost-spawn recovery. |
 
 ### Phase 3 — Client Ingestion & Visual Manager
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 12 | Threaded hub dual-write onto journal batches so state payloads emit contract event envelopes; updated tracker to reflect journal deliverable completion and ongoing dual-write rollout. | gpt-5-codex |
 | 11 | Added journal effect event storage, per-effect sequence cursors, and replay guidance; Phase 2 journal deliverable marked In Progress. | gpt-5-codex |
 | 10 | Added contract end policies (instant/duration/condition), owner-lost handling, and selective replication checks with dedicated lifecycle tests for melee, projectile, replication-off, and sequence monotonicity. | gpt-5-codex |
 | 9 | Corrected projectile delivery, added per-effect sequence counters, and sourced replication rules from definitions while tightening contract regression tests. | gpt-5-codex |
