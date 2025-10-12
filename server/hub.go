@@ -145,6 +145,7 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 		defaultKeyframeInterval: interval,
 	}
 	hub.world.telemetry = hub.telemetry
+	hub.world.journal.AttachTelemetry(hub.telemetry)
 	hub.keyframeInterval.Store(int64(interval))
 	hub.forceKeyframe()
 	return hub
@@ -255,6 +256,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 
 	newW := newWorld(cfg, h.publisher)
 	newW.telemetry = h.telemetry
+	newW.journal.AttachTelemetry(h.telemetry)
 	for _, id := range playerIDs {
 		newW.AddPlayer(h.seedPlayerState(id, now))
 	}
