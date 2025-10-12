@@ -153,6 +153,7 @@ type Journal struct {
 	endedIDs      []string
 	recentlyEnded map[string]Tick
 	telemetry     *telemetryCounters
+	resync        *resyncPolicy
 }
 
 // newJournal constructs a journal with storage for the configured number of
@@ -177,6 +178,7 @@ func newJournal(keyframeCapacity int, maxAge time.Duration) Journal {
 		},
 		endedIDs:      make([]string, 0),
 		recentlyEnded: make(map[string]Tick),
+		resync:        newResyncPolicy(),
 	}
 }
 
@@ -241,6 +243,9 @@ func (j *Journal) RecordEffectSpawn(event EffectSpawnEvent) EffectSpawnEvent {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if j.resync != nil {
+		j.resync.noteEvent()
+	}
 	j.clearPendingEndLocked(event.Instance.ID)
 	delete(j.recentlyEnded, event.Instance.ID)
 	j.effectSeq[event.Instance.ID] = 0
@@ -262,14 +267,23 @@ func (j *Journal) RecordEffectUpdate(event EffectUpdateEvent) EffectUpdateEvent 
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if j.resync != nil {
+		j.resync.noteEvent()
+	}
 	last, ok := j.effectSeq[event.ID]
 	if !ok || last == 0 {
 		j.recordJournalDropLocked(metricJournalUnknownIDUpdate)
+		if j.resync != nil {
+			j.resync.noteLostSpawn(metricJournalUnknownIDUpdate, event.ID)
+		}
 		return EffectUpdateEvent{}
 	}
 	j.pruneRecentlyEndedLocked(event.Tick)
 	if _, recently := j.recentlyEnded[event.ID]; recently {
 		j.recordJournalDropLocked(metricJournalUpdateAfterEnd)
+		if j.resync != nil {
+			j.resync.noteLostSpawn(metricJournalUpdateAfterEnd, event.ID)
+		}
 		return EffectUpdateEvent{}
 	}
 	if event.Seq <= 0 {
@@ -309,9 +323,15 @@ func (j *Journal) RecordEffectEnd(event EffectEndEvent) EffectEndEvent {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if j.resync != nil {
+		j.resync.noteEvent()
+	}
 	last, ok := j.effectSeq[event.ID]
 	if !ok || last == 0 {
 		j.recordJournalDropLocked(metricJournalUnknownIDUpdate)
+		if j.resync != nil {
+			j.resync.noteLostSpawn(metricJournalUnknownIDUpdate, event.ID)
+		}
 		return EffectEndEvent{}
 	}
 	j.pruneRecentlyEndedLocked(event.Tick)
@@ -424,6 +444,18 @@ func (j *Journal) SnapshotEffectEvents() EffectEventBatch {
 		Ends:        cloneEndEvents(j.effects.ends),
 		LastSeqByID: copySeqMap(j.effectSeq),
 	}
+}
+
+// ConsumeResyncHint reports whether the journal observed a lost-spawn pattern
+// that should trigger a client resynchronisation. Counters reset after each
+// consumption so the caller can re-evaluate on subsequent ticks.
+func (j *Journal) ConsumeResyncHint() (resyncSignal, bool) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.resync == nil {
+		return resyncSignal{}, false
+	}
+	return j.resync.consume()
 }
 
 // RecordKeyframe stores a keyframe in the buffer enforcing retention limits

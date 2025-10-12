@@ -122,6 +122,20 @@ flag unless the hub explicitly schedules a resync. The `keyframeInterval`
 reported in the payload reflects the current cadence (default 1, meaning every
 tick is a keyframe) and is updated whenever the interval changes.【F:server/hub.go†L894-L1031】
 
+#### Resync hints & keyframe forcing
+
+The effect journal evaluates every lifecycle envelope to spot "lost spawn"
+patterns (updates or ends without a known spawn). Whenever the ratio of lost
+spawns to total events breaches **0.01%** (equivalent to ≥1 lost spawn per 10k
+events), the journal raises a resync hint and records the offending IDs for
+logging.【F:server/patches.go†L178-L335】【F:server/resync_policy.go†L8-L68】
+
+Each broadcast begins by calling `Hub.scheduleResyncIfNeeded`, which consumes the
+hint, forces the next keyframe, flips the `resync` flag, and logs the summary so
+operators can correlate spikes with telemetry. The very next payload therefore
+includes a full snapshot, allowing clients to recover deterministically from
+missed spawns.【F:server/hub.go†L1004-L1144】【F:server/hub.go†L1144-L1186】
+
 #### Example payloads
 
 Full keyframe (e.g., join handshake or forced refresh):
