@@ -144,6 +144,7 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 		telemetry:               newTelemetryCounters(),
 		defaultKeyframeInterval: interval,
 	}
+	hub.world.telemetry = hub.telemetry
 	hub.keyframeInterval.Store(int64(interval))
 	hub.forceKeyframe()
 	return hub
@@ -253,6 +254,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 	}
 
 	newW := newWorld(cfg, h.publisher)
+	newW.telemetry = h.telemetry
 	for _, id := range playerIDs {
 		newW.AddPlayer(h.seedPlayerState(id, now))
 	}
@@ -714,6 +716,9 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []E
 	h.mu.Lock()
 	removed := h.world.Step(tick, now, dt, commands)
 	players, npcs, effects := h.world.Snapshot(now)
+	if h.telemetry != nil {
+		h.telemetry.RecordEffectsActive(len(effects))
+	}
 	groundItems := h.world.GroundItemsSnapshot()
 	triggers := h.world.flushEffectTriggersLocked()
 	toClose := make([]*subscriber, 0, len(removed))
