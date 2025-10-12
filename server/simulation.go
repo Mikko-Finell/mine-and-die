@@ -191,6 +191,20 @@ func (w *World) snapshotPatchesLocked() []Patch {
 	return w.journal.SnapshotPatches()
 }
 
+func (w *World) recordEffectLifecycleEvent(event EffectLifecycleEvent) {
+	if w == nil || event == nil || w.effectManager == nil {
+		return
+	}
+	switch e := event.(type) {
+	case EffectSpawnEvent:
+		w.journal.RecordEffectSpawn(e)
+	case EffectUpdateEvent:
+		w.journal.RecordEffectUpdate(e)
+	case EffectEndEvent:
+		w.journal.RecordEffectEnd(e)
+	}
+}
+
 // HasPlayer reports whether the world currently tracks the given player.
 func (w *World) HasPlayer(id string) bool {
 	_, ok := w.players[id]
@@ -447,7 +461,14 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 
 	w.advanceStatusEffects(now)
 	if enableContractEffectManager && w.effectManager != nil {
-		w.effectManager.RunTick(Tick(int64(tick)), emitEffectEvent)
+		dispatcher := w.recordEffectLifecycleEvent
+		if emitEffectEvent != nil {
+			dispatcher = func(event EffectLifecycleEvent) {
+				w.recordEffectLifecycleEvent(event)
+				emitEffectEvent(event)
+			}
+		}
+		w.effectManager.RunTick(Tick(int64(tick)), dispatcher)
 	}
 	w.advanceEffects(now, dt)
 	w.pruneEffects(now)
