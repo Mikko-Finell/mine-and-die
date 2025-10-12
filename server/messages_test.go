@@ -8,8 +8,8 @@ import (
 )
 
 func TestStateMessage_ContainsTick(t *testing.T) {
-        hub := newHub()
-        hub.SetKeyframeInterval(1)
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
@@ -61,8 +61,8 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 }
 
 func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
-        hub := newHub()
-        hub.SetKeyframeInterval(1)
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
 	dt := 1.0 / float64(tickRate)
 
 	ticks := make([]uint64, 0, 3)
@@ -128,8 +128,8 @@ func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 }
 
 func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
-    hub := newHub()
-    hub.SetKeyframeInterval(1)
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
@@ -215,9 +215,90 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
+	originalFlag := enableContractEffectManager
+	enableContractEffectManager = true
+	defer func() { enableContractEffectManager = originalFlag }()
+
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+
+	if hub.world.effectManager == nil {
+		t.Fatalf("expected effect manager to be initialized when flag enabled")
+	}
+
+	hub.world.effectManager.EnqueueIntent(EffectIntent{
+		TypeID:   effectTypeAttack,
+		Delivery: DeliveryKindArea,
+		Geometry: EffectGeometry{Shape: GeometryShapeRect},
+	})
+
+	hub.advance(time.Now(), 1.0/float64(tickRate))
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+
+	rawSpawns, ok := payload["effect_spawned"]
+	if !ok {
+		t.Fatalf("expected payload to include effect_spawned when manager enabled")
+	}
+	spawns, ok := rawSpawns.([]any)
+	if !ok || len(spawns) == 0 {
+		t.Fatalf("expected effect_spawned to decode as non-empty array, got %T with len %d", rawSpawns, len(spawns))
+	}
+
+	if rawUpdates, ok := payload["effect_update"]; !ok {
+		t.Fatalf("expected payload to include effect_update when manager enabled")
+	} else if updates, ok := rawUpdates.([]any); !ok || len(updates) == 0 {
+		t.Fatalf("expected effect_update to decode as non-empty array, got %T with len %d", rawUpdates, len(updates))
+	}
+
+	if rawEnds, ok := payload["effect_ended"]; !ok {
+		t.Fatalf("expected payload to include effect_ended when manager enabled")
+	} else if ends, ok := rawEnds.([]any); !ok || len(ends) == 0 {
+		t.Fatalf("expected effect_ended to decode as non-empty array, got %T with len %d", rawEnds, len(ends))
+	}
+
+	if rawCursors, ok := payload["effect_seq_cursors"]; !ok {
+		t.Fatalf("expected payload to include effect_seq_cursors when manager enabled")
+	} else if cursors, ok := rawCursors.(map[string]any); !ok || len(cursors) == 0 {
+		t.Fatalf("expected effect_seq_cursors to decode as non-empty map, got %T with len %d", rawCursors, len(cursors))
+	}
+
+	followUp, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error on follow-up: %v", err)
+	}
+
+	payload = make(map[string]any)
+	if err := json.Unmarshal(followUp, &payload); err != nil {
+		t.Fatalf("failed to decode follow-up payload: %v", err)
+	}
+
+	if _, present := payload["effect_spawned"]; present {
+		t.Fatalf("expected effect_spawned to be drained after broadcast")
+	}
+	if _, present := payload["effect_update"]; present {
+		t.Fatalf("expected effect_update to be drained after broadcast")
+	}
+	if _, present := payload["effect_ended"]; present {
+		t.Fatalf("expected effect_ended to be drained after broadcast")
+	}
+	if _, present := payload["effect_seq_cursors"]; present {
+		t.Fatalf("expected effect_seq_cursors to be cleared after broadcast")
+	}
+}
+
 func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
-    hub := newHub()
-    hub.SetKeyframeInterval(1)
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true)
@@ -277,8 +358,8 @@ func assertResyncFlag(t *testing.T, raw []byte, expected bool) {
 }
 
 func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
-    hub := newHub()
-    hub.SetKeyframeInterval(1)
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
 
 	hub.mu.Lock()
 	hub.world.journal.AppendPatch(Patch{Kind: PatchPlayerPos, EntityID: "player-1"})
@@ -308,8 +389,8 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 }
 
 func TestMarshalStateRecordsKeyframe(t *testing.T) {
-    hub := newHub()
-    hub.SetKeyframeInterval(1)
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true)
 	if err != nil {
@@ -358,8 +439,8 @@ func TestMarshalStateRecordsKeyframe(t *testing.T) {
 }
 
 func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
-    hub := newHub()
-    hub.SetKeyframeInterval(1)
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
@@ -385,8 +466,8 @@ func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
 
 func TestHandleKeyframeRequestExpired(t *testing.T) {
 	t.Setenv(envJournalCapacity, "1")
-    hub := newHub()
-    hub.SetKeyframeInterval(1)
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
 
 	first, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
 	if err != nil {
