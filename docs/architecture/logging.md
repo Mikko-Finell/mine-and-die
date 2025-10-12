@@ -13,7 +13,7 @@ configured sinks, preserving tick order without stalling the hub.
   pluggable clock interface used for timestamping.
 - `server/logging/sinks/` – output adapters (`console`, `json`, `memory`).
 - `server/logging/combat/helpers.go` – combat event helpers.
-- `server/logging/conditions/helpers.go`, `.../economy/helpers.go`, `.../lifecycle/helpers.go`, and `.../network/helpers.go` – additional domain packages covering status effects, item flow, session lifecycle, and acknowledgement telemetry.【F:server/logging/conditions/helpers.go†L1-L30】【F:server/logging/economy/helpers.go†L9-L106】【F:server/logging/lifecycle/helpers.go†L1-L40】【F:server/logging/network/helpers.go†L1-L54】 New domains should add their own packages under `server/logging/` with similar patterns.
+- `server/logging/status_effects/helpers.go`, `.../economy/helpers.go`, `.../lifecycle/helpers.go`, and `.../network/helpers.go` – additional domain packages covering status effects, item flow, session lifecycle, and acknowledgement telemetry.【F:server/logging/status_effects/helpers.go†L1-L32】【F:server/logging/economy/helpers.go†L9-L106】【F:server/logging/lifecycle/helpers.go†L1-L40】【F:server/logging/network/helpers.go†L1-L54】 New domains should add their own packages under `server/logging/` with similar patterns.
 
 Simulation code imports **only** domain helper packages (e.g. `logging/combat`) and the
 `logging.Publisher` interface. The router and sink wiring happens at process startup in
@@ -101,9 +101,9 @@ All event types must be documented to keep downstream sinks stable. Current cove
 | Event Type | Helper | Payload | Description |
 | --- | --- | --- | --- |
 | `combat.attack_overlap` | `combat.AttackOverlap` | `AttackOverlapPayload` (`ability`, `playerHits`, `npcHits`) | Emitted when a combat ability hits multiple targets during a single tick. Actor/targets identify the source and impacted entities. |
-| `combat.damage` | `combat.Damage` | `DamagePayload` (`ability`, `amount`, `targetHealth`, `condition`) | Fired whenever an ability reduces a target's health. `condition` is set when periodic effects (e.g. burning) apply the tick. |
-| `combat.defeat` | `combat.Defeat` | `DefeatPayload` (`ability`, `condition`) | Fired when damage reduces a target to zero health. Targets contain the defeated entity for downstream kill feeds. |
-| `conditions.applied` | `conditions.Applied` | `AppliedPayload` (`condition`, `sourceId`, `durationMs`) | Published when a status condition is first applied to an actor. Actor references the applier (if known); target references the recipient. |
+| `combat.damage` | `combat.Damage` | `DamagePayload` (`ability`, `amount`, `targetHealth`, `statusEffect`) | Fired whenever an ability reduces a target's health. `statusEffect` is set when periodic effects (e.g. burning) apply the tick. |
+| `combat.defeat` | `combat.Defeat` | `DefeatPayload` (`ability`, `statusEffect`) | Fired when damage reduces a target to zero health. Targets contain the defeated entity for downstream kill feeds. |
+| `status_effects.applied` | `status_effects.Applied` | `AppliedPayload` (`statusEffect`, `sourceId`, `durationMs`) | Published when a status effect is first applied to an actor. Actor references the applier (if known); target references the recipient. |
 | `lifecycle.player_joined` | `lifecycle.PlayerJoined` | `PlayerJoinedPayload` (`spawnX`, `spawnY`) | Signals that a new player has joined the shard along with their spawn coordinates. |
 | `lifecycle.player_disconnected` | `lifecycle.PlayerDisconnected` | `PlayerDisconnectedPayload` (`reason`) | Signals that a player left the world. `reason` differentiates manual disconnects from heartbeat timeouts. |
 | `economy.item_grant_failed` | `economy.ItemGrantFailed` | `ItemGrantFailedPayload` (`itemType`, `quantity`, `reason`) | Warn-level event emitted when inventories reject a grant (player seeding, NPC rewards, mining, etc.). The error string is attached via `Event.Extra`. |

@@ -958,7 +958,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	}
 }
 
-func TestLavaAppliesBurningCondition(t *testing.T) {
+func TestLavaAppliesBurningStatusEffect(t *testing.T) {
 	hub := newHub()
 	now := time.Now()
 
@@ -994,8 +994,8 @@ func TestLavaAppliesBurningCondition(t *testing.T) {
 	if state == nil {
 		t.Fatalf("expected player state tracked")
 	}
-	if len(state.conditions) == 0 {
-		t.Fatalf("expected burning condition to be applied")
+	if len(state.statusEffects) == 0 {
+		t.Fatalf("expected burning status effect to be applied")
 	}
 
 	if !hasFollowEffect(hub.world.effects, "fire", playerID) {
@@ -1667,9 +1667,9 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected target health %.1f, got %.1f", expected, target.Health)
 	}
-	if target.conditions == nil || target.conditions[ConditionBurning] == nil {
+	if target.statusEffects == nil || target.statusEffects[StatusEffectBurning] == nil {
 		hub.mu.Unlock()
-		t.Fatalf("expected fireball hit to apply burning condition")
+		t.Fatalf("expected fireball hit to apply burning status effect")
 	}
 	hub.mu.Unlock()
 }

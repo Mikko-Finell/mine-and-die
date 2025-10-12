@@ -7,25 +7,25 @@ import (
 	"time"
 
 	"mine-and-die/server/logging"
-	loggingconditions "mine-and-die/server/logging/conditions"
+	loggingstatuseffects "mine-and-die/server/logging/status_effects"
 )
 
-type ConditionType string
+type StatusEffectType string
 
-type conditionHandler func(w *World, actor *actorState, inst *conditionInstance, now time.Time)
+type statusEffectHandler func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time)
 
-type ConditionDefinition struct {
-	Type         ConditionType
+type StatusEffectDefinition struct {
+	Type         StatusEffectType
 	Duration     time.Duration
 	TickInterval time.Duration
 	InitialTick  bool
-	OnApply      conditionHandler
-	OnTick       conditionHandler
-	OnExpire     conditionHandler
+	OnApply      statusEffectHandler
+	OnTick       statusEffectHandler
+	OnExpire     statusEffectHandler
 }
 
-type conditionInstance struct {
-	Definition     *ConditionDefinition
+type statusEffectInstance struct {
+	Definition     *StatusEffectDefinition
 	SourceID       string
 	AppliedAt      time.Time
 	ExpiresAt      time.Time
@@ -35,22 +35,22 @@ type conditionInstance struct {
 }
 
 const (
-	ConditionBurning ConditionType = "burning"
+	StatusEffectBurning StatusEffectType = "burning"
 )
 
 const (
-	burningConditionDuration = 3 * time.Second
-	burningTickInterval      = 200 * time.Millisecond
+	burningStatusEffectDuration = 3 * time.Second
+	burningTickInterval         = 200 * time.Millisecond
 )
 
-func newConditionDefinitions() map[ConditionType]*ConditionDefinition {
-	return map[ConditionType]*ConditionDefinition{
-		ConditionBurning: {
-			Type:         ConditionBurning,
-			Duration:     burningConditionDuration,
+func newStatusEffectDefinitions() map[StatusEffectType]*StatusEffectDefinition {
+	return map[StatusEffectType]*StatusEffectDefinition{
+		StatusEffectBurning: {
+			Type:         StatusEffectBurning,
+			Duration:     burningStatusEffectDuration,
 			TickInterval: burningTickInterval,
 			InitialTick:  true,
-			OnApply: func(w *World, actor *actorState, inst *conditionInstance, now time.Time) {
+			OnApply: func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time) {
 				if w == nil || actor == nil || inst == nil {
 					return
 				}
@@ -58,9 +58,9 @@ func newConditionDefinitions() map[ConditionType]*ConditionDefinition {
 				if lifetime <= 0 {
 					lifetime = burningTickInterval
 				}
-				inst.attachedEffect = w.attachConditionEffect(actor, "fire", lifetime, now)
+				inst.attachedEffect = w.attachStatusEffectVisual(actor, "fire", lifetime, now)
 			},
-			OnTick: func(w *World, actor *actorState, inst *conditionInstance, now time.Time) {
+			OnTick: func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time) {
 				if w == nil || actor == nil || inst == nil {
 					return
 				}
@@ -69,9 +69,9 @@ func newConditionDefinitions() map[ConditionType]*ConditionDefinition {
 					interval = burningTickInterval
 				}
 				damage := lavaDamagePerSecond * interval.Seconds()
-				w.applyConditionDamage(actor, inst, now, damage)
+				w.applyStatusEffectDamage(actor, inst, now, damage)
 			},
-			OnExpire: func(w *World, actor *actorState, inst *conditionInstance, now time.Time) {
+			OnExpire: func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time) {
 				if w == nil || inst == nil {
 					return
 				}
@@ -84,23 +84,23 @@ func newConditionDefinitions() map[ConditionType]*ConditionDefinition {
 	}
 }
 
-func (w *World) applyCondition(target *actorState, cond ConditionType, source string, now time.Time) bool {
+func (w *World) applyStatusEffect(target *actorState, cond StatusEffectType, source string, now time.Time) bool {
 	if w == nil || target == nil || cond == "" {
 		return false
 	}
-	def, ok := w.conditionDefs[cond]
+	def, ok := w.statusEffectDefs[cond]
 	if !ok || def == nil {
 		return false
 	}
 	if def.Duration <= 0 {
 		return false
 	}
-	if target.conditions == nil {
-		target.conditions = make(map[ConditionType]*conditionInstance)
+	if target.statusEffects == nil {
+		target.statusEffects = make(map[StatusEffectType]*statusEffectInstance)
 	}
-	inst, exists := target.conditions[cond]
+	inst, exists := target.statusEffects[cond]
 	if !exists {
-		inst = &conditionInstance{
+		inst = &statusEffectInstance{
 			Definition: def,
 			SourceID:   source,
 			AppliedAt:  now,
@@ -113,7 +113,7 @@ func (w *World) applyCondition(target *actorState, cond ConditionType, source st
 				inst.NextTick = now.Add(def.TickInterval)
 			}
 		}
-		target.conditions[cond] = inst
+		target.statusEffects[cond] = inst
 		if def.OnApply != nil {
 			def.OnApply(w, target, inst, now)
 		}
@@ -125,7 +125,7 @@ func (w *World) applyCondition(target *actorState, cond ConditionType, source st
 			}
 		}
 		if inst.attachedEffect != nil {
-			inst.attachedEffect.Condition = cond
+			inst.attachedEffect.StatusEffect = cond
 		}
 		if w != nil {
 			actorRef := logging.EntityRef{}
@@ -136,11 +136,11 @@ func (w *World) applyCondition(target *actorState, cond ConditionType, source st
 			if target != nil {
 				targetRef = w.entityRef(target.ID)
 			}
-			payload := loggingconditions.AppliedPayload{Condition: string(cond), SourceID: source}
+			payload := loggingstatuseffects.AppliedPayload{StatusEffect: string(cond), SourceID: source}
 			if def.Duration > 0 {
 				payload.DurationMs = def.Duration.Milliseconds()
 			}
-			loggingconditions.Applied(
+			loggingstatuseffects.Applied(
 				context.Background(),
 				w.publisher,
 				w.currentTick,
@@ -167,25 +167,25 @@ func (w *World) applyCondition(target *actorState, cond ConditionType, source st
 	return false
 }
 
-func (w *World) advanceConditions(now time.Time) {
+func (w *World) advanceStatusEffects(now time.Time) {
 	if w == nil {
 		return
 	}
 	for _, player := range w.players {
-		w.advanceActorConditions(&player.actorState, now)
+		w.advanceActorStatusEffects(&player.actorState, now)
 	}
 	for _, npc := range w.npcs {
-		w.advanceActorConditions(&npc.actorState, now)
+		w.advanceActorStatusEffects(&npc.actorState, now)
 	}
 }
 
-func (w *World) advanceActorConditions(actor *actorState, now time.Time) {
-	if actor == nil || len(actor.conditions) == 0 {
+func (w *World) advanceActorStatusEffects(actor *actorState, now time.Time) {
+	if actor == nil || len(actor.statusEffects) == 0 {
 		return
 	}
-	for key, inst := range actor.conditions {
+	for key, inst := range actor.statusEffects {
 		if inst == nil || inst.Definition == nil {
-			delete(actor.conditions, key)
+			delete(actor.statusEffects, key)
 			continue
 		}
 		def := inst.Definition
@@ -212,7 +212,7 @@ func (w *World) advanceActorConditions(actor *actorState, now time.Time) {
 				w.expireAttachedEffect(inst.attachedEffect, now)
 				inst.attachedEffect = nil
 			}
-			delete(actor.conditions, key)
+			delete(actor.statusEffects, key)
 			continue
 		}
 		if inst.attachedEffect != nil {
@@ -221,7 +221,7 @@ func (w *World) advanceActorConditions(actor *actorState, now time.Time) {
 	}
 }
 
-func (w *World) applyConditionDamage(actor *actorState, inst *conditionInstance, now time.Time, amount float64) {
+func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectInstance, now time.Time, amount float64) {
 	if w == nil || actor == nil || inst == nil {
 		return
 	}
@@ -239,12 +239,12 @@ func (w *World) applyConditionDamage(actor *actorState, inst *conditionInstance,
 			Start:  now.UnixMilli(),
 			Params: map[string]float64{"healthDelta": -amount},
 		},
-		Condition: inst.Definition.Type,
+		StatusEffect: inst.Definition.Type,
 	}
 	w.applyEffectHitActor(eff, actor, now)
 }
 
-func (w *World) attachConditionEffect(actor *actorState, effectType string, lifetime time.Duration, now time.Time) *effectState {
+func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, lifetime time.Duration, now time.Time) *effectState {
 	if w == nil || actor == nil || effectType == "" {
 		return nil
 	}
@@ -272,7 +272,7 @@ func (w *World) attachConditionEffect(actor *actorState, effectType string, life
 		FollowActorID: actor.ID,
 	}
 	w.effects = append(w.effects, eff)
-	w.recordEffectSpawn(effectType, "condition")
+	w.recordEffectSpawn(effectType, "status-effect")
 	return eff
 }
 
@@ -313,6 +313,6 @@ func (w *World) expireAttachedEffect(eff *effectState, now time.Time) {
 	}
 	eff.Effect.Duration = duration.Milliseconds()
 	if shouldRecord {
-		w.recordEffectEnd(eff, "condition-expire")
+		w.recordEffectEnd(eff, "status-effect-expire")
 	}
 }
