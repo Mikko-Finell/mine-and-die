@@ -189,6 +189,25 @@ func TestJournalDropsUnknownEffectUpdates(t *testing.T) {
 	}
 }
 
+func TestJournalResyncHintOnLostSpawn(t *testing.T) {
+	journal := newJournal(0, 0)
+
+	journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 5, ID: "effect-x"})
+	signal, ok := journal.ConsumeResyncHint()
+	if !ok {
+		t.Fatalf("expected resync hint after unknown update")
+	}
+	if signal.LostSpawns != 1 {
+		t.Fatalf("expected lost spawn count 1, got %d", signal.LostSpawns)
+	}
+	if len(signal.Reasons) == 0 || signal.Reasons[0].Kind != metricJournalUnknownIDUpdate {
+		t.Fatalf("expected reason to record unknown id drop, got %+v", signal.Reasons)
+	}
+	if _, ok := journal.ConsumeResyncHint(); ok {
+		t.Fatalf("expected resync hint to reset after consumption")
+	}
+}
+
 func TestJournalDropsUpdatesAfterEnd(t *testing.T) {
 	journal := newJournal(0, 0)
 	telemetry := newTelemetryCounters()
