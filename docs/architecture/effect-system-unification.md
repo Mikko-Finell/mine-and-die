@@ -124,6 +124,30 @@ func (em *EffectManager) Tick(world *World)
 
    Removes instance from registry; diff journal records removal.
 
+### Journal integration & replay contract
+
+The server journal now stores lifecycle envelopes in three arrays—
+`effect_spawned`, `effect_update`, and `effect_ended`—that mirror the transport
+contract. Each entry is stamped with the authoritative `tick` plus a
+per-effect `seq` generated inside the journal. The sequence cursor is tracked
+per `EffectID`, reset on spawn, incremented for every update/end, and included
+in the drained batch so replay tooling can drop duplicates and guarantee
+ordering before applying state. When the world drains the journal it receives a
+copy of the events and the `LastSeqByID` map; end events mark the id for
+cleanup so the cursor map stays bounded after the batch is consumed. Replay
+pipelines should apply a batch by:
+
+1. Sorting envelopes by `(tick, seq)` if cross-tick buffering occurs (steady
+   tick drains are already ordered).
+2. Rebuilding or verifying their own `lastSeq` map using the provided
+   `LastSeqByID` values.
+3. Dropping any event whose sequence is ≤ the cached `lastSeq` for that id.
+4. Applying spawns → updates → ends before acknowledging the cursor update.
+
+This mirrors the deterministic replay expectations in the roadmap: the journal
+is the source of truth for effect ordering, and the cursor map prevents lost
+events or duplicates from corrupting client or tooling state.
+
 ---
 
 ## 5. EffectContract (Transport & Determinism)

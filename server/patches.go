@@ -27,21 +27,21 @@ const (
 	PatchPlayerIntent PatchKind = "player_intent"
 	// PatchPlayerHealth updates a player's health pool.
 	PatchPlayerHealth PatchKind = "player_health"
-        // PatchPlayerInventory updates a player's inventory slots.
-        PatchPlayerInventory PatchKind = "player_inventory"
-        // PatchPlayerEquipment updates a player's equipment loadout.
-        PatchPlayerEquipment PatchKind = "player_equipment"
+	// PatchPlayerInventory updates a player's inventory slots.
+	PatchPlayerInventory PatchKind = "player_inventory"
+	// PatchPlayerEquipment updates a player's equipment loadout.
+	PatchPlayerEquipment PatchKind = "player_equipment"
 
-        // PatchNPCPos updates an NPC's position.
-        PatchNPCPos PatchKind = "npc_pos"
-        // PatchNPCFacing updates an NPC's facing direction.
-        PatchNPCFacing PatchKind = "npc_facing"
-        // PatchNPCHealth updates an NPC's health pool.
-        PatchNPCHealth PatchKind = "npc_health"
-        // PatchNPCInventory updates an NPC's inventory slots.
-        PatchNPCInventory PatchKind = "npc_inventory"
-        // PatchNPCEquipment updates an NPC's equipment loadout.
-        PatchNPCEquipment PatchKind = "npc_equipment"
+	// PatchNPCPos updates an NPC's position.
+	PatchNPCPos PatchKind = "npc_pos"
+	// PatchNPCFacing updates an NPC's facing direction.
+	PatchNPCFacing PatchKind = "npc_facing"
+	// PatchNPCHealth updates an NPC's health pool.
+	PatchNPCHealth PatchKind = "npc_health"
+	// PatchNPCInventory updates an NPC's inventory slots.
+	PatchNPCInventory PatchKind = "npc_inventory"
+	// PatchNPCEquipment updates an NPC's equipment loadout.
+	PatchNPCEquipment PatchKind = "npc_equipment"
 
 	// PatchEffectPos updates an effect's position.
 	PatchEffectPos PatchKind = "effect_pos"
@@ -110,7 +110,7 @@ type NPCHealthPayload = HealthPayload
 
 // InventoryPayload captures the inventory slots for an entity patch.
 type InventoryPayload struct {
-        Slots []InventorySlot `json:"slots"`
+	Slots []InventorySlot `json:"slots"`
 }
 
 // PlayerInventoryPayload captures the inventory slots for a player patch.
@@ -121,7 +121,7 @@ type NPCInventoryPayload = InventoryPayload
 
 // EquipmentPayload captures the equipped items for an entity patch.
 type EquipmentPayload struct {
-        Slots []EquippedItem `json:"slots"`
+	Slots []EquippedItem `json:"slots"`
 }
 
 // PlayerEquipmentPayload captures the equipped items for a player patch.
@@ -143,11 +143,16 @@ type GroundItemQtyPayload struct {
 // Journal accumulates patches generated during a tick and keeps a rolling
 // buffer of recent keyframes so future diff recovery can rehydrate state.
 type Journal struct {
-	mu        sync.RWMutex
-	patches   []Patch
-	keyframes []keyframe
-	maxFrames int
-	maxAge    time.Duration
+	mu            sync.RWMutex
+	patches       []Patch
+	keyframes     []keyframe
+	maxFrames     int
+	maxAge        time.Duration
+	effectSeq     map[string]Seq
+	effects       effectEventBuffer
+	endedIDs      []string
+	recentlyEnded map[string]Tick
+	telemetry     *telemetryCounters
 }
 
 // newJournal constructs a journal with storage for the configured number of
@@ -164,7 +169,33 @@ func newJournal(keyframeCapacity int, maxAge time.Duration) Journal {
 		keyframes: make([]keyframe, 0, keyframeCapacity),
 		maxFrames: keyframeCapacity,
 		maxAge:    maxAge,
+		effectSeq: make(map[string]Seq),
+		effects: effectEventBuffer{
+			spawns:  make([]EffectSpawnEvent, 0),
+			updates: make([]EffectUpdateEvent, 0),
+			ends:    make([]EffectEndEvent, 0),
+		},
+		endedIDs:      make([]string, 0),
+		recentlyEnded: make(map[string]Tick),
 	}
+}
+
+const journalRecentlyEndedWindow Tick = 4
+
+type effectEventBuffer struct {
+	spawns  []EffectSpawnEvent
+	updates []EffectUpdateEvent
+	ends    []EffectEndEvent
+}
+
+// EffectEventBatch captures the lifecycle envelopes recorded for the current
+// journal window alongside the per-effect sequence counters used for
+// idempotency in replay tooling.
+type EffectEventBatch struct {
+	Spawns      []EffectSpawnEvent  `json:"effect_spawned,omitempty"`
+	Updates     []EffectUpdateEvent `json:"effect_update,omitempty"`
+	Ends        []EffectEndEvent    `json:"effect_ended,omitempty"`
+	LastSeqByID map[string]Seq      `json:"effect_seq_cursors,omitempty"`
 }
 
 // journalConfig loads retention settings from the environment falling back to
@@ -199,6 +230,103 @@ func (j *Journal) AppendPatch(p Patch) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.patches = append(j.patches, p)
+}
+
+// RecordEffectSpawn registers an effect_spawned envelope in the journal.
+// The journal owns the per-effect sequence counter so replay tooling can drop
+// duplicates deterministically. The returned event mirrors the stored payload.
+func (j *Journal) RecordEffectSpawn(event EffectSpawnEvent) EffectSpawnEvent {
+	if event.Instance.ID == "" {
+		return EffectSpawnEvent{}
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.clearPendingEndLocked(event.Instance.ID)
+	delete(j.recentlyEnded, event.Instance.ID)
+	j.effectSeq[event.Instance.ID] = 0
+	if event.Seq <= 0 {
+		event.Seq = j.nextEffectSeqLocked(event.Instance.ID)
+	} else {
+		j.effectSeq[event.Instance.ID] = event.Seq
+	}
+	event.Instance = cloneEffectInstance(event.Instance)
+	j.effects.spawns = append(j.effects.spawns, event)
+	return event
+}
+
+// RecordEffectUpdate registers an effect_update envelope in the journal and
+// returns the stored event with the assigned sequence value.
+func (j *Journal) RecordEffectUpdate(event EffectUpdateEvent) EffectUpdateEvent {
+	if event.ID == "" {
+		return EffectUpdateEvent{}
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	last, ok := j.effectSeq[event.ID]
+	if !ok || last == 0 {
+		j.recordJournalDropLocked(metricJournalUnknownIDUpdate)
+		return EffectUpdateEvent{}
+	}
+	j.pruneRecentlyEndedLocked(event.Tick)
+	if _, recently := j.recentlyEnded[event.ID]; recently {
+		j.recordJournalDropLocked(metricJournalUpdateAfterEnd)
+		return EffectUpdateEvent{}
+	}
+	if event.Seq <= 0 {
+		event.Seq = j.nextEffectSeqLocked(event.ID)
+	} else if event.Seq <= last {
+		j.recordJournalDropLocked(metricJournalNonMonotonicSeq)
+		return EffectUpdateEvent{}
+	} else {
+		j.effectSeq[event.ID] = event.Seq
+	}
+	cloned := EffectUpdateEvent{
+		Tick: event.Tick,
+		Seq:  event.Seq,
+		ID:   event.ID,
+	}
+	if event.DeliveryState != nil {
+		delivery := cloneEffectDeliveryState(*event.DeliveryState)
+		cloned.DeliveryState = &delivery
+	}
+	if event.BehaviorState != nil {
+		behavior := cloneEffectBehaviorState(*event.BehaviorState)
+		cloned.BehaviorState = &behavior
+	}
+	if len(event.Params) > 0 {
+		cloned.Params = copyIntMap(event.Params)
+	}
+	j.effects.updates = append(j.effects.updates, cloned)
+	return cloned
+}
+
+// RecordEffectEnd registers an effect_ended envelope in the journal. The
+// journal retains the final sequence cursor until the batch is drained so
+// replay tooling can confirm ordering before the id is reclaimed.
+func (j *Journal) RecordEffectEnd(event EffectEndEvent) EffectEndEvent {
+	if event.ID == "" {
+		return EffectEndEvent{}
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	last, ok := j.effectSeq[event.ID]
+	if !ok || last == 0 {
+		j.recordJournalDropLocked(metricJournalUnknownIDUpdate)
+		return EffectEndEvent{}
+	}
+	j.pruneRecentlyEndedLocked(event.Tick)
+	if event.Seq <= 0 {
+		event.Seq = j.nextEffectSeqLocked(event.ID)
+	} else if event.Seq <= last {
+		j.recordJournalDropLocked(metricJournalNonMonotonicSeq)
+		return EffectEndEvent{}
+	} else {
+		j.effectSeq[event.ID] = event.Seq
+	}
+	j.effects.ends = append(j.effects.ends, event)
+	j.endedIDs = append(j.endedIDs, event.ID)
+	j.recentlyEnded[event.ID] = event.Tick
+	return event
 }
 
 // PurgeEntity drops all staged patches that reference the provided entity ID.
@@ -250,6 +378,52 @@ func (j *Journal) SnapshotPatches() []Patch {
 	snapshot := make([]Patch, len(j.patches))
 	copy(snapshot, j.patches)
 	return snapshot
+}
+
+// DrainEffectEvents returns the recorded lifecycle envelopes for the journal
+// window along with the current per-effect sequence cursors. Slices are copied
+// so callers can mutate the results without impacting the journal. After the
+// drain the buffered events are cleared and sequence entries for ended effects
+// are released.
+func (j *Journal) DrainEffectEvents() EffectEventBatch {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if len(j.effects.spawns) == 0 && len(j.effects.updates) == 0 && len(j.effects.ends) == 0 {
+		return EffectEventBatch{}
+	}
+	batch := EffectEventBatch{
+		Spawns:      cloneSpawnEvents(j.effects.spawns),
+		Updates:     cloneUpdateEvents(j.effects.updates),
+		Ends:        cloneEndEvents(j.effects.ends),
+		LastSeqByID: copySeqMap(j.effectSeq),
+	}
+	j.effects.spawns = j.effects.spawns[:0]
+	j.effects.updates = j.effects.updates[:0]
+	j.effects.ends = j.effects.ends[:0]
+	if len(j.endedIDs) > 0 {
+		for _, id := range j.endedIDs {
+			delete(j.effectSeq, id)
+			delete(j.recentlyEnded, id)
+		}
+		j.endedIDs = j.endedIDs[:0]
+	}
+	return batch
+}
+
+// SnapshotEffectEvents returns a copy of the currently staged lifecycle
+// envelopes without clearing the journal.
+func (j *Journal) SnapshotEffectEvents() EffectEventBatch {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if len(j.effects.spawns) == 0 && len(j.effects.updates) == 0 && len(j.effects.ends) == 0 {
+		return EffectEventBatch{}
+	}
+	return EffectEventBatch{
+		Spawns:      cloneSpawnEvents(j.effects.spawns),
+		Updates:     cloneUpdateEvents(j.effects.updates),
+		Ends:        cloneEndEvents(j.effects.ends),
+		LastSeqByID: copySeqMap(j.effectSeq),
+	}
 }
 
 // RecordKeyframe stores a keyframe in the buffer enforcing retention limits
@@ -354,6 +528,148 @@ func (j *Journal) KeyframeWindow() (size int, oldest, newest uint64) {
 	oldest = j.keyframes[0].Sequence
 	newest = j.keyframes[size-1].Sequence
 	return size, oldest, newest
+}
+
+func (j *Journal) nextEffectSeqLocked(id string) Seq {
+	if id == "" {
+		return 0
+	}
+	next := j.effectSeq[id] + 1
+	j.effectSeq[id] = next
+	return next
+}
+
+func (j *Journal) pruneRecentlyEndedLocked(current Tick) {
+	if len(j.recentlyEnded) == 0 || current <= 0 {
+		return
+	}
+	cutoff := current - journalRecentlyEndedWindow
+	for id, tick := range j.recentlyEnded {
+		if tick <= 0 {
+			continue
+		}
+		if tick <= cutoff {
+			delete(j.recentlyEnded, id)
+		}
+	}
+}
+
+func (j *Journal) clearPendingEndLocked(id string) {
+	if len(j.endedIDs) == 0 {
+		return
+	}
+	filtered := j.endedIDs[:0]
+	for _, endedID := range j.endedIDs {
+		if endedID == id {
+			continue
+		}
+		filtered = append(filtered, endedID)
+	}
+	j.endedIDs = filtered
+}
+
+const (
+	metricJournalNonMonotonicSeq = "journal_nonmonotonic_seq"
+	metricJournalUnknownIDUpdate = "journal_unknown_id_update"
+	metricJournalUpdateAfterEnd  = "journal_update_after_end"
+)
+
+func (j *Journal) recordJournalDropLocked(metric string) {
+	if j.telemetry == nil || metric == "" {
+		return
+	}
+	j.telemetry.RecordJournalDrop(metric)
+}
+
+func (j *Journal) AttachTelemetry(t *telemetryCounters) {
+	j.mu.Lock()
+	j.telemetry = t
+	j.mu.Unlock()
+}
+
+func cloneSpawnEvents(events []EffectSpawnEvent) []EffectSpawnEvent {
+	if len(events) == 0 {
+		return nil
+	}
+	clones := make([]EffectSpawnEvent, len(events))
+	for i, evt := range events {
+		clones[i] = EffectSpawnEvent{
+			Tick:     evt.Tick,
+			Seq:      evt.Seq,
+			Instance: cloneEffectInstance(evt.Instance),
+		}
+	}
+	return clones
+}
+
+func cloneUpdateEvents(events []EffectUpdateEvent) []EffectUpdateEvent {
+	if len(events) == 0 {
+		return nil
+	}
+	clones := make([]EffectUpdateEvent, len(events))
+	for i, evt := range events {
+		clone := EffectUpdateEvent{Tick: evt.Tick, Seq: evt.Seq, ID: evt.ID}
+		if evt.DeliveryState != nil {
+			delivery := cloneEffectDeliveryState(*evt.DeliveryState)
+			clone.DeliveryState = &delivery
+		}
+		if evt.BehaviorState != nil {
+			behavior := cloneEffectBehaviorState(*evt.BehaviorState)
+			clone.BehaviorState = &behavior
+		}
+		if len(evt.Params) > 0 {
+			clone.Params = copyIntMap(evt.Params)
+		}
+		clones[i] = clone
+	}
+	return clones
+}
+
+func cloneEndEvents(events []EffectEndEvent) []EffectEndEvent {
+	if len(events) == 0 {
+		return nil
+	}
+	clones := make([]EffectEndEvent, len(events))
+	copy(clones, events)
+	return clones
+}
+
+func cloneEffectInstance(instance EffectInstance) EffectInstance {
+	clone := instance
+	clone.DeliveryState = cloneEffectDeliveryState(instance.DeliveryState)
+	clone.BehaviorState = cloneEffectBehaviorState(instance.BehaviorState)
+	clone.Replication.UpdateFields = copyBoolMap(instance.Replication.UpdateFields)
+	if instance.Definition != nil {
+		defCopy := *instance.Definition
+		defCopy.Params = copyIntMap(instance.Definition.Params)
+		defCopy.Client.UpdateFields = copyBoolMap(instance.Definition.Client.UpdateFields)
+		clone.Definition = &defCopy
+	}
+	return clone
+}
+
+func cloneEffectDeliveryState(state EffectDeliveryState) EffectDeliveryState {
+	clone := state
+	clone.Geometry = cloneGeometry(state.Geometry)
+	return clone
+}
+
+func cloneEffectBehaviorState(state EffectBehaviorState) EffectBehaviorState {
+	clone := state
+	clone.Stacks = copyIntMap(state.Stacks)
+	clone.Extra = copyIntMap(state.Extra)
+	return clone
+}
+
+func copySeqMap(src map[string]Seq) map[string]Seq {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]Seq, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }
 
 // keyframe captures a full snapshot of the world state. The struct is

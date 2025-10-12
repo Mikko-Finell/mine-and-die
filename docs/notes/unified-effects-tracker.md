@@ -91,7 +91,7 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Journal events & storage | Not Started | Extend journal schema to capture `effect_spawned`, `effect_update`, `effect_ended`. | Plan for per-effect sequence counters; tie into replay tooling. |
+| Journal events & storage | In Progress | :hammer_and_wrench: Added journal APIs to record `effect_spawned`/`effect_update`/`effect_ended` envelopes with per-effect sequence cursors. | Next: thread EffectManager/hub dual-write into the new journal batch surface. |
 | Hub/messages dual-write | Not Started | Emit both legacy arrays and new event stream with configurable toggle. | Update client contracts in docs when toggling defaults. |
 | Resync policy & keyframe flow | Not Started | Document thresholds and implement resync hinting once journal events exist. | Add tests for lost-spawn recovery. |
 
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 11 | Added journal effect event storage, per-effect sequence cursors, and replay guidance; Phase 2 journal deliverable marked In Progress. | gpt-5-codex |
 | 10 | Added contract end policies (instant/duration/condition), owner-lost handling, and selective replication checks with dedicated lifecycle tests for melee, projectile, replication-off, and sequence monotonicity. | gpt-5-codex |
 | 9 | Corrected projectile delivery, added per-effect sequence counters, and sourced replication rules from definitions while tightening contract regression tests. | gpt-5-codex |
 | 8 | Enabled the contract manager to emit spawn/update/end events while draining intents and added feature-flagged tests validating queue flush + ordering. | gpt-5-codex |
