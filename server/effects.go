@@ -44,7 +44,7 @@ type effectState struct {
 	expiresAt      time.Time
 	Projectile     *ProjectileState
 	FollowActorID  string
-	Condition      ConditionType
+	StatusEffect   StatusEffectType
 	version        uint64
 	telemetryEnded bool
 }
@@ -187,7 +187,7 @@ func newProjectileTemplates() map[string]*ProjectileTemplate {
 func newEffectBehaviors() map[string]effectBehavior {
 	return map[string]effectBehavior{
 		effectTypeAttack:      healthDeltaBehavior("healthDelta", 0),
-		effectTypeFireball:    damageAndConditionBehavior("healthDelta", 0, ConditionBurning),
+		effectTypeFireball:    damageAndStatusEffectBehavior("healthDelta", 0, StatusEffectBurning),
 		effectTypeBurningTick: healthDeltaBehavior("healthDelta", 0),
 	}
 }
@@ -261,8 +261,8 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 			if eff != nil {
 				ability = eff.Type
 				actorRef = w.entityRef(eff.Owner)
-				if eff.Condition != "" {
-					conditionName = string(eff.Condition)
+				if eff.StatusEffect != "" {
+					conditionName = string(eff.StatusEffect)
 				}
 			}
 			targetRef := logging.EntityRef{}
@@ -279,7 +279,7 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 					Ability:      ability,
 					Amount:       -delta,
 					TargetHealth: target.Health,
-					Condition:    conditionName,
+					StatusEffect: conditionName,
 				},
 				nil,
 			)
@@ -290,7 +290,7 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 					w.currentTick,
 					actorRef,
 					targetRef,
-					loggingcombat.DefeatPayload{Ability: ability, Condition: conditionName},
+					loggingcombat.DefeatPayload{Ability: ability, StatusEffect: conditionName},
 					nil,
 				)
 				w.dropAllInventory(target, "death")
@@ -299,20 +299,20 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 	})
 }
 
-func damageAndConditionBehavior(param string, fallback float64, condition ConditionType) effectBehavior {
+func damageAndStatusEffectBehavior(param string, fallback float64, statusEffect StatusEffectType) effectBehavior {
 	base := healthDeltaBehavior(param, fallback)
 	return effectBehaviorFunc(func(w *World, eff *effectState, target *actorState, now time.Time) {
 		if base != nil {
 			base.OnHit(w, eff, target, now)
 		}
-		if w == nil || target == nil || condition == "" {
+		if w == nil || target == nil || statusEffect == "" {
 			return
 		}
 		source := ""
 		if eff != nil {
 			source = eff.Owner
 		}
-		w.applyCondition(target, condition, source, now)
+		w.applyStatusEffect(target, statusEffect, source, now)
 	})
 }
 
@@ -1113,8 +1113,8 @@ func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now ti
 	behavior.OnHit(w, eff, target, now)
 }
 
-// applyEnvironmentalConditions applies persistent effects triggered by hazards.
-func (w *World) applyEnvironmentalConditions(states []*actorState, now time.Time) {
+// applyEnvironmentalStatusEffects applies persistent effects triggered by hazards.
+func (w *World) applyEnvironmentalStatusEffects(states []*actorState, now time.Time) {
 	if len(states) == 0 {
 		return
 	}
@@ -1127,7 +1127,7 @@ func (w *World) applyEnvironmentalConditions(states []*actorState, now time.Time
 				continue
 			}
 			if circleRectOverlap(state.X, state.Y, playerHalf, obs) {
-				w.applyCondition(state, ConditionBurning, obs.ID, now)
+				w.applyStatusEffect(state, StatusEffectBurning, obs.ID, now)
 				break
 			}
 		}

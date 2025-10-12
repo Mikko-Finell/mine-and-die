@@ -95,8 +95,8 @@ patches or version bumps:
   player slot.【F:server/simulation.go†L288-L313】【F:server/hub.go†L169-L190】
 * **Cooldown timers (`playerState.cooldowns`)** – lazily populated and updated
   in the ability helpers to enforce ability reuse delays.【F:server/effects.go†L338-L377】
-* **Condition map (`actorState.conditions`)** – populated, refreshed, and cleaned
-  up by the condition system when status effects apply or expire.【F:server/conditions.go†L87-L158】
+* **Status effect map (`actorState.statusEffects`)** – populated, refreshed, and cleaned
+  up by the status effect system when effects apply or expire.【F:server/status_effects.go†L87-L158】
 * **Scratch movement (`actorState.X`, `actorState.Y`)** – movement integration
   still adjusts actor copies directly while resolving collisions before the
   results are written back through `SetPosition`. These adjustments never touch

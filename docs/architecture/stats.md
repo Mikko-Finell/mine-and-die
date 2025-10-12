@@ -9,7 +9,7 @@ The design ensures the stats pipeline is deterministic, reproducible, and compat
 - **Deterministic resolution** — Calculations must be repeatable per tick, supporting the RNG-free combat outlined in the taxonomy doc.
 - **Authoritative source of truth** — Stats live exclusively on the server and flow to the client through existing snapshot/patch infrastructure.
 - **Low churn diffs** — Derived values publish minimal patches to keep `Hub.broadcastState` payloads small.
-- **Composable modifiers** — Permanent boosters, transient buffs, conditions, equipment, and environmental effects can layer predictably.
+- **Composable modifiers** — Permanent boosters, transient buffs, status effects, equipment, and environmental effects can layer predictably.
 - **Go-first implementation** — Prefer structs and typed accessors over reflection; keep allocations low by reusing small arrays and pooling scratch buffers.
 
 ## Architectural Overview
@@ -91,7 +91,7 @@ Expose getters returning cached values to avoid mid-tick recomputation, while st
 
 ## Mutation Flow
 1. **Command enqueue** — Consumable usage or script triggers issue a `CommandStatChange` with the source, target actor, and mutation payload.
-2. **Component update** — `stats.Component.Apply(change)` mutates the relevant layer (`Permanent` for boosters, `Equipment` for gear, `Temporary` for buffs/conditions, `Environment` for zone modifiers, `Admin` for GM tooling) and marks derived caches dirty. Temporary deltas store `ExpiresAtTick` and are culled deterministically inside the tick loop.
+2. **Component update** — `stats.Component.Apply(change)` mutates the relevant layer (`Permanent` for boosters, `Equipment` for gear, `Temporary` for buffs/status effects, `Environment` for zone modifiers, `Admin` for GM tooling) and marks derived caches dirty. Temporary deltas store `ExpiresAtTick` and are culled deterministically inside the tick loop.
 3. **Recalculation** — On the next access or at the end of the mutation batch, `Component.Resolve(tickIndex)` recomputes derived stats using tuned formulas and stores them in the cache, incrementing the component version. During resolution it folds layers in the explicit order **Base → Permanent → Equipment → Temporary → Environment → Admin**, applying all additive contributions first, then multiplying the accumulated total by per-layer `mul` values, and finally applying any overrides (highest-precedence layer wins). Overrides skip unset entries so missing data never zeros out stats. `Component.Resolve` also clears expired temporary sources before folding, ensuring deterministic decay using tick indices only.
 4. **World mutation** — Health/mana cap changes call `World.SetHealth` / `World.SetNPCHealth` to clamp current values and emit patches, reusing existing mutators for diff consistency.
 5. **Broadcast** — The hub includes stat payloads alongside `Actor` snapshots. Only changed stats produce patches thanks to the component version check.
@@ -101,7 +101,7 @@ Define explicit command structs in `server/messages.go` and handlers in `simulat
 - `CommandConsumeBooster` — removes the item via `Inventory.RemoveQuantity`, invokes `stats.ApplyPermanent` with a stable `SourceKey`, publishes combat log events.
 - `CommandEquipItem` / `CommandUnequipItem` — update equipment layer by inserting/removing the specific `SourceKey` so identical items stack predictably.
 - Equipment console commands now leverage `World.EquipFromInventory` / `World.UnequipToInventory` to update `stats.LayerEquipment`, emit patches, and clamp health immediately after gear changes.【F:server/world_equipment.go†L19-L112】【F:server/hub.go†L438-L520】
-- `CommandConditionApplied` / `CommandConditionExpired` — integrate with `actorState.conditions` for on-tick buffs/debuffs, storing their `ExpiresAtTick` and removing the matching source during cleanup.
+- `CommandStatusEffectApplied` / `CommandStatusEffectExpired` — integrate with `actorState.statusEffects` for on-tick buffs/debuffs, storing their `ExpiresAtTick` and removing the matching source during cleanup.
 - `CommandResetStats` — used by death handling to wipe layers except archetype defaults.
 These commands follow the existing queueing pattern handled in `Hub.advance`, preserving deterministic processing order.
 
@@ -137,7 +137,7 @@ Although the current prototype wipes stats on death, persistence-ready hooks kee
 
 ## Testing Strategy
 1. **Unit tests** — Validate formulas per stat and derived metric, including edge cases for high stack counts and zero values.
-2. **Integration tests** — Extend `main_test.go` to simulate booster consumption, equipment toggles, and condition application, asserting health caps, damage output, and cooldown timings.
+2. **Integration tests** — Extend `main_test.go` to simulate booster consumption, equipment toggles, and status effect application, asserting health caps, damage output, and cooldown timings.
 3. **Regression tests** — Add deterministic seeds to confirm identical stat progressions across runs.
 4. **Performance tests** — Benchmark component recalculation to ensure negligible impact on the 15 Hz tick loop.
 

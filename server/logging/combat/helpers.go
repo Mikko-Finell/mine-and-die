@@ -27,13 +27,13 @@ type DamagePayload struct {
 	Ability      string  `json:"ability,omitempty"`
 	Amount       float64 `json:"amount"`
 	TargetHealth float64 `json:"targetHealth"`
-	Condition    string  `json:"condition,omitempty"`
+	StatusEffect string  `json:"statusEffect,omitempty"`
 }
 
 // DefeatPayload describes the context for a fatal blow.
 type DefeatPayload struct {
-	Ability   string `json:"ability,omitempty"`
-	Condition string `json:"condition,omitempty"`
+	Ability      string `json:"ability,omitempty"`
+	StatusEffect string `json:"statusEffect,omitempty"`
 }
 
 // AttackOverlap publishes a combat overlap event.

@@ -1,71 +1,5 @@
 [
   {
-    "file": "server/conditions.go",
-    "function": "advanceActorConditions",
-    "categories": [
-      "mutation"
-    ],
-    "deliveryKinds": [
-      "condition"
-    ],
-    "mutations": [
-      "w.expireAttachedEffect",
-      "w.extendAttachedEffect"
-    ]
-  },
-  {
-    "file": "server/conditions.go",
-    "function": "applyCondition",
-    "categories": [
-      "mutation"
-    ],
-    "deliveryKinds": [
-      "condition"
-    ],
-    "loggingCalls": [
-      "loggingconditions.Applied"
-    ],
-    "mutations": [
-      "w.extendAttachedEffect"
-    ]
-  },
-  {
-    "file": "server/conditions.go",
-    "function": "applyConditionDamage",
-    "categories": [
-      "mutation",
-      "producer"
-    ],
-    "deliveryKinds": [
-      "condition"
-    ],
-    "effectTypes": [
-      "effectTypeBurningTick"
-    ],
-    "mutations": [
-      "w.applyEffectHitActor"
-    ]
-  },
-  {
-    "file": "server/conditions.go",
-    "function": "attachConditionEffect",
-    "categories": [
-      "mutation",
-      "producer"
-    ],
-    "deliveryKinds": [
-      "condition"
-    ],
-    "effectTypes": [
-      "effectType"
-    ],
-    "mutations": [
-      "w.effects.append",
-      "w.nextEffectID++",
-      "w.pruneEffects"
-    ]
-  },
-  {
     "file": "server/effects.go",
     "function": "QueueEffectTrigger",
     "categories": [
@@ -166,20 +100,6 @@
     ],
     "mutations": [
       "w.applyEffectHitActor"
-    ]
-  },
-  {
-    "file": "server/effects.go",
-    "function": "applyEnvironmentalConditions",
-    "categories": [
-      "mutation"
-    ],
-    "deliveryKinds": [
-      "condition",
-      "environment"
-    ],
-    "mutations": [
-      "w.applyCondition"
     ]
   },
   {
@@ -358,6 +278,72 @@
     "mutations": [
       "w.SetEffectPosition",
       "w.expireAttachedEffect"
+    ]
+  },
+  {
+    "file": "server/status_effects.go",
+    "function": "advanceActorStatusEffects",
+    "categories": [
+      "mutation"
+    ],
+    "deliveryKinds": [
+      "mutation"
+    ],
+    "mutations": [
+      "w.expireAttachedEffect",
+      "w.extendAttachedEffect"
+    ]
+  },
+  {
+    "file": "server/status_effects.go",
+    "function": "applyStatusEffect",
+    "categories": [
+      "mutation"
+    ],
+    "deliveryKinds": [
+      "mutation"
+    ],
+    "loggingCalls": [
+      "loggingstatuseffects.Applied"
+    ],
+    "mutations": [
+      "w.extendAttachedEffect"
+    ]
+  },
+  {
+    "file": "server/status_effects.go",
+    "function": "applyStatusEffectDamage",
+    "categories": [
+      "mutation",
+      "producer"
+    ],
+    "deliveryKinds": [
+      "condition"
+    ],
+    "effectTypes": [
+      "effectTypeBurningTick"
+    ],
+    "mutations": [
+      "w.applyEffectHitActor"
+    ]
+  },
+  {
+    "file": "server/status_effects.go",
+    "function": "attachStatusEffectVisual",
+    "categories": [
+      "mutation",
+      "producer"
+    ],
+    "deliveryKinds": [
+      "tracked"
+    ],
+    "effectTypes": [
+      "effectType"
+    ],
+    "mutations": [
+      "w.effects.append",
+      "w.nextEffectID++",
+      "w.pruneEffects"
     ]
   },
   {

@@ -1,7 +1,7 @@
-# Effects & Conditions
+# Effects & Status Effects
 
 This document explains how Mine & Die models combat effects, server-driven
-conditions, and the client runtime that renders them. Use it as the reference
+status effects, and the client runtime that renders them. Use it as the reference
 when tuning existing abilities or introducing new ones.
 
 ## Authoritative Effect Model
@@ -38,31 +38,31 @@ can render lingering hitboxes and single-use decals in the same frame.
 ### Lifecycle Management
 
 `World.Step` advances player and NPC movement, stages abilities, applies
-environmental hazards, and then updates both conditions and effects before the
+environmental hazards, and then updates both status effects and effects before the
 snapshot is emitted.
 Helpers such as `pruneEffects` and `maybeExplodeOnExpiry` remove expired
 instances, while `applyEffectHitNPC` invokes defeat handlers the moment an NPC
 runs out of health.
 
-## Conditions
+## Status Effects
 
-Conditions wrap persistent status effects (burning, poison, etc.) around the
-core effect system. Definitions live in `newConditionDefinitions`, which sets up
-per-condition durations, tick cadences, and lifecycle callbacks.
-`applyCondition` instantiates or refreshes `conditionInstance` records for the
+Status effects wrap persistent modifiers (burning, poison, etc.) around the
+core effect system. Definitions live in `newStatusEffectDefinitions`, which sets up
+per-effect durations, tick cadences, and lifecycle callbacks.
+`applyStatusEffect` instantiates or refreshes `statusEffectInstance` records for the
 target actor, schedules ticks, and invokes `OnApply`/`OnTick` handlers.
-The default burning condition attaches a looping fire visual, deals periodic
+The default burning status effect attaches a looping fire visual, deals periodic
 damage based on lava DPS, and expires cleanly once its timer completes.
 
-`advanceConditions` runs every tick to trigger scheduled ticks, extend attached
+`advanceStatusEffects` runs every tick to trigger scheduled ticks, extend attached
 visuals, and clean up expired instances.
 When a tick inflicts damage, the helper spawns a lightweight
 `effectState` with `effectTypeBurningTick` so health changes reuse the shared
 behaviour pipeline.
 
-Environmental systems call `applyEnvironmentalConditions` to apply burning while
+Environmental systems call `applyEnvironmentalStatusEffects` to apply burning while
 actors remain inside lava obstacles, so hazards automatically refresh the
-condition timer without custom code.
+status effect timer without custom code.
 
 ## Snapshot & Transport
 
@@ -226,11 +226,11 @@ all tracked instances, and draws layered visuals on the canvas.
 
 ## Extending the System
 
-When adding a new ability or condition:
+When adding a new ability or status effect:
 
 1. **Author the behaviour** – Add or update effect behaviours / projectile
-   templates in `server/effects.go` and register condition definitions in
-   `server/conditions.go` as needed.
+   templates in `server/effects.go` and register status effect definitions in
+   `server/status_effects.go` as needed.
 2. **Emit visuals** – Decide whether the feature needs a tracked effect (with a
    bounding box and lifetime) or a fire-and-forget trigger, and use
    `QueueEffectTrigger` for one-shot decals.
@@ -250,24 +250,24 @@ Phase 0 called for observability on the current, pre-unification effect loop so
 we have baselines before dual-write rollouts begin. The instrumentation now in
 place mirrors three lifecycle phases already exercised by the world:
 
-* **Spawn** – `triggerMeleeAttack`, `spawnProjectile`, condition handlers, and
+* **Spawn** – `triggerMeleeAttack`, `spawnProjectile`, status effect handlers, and
   `spawnAreaEffectAt` append new `effectState` entries after pruning expired
-  instances.【F:server/effects.go†L415-L457】【F:server/effects.go†L545-L613】【F:server/effects.go†L968-L1007】【F:server/conditions.go†L247-L276】
+  instances.【F:server/effects.go†L415-L457】【F:server/effects.go†L545-L613】【F:server/effects.go†L968-L1007】【F:server/status_effects.go†L247-L276】
 * **Update** – `advanceProjectile`, `updateFollowEffect`, and the write barriers
   `SetEffectPosition` / `SetEffectParam` mutate tracked effects while the world is
   locked.【F:server/effects.go†L723-L872】【F:server/world_mutators.go†L322-L358】
 * **End** – Effects exit through `stopProjectile`, `expireAttachedEffect`, and the
   `pruneEffects` sweep that purges any instance whose `expiresAt` has elapsed and
-  clears residual patches.【F:server/effects.go†L912-L1057】【F:server/conditions.go†L298-L317】
+  clears residual patches.【F:server/effects.go†L912-L1057】【F:server/status_effects.go†L298-L317】
 
 ### Metrics & Aggregation Surface
 
 | Metric | Type | Cardinality | Update cadence | Aggregation | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `effects.spawned_total` | Counter | `effect_type` + `producer` (≤6 × 4) | Increment on each spawn helper before slices append. | Extend `telemetryCounters` with atomic counters; emit optional debug log when `DEBUG_TELEMETRY=1`. | Ensures melee, projectile, condition, and explosion spawns are counted independently.【F:server/effects.go†L415-L457】【F:server/effects.go†L545-L613】【F:server/effects.go†L968-L1007】【F:server/conditions.go†L247-L276】 |
+| `effects.spawned_total` | Counter | `effect_type` + `producer` (≤6 × 4) | Increment on each spawn helper before slices append. | Extend `telemetryCounters` with atomic counters; emit optional debug log when `DEBUG_TELEMETRY=1`. | Ensures melee, projectile, status effect, and explosion spawns are counted independently.【F:server/effects.go†L415-L457】【F:server/effects.go†L545-L613】【F:server/effects.go†L968-L1007】【F:server/status_effects.go†L247-L276】 |
 | `effects.updated_total` | Counter | `effect_type` + `mutation` (`position`, `param`) | Increment from `SetEffectPosition` / `SetEffectParam`. | Same counters struct; no log spam because updates are high-volume. | Measures how often projectiles move or params change per tick.【F:server/world_mutators.go†L322-L358】 |
 | `effects.active_gauge` | Gauge (last sample) | unlabelled | Record once per tick after `world.Snapshot` to capture active effect count. | Store in `telemetryCounters` via `RecordEffectsActive(count)` style helper. | Gives baseline active counts alongside existing tick duration sampling.【F:server/hub.go†L711-L734】 |
-| `effects.ended_total` | Counter | `effect_type` + `reason` (`duration`, `impact`, `ownerLost`, `cancelled`) | Increment in `stopProjectile`, `expireAttachedEffect`, and `pruneEffects`. | Counters struct plus structured log for unexpected reasons when debug mode enabled. | Differentiates expiry-on-impact vs. natural timeout for parity tracking.【F:server/effects.go†L912-L947】【F:server/effects.go†L1042-L1057】【F:server/conditions.go†L298-L317】 |
+| `effects.ended_total` | Counter | `effect_type` + `reason` (`duration`, `impact`, `ownerLost`, `cancelled`) | Increment in `stopProjectile`, `expireAttachedEffect`, and `pruneEffects`. | Counters struct plus structured log for unexpected reasons when debug mode enabled. | Differentiates expiry-on-impact vs. natural timeout for parity tracking.【F:server/effects.go†L912-L947】【F:server/effects.go†L1042-L1057】【F:server/status_effects.go†L298-L317】 |
 | `effect_triggers.enqueued_total` | Counter | `trigger_type` | Increment inside `QueueEffectTrigger`. | Counters struct; existing trigger queue stays unchanged. | Tracks fire-and-forget usage independent of tracked effects.【F:server/effects.go†L318-L371】 |
 
 ### Availability & Baseline Capture
@@ -317,10 +317,10 @@ npm run effects:map
 ```
 
 The script (`tools/effects/build_producer_map`) parses the Go sources in
-`server/effects.go`, `server/conditions.go`, `server/world_mutators.go`, and
+`server/effects.go`, `server/status_effects.go`, `server/world_mutators.go`, and
 `server/simulation.go`, then writes `effects_producer_map.json` at the repo root.
 Each entry lists the source file, function name, category tags (producer vs.
-mutation), inferred delivery kinds (melee, projectile, trigger, condition, etc.),
+mutation), inferred delivery kinds (melee, projectile, trigger, statusEffect, etc.),
 and the invariants that function touches (cooldown guards, logging calls, journal
 patches, helper invocations). This index is the authoritative reference for
 effects migration planning—update it in the same commit as any gameplay change
