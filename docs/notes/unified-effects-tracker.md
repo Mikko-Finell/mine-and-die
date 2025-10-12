@@ -36,13 +36,13 @@ Statuses use the following scale:
 
 | Phase | Status | Summary | Primary Next Step |
 | --- | --- | --- | --- |
-| Phase 0 – Inventory, Observability, Guardrails | Ready to Start | Tooling & telemetry foundation before touching runtime. | Build and check in the automated effect producer map script. |
-| Phase 1 – Contract Types & Authoritative Manager | In Progress | Introduce contract types and manager while keeping behaviour identical. | Prototype EffectManager skeleton behind feature flag. |
-| Phase 2 – Transport & Journal (Dual-Write) | In Progress | Journal and broadcast new events alongside legacy payloads. | Finalize client/broadcast toggles and document stream contract before advancing to resync policy. |
-| Phase 3 – Client Ingestion & Visual Manager | Not Started | Client consumes new stream deterministically with two-pass ingestion. | Prototype JS EffectManager adapter after Phase 2 dual-write exists. |
-| Phase 4 – Producer Migration | Not Started | Port gameplay producers onto definitions with parity gates. | Pick one archetype (melee/projectile) for first contract-backed port. |
-| Phase 5 – Determinism & Performance Hardening | Not Started | Stress testing & budgets for the new system. | Define benchmark harness & thresholds post-contract rollout. |
-| Phase 6 – Cutover, Verification & Docs | Not Started | Remove legacy paths and lock contract. | Schedule adoption gate monitoring once prior phases stabilize. |
+| Phase 0 – Inventory, Observability, Guardrails | Complete | Tooling and telemetry guardrails landed to support future rollout. | Keep the producer map and telemetry docs current as new definitions ship. |
+| Phase 1 – Contract Types & Authoritative Manager | Complete | Contract payloads, enums, math helpers, and the server manager skeleton are feature-flagged and validated. | Monitor parity while client ingestion work consumes the new contracts. |
+| Phase 2 – Transport & Journal (Dual-Write) | Complete | Dual-write journal, transport toggles, and resync policy are active behind rollout flags. | Track resync telemetry during Phase 3 rollout and capture anomalies. |
+| Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Implement spawn/update/end batch processor and move rendering onto replicated metadata. |
+| Phase 4 – Producer Migration | Not Started | Port gameplay producers onto contract-backed definitions with parity gates. | Pick one archetype (melee/projectile) for the first contract-backed port. |
+| Phase 5 – Determinism & Performance Hardening | Not Started | Stress testing and budgets for the new system. | Define benchmark harness and thresholds post-contract rollout. |
+| Phase 6 – Cutover, Verification & Docs | Not Started | Remove legacy paths and lock the unified contract. | Schedule adoption gate monitoring once prior phases stabilize. |
 
 ---
 
@@ -99,7 +99,7 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Client EffectManager adapter | Not Started | Mirror server IDs in JS manager keyed by `EffectID`. | Use shared store; avoid duplicate arrays. |
+| Client EffectManager adapter | In Progress | :white_check_mark: Mirror server IDs in JS manager keyed by `EffectID`; next: wire spawn/update batches. | Registry mirrored in client store for lookup without duplicating arrays. |
 | Two-pass processor | Not Started | Implement batch processing order (spawns → updates → ends) with retry semantics. | Surface diagnostics event when unknown after retry. |
 | Render integration & duplication guard | Not Started | Swap rendering onto replicated metadata and prevent double rendering during dual-write. | Validate via patch/keyframe tests. |
 
@@ -135,6 +135,8 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 16 | Updated the Phase Overview to reflect completed groundwork and clarified the immediate client ingestion objectives. | gpt-5-codex |
+| 15 | Mirrored client EffectManager instances by server `EffectID`, updated tracker to reflect in-progress adapter work, and documented follow-on wiring needs. | gpt-5-codex |
 | 14 | Wired resync policy thresholds, forced keyframe scheduling, and documented the 0.01% lost-spawn trigger alongside new regression tests. | gpt-5-codex |
 | 13 | Added an explicit transport rollout flag, documented the dual-write payload fields, and marked the hub/messages deliverable complete. | gpt-5-codex |
 | 12 | Threaded hub dual-write onto journal batches so state payloads emit contract event envelopes; updated tracker to reflect journal deliverable completion and ongoing dual-write rollout. | gpt-5-codex |
