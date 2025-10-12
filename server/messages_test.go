@@ -386,6 +386,34 @@ func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 	assertResyncFlag(t, data, false)
 }
 
+func TestHubSchedulesResyncAfterJournalHint(t *testing.T) {
+	hub := newHub()
+	hub.SetKeyframeInterval(5)
+
+	hub.mu.Lock()
+	hub.world.journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 1, ID: "effect-x"})
+	hub.mu.Unlock()
+
+	scheduled, signal := hub.scheduleResyncIfNeeded()
+	if !scheduled {
+		t.Fatalf("expected resync to be scheduled after journal hint")
+	}
+	if signal.LostSpawns != 1 {
+		t.Fatalf("expected lost spawn count 1, got %d", signal.LostSpawns)
+	}
+
+	includeSnapshot := hub.shouldIncludeSnapshot()
+	if !includeSnapshot {
+		t.Fatalf("expected forced keyframe after resync hint")
+	}
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, includeSnapshot)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+	assertResyncFlag(t, data, true)
+}
+
 func assertResyncFlag(t *testing.T, raw []byte, expected bool) {
 	t.Helper()
 

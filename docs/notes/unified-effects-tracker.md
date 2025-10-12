@@ -93,7 +93,7 @@ Statuses use the following scale:
 | --- | --- | --- | --- |
 | Journal events & storage | Complete | :white_check_mark: Journal records dual-write envelopes and hub drains `effect_spawned`/`effect_update`/`effect_ended` batches during state broadcasts. | `stateMessage` now mirrors contract batches (including `effect_seq_cursors`) behind `enableContractEffectManager` + `enableContractEffectTransport`; follow-up resync hints move to dedicated deliverable. |
 | Hub/messages dual-write | Complete | :white_check_mark: Added `enableContractEffectTransport` rollout flag and documented the new payload members. | Transport fields stay gated until clients ingest them; see `docs/architecture/effects.md` for field descriptions. |
-| Resync policy & keyframe flow | Not Started | Document thresholds and implement resync hinting once journal events exist. | Add tests for lost-spawn recovery. |
+| Resync policy & keyframe flow | Complete | :white_check_mark: Journal tracks lost-spawn ratios (≥0.01%) and raises hints that force the next keyframe + resync broadcast. | Added server tests covering policy math, journal hinting, and hub resync scheduling. |
 
 ### Phase 3 — Client Ingestion & Visual Manager
 
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 14 | Wired resync policy thresholds, forced keyframe scheduling, and documented the 0.01% lost-spawn trigger alongside new regression tests. | gpt-5-codex |
 | 13 | Added an explicit transport rollout flag, documented the dual-write payload fields, and marked the hub/messages deliverable complete. | gpt-5-codex |
 | 12 | Threaded hub dual-write onto journal batches so state payloads emit contract event envelopes; updated tracker to reflect journal deliverable completion and ongoing dual-write rollout. | gpt-5-codex |
 | 11 | Added journal effect event storage, per-effect sequence cursors, and replay guidance; Phase 2 journal deliverable marked In Progress. | gpt-5-codex |

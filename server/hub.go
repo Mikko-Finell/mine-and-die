@@ -1035,6 +1035,28 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	return data, entities, err
 }
 
+func (h *Hub) scheduleResyncIfNeeded() (bool, resyncSignal) {
+	h.mu.Lock()
+	journal := &h.world.journal
+	h.mu.Unlock()
+
+	signal, ok := journal.ConsumeResyncHint()
+	if !ok {
+		return false, resyncSignal{}
+	}
+
+	h.forceKeyframe()
+	h.resyncNext.Store(true)
+
+	summary := signal.summary()
+	if summary == "" {
+		stdlog.Printf("[effects] scheduling resync (journal hint)")
+	} else {
+		stdlog.Printf("[effects] scheduling resync (journal hint): %s", summary)
+	}
+	return true, signal
+}
+
 func (h *Hub) nextStateMeta(drainPatches bool) (seq uint64, resync bool) {
 	resync = !drainPatches
 	if !resync && h.resyncNext.CompareAndSwap(true, false) {
@@ -1139,6 +1161,7 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 
 // broadcastState sends the latest world snapshot to every subscriber.
 func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem) {
+	h.scheduleResyncIfNeeded()
 	includeSnapshot := h.shouldIncludeSnapshot()
 	data, entities, err := h.marshalState(players, npcs, effects, triggers, groundItems, true, includeSnapshot)
 	if err != nil {
