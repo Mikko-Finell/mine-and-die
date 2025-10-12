@@ -79,6 +79,33 @@ const (
 	EndReasonMapChange EndReason = "mapChange"
 )
 
+// EndPolicyKind describes how an effect instance determines when it ends.
+type EndPolicyKind uint8
+
+const (
+	// EndDuration ends an instance after its configured lifetime elapses.
+	EndDuration EndPolicyKind = iota
+	// EndInstant ends an instance in the same tick after it applies once.
+	EndInstant
+	// EndCondition ends when runtime conditions evaluate to true.
+	EndCondition
+)
+
+// EndConditions enumerates the runtime checks an EndCondition policy can perform.
+type EndConditions struct {
+	OnUnequip        bool `json:"onUnequip"`
+	OnOwnerDeath     bool `json:"onOwnerDeath"`
+	OnOwnerLost      bool `json:"onOwnerLost"`
+	OnZoneChange     bool `json:"onZoneChange"`
+	OnExplicitCancel bool `json:"onExplicitCancel"`
+}
+
+// EndPolicy captures the configured lifecycle policy for an effect definition.
+type EndPolicy struct {
+	Kind       EndPolicyKind `json:"kind"`
+	Conditions EndConditions `json:"conditions,omitempty"`
+}
+
 // EffectGeometry captures the spatial payload carried by intents and instances.
 type EffectGeometry struct {
 	Shape    GeometryShape  `json:"shape"`
@@ -148,10 +175,13 @@ type EffectInstance struct {
 	ID            string              `json:"id"`
 	DefinitionID  string              `json:"definitionId"`
 	Definition    *EffectDefinition   `json:"definition,omitempty"`
+	StartTick     Tick                `json:"startTick"`
 	DeliveryState EffectDeliveryState `json:"deliveryState"`
 	BehaviorState EffectBehaviorState `json:"behaviorState"`
 	FollowActorID string              `json:"followActorId,omitempty"`
+	OwnerActorID  string              `json:"ownerActorId,omitempty"`
 	Replication   ReplicationSpec     `json:"replication"`
+	End           EndPolicy           `json:"end"`
 }
 
 // EffectHooks reference behavior callbacks associated with a definition.
@@ -174,6 +204,7 @@ type EffectDefinition struct {
 	Params        map[string]int  `json:"params,omitempty"`
 	Hooks         EffectHooks     `json:"hooks"`
 	Client        ReplicationSpec `json:"client"`
+	End           EndPolicy       `json:"end"`
 }
 
 // -----------------------------
@@ -202,6 +233,16 @@ type EffectEndEvent struct {
 	ID     string    `json:"id"`
 	Reason EndReason `json:"reason"`
 }
+
+// EffectLifecycleEvent provides a shared type for callbacks that need to handle
+// any of the lifecycle payloads emitted by the contract-driven manager.
+type EffectLifecycleEvent interface {
+	isEffectLifecycleEvent()
+}
+
+func (EffectSpawnEvent) isEffectLifecycleEvent()  {}
+func (EffectUpdateEvent) isEffectLifecycleEvent() {}
+func (EffectEndEvent) isEffectLifecycleEvent()    {}
 
 // TODO: integrate these contract types with a future EffectManager implementation so the simulation
 // can migrate from legacy Effect/EffectTrigger models to the unified system described in the docs.

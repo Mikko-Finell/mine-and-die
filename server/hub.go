@@ -714,7 +714,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []E
 	commands := h.drainCommands()
 
 	h.mu.Lock()
-	removed := h.world.Step(tick, now, dt, commands)
+	removed := h.world.Step(tick, now, dt, commands, nil)
 	players, npcs, effects := h.world.Snapshot(now)
 	if h.telemetry != nil {
 		h.telemetry.RecordEffectsActive(len(effects))
