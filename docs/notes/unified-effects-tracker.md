@@ -63,7 +63,7 @@ Statuses use the following scale:
 * `server/main_test.go:TestMeleeAttackDealsDamage` — asserts melee hitboxes apply expected damage to other players.
 * `server/main_test.go:TestMeleeAttackCanDefeatGoblin` — covers NPC damage resolution and death from melee effects.
 * `server/main_test.go:TestMeleeAttackAgainstGoldOreAwardsCoin` — ensures melee mining triggers resource drops through effect handling.
-* `server/main_test.go:TestLavaAppliesBurningCondition` — validates hazard tick damage, burning condition persistence, and follower visuals.
+* `server/main_test.go:TestLavaAppliesBurningStatusEffect` — validates hazard tick damage, burning status effect persistence, and follower visuals.
 * `server/main_test.go:TestTriggerFireballCreatesProjectile` — confirms trigger pipeline spawns projectile effects with travel state.
 * `server/main_test.go:TestFireballDealsDamageOnHit` — exercises projectile collision damage to players.
 * `server/main_test.go:TestHealthDeltaHealingClampsToMax` — checks healing effect maths clamp to max health.

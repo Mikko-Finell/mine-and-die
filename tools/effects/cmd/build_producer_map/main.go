@@ -210,7 +210,7 @@ func analyzeFile(fset *token.FileSet, relPath string, file *ast.File) []*functio
 func isEffectRelatedFile(path string) bool {
 	allowed := map[string]struct{}{
 		"server/effects.go":        {},
-		"server/conditions.go":     {},
+		"server/status_effects.go": {},
 		"server/world_mutators.go": {},
 		"server/simulation.go":     {},
 	}
@@ -229,6 +229,7 @@ func isRelevantFunction(fi *functionInfo) bool {
 		"effect",
 		"trigger",
 		"condition",
+		"status",
 		"projectile",
 		"melee",
 		"fireball",

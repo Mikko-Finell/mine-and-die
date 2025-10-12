@@ -71,7 +71,7 @@ type World struct {
 	obstacles           []Obstacle
 	effectBehaviors     map[string]effectBehavior
 	projectileTemplates map[string]*ProjectileTemplate
-	conditionDefs       map[ConditionType]*ConditionDefinition
+	statusEffectDefs    map[StatusEffectType]*StatusEffectDefinition
 	nextEffectID        uint64
 	nextNPCID           uint64
 	nextGroundItemID    uint64
@@ -129,7 +129,7 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		effectTriggers:      make([]EffectTrigger, 0),
 		effectBehaviors:     newEffectBehaviors(),
 		projectileTemplates: newProjectileTemplates(),
-		conditionDefs:       newConditionDefinitions(),
+		statusEffectDefs:    newStatusEffectDefinitions(),
 		aiLibrary:           globalAILibrary,
 		config:              normalized,
 		rng:                 newDeterministicRNG(normalized.Seed, "world"),
@@ -443,9 +443,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	for _, npc := range w.npcs {
 		actorsForHazards = append(actorsForHazards, &npc.actorState)
 	}
-	w.applyEnvironmentalConditions(actorsForHazards, now)
+	w.applyEnvironmentalStatusEffects(actorsForHazards, now)
 
-	w.advanceConditions(now)
+	w.advanceStatusEffects(now)
 	if enableContractEffectManager && w.effectManager != nil {
 		w.effectManager.RunTick(Tick(int64(tick)), emitEffectEvent)
 	}
