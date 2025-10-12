@@ -15,7 +15,7 @@ A single, executable plan that blends the strongest ideas: **contract-first type
 * **Auto producer map**: script that enumerates every effect producer and mutation site (melee/projectile/burning/env/trigger helpers) and outputs a JSON/CSV index (file path, fn, delivery kind, cooldown/logging/journal invariants).
 * **Current wire audit**: document how `Hub.marshalState` emits `Effects[]` + `EffectTriggers[]`, including sequencing/cadence.
 * **Baseline tests to preserve**: list of gameplay/regression tests that must still pass post-migration (link to exact test names).
-* **Telemetry (current system)**: counters for trigger usage, effect count per tick, average projectile step time, desync symptoms.
+* **Telemetry (current system)**: counters for trigger usage, effect count per tick, average projectile step time, desync symptoms. See “Legacy Effect Telemetry Plan” in [`docs/architecture/effects.md`](./effects.md) for the detailed metric list and rollout steps.
 
 **Exit Criteria**
 

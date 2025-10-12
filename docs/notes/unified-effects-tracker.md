@@ -55,7 +55,7 @@ Statuses use the following scale:
 | Auto producer map | Complete | :white_check_mark: Implemented `tools/effects/build_producer_map`; run `npm run effects:map` to refresh `effects_producer_map.json`. | Script documents coverage in `docs/architecture/effects.md`; map checked in under repo root. |
 | Current wire audit | Complete | :white_check_mark: Documented `Hub.marshalState` payload flow and sequencing in `docs/architecture/effects.md`. | Notes & payload examples live under the new “marshalState payload layout” section. |
 | Baseline tests to preserve | Complete | :white_check_mark: Catalogued effect regression coverage in `server/main_test.go`. | Red list documented below for migration guardrails. |
-| Telemetry (current system) | Not Started | Define metrics, decide aggregation surface, and note implementation plan. | Prior dashboard requirement removed—focus on counters & logging first. |
+| Telemetry (current system) | Ready to Start | Implement the counters/gauge from the Legacy Effect Telemetry Plan: wire spawn/update/end/trigger increments into `telemetryCounters`, expose the gauge via `/diagnostics`, and add `DEBUG_TELEMETRY` validation notes to the PR checklist. | Plan and metric breakdown live under “Legacy Effect Telemetry Plan” in [`docs/architecture/effects.md`](../architecture/effects.md#legacy-effect-telemetry-plan); once merged run smoke sessions to capture baseline values. |
 
 #### Phase 0 Red List — Effect Regression Tests
 
