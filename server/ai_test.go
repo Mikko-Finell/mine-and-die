@@ -178,7 +178,7 @@ func TestGoblinPatrolsBetweenWaypoints(t *testing.T) {
 	returned := false
 
 	for tick := uint64(1); tick <= 400; tick++ {
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 
 		if npc.AIState == waitStateID {
@@ -234,7 +234,7 @@ func TestGoblinPursuesPlayerWithinRange(t *testing.T) {
 
 	pursueTick := uint64(0)
 	for tick := uint64(1); tick <= 200; tick++ {
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 
 		if npc.AIState == pursueStateID {
@@ -259,7 +259,7 @@ func TestGoblinPursuesPlayerWithinRange(t *testing.T) {
 
 	for offset := uint64(1); offset <= 90; offset++ {
 		tick := pursueTick + offset
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 	}
 
@@ -299,7 +299,7 @@ func TestGoblinReturnsToPatrolAfterLosingPlayer(t *testing.T) {
 
 	pursueTick := uint64(0)
 	for tick := uint64(1); tick <= 200; tick++ {
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 
 		if npc.AIState == pursueStateID {
@@ -316,7 +316,7 @@ func TestGoblinReturnsToPatrolAfterLosingPlayer(t *testing.T) {
 
 	patrolTick := uint64(0)
 	for tick := pursueTick + 1; tick <= pursueTick+200; tick++ {
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 
 		if npc.AIState == patrolStateID {
@@ -329,7 +329,7 @@ func TestGoblinReturnsToPatrolAfterLosingPlayer(t *testing.T) {
 		t.Fatalf("expected goblin to return to patrol after losing player")
 	}
 
-	w.Step(patrolTick+1, now, dt, nil)
+	w.Step(patrolTick+1, now, dt, nil, nil)
 	now = now.Add(time.Second / tickRate)
 
 	if len(npc.Waypoints) == 0 {
@@ -369,7 +369,7 @@ func TestGoblinAdvancesWhenWaypointBlocked(t *testing.T) {
 
 	// Allow the goblin to advance to the second waypoint index before blocking behaviour kicks in.
 	for tick := uint64(1); tick <= 40; tick++ {
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 	}
 
@@ -380,7 +380,7 @@ func TestGoblinAdvancesWhenWaypointBlocked(t *testing.T) {
 
 	advanced := false
 	for tick := uint64(41); tick <= 600; tick++ {
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 		if npc.Blackboard.WaypointIndex != blockedIndex {
 			advanced = true
@@ -407,8 +407,8 @@ func TestAISimulationDeterminism(t *testing.T) {
 
 	for step := 0; step < 180; step++ {
 		tick := uint64(step + 1)
-		w1.Step(tick, now1, dt, nil)
-		w2.Step(tick, now2, dt, nil)
+		w1.Step(tick, now1, dt, nil, nil)
+		w2.Step(tick, now2, dt, nil, nil)
 		now1 = now1.Add(time.Second / tickRate)
 		now2 = now2.Add(time.Second / tickRate)
 
@@ -432,7 +432,7 @@ func TestRatWandersAndPicksNewDestinations(t *testing.T) {
 	targets := make(map[[2]int]struct{})
 
 	for tick := uint64(1); tick <= 400; tick++ {
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 
 		if !moved {
@@ -499,7 +499,7 @@ func TestRatFleesFromNearbyThreat(t *testing.T) {
 	entryTick := uint64(0)
 
 	for tick := uint64(1); tick <= 240; tick++ {
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 		if rat.AIState == fleeStateID {
 			entered = true
@@ -515,7 +515,7 @@ func TestRatFleesFromNearbyThreat(t *testing.T) {
 	entryDist := math.Hypot(rat.X-player.X, rat.Y-player.Y)
 	for offset := uint64(1); offset <= 90; offset++ {
 		tick := entryTick + offset
-		w.Step(tick, now, dt, nil)
+		w.Step(tick, now, dt, nil, nil)
 		now = now.Add(time.Second / tickRate)
 	}
 	finalDist := math.Hypot(rat.X-player.X, rat.Y-player.Y)

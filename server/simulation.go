@@ -141,7 +141,7 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		journal:             newJournal(capacity, maxAge),
 	}
 	if enableContractEffectManager {
-		w.effectManager = newEffectManager()
+		w.effectManager = newEffectManager(w)
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
@@ -244,7 +244,7 @@ func (w *World) pruneDefeatedNPCs() {
 }
 
 // Step advances the simulation by a single tick applying all staged commands.
-func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command) []string {
+func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command, emitEffectEvent func(EffectLifecycleEvent)) []string {
 	if dt <= 0 {
 		dt = 1.0 / float64(tickRate)
 	}
@@ -426,7 +426,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 			if enableContractEffectManager && w.effectManager != nil {
 				w.effectManager.EnqueueIntent(EffectIntent{
 					TypeID:        effectTypeFireball,
-					Delivery:      DeliveryKindTarget,
+					Delivery:      DeliveryKindArea,
 					SourceActorID: action.actorID,
 					Geometry:      EffectGeometry{Shape: GeometryShapeCircle},
 				})
@@ -447,7 +447,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command)
 
 	w.advanceConditions(now)
 	if enableContractEffectManager && w.effectManager != nil {
-		w.effectManager.RunTick(Tick(int64(tick)))
+		w.effectManager.RunTick(Tick(int64(tick)), emitEffectEvent)
 	}
 	w.advanceEffects(now, dt)
 	w.pruneEffects(now)
