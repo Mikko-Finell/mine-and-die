@@ -41,11 +41,12 @@ type EffectTrigger struct {
 
 type effectState struct {
 	Effect
-	expiresAt     time.Time
-	Projectile    *ProjectileState
-	FollowActorID string
-	Condition     ConditionType
-	version       uint64
+	expiresAt      time.Time
+	Projectile     *ProjectileState
+	FollowActorID  string
+	Condition      ConditionType
+	version        uint64
+	telemetryEnded bool
 }
 
 type ProjectileTemplate struct {
@@ -315,6 +316,40 @@ func damageAndConditionBehavior(param string, fallback float64, condition Condit
 	})
 }
 
+func (w *World) recordEffectSpawn(effectType, producer string) {
+	if w == nil || w.telemetry == nil {
+		return
+	}
+	w.telemetry.RecordEffectSpawned(effectType, producer)
+}
+
+func (w *World) recordEffectUpdate(eff *effectState, mutation string) {
+	if w == nil || eff == nil || w.telemetry == nil {
+		return
+	}
+	w.telemetry.RecordEffectUpdated(eff.Type, mutation)
+}
+
+func (w *World) recordEffectEnd(eff *effectState, reason string) {
+	if w == nil || eff == nil {
+		return
+	}
+	if eff.telemetryEnded {
+		return
+	}
+	eff.telemetryEnded = true
+	if w.telemetry != nil {
+		w.telemetry.RecordEffectEnded(eff.Type, reason)
+	}
+}
+
+func (w *World) recordEffectTrigger(triggerType string) {
+	if w == nil || w.telemetry == nil {
+		return
+	}
+	w.telemetry.RecordEffectTrigger(triggerType)
+}
+
 // QueueEffectTrigger appends a fire-and-forget trigger for clients. The caller
 // must hold the world mutex.
 func (w *World) QueueEffectTrigger(trigger EffectTrigger, now time.Time) EffectTrigger {
@@ -332,6 +367,7 @@ func (w *World) QueueEffectTrigger(trigger EffectTrigger, now time.Time) EffectT
 		trigger.Start = now.UnixMilli()
 	}
 	w.effectTriggers = append(w.effectTriggers, trigger)
+	w.recordEffectTrigger(trigger.Type)
 	return trigger
 }
 
@@ -417,6 +453,7 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 	}
 
 	w.effects = append(w.effects, effect)
+	w.recordEffectSpawn(effectTypeAttack, "melee")
 
 	area := Obstacle{X: rectX, Y: rectY, Width: rectW, Height: rectH}
 	for _, obs := range w.obstacles {
@@ -572,6 +609,7 @@ func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (
 	}
 
 	w.effects = append(w.effects, effect)
+	w.recordEffectSpawn(tpl.Type, "projectile")
 	return effect, true
 }
 
@@ -897,8 +935,16 @@ func (w *World) stopProjectile(eff *effectState, now time.Time, opts projectileS
 		w.triggerExpiryExplosion(eff, now)
 	}
 
+	reason := "stopped"
+	if opts.triggerImpact {
+		reason = "impact"
+	} else if opts.triggerExpiry {
+		reason = "expiry"
+	}
+
 	p.ExpiryResolved = true
 	eff.expiresAt = now
+	w.recordEffectEnd(eff, reason)
 }
 
 func (w *World) triggerExpiryExplosion(eff *effectState, now time.Time) {
@@ -958,6 +1004,7 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 		expiresAt: now.Add(spec.Duration),
 	}
 	w.effects = append(w.effects, area)
+	w.recordEffectSpawn(spec.EffectType, "explosion")
 }
 
 func (w *World) maybeExplodeOnExpiry(eff *effectState, now time.Time) {
@@ -1006,6 +1053,7 @@ func (w *World) pruneEffects(now time.Time) {
 		if eff.Projectile != nil && !eff.Projectile.ExpiryResolved {
 			w.maybeExplodeOnExpiry(eff, now)
 		}
+		w.recordEffectEnd(eff, "expired")
 		w.purgeEntityPatches(eff.ID)
 	}
 }

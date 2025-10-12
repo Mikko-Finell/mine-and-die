@@ -55,7 +55,7 @@ Statuses use the following scale:
 | Auto producer map | Complete | :white_check_mark: Implemented `tools/effects/build_producer_map`; run `npm run effects:map` to refresh `effects_producer_map.json`. | Script documents coverage in `docs/architecture/effects.md`; map checked in under repo root. |
 | Current wire audit | Complete | :white_check_mark: Documented `Hub.marshalState` payload flow and sequencing in `docs/architecture/effects.md`. | Notes & payload examples live under the new “marshalState payload layout” section. |
 | Baseline tests to preserve | Complete | :white_check_mark: Catalogued effect regression coverage in `server/main_test.go`. | Red list documented below for migration guardrails. |
-| Telemetry (current system) | Ready to Start | Implement the counters/gauge from the Legacy Effect Telemetry Plan: wire spawn/update/end/trigger increments into `telemetryCounters`, expose the gauge via `/diagnostics`, and add `DEBUG_TELEMETRY` validation notes to the PR checklist. | Plan and metric breakdown live under “Legacy Effect Telemetry Plan” in [`docs/architecture/effects.md`](../architecture/effects.md#legacy-effect-telemetry-plan); once merged run smoke sessions to capture baseline values. |
+| Telemetry (current system) | Complete | :white_check_mark: Wired spawn/update/end/trigger counters and the active gauge into `telemetryCounters`, exposed them via `/diagnostics`, and validated the debug print path. | Metrics now surface under the `/diagnostics.telemetry.effects` and `.effectTriggers` fields; capture melee/projectile/burning baselines with `DEBUG_TELEMETRY=1` before large gameplay changes. |
 
 #### Phase 0 Red List — Effect Regression Tests
 
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Date | Update | Author |
 | --- | --- | --- |
+| 2025-10-13 | Wired effect telemetry counters, exposed diagnostics metrics, and marked the Phase 0 telemetry deliverable complete. | gpt-5-codex |
 | 2025-10-12 | Catalogued effect regression test red list and closed the Phase 0 baseline test deliverable. | gpt-5-codex |
 | 2025-10-11 | Recorded snapshot payload audit and marked the Phase 0 wire documentation deliverable complete. | gpt-5-codex |
 | 2025-02-14 | Initial tracker created. Phase 0 map tooling marked Ready to Start with recommended first PR. | gpt-5-codex |

@@ -246,35 +246,49 @@ When adding a new ability or condition:
 
 ### Objectives
 
-Phase 0 calls for observability on the current, pre-unification effect loop so we
-have baselines before dual-write rollouts begin. Instrumentation has to mirror
-three lifecycle phases already exercised by the world:
+Phase 0 called for observability on the current, pre-unification effect loop so
+we have baselines before dual-write rollouts begin. The instrumentation now in
+place mirrors three lifecycle phases already exercised by the world:
 
 * **Spawn** – `triggerMeleeAttack`, `spawnProjectile`, condition handlers, and
   `spawnAreaEffectAt` append new `effectState` entries after pruning expired
-  instances.【F:server/effects.go†L380-L432】【F:server/effects.go†L534-L579】【F:server/conditions.go†L252-L288】
+  instances.【F:server/effects.go†L415-L457】【F:server/effects.go†L545-L613】【F:server/effects.go†L968-L1007】【F:server/conditions.go†L247-L276】
 * **Update** – `advanceProjectile`, `updateFollowEffect`, and the write barriers
   `SetEffectPosition` / `SetEffectParam` mutate tracked effects while the world is
-  locked.【F:server/effects.go†L660-L760】【F:server/effects.go†L820-L866】【F:server/world_mutators.go†L322-L357】
+  locked.【F:server/effects.go†L723-L872】【F:server/world_mutators.go†L322-L358】
 * **End** – Effects exit through `stopProjectile`, `expireAttachedEffect`, and the
   `pruneEffects` sweep that purges any instance whose `expiresAt` has elapsed and
-  clears residual patches.【F:server/effects.go†L840-L907】【F:server/effects.go†L992-L1010】
+  clears residual patches.【F:server/effects.go†L912-L1057】【F:server/conditions.go†L298-L317】
 
 ### Metrics & Aggregation Surface
 
 | Metric | Type | Cardinality | Update cadence | Aggregation | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `effects.spawned_total` | Counter | `effect_type` + `producer` (≤6 × 4) | Increment on each spawn helper before slices append. | Extend `telemetryCounters` with atomic counters; emit optional debug log when `DEBUG_TELEMETRY=1`. | Ensures melee, projectile, condition, and explosion spawns are counted independently.【F:server/effects.go†L380-L432】【F:server/effects.go†L534-L579】【F:server/effects.go†L936-L964】【F:server/conditions.go†L252-L288】 |
-| `effects.updated_total` | Counter | `effect_type` + `mutation` (`position`, `param`) | Increment from `SetEffectPosition` / `SetEffectParam`. | Same counters struct; no log spam because updates are high-volume. | Measures how often projectiles move or params change per tick.【F:server/effects.go†L660-L760】【F:server/world_mutators.go†L322-L357】 |
-| `effects.active_gauge` | Gauge (last sample) | unlabelled | Record once per tick after `world.Snapshot` to capture active effect count. | Store in `telemetryCounters` via `RecordEffectsActive(count)` style helper. | Gives baseline active counts alongside existing tick duration sampling.【F:server/hub.go†L710-L742】 |
-| `effects.ended_total` | Counter | `effect_type` + `reason` (`duration`, `impact`, `ownerLost`, `cancelled`) | Increment in `stopProjectile`, `expireAttachedEffect`, and `pruneEffects`. | Counters struct plus structured log for unexpected reasons when debug mode enabled. | Differentiates expiry-on-impact vs. natural timeout for parity tracking.【F:server/effects.go†L840-L907】【F:server/effects.go†L992-L1010】【F:server/conditions.go†L288-L312】 |
-| `effect_triggers.enqueued_total` | Counter | `trigger_type` | Increment inside `QueueEffectTrigger`. | Counters struct; existing trigger queue stays unchanged. | Tracks fire-and-forget usage independent of tracked effects.【F:server/effects.go†L300-L334】 |
+| `effects.spawned_total` | Counter | `effect_type` + `producer` (≤6 × 4) | Increment on each spawn helper before slices append. | Extend `telemetryCounters` with atomic counters; emit optional debug log when `DEBUG_TELEMETRY=1`. | Ensures melee, projectile, condition, and explosion spawns are counted independently.【F:server/effects.go†L415-L457】【F:server/effects.go†L545-L613】【F:server/effects.go†L968-L1007】【F:server/conditions.go†L247-L276】 |
+| `effects.updated_total` | Counter | `effect_type` + `mutation` (`position`, `param`) | Increment from `SetEffectPosition` / `SetEffectParam`. | Same counters struct; no log spam because updates are high-volume. | Measures how often projectiles move or params change per tick.【F:server/world_mutators.go†L322-L358】 |
+| `effects.active_gauge` | Gauge (last sample) | unlabelled | Record once per tick after `world.Snapshot` to capture active effect count. | Store in `telemetryCounters` via `RecordEffectsActive(count)` style helper. | Gives baseline active counts alongside existing tick duration sampling.【F:server/hub.go†L711-L734】 |
+| `effects.ended_total` | Counter | `effect_type` + `reason` (`duration`, `impact`, `ownerLost`, `cancelled`) | Increment in `stopProjectile`, `expireAttachedEffect`, and `pruneEffects`. | Counters struct plus structured log for unexpected reasons when debug mode enabled. | Differentiates expiry-on-impact vs. natural timeout for parity tracking.【F:server/effects.go†L912-L947】【F:server/effects.go†L1042-L1057】【F:server/conditions.go†L298-L317】 |
+| `effect_triggers.enqueued_total` | Counter | `trigger_type` | Increment inside `QueueEffectTrigger`. | Counters struct; existing trigger queue stays unchanged. | Tracks fire-and-forget usage independent of tracked effects.【F:server/effects.go†L318-L371】 |
+
+### Availability & Baseline Capture
+
+The metrics above now surface through the diagnostics endpoint and optional
+debug logging. `/diagnostics` includes nested
+`telemetry.effects` and `telemetry.effectTriggers` payloads so QA can capture
+snapshots during sessions or automated smoke runs.【F:server/main.go†L55-L79】【F:server/telemetry.go†L118-L142】
+When `DEBUG_TELEMETRY=1` the tick log prints the current active gauge plus the
+aggregate counters, making it easy to sanity-check increments while exercising
+combat loops locally.【F:server/telemetry.go†L165-L189】 To establish a baseline,
+start the server with debug telemetry enabled, run a short scenario that covers
+melee swings, projectile casts, and burning ticks, then archive both the
+terminal output and `/diagnostics` response for comparison before larger
+gameplay changes.
 
 All metrics live in the existing hub-scoped `telemetryCounters` to piggyback on
 atomic storage, `/diagnostics` snapshots, and the debug print that is already
 gated behind `DEBUG_TELEMETRY`. Structured logs remain reserved for anomalies
 (`ownerLost`, unexpected cancel reasons) to avoid double-counting once the
-unified manager introduces richer journaling.【F:server/telemetry.go†L1-L76】
+unified manager introduces richer journaling.【F:server/telemetry.go†L96-L142】
 
 ### Rollout & Validation
 

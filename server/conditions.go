@@ -272,6 +272,7 @@ func (w *World) attachConditionEffect(actor *actorState, effectType string, life
 		FollowActorID: actor.ID,
 	}
 	w.effects = append(w.effects, eff)
+	w.recordEffectSpawn(effectType, "condition")
 	return eff
 }
 
@@ -298,6 +299,7 @@ func (w *World) expireAttachedEffect(eff *effectState, now time.Time) {
 	if eff == nil {
 		return
 	}
+	shouldRecord := !eff.telemetryEnded
 	if now.Before(eff.expiresAt) {
 		eff.expiresAt = now
 	}
@@ -310,4 +312,7 @@ func (w *World) expireAttachedEffect(eff *effectState, now time.Time) {
 		duration = 0
 	}
 	eff.Effect.Duration = duration.Milliseconds()
+	if shouldRecord {
+		w.recordEffectEnd(eff, "condition-expire")
+	}
 }
