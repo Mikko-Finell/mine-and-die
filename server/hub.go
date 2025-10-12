@@ -873,8 +873,18 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	cfg := h.config
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
+	effectManagerActive := enableContractEffectManager && h.world.effectManager != nil
 	journal := &h.world.journal
 	h.mu.Unlock()
+
+	effectBatch := EffectEventBatch{}
+	if effectManagerActive {
+		if drainPatches {
+			effectBatch = journal.DrainEffectEvents()
+		} else {
+			effectBatch = journal.SnapshotEffectEvents()
+		}
+	}
 
 	if patches == nil {
 		patches = make([]Patch, 0)
@@ -1007,7 +1017,17 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	if resync {
 		msg.Resync = true
 	}
+	msg.EffectSpawns = effectBatch.Spawns
+	msg.EffectUpdates = effectBatch.Updates
+	msg.EffectEnds = effectBatch.Ends
+	if len(effectBatch.LastSeqByID) > 0 {
+		msg.EffectSeqCursors = effectBatch.LastSeqByID
+	}
+
 	entities := len(msg.Players) + len(msg.NPCs) + len(msg.Obstacles) + len(msg.Effects) + len(msg.EffectTriggers) + len(msg.GroundItems)
+	if len(msg.EffectSpawns) > 0 || len(msg.EffectUpdates) > 0 || len(msg.EffectEnds) > 0 {
+		entities += len(msg.EffectSpawns) + len(msg.EffectUpdates) + len(msg.EffectEnds)
+	}
 	data, err := json.Marshal(msg)
 	return data, entities, err
 }
