@@ -37,7 +37,7 @@ Statuses use the following scale:
 | Phase | Status | Summary | Primary Next Step |
 | --- | --- | --- | --- |
 | Phase 0 – Inventory, Observability, Guardrails | Ready to Start | Tooling & telemetry foundation before touching runtime. | Build and check in the automated effect producer map script. |
-| Phase 1 – Contract Types & Authoritative Manager | Not Started | Introduce contract types and manager while keeping behaviour identical. | Draft contract type definitions and enums. |
+| Phase 1 – Contract Types & Authoritative Manager | In Progress | Introduce contract types and manager while keeping behaviour identical. | Prototype EffectManager skeleton behind feature flag. |
 | Phase 2 – Transport & Journal (Dual-Write) | Not Started | Journal and broadcast new events alongside legacy payloads. | Design journal envelopes & toggles once Phase 1 scaffolding exists. |
 | Phase 3 – Client Ingestion & Visual Manager | Not Started | Client consumes new stream deterministically with two-pass ingestion. | Prototype JS EffectManager adapter after Phase 2 dual-write exists. |
 | Phase 4 – Producer Migration | Not Started | Port gameplay producers onto definitions with parity gates. | Pick one archetype (melee/projectile) for first contract-backed port. |
@@ -83,7 +83,7 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Contract types & enums | Not Started | Draft Go structs (`EffectIntent`, `EffectInstance`, `EffectDefinition`) and enums (`DeliveryKind`, etc.). | Align fields with the contract doc to avoid drift. |
+| Contract types & enums | Complete | :white_check_mark: Added `server/effects_contract.go` with contract structs, enums, and deterministic transport payloads. | Mirrors `effect-system-unification.md` spec; includes `Seq`/`Tick`, `FollowMode`, `EndReason`, and `ReplicationSpec` scaffolding. |
 | Server EffectManager skeleton | Not Started | Introduce manager struct, enqueue API, and tick scaffolding behind feature flag. | Ensure legacy path remains active until dual-write passes tests. |
 | Deterministic math helpers | Not Started | Implement fixed-point geometry utilities with table-driven tests. | Use integer quantization consistent with client expectations. |
 
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Date | Update | Author |
 | --- | --- | --- |
+| 2025-10-14 | Landed unified contract structs/enums and deterministic transport events in `server/effects_contract.go`; marked the Phase 1 contract deliverable complete. | gpt-5-codex |
 | 2025-10-13 | Wired effect telemetry counters, exposed diagnostics metrics, and marked the Phase 0 telemetry deliverable complete. | gpt-5-codex |
 | 2025-10-12 | Catalogued effect regression test red list and closed the Phase 0 baseline test deliverable. | gpt-5-codex |
 | 2025-10-11 | Recorded snapshot payload audit and marked the Phase 0 wire documentation deliverable complete. | gpt-5-codex |

@@ -40,6 +40,8 @@ A single, executable plan that blends the strongest ideas: **contract-first type
 * **Deterministic math**: fixed-point coords, quantized velocity, integer AoE/segment/capsule tests (table-driven).
 * **Neutral “EffectEvent” shape** to decouple journal vs. hub payloads.
 
+**Progress (2025-10-14):** `server/effects_contract.go` now mirrors the contract doc with enumerations, intent/instance/definition structs, deterministic transport event payloads, and shared quantization constants (Seq/Tick, FollowMode, EndReason, ReplicationSpec).
+
 **Exit Criteria**
 
 * Melee/projectile demo definitions compile and **no behavioural change** yet (legacy path still active).
