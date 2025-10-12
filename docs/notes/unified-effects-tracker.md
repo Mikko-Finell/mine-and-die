@@ -84,7 +84,7 @@ Statuses use the following scale:
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
 | Contract types & enums | Complete | :white_check_mark: Added `server/effects_contract.go` with contract structs, enums, and deterministic transport payloads. | Mirrors `effect-system-unification.md` spec; includes `Seq`/`Tick`, `FollowMode`, `EndReason`, and `ReplicationSpec` scaffolding. |
-| Server EffectManager skeleton | Not Started | Introduce manager struct, enqueue API, and tick scaffolding behind feature flag. | Ensure legacy path remains active until dual-write passes tests. |
+| Server EffectManager skeleton | In Progress | Introduce manager struct, enqueue API, and tick scaffolding behind feature flag. | Skeleton lives behind `enableContractEffectManager`; `server/effects_manager.go` queues intents and drains per tick while legacy triggers continue driving gameplay until spawn/update/end wiring lands. |
 | Deterministic math helpers | Not Started | Implement fixed-point geometry utilities with table-driven tests. | Use integer quantization consistent with client expectations. |
 
 ### Phase 2 — Transport & Journal (Dual-Write Rollout)

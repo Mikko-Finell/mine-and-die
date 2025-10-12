@@ -31,3 +31,8 @@ const (
 	goldOreMinSize        = 56.0
 	goldOreMaxSize        = 96.0
 )
+
+// enableContractEffectManager gates the contract-backed EffectManager skeleton while
+// it is incrementally wired into the simulation loop. Leave disabled to preserve
+// current gameplay behaviour until the unified pipeline is ready.
+var enableContractEffectManager = false
