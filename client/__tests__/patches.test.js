@@ -769,7 +769,7 @@ describe("updatePatchState", () => {
     expect(replayed.lastDeferredReplayLatencyMs).toBe(60);
   });
 
-  it("records unknown entity errors when effect patches precede the keyframe", () => {
+  it("stages placeholder effects when patches precede the keyframe", () => {
     const seeded = updatePatchState(
       createPatchState(),
       deepFreeze({
@@ -802,17 +802,24 @@ describe("updatePatchState", () => {
       ],
     });
 
-    const result = updatePatchState(seeded, payload, { source: "state" });
+    const result = updatePatchState(seeded, payload, { source: "state", now: 4242 });
 
-    expect(result.lastAppliedPatchCount).toBe(0);
-    expect(Object.keys(result.baseline.effects)).toEqual([]);
-    expect(Object.keys(result.patched.effects)).toEqual([]);
-    expect(result.errors.some((error) => error.message === "unknown entity for patch")).toBe(true);
-    expect(result.lastError).toMatchObject({
-      kind: PATCH_KIND_EFFECT_PARAMS,
-      entityId: "effect-99",
-      message: "unknown entity for patch",
-      source: "state",
+    expect(result.lastAppliedPatchCount).toBe(2);
+    expect(Object.keys(result.baseline.effects)).toEqual(["effect-99"]);
+    expect(Object.keys(result.patched.effects)).toEqual(["effect-99"]);
+    expect(result.patched.effects["effect-99"].x).toBe(12);
+    expect(result.patched.effects["effect-99"].y).toBe(34);
+    expect(result.patched.effects["effect-99"].params).toEqual({ remaining: 0.5 });
+    expect(result.errors.some((error) => error.message === "unknown entity for patch")).toBe(false);
+    expect(result.lastError).toBeNull();
+    expect(result.pendingKeyframeRequests instanceof Map).toBe(true);
+    const pendingEntry = result.pendingKeyframeRequests instanceof Map
+      ? result.pendingKeyframeRequests.get(20660)
+      : null;
+    expect(pendingEntry).toMatchObject({
+      attempts: 1,
+      firstRequestedAt: 4242,
+      nextRetryAt: 4242 + 200,
     });
   });
 

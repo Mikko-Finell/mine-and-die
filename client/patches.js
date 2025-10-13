@@ -38,6 +38,49 @@ const KEYFRAME_RECOVERY_BASE_DELAY = 200;
 const KEYFRAME_RECOVERY_MAX_STEP = 2000;
 const RESOLVED_SEQUENCE_LIMIT = 16;
 
+function computeKeyframeRecoveryDelay(attempts) {
+  const normalized = Math.max(1, Math.floor(attempts));
+  const exponential = KEYFRAME_RECOVERY_BASE_DELAY * Math.pow(2, normalized - 1);
+  const bounded = Math.min(
+    KEYFRAME_RECOVERY_MAX_STEP,
+    Math.max(KEYFRAME_RECOVERY_BASE_DELAY, exponential),
+  );
+  return bounded;
+}
+
+function scheduleKeyframeRequest(pendingRequests, sequence, now, options = {}) {
+  if (!(pendingRequests instanceof Map)) {
+    return;
+  }
+  if (!Number.isFinite(sequence) || sequence <= 0) {
+    return;
+  }
+  const normalizedSeq = Math.floor(sequence);
+  const existing = pendingRequests.get(normalizedSeq) || {};
+  const baseAttempts = Number.isFinite(existing.attempts)
+    ? Math.max(0, Math.floor(existing.attempts))
+    : 0;
+  const shouldIncrement = options.incrementAttempt !== false;
+  const nextAttempts = shouldIncrement
+    ? baseAttempts + 1
+    : baseAttempts > 0
+      ? baseAttempts
+      : 1;
+  const delay = computeKeyframeRecoveryDelay(nextAttempts);
+  const normalizedNow = Number.isFinite(now) ? Math.max(0, Math.floor(now)) : Date.now();
+  const firstRequestedAtOption = options.firstRequestedAt;
+  const normalizedFirstRequestedAt = Number.isFinite(firstRequestedAtOption)
+    ? Math.max(0, Math.floor(firstRequestedAtOption))
+    : Number.isFinite(existing.firstRequestedAt)
+      ? Math.max(0, Math.floor(existing.firstRequestedAt))
+      : normalizedNow;
+  pendingRequests.set(normalizedSeq, {
+    attempts: nextAttempts,
+    nextRetryAt: normalizedNow + delay,
+    firstRequestedAt: normalizedFirstRequestedAt,
+  });
+}
+
 function toFiniteNumber(value, fallback = 0) {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
@@ -901,6 +944,40 @@ const PATCH_HANDLERS = {
   [PATCH_KIND_GROUND_ITEM_QTY]: { target: "groundItems", apply: applyGroundItemQuantity },
 };
 
+function stageEffectPlaceholder(viewMap, patch) {
+  if (!viewMap || typeof viewMap !== "object" || !patch || typeof patch !== "object") {
+    return null;
+  }
+  const normalizedId = normalizeEntityId(patch.entityId);
+  if (!normalizedId) {
+    return null;
+  }
+  if (Object.hasOwn(viewMap, normalizedId)) {
+    return viewMap[normalizedId];
+  }
+  const base = { id: normalizedId };
+  if (patch.kind === PATCH_KIND_EFFECT_POS) {
+    const x = toFiniteNumber(patch.payload?.x, null);
+    const y = toFiniteNumber(patch.payload?.y, null);
+    if (x !== null) {
+      base.x = x;
+    }
+    if (y !== null) {
+      base.y = y;
+    }
+  } else if (patch.kind === PATCH_KIND_EFFECT_PARAMS) {
+    if (patch.payload && typeof patch.payload === "object") {
+      base.params = patch.payload.params;
+    }
+  }
+  const staged = createEffectView(base);
+  if (!staged || !staged.id) {
+    return null;
+  }
+  viewMap[staged.id] = staged;
+  return staged;
+}
+
 function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
   const basePlayers =
     baseSnapshot && typeof baseSnapshot === "object" ? baseSnapshot.players : null;
@@ -921,6 +998,7 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
   const viewMaps = { players, npcs, effects, groundItems };
   const errors = [];
   let appliedCount = 0;
+  const stagedEffectIds = new Set();
   const history = options.history && typeof options.history === "object"
     ? options.history
     : null;
@@ -955,7 +1033,14 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
       );
       continue;
     }
-    const view = viewMap[patch.entityId];
+    let view = viewMap[patch.entityId];
+    if (!view && handlerEntry.target === "effects") {
+      const placeholder = stageEffectPlaceholder(viewMap, patch);
+      if (placeholder) {
+        view = placeholder;
+        stagedEffectIds.add(placeholder.id);
+      }
+    }
     if (!view) {
       errors.push(
         makePatchError(patch.kind, patch.entityId, "unknown entity for patch"),
@@ -983,7 +1068,15 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
     }
   }
 
-  return { players, npcs, effects, groundItems, errors, appliedCount };
+  return {
+    players,
+    npcs,
+    effects,
+    groundItems,
+    errors,
+    appliedCount,
+    stagedEffectIds: Array.from(stagedEffectIds),
+  };
 }
 
 function trimErrors(errors, limit) {
@@ -1634,6 +1727,40 @@ export function updatePatchState(previousState, payload, options = {}) {
     batchTick: nextTick,
     batchSequence: nextSequence,
   });
+
+  if (Array.isArray(patchResult.stagedEffectIds) && patchResult.stagedEffectIds.length > 0) {
+    const sequenceHint = Number.isFinite(nextSequence) && nextSequence > 0
+      ? Math.floor(nextSequence)
+      : Number.isFinite(previousSequence) && previousSequence > 0
+        ? Math.floor(previousSequence)
+        : null;
+    if (sequenceHint !== null && sequenceHint > 0) {
+      const alreadyPending = pendingRequests instanceof Map
+        ? pendingRequests.has(sequenceHint)
+        : false;
+      if (!alreadyPending) {
+        scheduleKeyframeRequest(pendingRequests, sequenceHint, now, {
+          incrementAttempt: false,
+          firstRequestedAt: now,
+        });
+      }
+      if (requestKeyframe && !alreadyPending) {
+        const tickHint = Number.isFinite(nextTick)
+          ? Math.floor(nextTick)
+          : Number.isFinite(previousTick)
+            ? Math.floor(previousTick)
+            : null;
+        try {
+          requestKeyframe(sequenceHint, tickHint, {
+            incrementAttempt: false,
+            firstRequestedAt: now,
+          });
+        } catch (err) {
+          // Ignore transport errors from diagnostics helpers.
+        }
+      }
+    }
+  }
 
   if (patchResult.errors.length > 0) {
     for (const error of patchResult.errors) {
