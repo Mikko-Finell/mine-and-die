@@ -16,6 +16,7 @@ import (
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
 	loggingnetwork "mine-and-die/server/logging/network"
+	loggingsimulation "mine-and-die/server/logging/simulation"
 	stats "mine-and-die/server/stats"
 )
 
@@ -37,8 +38,9 @@ type Hub struct {
 	lastKeyframeSeq         atomic.Uint64
 	lastKeyframeTick        atomic.Uint64
 
-	resyncNext        atomic.Bool
-	forceKeyframeNext atomic.Bool
+	resyncNext               atomic.Bool
+	forceKeyframeNext        atomic.Bool
+	tickBudgetAlarmTriggered atomic.Bool
 
 	commandsMu      sync.Mutex // protects pendingCommands between network handlers and the tick loop
 	pendingCommands []Command  // staged commands applied in order at the next simulation step
@@ -56,6 +58,10 @@ const (
 	keyframeLimiterRefillPer = 2.0 // tokens per second
 
 	commandQueueWarningStep = 256
+
+	tickBudgetCatchupMaxTicks = 2
+	tickBudgetAlarmMinStreak  = 3
+	tickBudgetAlarmMinRatio   = 2.0
 )
 
 type keyframeLookupStatus int
@@ -741,6 +747,12 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 	defer ticker.Stop()
 
 	last := time.Now()
+	tickBudget := time.Second / time.Duration(tickRate)
+	budgetSeconds := 1.0 / float64(tickRate)
+	maxDtSeconds := budgetSeconds
+	if tickBudgetCatchupMaxTicks > 1 {
+		maxDtSeconds = budgetSeconds * float64(tickBudgetCatchupMaxTicks)
+	}
 	for {
 		select {
 		case <-stop:
@@ -748,8 +760,12 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 		case now := <-ticker.C:
 			tickStart := time.Now()
 			dt := now.Sub(last).Seconds()
+			clamped := false
 			if dt <= 0 {
-				dt = 1.0 / float64(tickRate)
+				dt = budgetSeconds
+			} else if dt > maxDtSeconds {
+				dt = maxDtSeconds
+				clamped = true
 			}
 			last = now
 
@@ -758,10 +774,100 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 				sub.conn.Close()
 			}
 			h.broadcastState(players, npcs, effects, triggers, groundItems)
+			duration := time.Since(tickStart)
 			if h.telemetry != nil {
-				h.telemetry.RecordTickDuration(time.Since(tickStart))
+				h.telemetry.RecordTickDuration(duration)
+			}
+			if tickBudget > 0 && duration > tickBudget {
+				ratio := float64(duration) / float64(tickBudget)
+				streak := uint64(0)
+				if h.telemetry != nil {
+					streak = h.telemetry.RecordTickBudgetOverrun(duration, tickBudget)
+				}
+				stdlog.Printf(
+					"[tick] budget overrun: duration=%s budget=%s ratio=%.2f streak=%d",
+					duration,
+					tickBudget,
+					ratio,
+					streak,
+				)
+				if h.publisher != nil {
+					extra := map[string]any{
+						"ratio":        ratio,
+						"dtSeconds":    dt,
+						"clamped":      clamped,
+						"maxDtSeconds": maxDtSeconds,
+					}
+					loggingsimulation.TickBudgetOverrun(
+						context.Background(),
+						h.publisher,
+						h.tick.Load(),
+						loggingsimulation.TickBudgetOverrunPayload{
+							DurationMillis: duration.Milliseconds(),
+							BudgetMillis:   tickBudget.Milliseconds(),
+							Ratio:          ratio,
+							Streak:         streak,
+						},
+						extra,
+					)
+				}
+				if (ratio >= tickBudgetAlarmMinRatio || streak >= tickBudgetAlarmMinStreak) && h.tickBudgetAlarmTriggered.CompareAndSwap(false, true) {
+					h.handleTickBudgetAlarm(duration, tickBudget, ratio, streak, dt, clamped, maxDtSeconds)
+				}
+			} else {
+				h.resetTickBudgetAlarm()
 			}
 		}
+	}
+}
+
+func (h *Hub) resetTickBudgetAlarm() {
+	if h.telemetry != nil {
+		h.telemetry.ResetTickBudgetOverrunStreak()
+	}
+	h.tickBudgetAlarmTriggered.Store(false)
+}
+
+func (h *Hub) handleTickBudgetAlarm(duration, budget time.Duration, ratio float64, streak uint64, dt float64, clamped bool, maxDtSeconds float64) {
+	h.resyncNext.Store(true)
+	h.forceKeyframe()
+
+	tick := h.tick.Load()
+	stdlog.Printf(
+		"[tick] budget alarm triggered: scheduling resync ratio=%.2f streak=%d dt=%.4f clamped=%t",
+		ratio,
+		streak,
+		dt,
+		clamped,
+	)
+
+	if h.telemetry != nil {
+		h.telemetry.RecordTickBudgetAlarm(tick, ratio)
+	}
+
+	if h.publisher != nil {
+		extra := map[string]any{
+			"ratio":        ratio,
+			"dtSeconds":    dt,
+			"clamped":      clamped,
+			"maxDtSeconds": maxDtSeconds,
+			"alarm":        true,
+		}
+		loggingsimulation.TickBudgetAlarm(
+			context.Background(),
+			h.publisher,
+			tick,
+			loggingsimulation.TickBudgetAlarmPayload{
+				DurationMillis:  duration.Milliseconds(),
+				BudgetMillis:    budget.Milliseconds(),
+				Ratio:           ratio,
+				Streak:          streak,
+				ResyncScheduled: true,
+				ThresholdRatio:  tickBudgetAlarmMinRatio,
+				ThresholdStreak: tickBudgetAlarmMinStreak,
+			},
+			extra,
+		)
 	}
 }
 

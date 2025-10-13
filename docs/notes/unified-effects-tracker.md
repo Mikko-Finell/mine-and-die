@@ -117,7 +117,7 @@ Statuses use the following scale:
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
 | Spatial index tuning | Complete | :white_check_mark: Tuned tile-aligned spatial index, enforced per-cell cap, and surfaced overflow telemetry. | `effects.spatialOverflow` captures capped spawns; continue validating with projectile swarm benchmarks. |
-| Tick budget guards | Not Started | Add instrumentation and guardrails when tick budget exceeded. | Evaluate logging + metrics; tie into alarms later. |
+| Tick budget guards | Complete | :white_check_mark: Detect and log tick budget overruns with telemetry buckets and streak counters; :white_check_mark: escalate sustained overruns into alarms + forced resyncs. | Run loop clamps dt catch-up to two ticks, escalates ratio ≥2.0 or streak ≥3 into a forced keyframe/resync, and records alarm diagnostics for alerting. |
 | Benchmarks & SLO gates | Not Started | Create CI runnable swarm/AoE benchmarks with pass/fail thresholds. | Publish results table in docs when ready. |
 
 ### Phase 6 — Cutover, Verification & Docs
@@ -135,6 +135,8 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 32 | Tick budget alarms now schedule forced resyncs when ratio ≥2× or streak ≥3, expose alarm diagnostics, and mark the Phase 5 guardrail deliverable complete. | gpt-5-codex |
+| 31 | Added tick budget overrun guardrails with logging, telemetry buckets, and dt catch-up clamp; marked the tracker deliverable In Progress. | gpt-5-codex |
 | 30 | Tile-aligned spatial index now caps active effects per cell, updates deterministically with integer math, and emits overflow telemetry for benchmark tracking. | gpt-5-codex |
 | 29 | Added a legacy-to-contract shim for projectile explosion area effects so the contract transport emits lifecycle events before full definition ports, and documented pending follow-ups. | gpt-5-codex |
 | 28 | Instrumented effect parity telemetry (hit/damage/miss rates and latency buckets) and documented the diagnostics dashboard expectations. | gpt-5-codex |
