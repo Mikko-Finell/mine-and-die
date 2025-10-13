@@ -70,7 +70,6 @@ type World struct {
 	effectsIndex        *effectSpatialIndex
 	effectTriggers      []EffectTrigger
 	effectManager       *EffectManager
-	legacyCompat        *legacyEffectCompat
 	obstacles           []Obstacle
 	effectBehaviors     map[string]effectBehavior
 	projectileTemplates map[string]*ProjectileTemplate
@@ -147,9 +146,6 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 	}
 	if enableContractEffectManager {
 		w.effectManager = newEffectManager(w)
-	}
-	if enableContractEffectTransport {
-		w.legacyCompat = newLegacyEffectCompat(w)
 	}
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()

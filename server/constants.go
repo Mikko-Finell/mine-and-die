@@ -32,33 +32,31 @@ const (
 	goldOreMaxSize        = 96.0
 )
 
-// enableContractEffectManager gates the contract-backed EffectManager skeleton while
-// it is incrementally wired into the simulation loop. Leave disabled to preserve
-// current gameplay behaviour until the unified pipeline is ready.
-var enableContractEffectManager = false
+// enableContractEffectManager gates the contract-backed EffectManager skeleton.
+// With the unified pipeline rolled out, it now defaults to enabled so the
+// contract journal remains authoritative for all effect lifecycles.
+var enableContractEffectManager = true
 
-// enableContractEffectTransport gates the dual-write transport for contract
-// effect events. Keep disabled until clients understand the `effect_spawned`,
-// `effect_update`, `effect_ended`, and `effect_seq_cursors` fields on the state
-// payload.
-var enableContractEffectTransport = false
+// enableContractEffectTransport gates the transport for contract effect events.
+// Unified clients rely on these batches, so keep the transport enabled unless a
+// targeted rollback is required for debugging.
+var enableContractEffectTransport = true
 
 // enableContractMeleeDefinitions hands melee behaviour over to the contract
-// EffectManager hooks. When disabled, the legacy melee path remains
-// authoritative even if the manager records intents for observability.
-var enableContractMeleeDefinitions = false
+// EffectManager hooks. Default it to enabled so the unified definitions remain
+// authoritative.
+var enableContractMeleeDefinitions = true
 
 // enableContractProjectileDefinitions hands projectile behaviour over to the
-// contract EffectManager hooks. When disabled, the legacy projectile loop
-// continues to move and resolve hits even if the manager records intents.
-var enableContractProjectileDefinitions = false
+// contract EffectManager hooks. Default it to enabled for unified execution.
+var enableContractProjectileDefinitions = true
 
 // enableContractBurningDefinitions hands burning status visuals and damage
-// ticks over to the contract EffectManager hooks. When disabled, legacy status
-// effects remain authoritative even if intents are recorded for observability.
-var enableContractBurningDefinitions = false
+// ticks over to the contract EffectManager hooks. Default it to enabled for the
+// unified runtime.
+var enableContractBurningDefinitions = true
 
 // enableContractBloodDecalDefinitions hands blood decal visuals over to the
-// contract EffectManager hooks. When disabled, the legacy trigger path remains
-// authoritative even if intents are recorded for observability.
-var enableContractBloodDecalDefinitions = false
+// contract EffectManager hooks. Default it to enabled to keep the unified
+// transport authoritative.
+var enableContractBloodDecalDefinitions = true
