@@ -1269,8 +1269,18 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 		return
 	}
 
-	if bytes.Contains(data, []byte("blood-splatter")) {
-		stdlog.Printf("[network] broadcasting payload containing blood-splatter: %s", data)
+       for _, marker := range []struct {
+               label  string
+               needle []byte
+       }{
+               {label: "blood-splatter", needle: []byte("blood-splatter")},
+               {label: "fire", needle: []byte("fire")},
+               {label: "fireball", needle: []byte("fireball")},
+               {label: "melee-swing", needle: []byte("melee-swing")},
+       } {
+               if bytes.Contains(data, marker.needle) {
+			stdlog.Printf("[network] broadcasting payload containing %s: %s", marker.label, data)
+		}
 	}
 
 	h.mu.Lock()
