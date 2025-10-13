@@ -1,5 +1,9 @@
 import { computeRtt, createHeartbeat } from "./heartbeat.js";
 import { createPatchState, updatePatchState } from "./patches.js";
+import {
+  applyEffectLifecycleBatch,
+  resetEffectLifecycleState,
+} from "./effect-lifecycle.js";
 
 const HEARTBEAT_INTERVAL = 2000;
 const DEFAULT_FACING = "down";
@@ -28,6 +32,17 @@ function computeKeyframeRetryDelay(attempts) {
     Math.max(KEYFRAME_RETRY_BASE_DELAY, exponential),
   );
   return bounded;
+}
+
+function logUnknownEffectUpdate(event) {
+  const id = typeof event?.id === "string" && event.id.length > 0 ? event.id : "<unknown>";
+  const seqValue =
+    typeof event?.seq === "number" && Number.isFinite(event.seq)
+      ? Math.floor(event.seq)
+      : "unknown";
+  console.warn(
+    `[effects] Received effect_update for unknown effect ${id} (seq ${seqValue}).`,
+  );
 }
 
 function normalizeProtocolVersionValue(value) {
@@ -1107,7 +1122,13 @@ export async function joinGame(store) {
     store.groundItems = normalizeGroundItems(payload.groundItems);
     store.pendingEffectTriggers = [];
     store.processedEffectTriggerIds = new Set();
+    resetEffectLifecycleState(store);
+    store.lastEffectLifecycleSummary = null;
     queueEffectTriggers(store, payload.effectTriggers);
+    const joinLifecycleSummary = applyEffectLifecycleBatch(store, payload, {
+      onUnknownUpdate: logUnknownEffectUpdate,
+    });
+    store.lastEffectLifecycleSummary = joinLifecycleSummary;
     syncPatchTestingState(store, payload, "join");
     store.worldConfig = normalizeWorldConfig(payload.config);
     store.WORLD_WIDTH = store.worldConfig.width;
@@ -1234,6 +1255,10 @@ export function connectEvents(store) {
         store.effects = snapshot.effects;
         store.groundItems = snapshot.groundItems || {};
         queueEffectTriggers(store, payload.effectTriggers);
+        const lifecycleSummary = applyEffectLifecycleBatch(store, payload, {
+          onUnknownUpdate: logUnknownEffectUpdate,
+        });
+        store.lastEffectLifecycleSummary = lifecycleSummary;
 
         if (snapshot.worldConfig) {
           store.worldConfig = snapshot.worldConfig;
@@ -1533,6 +1558,8 @@ function handleConnectionLoss(store) {
   store.displayPlayers = {};
   store.npcs = {};
   store.displayNPCs = {};
+  resetEffectLifecycleState(store);
+  store.lastEffectLifecycleSummary = null;
   if (store.effectManager && typeof store.effectManager.clear === "function") {
     store.effectManager.clear();
   }

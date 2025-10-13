@@ -99,7 +99,7 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Client EffectManager adapter | In Progress | :white_check_mark: Mirror server IDs in JS manager keyed by `EffectID`; next: wire spawn/update batches. | Registry mirrored in client store for lookup without duplicating arrays. |
+| Client EffectManager adapter | In Progress | :white_check_mark: Mirror server IDs in JS manager keyed by `EffectID`; :white_check_mark: Wired spawn/update/end batch ingestion with sequence dedupe and unknown-ID logging; next: expose cached lifecycle metadata to the rendering path. | Registry mirrored in client store for lookup without duplicating arrays; lifecycle batches cached for contract-driven rendering integration. |
 | Two-pass processor | Not Started | Implement batch processing order (spawns → updates → ends) with retry semantics. | Surface diagnostics event when unknown after retry. |
 | Render integration & duplication guard | Not Started | Swap rendering onto replicated metadata and prevent double rendering during dual-write. | Validate via patch/keyframe tests. |
 
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 17 | Added client lifecycle batch processor to ingest contract events, track sequence cursors, and surface unknown update diagnostics. | gpt-5-codex |
 | 16 | Updated the Phase Overview to reflect completed groundwork and clarified the immediate client ingestion objectives. | gpt-5-codex |
 | 15 | Mirrored client EffectManager instances by server `EffectID`, updated tracker to reflect in-progress adapter work, and documented follow-on wiring needs. | gpt-5-codex |
 | 14 | Wired resync policy thresholds, forced keyframe scheduling, and documented the 0.01% lost-spawn trigger alongside new regression tests. | gpt-5-codex |

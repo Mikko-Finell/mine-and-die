@@ -764,6 +764,7 @@ const store = {
   lastTick: null,
   effects: [],
   effectInstancesById: null,
+  lastEffectLifecycleSummary: null,
   pendingEffectTriggers: [],
   processedEffectTriggerIds: new Set(),
   keyframeRetryTimer: null,
