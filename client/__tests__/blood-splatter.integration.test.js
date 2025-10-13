@@ -4,6 +4,9 @@ import { applyEffectLifecycleBatch, peekEffectLifecycleState } from "../effect-l
 import { startRenderLoop, RENDER_MODE_SNAPSHOT } from "../render.js";
 import { EffectManager } from "../js-effects/manager.js";
 
+const originalSpawn = EffectManager.prototype.spawn;
+let renderInvocations = [];
+
 function createMockContext() {
   const noop = () => {};
   return {
@@ -20,6 +23,7 @@ function createMockContext() {
     arc: noop,
     ellipse: noop,
     quadraticCurveTo: noop,
+    scale: noop,
     fillText: noop,
     drawImage: noop,
     closePath: noop,
@@ -69,6 +73,9 @@ function createStore() {
 }
 
 const BLOOD_EFFECT_ID = "contract-blood-1";
+const MELEE_EFFECT_ID = "contract-melee-1";
+const FIRE_EFFECT_ID = "contract-fire-1";
+const FIREBALL_EFFECT_ID = "contract-fireball-1";
 
 function createContractSnapshotPayload() {
   const centerXWorld = 240;
@@ -113,6 +120,39 @@ function createContractSnapshotPayload() {
           maxBursts: 1,
         },
       },
+      {
+        id: MELEE_EFFECT_ID,
+        type: "attack",
+        owner: "player-1",
+        start: 1000,
+        duration: 400,
+        x: centerXWorld,
+        y: centerYWorld,
+        width: widthWorld,
+        height: heightWorld,
+      },
+      {
+        id: FIRE_EFFECT_ID,
+        type: "fire",
+        owner: "player-1",
+        start: 1000,
+        duration: 800,
+        x: centerXWorld,
+        y: centerYWorld,
+        width: widthWorld,
+        height: heightWorld,
+      },
+      {
+        id: FIREBALL_EFFECT_ID,
+        type: "fireball",
+        owner: "player-1",
+        start: 1000,
+        duration: 800,
+        x: centerXWorld,
+        y: centerYWorld,
+        width: widthWorld,
+        height: heightWorld,
+      },
     ],
     effect_spawned: [
       {
@@ -140,6 +180,99 @@ function createContractSnapshotPayload() {
               centerX: centerXQuant,
               centerY: centerYQuant,
             },
+          },
+          ownerActorId: "player-1",
+          replication: {
+            sendSpawn: true,
+            sendUpdates: false,
+            sendEnd: true,
+          },
+        },
+      },
+      {
+        tick: 100,
+        seq: 2,
+        instance: {
+          id: MELEE_EFFECT_ID,
+          definitionId: "attack",
+          startTick: 100,
+          deliveryState: {
+            geometry: {
+              shape: "rect",
+              width: widthQuant,
+              height: heightQuant,
+              offsetX: 0,
+              offsetY: 0,
+            },
+            motion: {
+              positionX: centerXQuant,
+              positionY: centerYQuant,
+            },
+          },
+          behaviorState: {
+            ticksRemaining: 6,
+          },
+          ownerActorId: "player-1",
+          replication: {
+            sendSpawn: true,
+            sendUpdates: false,
+            sendEnd: true,
+          },
+        },
+      },
+      {
+        tick: 100,
+        seq: 3,
+        instance: {
+          id: FIRE_EFFECT_ID,
+          definitionId: "fire",
+          startTick: 100,
+          deliveryState: {
+            geometry: {
+              shape: "rect",
+              width: widthQuant,
+              height: heightQuant,
+              offsetX: 0,
+              offsetY: 0,
+            },
+            motion: {
+              positionX: centerXQuant,
+              positionY: centerYQuant,
+            },
+          },
+          behaviorState: {
+            ticksRemaining: 12,
+          },
+          ownerActorId: "player-1",
+          replication: {
+            sendSpawn: true,
+            sendUpdates: false,
+            sendEnd: true,
+          },
+        },
+      },
+      {
+        tick: 100,
+        seq: 4,
+        instance: {
+          id: FIREBALL_EFFECT_ID,
+          definitionId: "fireball",
+          startTick: 100,
+          deliveryState: {
+            geometry: {
+              shape: "rect",
+              width: widthQuant,
+              height: heightQuant,
+              offsetX: 0,
+              offsetY: 0,
+            },
+            motion: {
+              positionX: centerXQuant,
+              positionY: centerYQuant,
+            },
+          },
+          behaviorState: {
+            ticksRemaining: 12,
           },
           ownerActorId: "player-1",
           replication: {
@@ -184,11 +317,33 @@ function drainRaf(queue, stepMs) {
 
 beforeEach(() => {
   drainRaf.now = 0;
+  renderInvocations = [];
+  EffectManager.prototype.spawn = function spawnWithRenderTracking(
+    definition,
+    options,
+  ) {
+    const instance = originalSpawn.call(this, definition, options);
+    if (instance && typeof instance === "object" && typeof instance.draw === "function") {
+      if (!instance.__testWrappedDraw) {
+        const originalDraw = instance.draw;
+        instance.draw = function trackedDraw(frame) {
+          renderInvocations.push({
+            id: typeof this.id === "string" ? this.id : null,
+            type: typeof this.type === "string" ? this.type : null,
+          });
+          return originalDraw.call(this, frame);
+        };
+        instance.__testWrappedDraw = true;
+      }
+    }
+    return instance;
+  };
 });
 
 afterEach(() => {
   drainRaf.now = 0;
   delete globalThis.requestAnimationFrame;
+  EffectManager.prototype.spawn = originalSpawn;
 });
 
 describe("blood splatter lifecycle integration", () => {
@@ -226,12 +381,21 @@ describe("blood splatter lifecycle integration", () => {
     const manager = store.effectManager;
     expect(manager).toBeInstanceOf(EffectManager);
     const tracked = manager.getTrackedInstances("blood-splatter");
-    // At present this assertion fails because render.js never mirrors
-    // contract-derived "blood-splatter" lifecycle entries into the
-    // EffectManager. prepareEffectPass only calls syncEffectsByType for
-    // melee, fire, and fireball buckets, so the manager never receives the
-    // splatter instance. We keep the expectation as the desired behaviour and
-    // document the gap here rather than papering over it.
+    const trackedMelee = manager.getTrackedInstances("melee-swing");
+    const trackedFire = manager.getTrackedInstances("fire");
+    const trackedFireball = manager.getTrackedInstances("fireball");
+    expect(trackedMelee.size).toBeGreaterThan(0);
+    expect(trackedFire.size).toBeGreaterThan(0);
+    expect(trackedFireball.size).toBeGreaterThan(0);
+    const invocationsFor = (effectId) =>
+      renderInvocations.filter((entry) => entry.id === effectId);
+    expect(invocationsFor(MELEE_EFFECT_ID).length).toBeGreaterThan(0);
+    expect(invocationsFor(FIRE_EFFECT_ID).length).toBeGreaterThan(0);
+    expect(invocationsFor(FIREBALL_EFFECT_ID).length).toBeGreaterThan(0);
+    // The added attack (melee-swing), fire, and fireball lifecycle entries are mirrored into
+    // the EffectManager as expected and render during the frame, but render.js still never
+    // mirrors the contract-derived "blood-splatter" entry. We keep the expectation as the
+    // desired behaviour and document the gap here rather than papering over it.
     expect(tracked.size).toBeGreaterThan(0);
 
     drainRaf(rafQueue, 16);
