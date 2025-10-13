@@ -320,7 +320,9 @@ func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, l
 		telemetrySource:    telemetrySourceLegacy,
 		telemetrySpawnTick: Tick(int64(w.currentTick)),
 	}
-	w.effects = append(w.effects, eff)
+	if !w.registerEffect(eff) {
+		return nil
+	}
 	w.recordEffectSpawn(effectType, "status-effect")
 	return eff
 }
