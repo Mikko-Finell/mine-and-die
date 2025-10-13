@@ -90,7 +90,8 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 	drained := len(m.intentQueue)
 	newInstances := make([]*EffectInstance, 0, drained)
 	if drained > 0 {
-		for _, intent := range m.intentQueue {
+		for i := 0; i < drained; i++ {
+			intent := m.intentQueue[i]
 			if intent.TypeID == "" {
 				continue
 			}
@@ -103,14 +104,14 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 			newInstances = append(newInstances, instance)
 			m.invokeOnSpawn(instance, tick, now)
 		}
-	}
-	if len(m.intentQueue) > 0 {
-		for i := range m.intentQueue {
+		tail := len(m.intentQueue) - drained
+		if tail > 0 {
+			copy(m.intentQueue, m.intentQueue[drained:])
+		}
+		for i := tail; i < len(m.intentQueue); i++ {
 			m.intentQueue[i] = EffectIntent{}
 		}
-		m.intentQueue = m.intentQueue[:0]
-	}
-	if drained > 0 {
+		m.intentQueue = m.intentQueue[:tail]
 		m.totalDrained += drained
 	}
 	if emit == nil {
