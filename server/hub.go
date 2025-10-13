@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1266,6 +1267,10 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 	if err != nil {
 		stdlog.Printf("failed to marshal state message: %v", err)
 		return
+	}
+
+	if bytes.Contains(data, []byte("blood-splatter")) {
+		stdlog.Printf("[network] broadcasting payload containing blood-splatter: %s", data)
 	}
 
 	h.mu.Lock()
