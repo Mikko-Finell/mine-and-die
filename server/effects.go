@@ -41,14 +41,25 @@ type EffectTrigger struct {
 
 type effectState struct {
 	Effect
-	expiresAt       time.Time
-	Projectile      *ProjectileState
-	FollowActorID   string
-	StatusEffect    StatusEffectType
-	version         uint64
-	telemetryEnded  bool
-	contractManaged bool
+	expiresAt             time.Time
+	Projectile            *ProjectileState
+	FollowActorID         string
+	StatusEffect          StatusEffectType
+	version               uint64
+	telemetryEnded        bool
+	contractManaged       bool
+	telemetrySource       string
+	telemetrySpawnTick    Tick
+	telemetryFirstHitTick Tick
+	telemetryHitCount     int
+	telemetryVictims      map[string]struct{}
+	telemetryDamage       float64
 }
+
+const (
+	telemetrySourceLegacy   = "legacy"
+	telemetrySourceContract = "contract"
+)
 
 type ProjectileTemplate struct {
 	Type           string
@@ -313,7 +324,11 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 				if math.Abs(next-player.Health) < healthEpsilon {
 					return
 				}
+				actualDelta := next - player.Health
 				w.SetHealth(player.ID, next)
+				if actualDelta != 0 {
+					w.recordEffectHitTelemetry(eff, player.ID, actualDelta)
+				}
 				changed = true
 			} else if npc, ok := w.npcs[target.ID]; ok && npc != nil {
 				max := npc.MaxHealth
@@ -332,13 +347,25 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 				if math.Abs(next-npc.Health) < healthEpsilon {
 					return
 				}
+				actualDelta := next - npc.Health
 				w.SetNPCHealth(npc.ID, next)
+				if actualDelta != 0 {
+					w.recordEffectHitTelemetry(eff, npc.ID, actualDelta)
+				}
 				changed = true
 			} else {
+				before := target.Health
 				changed = target.applyHealthDelta(delta)
+				if changed {
+					w.recordEffectHitTelemetry(eff, target.ID, target.Health-before)
+				}
 			}
 		} else {
+			before := target.Health
 			changed = target.applyHealthDelta(delta)
+			if changed {
+				w.recordEffectHitTelemetry(eff, target.ID, target.Health-before)
+			}
 		}
 
 		if !changed {
@@ -424,10 +451,10 @@ func (w *World) recordEffectEnd(eff *effectState, reason string) {
 	if w == nil || eff == nil {
 		return
 	}
-	if eff.telemetryEnded {
-		return
+	if !eff.telemetryEnded {
+		w.flushEffectTelemetry(eff)
+		eff.telemetryEnded = true
 	}
-	eff.telemetryEnded = true
 	if w.telemetry != nil {
 		w.telemetry.RecordEffectEnded(eff.Type, reason)
 	}
@@ -438,6 +465,73 @@ func (w *World) recordEffectTrigger(triggerType string) {
 		return
 	}
 	w.telemetry.RecordEffectTrigger(triggerType)
+}
+
+func (w *World) effectTelemetrySource(eff *effectState) string {
+	if eff == nil {
+		return telemetrySourceLegacy
+	}
+	if eff.telemetrySource != "" {
+		return eff.telemetrySource
+	}
+	if eff.contractManaged {
+		eff.telemetrySource = telemetrySourceContract
+	} else {
+		eff.telemetrySource = telemetrySourceLegacy
+	}
+	return eff.telemetrySource
+}
+
+func (w *World) recordEffectHitTelemetry(eff *effectState, targetID string, delta float64) {
+	if w == nil || eff == nil {
+		return
+	}
+	if eff.telemetrySpawnTick == 0 {
+		eff.telemetrySpawnTick = Tick(int64(w.currentTick))
+	}
+	if eff.telemetryFirstHitTick == 0 {
+		eff.telemetryFirstHitTick = Tick(int64(w.currentTick))
+	}
+	eff.telemetryHitCount++
+	if eff.telemetryVictims == nil {
+		eff.telemetryVictims = make(map[string]struct{})
+	}
+	if targetID != "" {
+		eff.telemetryVictims[targetID] = struct{}{}
+	}
+	if delta < 0 {
+		eff.telemetryDamage += -delta
+	}
+	w.effectTelemetrySource(eff)
+}
+
+func (w *World) flushEffectTelemetry(eff *effectState) {
+	if w == nil || eff == nil || w.telemetry == nil {
+		return
+	}
+	source := w.effectTelemetrySource(eff)
+	victims := 0
+	if len(eff.telemetryVictims) > 0 {
+		victims = len(eff.telemetryVictims)
+	}
+	spawnTick := eff.telemetrySpawnTick
+	if spawnTick == 0 {
+		spawnTick = Tick(int64(w.currentTick))
+	}
+	summary := effectParitySummary{
+		EffectType:    eff.Type,
+		Source:        source,
+		Hits:          eff.telemetryHitCount,
+		UniqueVictims: victims,
+		TotalDamage:   eff.telemetryDamage,
+		SpawnTick:     spawnTick,
+		FirstHitTick:  eff.telemetryFirstHitTick,
+	}
+	w.telemetry.RecordEffectParity(summary)
+	eff.telemetryHitCount = 0
+	eff.telemetryDamage = 0
+	eff.telemetryVictims = nil
+	eff.telemetryFirstHitTick = 0
 }
 
 // QueueEffectTrigger appends a fire-and-forget trigger for clients. The caller
@@ -540,7 +634,9 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 				"width":       meleeAttackWidth,
 			},
 		},
-		expiresAt: now.Add(meleeAttackDuration),
+		expiresAt:          now.Add(meleeAttackDuration),
+		telemetrySource:    telemetrySourceLegacy,
+		telemetrySpawnTick: Tick(int64(tick)),
 	}
 
 	w.effects = append(w.effects, effect)
@@ -659,6 +755,8 @@ func (w *World) buildProjectileEffect(owner *actorState, actorID string, tpl *Pr
 			VelocityUnitY:  dirY,
 			RemainingRange: tpl.MaxDistance,
 		},
+		telemetrySource:    telemetrySourceLegacy,
+		telemetrySpawnTick: Tick(int64(w.currentTick)),
 	}
 
 	return effect
@@ -739,7 +837,9 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 			VelocityUnitY:  dirY,
 			RemainingRange: tpl.MaxDistance,
 		},
-		contractManaged: true,
+		contractManaged:    true,
+		telemetrySource:    telemetrySourceContract,
+		telemetrySpawnTick: instance.StartTick,
 	}
 
 	if remaining, ok := params["range"]; ok && remaining >= 0 {
@@ -799,8 +899,10 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *EffectInstance, no
 			Width:    width,
 			Height:   height,
 		},
-		expiresAt:       now.Add(lifetime),
-		contractManaged: true,
+		expiresAt:          now.Add(lifetime),
+		contractManaged:    true,
+		telemetrySource:    telemetrySourceContract,
+		telemetrySpawnTick: instance.StartTick,
 	}
 	w.effects = append(w.effects, effect)
 	w.recordEffectSpawn(effectType, "blood-decal")
@@ -1170,6 +1272,7 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 	if eff == nil || spec == nil {
 		return
 	}
+	source := w.effectTelemetrySource(eff)
 	radius := spec.Radius
 	size := radius * 2
 	if size <= 0 {
@@ -1202,7 +1305,9 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 			Height:   size,
 			Params:   params,
 		},
-		expiresAt: now.Add(spec.Duration),
+		expiresAt:          now.Add(spec.Duration),
+		telemetrySource:    source,
+		telemetrySpawnTick: Tick(int64(w.currentTick)),
 	}
 	w.effects = append(w.effects, area)
 	w.recordEffectSpawn(spec.EffectType, "explosion")

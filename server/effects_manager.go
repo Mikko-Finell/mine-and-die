@@ -571,7 +571,7 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 					statusType = inst.Definition.Type
 				}
 			}
-			m.world.applyBurningDamage(instance.OwnerActorID, actor, statusType, delta, now)
+			m.world.applyBurningDamage(instance.OwnerActorID, actor, statusType, delta, now, telemetrySourceContract)
 		},
 	}
 	registry[visualBloodSplatterHookID] = effectHookSet{
@@ -636,6 +636,8 @@ func (m *EffectManager) meleeEffectForInstance(instance *EffectInstance, owner *
 			Height:   height,
 			Params:   params,
 		},
+		telemetrySource:    telemetrySourceContract,
+		telemetrySpawnTick: instance.StartTick,
 	}
 	area := Obstacle{X: rectX, Y: rectY, Width: width, Height: height}
 	return effect, area
@@ -712,6 +714,8 @@ func (m *EffectManager) spawnStatusVisualFromInstance(instance *EffectInstance, 
 	effect.Effect.ID = instance.ID
 	effect.StatusEffect = StatusEffectBurning
 	effect.FollowActorID = actor.ID
+	effect.telemetrySource = telemetrySourceContract
+	effect.telemetrySpawnTick = instance.StartTick
 	m.worldEffects[instance.ID] = effect
 	return effect
 }
