@@ -41,8 +41,8 @@ Statuses use the following scale:
 | Phase 2 – Transport & Journal (Dual-Write) | Complete | Dual-write journal, transport toggles, and resync policy are active behind rollout flags. | Track resync telemetry during Phase 3 rollout and capture anomalies. |
 | Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Implement spawn/update/end batch processor and move rendering onto replicated metadata. |
 | Phase 4 – Producer Migration | Complete | Gameplay producers now execute through contract-backed definitions with parity gates, including melee, projectiles, burning, blood decals, and compat shims. | Monitor rollout telemetry while planning Phase 5 determinism and performance hardening. |
-| Phase 5 – Determinism & Performance Hardening | Complete | Stress testing and budgets for the new system. | Keep budget alarms wired while monitoring rollout metrics. |
-| Phase 6 – Cutover, Verification & Docs | In Progress | Remove legacy paths and lock the unified contract. | Prepare the deprecation switch and legacy removal gates after validating contract telemetry. |
+| Phase 5 – Determinism & Performance Hardening | In Progress | Stress testing and budgets for the new system. | Add tick budget guards now that the spatial index is capped. |
+| Phase 6 – Cutover, Verification & Docs | Not Started | Remove legacy paths and lock the unified contract. | Schedule adoption gate monitoring once prior phases stabilize. |
 
 ---
 
@@ -118,14 +118,15 @@ Statuses use the following scale:
 | --- | --- | --- | --- |
 | Spatial index tuning | Complete | :white_check_mark: Tuned tile-aligned spatial index, enforced per-cell cap, and surfaced overflow telemetry. | `effects.spatialOverflow` captures capped spawns; continue validating with projectile swarm benchmarks. |
 | Tick budget guards | Complete | :white_check_mark: Detect and log tick budget overruns with telemetry buckets and streak counters; :white_check_mark: escalate sustained overruns into alarms + forced resyncs. | Run loop clamps dt catch-up to two ticks, escalates ratio ≥2.0 or streak ≥3 into a forced keyframe/resync, and records alarm diagnostics for alerting. |
+| Benchmarks & SLO gates | Not Started | Create CI runnable swarm/AoE benchmarks with pass/fail thresholds. | Publish results table in docs when ready. |
 
 ### Phase 6 — Cutover, Verification & Docs
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Table-driven contract tests | Complete | :white_check_mark: Added table-driven lifecycle tests covering area/target/visual deliveries in `server/effects_manager_contract_test.go`. | Keep fixtures versioned with contract spec. |
-| Client join/resync tests | Complete | :white_check_mark: Added join/resync integration tests that exercise the two-pass patch pipeline in `client/__tests__/network.test.js`. | Integrate with existing test harness if possible. |
-| Docs refresh | Complete | :white_check_mark: Refreshed the architecture overview, client module guide, playground authoring instructions, and testing/troubleshooting notes to document the contract transport. | Legacy doc references now point to contract lifecycle batches, client two-pass replay, and diagnostics surfaces. |
+| Table-driven contract tests | Not Started | Add tests asserting spawn/update/end sequences per delivery kind. | Keep fixtures versioned with contract spec. |
+| Client join/resync tests | Not Started | Script patch/keyframe scenarios and verify two-pass client behaviour. | Integrate with existing test harness if possible. |
+| Docs refresh | Not Started | Update architecture docs, authoring guides, and troubleshooting notes post-cutover. | Remove legacy references once clients fully migrated. |
 | Deprecation switch | Not Started | Disable legacy arrays and remove compat shim once adoption gate satisfied. | Verify telemetry thresholds (95% adoption, resync rate) before removal. |
 
 ---
@@ -134,9 +135,6 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
-| 35 | Refreshed contract-era docs (architecture, client module guide, authoring, troubleshooting) and marked the Phase 6 docs deliverable complete. | gpt-5-codex |
-| 34 | Landed client join/resync two-pass integration tests, marked Phase 5 complete, and advanced the Phase 6 tracker. | gpt-5-codex |
-| 33 | Added table-driven contract lifecycle tests covering delivery kinds and marked the Phase 6 contract test deliverable complete. | gpt-5-codex |
 | 32 | Tick budget alarms now schedule forced resyncs when ratio ≥2× or streak ≥3, expose alarm diagnostics, and mark the Phase 5 guardrail deliverable complete. | gpt-5-codex |
 | 31 | Added tick budget overrun guardrails with logging, telemetry buckets, and dt catch-up clamp; marked the tracker deliverable In Progress. | gpt-5-codex |
 | 30 | Tile-aligned spatial index now caps active effects per cell, updates deterministically with integer math, and emits overflow telemetry for benchmark tracking. | gpt-5-codex |

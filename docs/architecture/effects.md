@@ -1,93 +1,357 @@
-# Unified Effects Runtime
+# Effects & Status Effects
 
-The Mine & Die effect pipeline is now entirely contract-driven. The Go server
-translates every melee swing, projectile, status rider, and cosmetic trigger
-into a deterministic lifecycle stream, while the JavaScript client renders that
-stream without inventing state. Use this document as the reference for how
-intents flow through the authoritative manager, how lifecycle events move over
-transport, and how the browser consumes them.
+This document explains how Mine & Die models combat effects, server-driven
+status effects, and the client runtime that renders them. Use it as the reference
+when tuning existing abilities or introducing new ones.
 
-## Authoritative lifecycle (server)
+## Authoritative Effect Model
 
-- **Legacy hooks feed contract intents.** Helpers such as
-  `NewMeleeIntent`, `NewProjectileIntent`, and
-  `NewStatusVisualIntent` quantize legacy gameplay data into
-  `EffectIntent` payloads so contract processing observes the exact
-  geometry, params, and tick durations that the live simulation uses.【F:server/effect_intents.go†L48-L200】
-- **`EffectManager` owns instances.** Each tick the manager drains the
-  intent queue, instantiates `EffectInstance` records, invokes delivery
-  hooks, and emits spawn/update/end envelopes with per-instance sequence
-  counters. Instances track replication rules so definitions can opt out of
-  updates or ends when they are cosmetic-only.【F:server/effects_manager.go†L14-L172】
-- **Definitions & hooks keep parity.** The default registry wires contract
-  lifecycle hooks (melee swings, fireball projectiles, burning visuals,
-  blood decals) back into the legacy world structures so telemetry and
-  compat shims stay in sync while the contract drives rendering.【F:server/effects_manager.go†L47-L65】
+The server owns the authoritative representation of every active effect. Each
+effect broadcast to clients is based on the `Effect` struct, which records its
+ID, type, owner, lifetime, bounding box, and any numeric parameters.
+Transient server-side bookkeeping lives in `effectState`, which adds the
+expiration time, optional projectile metadata, and a `FollowActorID` so visuals
+can stay attached to moving actors.
 
-## Lifecycle events & snapshot transport
+Effect behaviours are registered in `newEffectBehaviors`. Behaviours read common
+parameters such as `healthDelta` and apply them to target actors whenever a hit
+is detected.
+Damage-focused behaviours log when a target is defeated so higher level systems
+can react.
 
-- **Journal stores authoritative history.** `Journal.RecordEffectSpawn`,
-  `.RecordEffectUpdate`, and `.RecordEffectEnd` assign monotonic sequence
-  values, drop out-of-order events, and copy delivery/behaviour payloads
-  into the effect event buffer. `DrainEffectEvents` returns spawns,
-  updates, ends, and the current `LastSeqByID` map so downstream consumers
-  can apply batches idempotently.【F:server/patches.go†L193-L431】
-- **Resync hints are automatic.** The journal tracks lost-spawn patterns
-  and raises a resync hint when unknown-ID updates or similar anomalies
-  breach the per-ten-thousand threshold. `Hub.scheduleResyncIfNeeded`
-  converts the hint into a forced keyframe and flips the `resync` flag on
-  the next broadcast so clients recover deterministically.【F:server/resync_policy.go†L25-L83】【F:server/hub.go†L1144-L1172】
-- **State payloads carry lifecycle arrays.** When the contract transport is
-  enabled, `stateMessage` attaches `effect_spawned`, `effect_update`,
-  `effect_ended`, and `effect_seq_cursors` alongside the traditional
-  snapshot fields. The join response mirrors the same structure so every
-  client receives a keyframe plus the lifecycle batch before any diffs
-  apply.【F:server/messages.go†L3-L39】【F:server/hub.go†L1049-L1139】
+The combat helpers `triggerMeleeAttack` and `spawnProjectile` create new
+`effectState` instances. Melee swings spawn a short-lived rectangle in front of
+the attacker, apply damage through `applyEffectHitPlayer` /
+`applyEffectHitNPC`, and mine gold when the swing overlaps an ore obstacle.
+Projectiles look up a template in `projectileTemplates`, enforce cooldowns, and
+spawn travelling effects that advance every tick until they hit something or run
+out of range.
 
-## Client consumption & replay
+### Fire-and-Forget Triggers
 
-- **Two-pass application.** `applyEffectLifecycleBatch` processes spawns
-  first, retries updates once after the spawn pass, and then applies end
-  events. It maintains a per-effect sequence map, records drops, and
-  exposes unknown updates so diagnostics stay actionable.【F:client/effect-lifecycle.js†L272-L415】
-- **Join + incremental messages share the same path.** The join handler
-  resets lifecycle state, applies the initial batch, and then the WebSocket
-  feed calls the same helper for each `state` payload, keeping
-  `store.lastEffectLifecycleSummary` up to date for the diagnostics UI.【F:client/network.js†L1126-L1341】
-- **Diff recovery stays in lockstep.** Patch replay bookkeeping uses the
-  lifecycle batch to request keyframes when the journal signals a gap, and
-  retries are scheduled via the keyframe retry loop so resyncs stay bounded
-  even under packet loss.【F:client/network.js†L924-L1002】【F:client/network.js†L1231-L1339】
+Not every visual warrants a full effect entry. Helpers call
+`QueueEffectTrigger` to enqueue one-shot instructions (for example, blood
+splatter decals) that the next snapshot will deliver exactly once.
+Triggers and active effects are sent alongside the standard snapshot so clients
+can render lingering hitboxes and single-use decals in the same frame.
 
-## Visual runtime expectations
+### Lifecycle Management
 
-- **js-effects definitions convert contract payloads.**
-  `render.syncEffectsByType` checks for lifecycle entries, calls each
-  definition's `fromEffect` helper to derive spawn options, and keeps
-  instances updated with contract metadata. Definitions that implement
-  `fromEffect` receive the authoritative payload and can hand off decals or
-  apply custom transforms per update.【F:client/render.js†L320-L417】【F:client/js-effects/effects/meleeSwing.js†L1-L137】
-- **Lifecycle metadata travels with effects.** When contract batches drive
-  `store.effects`, helper utilities mark entries with
-  `__contractDerived` so downstream consumers know which records came from
-  the journal versus legacy snapshots. Rendering prefers these derived
-  entries and removes stale instances automatically.【F:client/render.js†L340-L417】【F:client/effect-lifecycle.js†L168-L220】
+`World.Step` advances player and NPC movement, stages abilities, applies
+environmental hazards, and then updates both status effects and effects before the
+snapshot is emitted.
+Helpers such as `pruneEffects` and `maybeExplodeOnExpiry` remove expired
+instances, while `applyEffectHitNPC` invokes defeat handlers the moment an NPC
+runs out of health.
 
-## Telemetry & troubleshooting
+## Status Effects
 
-- **Server exposes lifecycle metrics.** `telemetryCounters` tracks active
-  effect counts, trigger throughput, journal drop reasons, and parity
-  aggregates per effect type/source. The `/diagnostics` payload surfaces
-  total ticks plus per-source hit/miss/damage rates so rollouts can monitor
-  contract parity in real time.【F:server/telemetry.go†L501-L565】
-- **Investigate unknown updates quickly.** If the client records unknown
-  updates after the retry pass, `applyEffectLifecycleBatch` surfaces the
-  offending events for logging. Capture the effect ID and sequence when the
-  diagnostics panel shows dropped updates—this usually signals a missing
-  spawn in the transport or a stale cursor during replay.【F:client/effect-lifecycle.js†L336-L411】
+Status effects wrap persistent modifiers (burning, poison, etc.) around the
+core effect system. Definitions live in `newStatusEffectDefinitions`, which sets up
+per-effect durations, tick cadences, and lifecycle callbacks.
+`applyStatusEffect` instantiates or refreshes `statusEffectInstance` records for the
+target actor, schedules ticks, and invokes `OnApply`/`OnTick` handlers.
+The default burning status effect attaches a looping fire visual, deals periodic
+damage based on lava DPS, and expires cleanly once its timer completes.
 
-With the contract stream in place, new gameplay or cosmetic work should
-extend the intent helpers, register a definition, and rely on the lifecycle
-arrays for transport. Avoid reintroducing ad-hoc effect arrays; treat the
-journal as the canonical source of truth for anything that animates in the
-world.
+`advanceStatusEffects` runs every tick to trigger scheduled ticks, extend attached
+visuals, and clean up expired instances.
+When a tick inflicts damage, the helper spawns a lightweight
+`effectState` with `effectTypeBurningTick` so health changes reuse the shared
+behaviour pipeline.
+
+Environmental systems call `applyEnvironmentalStatusEffects` to apply burning while
+actors remain inside lava obstacles, so hazards automatically refresh the
+status effect timer without custom code.
+
+## Snapshot & Transport
+
+`World.Snapshot` copies active effects into broadcast structs, while
+`flushEffectTriggersLocked` drains the trigger queue.
+The hub includes both arrays in every `state` payload sent over the WebSocket,
+and resets the trigger queue after broadcasting.
+
+### `marshalState` payload layout
+
+`Hub.marshalState` orchestrates every outbound payload. It hydrates the
+snapshot (players, NPCs, effects, ground items, obstacles) when
+`includeSnapshot` is `true`, and otherwise sets those fields to `nil` so the
+incremental payload omits them. Patches are always included, but the function
+either drains or snapshots them depending on the caller. Effect triggers are
+resolved regardless of whether a keyframe is being emitted, so one-shot visuals
+ride alongside incremental frames.【F:server/hub.go†L842-L977】
+
+The JSON layout mirrors the struct order in `stateMessage`, so consumers see the
+arrays in the following sequence during a full keyframe broadcast:
+
+1. `players`
+2. `npcs`
+3. `obstacles`
+4. `effects`
+5. `effectTriggers`
+6. `groundItems`
+7. `patches`
+
+Both the `/join` response and keyframe refreshes include the full set. Regular
+tick updates usually omit the first three arrays because their slices are `nil`
+when `includeSnapshot` is `false`, leaving clients to reuse the last keyframe.
+`effects` behaves the same way: when the hub decides to skip a keyframe, the
+field is omitted and only `effectTriggers` deliver transient visuals for that
+tick.【F:server/hub.go†L933-L977】【F:server/messages.go†L18-L46】
+
+When the unified contract transport is toggled on (via
+`enableContractEffectTransport` in [`server/constants.go`](../../server/constants.go)),
+`marshalState` also appends the dual-write lifecycle envelopes to the payload:
+
+1. `effect_spawned`
+2. `effect_update`
+3. `effect_ended`
+4. `effect_seq_cursors`
+
+These fields mirror the journal batch returned by
+`Journal.DrainEffectEvents`. They only appear when the contract manager is
+active *and* the transport flag is enabled so legacy clients do not encounter
+unexpected JSON members. The cursor map (`effect_seq_cursors`) supplies the
+latest `(effectID → seq)` pairs so downstream consumers can drop duplicates and
+stay in lockstep with the server.【F:server/hub.go†L876-L1031】【F:server/patches.go†L191-L432】
+
+`marshalState` also stamps every payload with a monotonically increasing
+`sequence` and tracks the most recent `keyframeSeq`. Initial state pushes set the
+`resync` flag because they do not drain patches; ongoing broadcasts clear the
+flag unless the hub explicitly schedules a resync. The `keyframeInterval`
+reported in the payload reflects the current cadence (default 1, meaning every
+tick is a keyframe) and is updated whenever the interval changes.【F:server/hub.go†L894-L1031】
+
+#### Resync hints & keyframe forcing
+
+The effect journal evaluates every lifecycle envelope to spot "lost spawn"
+patterns (updates or ends without a known spawn). Whenever the ratio of lost
+spawns to total events breaches **0.01%** (equivalent to ≥1 lost spawn per 10k
+events), the journal raises a resync hint and records the offending IDs for
+logging.【F:server/patches.go†L178-L335】【F:server/resync_policy.go†L8-L68】
+
+Each broadcast begins by calling `Hub.scheduleResyncIfNeeded`, which consumes the
+hint, forces the next keyframe, flips the `resync` flag, and logs the summary so
+operators can correlate spikes with telemetry. The very next payload therefore
+includes a full snapshot, allowing clients to recover deterministically from
+missed spawns.【F:server/hub.go†L1004-L1144】【F:server/hub.go†L1144-L1186】
+
+#### Example payloads
+
+Full keyframe (e.g., join handshake or forced refresh):
+
+```json
+{
+  "ver": 1,
+  "type": "state",
+  "players": [
+    {
+      "id": "player-1",
+      "x": 8.5,
+      "y": 4.0,
+      "facing": "down",
+      "health": 100,
+      "maxHealth": 100,
+      "inventory": {"slots": []},
+      "equipment": {"slots": []}
+    }
+  ],
+  "npcs": [
+    {
+      "id": "npc-keep-1",
+      "x": 6.0,
+      "y": 10.5,
+      "facing": "left",
+      "health": 50,
+      "maxHealth": 50,
+      "inventory": {"slots": []},
+      "equipment": {"slots": []},
+      "type": "goblin",
+      "aiControlled": true,
+      "experienceReward": 12
+    }
+  ],
+  "obstacles": [
+    {"id": "ore-17", "type": "gold-ore", "x": 9.0, "y": 4.0, "width": 1.0, "height": 1.0}
+  ],
+  "effects": [
+    {"id": "swing-42", "type": "meleeSwing", "owner": "player-1", "start": 1728656400123, "duration": 150, "x": 9.0, "y": 4.0, "width": 1.5, "height": 1.0}
+  ],
+  "effectTriggers": [
+    {"id": "blood-57", "type": "bloodSplatter", "start": 1728656400123, "x": 9.0, "y": 4.0}
+  ],
+  "groundItems": [
+    {"id": "ground-3", "type": "gold", "fungibility_key": "ore", "x": 9.0, "y": 4.0, "qty": 2}
+  ],
+  "patches": [],
+  "t": 318,
+  "sequence": 882,
+  "keyframeSeq": 882,
+  "serverTime": 1728656400123,
+  "config": {
+    "obstacles": true,
+    "obstaclesCount": 18,
+    "goldMines": true,
+    "goldMineCount": 4,
+    "npcs": true,
+    "goblinCount": 6,
+    "ratCount": 4,
+    "npcCount": 10,
+    "lava": true,
+    "lavaCount": 3,
+    "seed": "prototype",
+    "width": 64,
+    "height": 64
+  },
+  "resync": true,
+  "keyframeInterval": 1
+}
+```
+
+Incremental update (no keyframe):
+
+```json
+{
+  "ver": 1,
+  "type": "state",
+  "effectTriggers": [
+    {"id": "sparks-12", "type": "oreSparks", "start": 1728656400190, "x": 9.0, "y": 4.0}
+  ],
+  "patches": [],
+  "t": 319,
+  "sequence": 883,
+  "keyframeSeq": 882,
+  "serverTime": 1728656400190,
+  "config": {
+    "obstacles": true,
+    "obstaclesCount": 18,
+    "goldMines": true,
+    "goldMineCount": 4,
+    "npcs": true,
+    "goblinCount": 6,
+    "ratCount": 4,
+    "npcCount": 10,
+    "lava": true,
+    "lavaCount": 3,
+    "seed": "prototype",
+    "width": 64,
+    "height": 64
+  },
+  "keyframeInterval": 1
+}
+```
+
+Clients must retain the last keyframe to resolve entity state, then layer the
+latest triggers and patches each tick until a new keyframe arrives.
+
+## Client Runtime
+
+The client stores the latest `effects` array and drains `effectTriggers` when it
+receives a new snapshot or the initial `/join` response.
+`render.js` ensures there is a shared `EffectManager`, registers trigger
+handlers, and calls `syncEffectsByType` for each definition so authoritative
+payloads become tracked instances inside the js-effects runtime.
+During each render pass the effect manager consumes pending triggers, updates
+all tracked instances, and draws layered visuals on the canvas.
+
+## Extending the System
+
+When adding a new ability or status effect:
+
+1. **Author the behaviour** – Add or update effect behaviours / projectile
+   templates in `server/effects.go` and register status effect definitions in
+   `server/status_effects.go` as needed.
+2. **Emit visuals** – Decide whether the feature needs a tracked effect (with a
+   bounding box and lifetime) or a fire-and-forget trigger, and use
+   `QueueEffectTrigger` for one-shot decals.
+3. **Expose state** – Ensure any new fields required by clients are included in
+   the snapshot or trigger payloads.
+4. **Render on the client** – Create or update js-effects definitions under
+   `tools/js-effects/packages/effects-lib`, run `npm run build`, and hook the new
+   type into `render.js` via `syncEffectsByType` or a trigger handler.
+5. **Document behaviour** – Update this file or other docs so future contributors
+   understand the new mechanics and expected visuals.
+
+## Legacy Effect Telemetry Plan
+
+### Objectives
+
+Phase 0 called for observability on the current, pre-unification effect loop so
+we have baselines before dual-write rollouts begin. The instrumentation now in
+place mirrors three lifecycle phases already exercised by the world:
+
+* **Spawn** – `triggerMeleeAttack`, `spawnProjectile`, status effect handlers, and
+  `spawnAreaEffectAt` append new `effectState` entries after pruning expired
+  instances.【F:server/effects.go†L415-L457】【F:server/effects.go†L545-L613】【F:server/effects.go†L968-L1007】【F:server/status_effects.go†L247-L276】
+* **Update** – `advanceProjectile`, `updateFollowEffect`, and the write barriers
+  `SetEffectPosition` / `SetEffectParam` mutate tracked effects while the world is
+  locked.【F:server/effects.go†L723-L872】【F:server/world_mutators.go†L322-L358】
+* **End** – Effects exit through `stopProjectile`, `expireAttachedEffect`, and the
+  `pruneEffects` sweep that purges any instance whose `expiresAt` has elapsed and
+  clears residual patches.【F:server/effects.go†L912-L1057】【F:server/status_effects.go†L298-L317】
+
+### Metrics & Aggregation Surface
+
+| Metric | Type | Cardinality | Update cadence | Aggregation | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `effects.spawned_total` | Counter | `effect_type` + `producer` (≤6 × 4) | Increment on each spawn helper before slices append. | Extend `telemetryCounters` with atomic counters; emit optional debug log when `DEBUG_TELEMETRY=1`. | Ensures melee, projectile, status effect, and explosion spawns are counted independently.【F:server/effects.go†L415-L457】【F:server/effects.go†L545-L613】【F:server/effects.go†L968-L1007】【F:server/status_effects.go†L247-L276】 |
+| `effects.updated_total` | Counter | `effect_type` + `mutation` (`position`, `param`) | Increment from `SetEffectPosition` / `SetEffectParam`. | Same counters struct; no log spam because updates are high-volume. | Measures how often projectiles move or params change per tick.【F:server/world_mutators.go†L322-L358】 |
+| `effects.active_gauge` | Gauge (last sample) | unlabelled | Record once per tick after `world.Snapshot` to capture active effect count. | Store in `telemetryCounters` via `RecordEffectsActive(count)` style helper. | Gives baseline active counts alongside existing tick duration sampling.【F:server/hub.go†L711-L734】 |
+| `effects.ended_total` | Counter | `effect_type` + `reason` (`duration`, `impact`, `ownerLost`, `cancelled`) | Increment in `stopProjectile`, `expireAttachedEffect`, and `pruneEffects`. | Counters struct plus structured log for unexpected reasons when debug mode enabled. | Differentiates expiry-on-impact vs. natural timeout for parity tracking.【F:server/effects.go†L912-L947】【F:server/effects.go†L1042-L1057】【F:server/status_effects.go†L298-L317】 |
+| `effect_triggers.enqueued_total` | Counter | `trigger_type` | Increment inside `QueueEffectTrigger`. | Counters struct; existing trigger queue stays unchanged. | Tracks fire-and-forget usage independent of tracked effects.【F:server/effects.go†L318-L371】 |
+
+### Availability & Baseline Capture
+
+The metrics above now surface through the diagnostics endpoint and optional
+debug logging. `/diagnostics` includes nested
+`telemetry.effects` and `telemetry.effectTriggers` payloads so QA can capture
+snapshots during sessions or automated smoke runs.【F:server/main.go†L55-L79】【F:server/telemetry.go†L118-L142】
+When `DEBUG_TELEMETRY=1` the tick log prints the current active gauge plus the
+aggregate counters, making it easy to sanity-check increments while exercising
+combat loops locally.【F:server/telemetry.go†L165-L189】 To establish a baseline,
+start the server with debug telemetry enabled, run a short scenario that covers
+melee swings, projectile casts, and burning ticks, then archive both the
+terminal output and `/diagnostics` response for comparison before larger
+gameplay changes.
+
+All metrics live in the existing hub-scoped `telemetryCounters` to piggyback on
+atomic storage, `/diagnostics` snapshots, and the debug print that is already
+gated behind `DEBUG_TELEMETRY`. Structured logs remain reserved for anomalies
+(`ownerLost`, unexpected cancel reasons) to avoid double-counting once the
+unified manager introduces richer journaling.【F:server/telemetry.go†L96-L142】
+
+### Rollout & Validation
+
+1. **Implementation PR** – Add the counters/gauge to `telemetryCounters`, thread
+   helpers through `World`/`Hub`, and update `/diagnostics` output. No gameplay
+   behaviour changes required.
+2. **Smoke validation** – Run `go test ./server/...` and capture telemetry for a
+   short local session (melee, projectile, burning) with `DEBUG_TELEMETRY=1` to
+   confirm counter increments track expected actions.
+3. **Tracker sign-off** – Once metrics appear in `/diagnostics`, flip the Phase 0
+   telemetry deliverable to `Ready to Start` → `Complete` after review, and start
+   capturing baseline numbers for migration monitoring.
+
+This plan keeps the legacy loop observable without blocking the contract
+rollout—once the unified manager arrives we can mirror the same metric shapes on
+the new event stream for parity alerts.
+
+## Effect Producer Map
+
+The Phase 0 guardrail work introduced an automated inventory of every server
+function that spawns or mutates effects. Run the generator whenever you change
+effect-producing code so the shared map stays current:
+
+```sh
+npm run effects:map
+```
+
+The script (`tools/effects/build_producer_map`) parses the Go sources in
+`server/effects.go`, `server/status_effects.go`, `server/world_mutators.go`, and
+`server/simulation.go`, then writes `effects_producer_map.json` at the repo root.
+Each entry lists the source file, function name, category tags (producer vs.
+mutation), inferred delivery kinds (melee, projectile, trigger, statusEffect, etc.),
+and the invariants that function touches (cooldown guards, logging calls, journal
+patches, helper invocations). This index is the authoritative reference for
+effects migration planning—update it in the same commit as any gameplay change
+that affects effects so downstream tooling and documentation remain trustworthy.

@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { computeRtt } from "../heartbeat.js";
 import {
-  createPatchState,
-  updatePatchState,
-  PATCH_KIND_PLAYER_POS,
-} from "../patches.js";
-import {
   buildActionPayload,
   buildCancelPathPayload,
   buildConsolePayload,
@@ -37,28 +32,6 @@ const DEFAULT_COUNTS = {
   ratCount: 1,
   npcCount: 3,
 };
-
-function deepFreeze(value) {
-  if (value && typeof value === "object") {
-    Object.freeze(value);
-    for (const key of Object.keys(value)) {
-      deepFreeze(value[key]);
-    }
-  }
-  return value;
-}
-
-function makePlayer(overrides = {}) {
-  return {
-    id: "player-1",
-    x: 1,
-    y: 2,
-    facing: "down",
-    health: 10,
-    maxHealth: 10,
-    ...overrides,
-  };
-}
 
 describe("splitNpcCounts", () => {
   it.each([
@@ -402,157 +375,6 @@ describe("applyStateSnapshot", () => {
     expect(result.lastTick).toBe(99);
     expect(result.worldConfig.width).toBe(800);
     expect(result.hasLocalPlayer).toBe(true);
-  });
-});
-
-describe("join and resync integration", () => {
-  it("resets patch history and seeds baseline from join snapshots", () => {
-    const seededState = updatePatchState(
-      createPatchState(),
-      deepFreeze({
-        type: "state",
-        t: 5,
-        sequence: 5,
-        keyframeSeq: 5,
-        players: [makePlayer({ x: 1, y: 2 })],
-        npcs: [],
-        effects: [],
-        groundItems: [],
-      }),
-      { source: "state" },
-    );
-
-    const liveState = updatePatchState(
-      seededState,
-      deepFreeze({
-        type: "state",
-        sequence: 6,
-        patches: [
-          {
-            kind: PATCH_KIND_PLAYER_POS,
-            entityId: "player-1",
-            payload: { x: 7, y: 8 },
-          },
-        ],
-      }),
-      { source: "state" },
-    );
-
-    expect(liveState.patchHistory.map.size).toBeGreaterThan(0);
-
-    const joinPayload = deepFreeze({
-      type: "state",
-      t: 12,
-      sequence: 12,
-      keyframeSeq: 12,
-      players: [makePlayer({ x: 4, y: 6 })],
-      npcs: [],
-      effects: [],
-      groundItems: [],
-    });
-
-    const joinState = updatePatchState(liveState, joinPayload, {
-      source: "join",
-    });
-
-    const pendingReplayCount = Array.isArray(joinState.pendingReplays)
-      ? joinState.pendingReplays.length
-      : 0;
-    expect(joinState.lastAppliedPatchCount).toBe(0);
-    expect(joinState.patchHistory.map.size).toBe(0);
-    expect(pendingReplayCount).toBe(1);
-
-    const replayEntry = Array.isArray(joinState.pendingReplays)
-      ? joinState.pendingReplays[0]
-      : null;
-    expect(replayEntry).not.toBeNull();
-    expect(replayEntry?.deferredCount).toBe(0);
-
-    const snapshot = applyStateSnapshot({ playerId: "player-1" }, joinPayload, joinState.patched);
-
-    expect(snapshot.players["player-1"].x).toBe(4);
-    expect(snapshot.players["player-1"].y).toBe(6);
-    expect(snapshot.lastTick).toBe(12);
-    expect(snapshot.hasLocalPlayer).toBe(true);
-  });
-
-  it("replays resync payloads in two passes so patches backfill the snapshot", () => {
-    const seededState = updatePatchState(
-      createPatchState(),
-      deepFreeze({
-        type: "state",
-        t: 8,
-        sequence: 8,
-        keyframeSeq: 8,
-        players: [makePlayer({ x: 2, y: 3 })],
-        npcs: [],
-        effects: [],
-        groundItems: [],
-      }),
-      { source: "join" },
-    );
-
-    const resyncSnapshot = deepFreeze({
-      type: "state",
-      resync: true,
-      t: 20,
-      sequence: 20,
-      keyframeSeq: 20,
-      players: [makePlayer({ x: 5, y: 7 })],
-      npcs: [],
-      effects: [],
-      groundItems: [],
-    });
-
-    const requestKeyframe = vi.fn();
-    const snapshotState = updatePatchState(seededState, resyncSnapshot, {
-      source: "state",
-      resetHistory: true,
-      requestKeyframe,
-      now: 1_000,
-    });
-
-    expect(requestKeyframe).not.toHaveBeenCalled();
-    expect(snapshotState.lastAppliedPatchCount).toBe(0);
-    const snapshotView = applyStateSnapshot(
-      { playerId: "player-1", lastTick: seededState.lastTick },
-      resyncSnapshot,
-      snapshotState.patched,
-    );
-    expect(snapshotView.players["player-1"].x).toBe(5);
-    expect(snapshotView.players["player-1"].y).toBe(7);
-    expect(snapshotView.lastTick).toBe(20);
-
-    const catchupPatch = deepFreeze({
-      type: "state",
-      t: 21,
-      sequence: 21,
-      patches: [
-        {
-          kind: PATCH_KIND_PLAYER_POS,
-          entityId: "player-1",
-          payload: { x: 14, y: 15 },
-        },
-      ],
-    });
-
-    const replayedState = updatePatchState(snapshotState, catchupPatch, {
-      source: "state",
-    });
-
-    expect(replayedState.lastAppliedPatchCount).toBe(1);
-    expect(replayedState.patched.players["player-1"].x).toBe(14);
-    expect(replayedState.patched.players["player-1"].y).toBe(15);
-    const catchupView = applyStateSnapshot(
-      { playerId: "player-1", lastTick: snapshotView.lastTick },
-      catchupPatch,
-      replayedState.patched,
-    );
-
-    expect(catchupView.players["player-1"].x).toBe(14);
-    expect(catchupView.players["player-1"].y).toBe(15);
-    expect(catchupView.lastTick).toBe(21);
-    expect(catchupView.hasLocalPlayer).toBe(true);
   });
 });
 
