@@ -1311,6 +1311,34 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 	}
 	w.effects = append(w.effects, area)
 	w.recordEffectSpawn(spec.EffectType, "explosion")
+	w.mirrorLegacyAreaEffect(area)
+}
+
+func (w *World) mirrorLegacyAreaEffect(effect *effectState) {
+	if w == nil || effect == nil || w.legacyCompat == nil {
+		return
+	}
+	w.legacyCompat.mirrorAreaEffect(effect)
+}
+
+func (w *World) mirrorLegacyEffectEnd(effect *effectState, reason string) {
+	if w == nil || effect == nil || w.legacyCompat == nil {
+		return
+	}
+	w.legacyCompat.noteLegacyEffectEnd(effect, legacyEndReason(reason))
+}
+
+func legacyEndReason(reason string) EndReason {
+	switch reason {
+	case "impact":
+		return EndReasonExpired
+	case "stopped":
+		return EndReasonCancelled
+	case "expiry", "expired":
+		return EndReasonExpired
+	default:
+		return EndReasonExpired
+	}
 }
 
 func (w *World) maybeExplodeOnExpiry(eff *effectState, now time.Time) {
@@ -1374,6 +1402,7 @@ func (w *World) pruneEffects(now time.Time) {
 		if eff.Projectile != nil && !eff.Projectile.ExpiryResolved {
 			w.maybeExplodeOnExpiry(eff, now)
 		}
+		w.mirrorLegacyEffectEnd(eff, "expired")
 		w.recordEffectEnd(eff, "expired")
 		w.purgeEntityPatches(eff.ID)
 	}

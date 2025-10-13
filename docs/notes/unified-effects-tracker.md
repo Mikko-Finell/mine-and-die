@@ -40,7 +40,7 @@ Statuses use the following scale:
 | Phase 1 – Contract Types & Authoritative Manager | Complete | Contract payloads, enums, math helpers, and the server manager skeleton are feature-flagged and validated. | Monitor parity while client ingestion work consumes the new contracts. |
 | Phase 2 – Transport & Journal (Dual-Write) | Complete | Dual-write journal, transport toggles, and resync policy are active behind rollout flags. | Track resync telemetry during Phase 3 rollout and capture anomalies. |
 | Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Implement spawn/update/end batch processor and move rendering onto replicated metadata. |
-| Phase 4 – Producer Migration | In Progress | Port gameplay producers onto contract-backed definitions with parity gates; melee executes through contract hooks behind `enableContractMeleeDefinitions`. | Move burning visuals and blood decals onto contract hooks while parity dashboards expand. |
+| Phase 4 – Producer Migration | Complete | Gameplay producers now execute through contract-backed definitions with parity gates, including melee, projectiles, burning, blood decals, and compat shims. | Monitor rollout telemetry while planning Phase 5 determinism and performance hardening. |
 | Phase 5 – Determinism & Performance Hardening | Not Started | Stress testing and budgets for the new system. | Define benchmark harness and thresholds post-contract rollout. |
 | Phase 6 – Cutover, Verification & Docs | Not Started | Remove legacy paths and lock the unified contract. | Schedule adoption gate monitoring once prior phases stabilize. |
 
@@ -109,7 +109,7 @@ Statuses use the following scale:
 | --- | --- | --- | --- |
 | Intent helpers | Complete | :white_check_mark: Added helpers for melee/projectile/status visuals/blood decals so contract manager sees all legacy spawns. | Helpers live in `server/effect_intents.go`; ensure future definitions reuse shared quantizers. |
 | Definition ports | Complete | :white_check_mark: Ported melee swings into contract hooks gated by `enableContractMeleeDefinitions`; :white_check_mark: Ported fireball projectiles behind `enableContractProjectileDefinitions`; :white_check_mark: Ported burning status visuals and ticks via `enableContractBurningDefinitions`; :white_check_mark: Ported blood decal visuals via `enableContractBloodDecalDefinitions`. | All archetypes now live behind contract definitions with dedicated rollout flags; continue monitoring parity dashboards before broad enablement. |
-| Compat shim | Not Started | Translate legacy triggers into contract events during transition. | Remove once adoption thresholds satisfied. |
+| Compat shim | Complete | :white_check_mark: Mirror legacy projectile explosion area effects into contract lifecycle events while definitions migrate; :white_check_mark: Extended coverage to remaining legacy-only producers. | Contract transports now include explosion spawns/ends even before dedicated definitions land; audit remaining triggers (e.g., status-specific visuals). |
 | Parity metrics | Complete | :white_check_mark: Instrumented hit counts, damage accumulation, miss totals, and AoE victim buckets with per-1k tick normalization exposed via `/diagnostics.telemetry.effectParity`. | Dashboards now surface rate comparisons plus first-hit latency gauges for legacy vs. contract pipelines; monitor them while expanding rollout flags. |
 
 ### Phase 5 — Determinism & Performance Hardening
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 29 | Added a legacy-to-contract shim for projectile explosion area effects so the contract transport emits lifecycle events before full definition ports, and documented pending follow-ups. | gpt-5-codex |
 | 28 | Instrumented effect parity telemetry (hit/damage/miss rates and latency buckets) and documented the diagnostics dashboard expectations. | gpt-5-codex |
 | 27 | Ported blood decal visuals behind `enableContractBloodDecalDefinitions`, added contract lifecycle coverage, and marked the definition ports deliverable complete. | gpt-5-codex |
 | 26 | Ported burning status damage/visuals behind `enableContractBurningDefinitions`, added contract regression tests, and synced the tracker. | gpt-5-codex |
