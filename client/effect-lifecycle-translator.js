@@ -27,6 +27,13 @@ function quantizedToWorld(value, tileSize) {
   return (numeric / COORD_SCALE) * tileSize;
 }
 
+function sanitizeDimension(value) {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return value > 0 ? value : null;
+}
+
 function copyParams(source, target) {
   if (!isPlainObject(source)) {
     return;
@@ -128,9 +135,9 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
 
   const quantToWorld = (value) => quantizedToWorld(value, tileSize);
 
-  let width = quantToWorld(geometry?.width);
-  let height = quantToWorld(geometry?.height);
-  const radius = quantToWorld(geometry?.radius);
+  let width = sanitizeDimension(quantToWorld(geometry?.width));
+  let height = sanitizeDimension(quantToWorld(geometry?.height));
+  const radius = sanitizeDimension(quantToWorld(geometry?.radius));
   if (radius !== null) {
     const diameter = radius * 2;
     if (width === null) {
