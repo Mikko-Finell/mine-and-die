@@ -40,7 +40,7 @@ Statuses use the following scale:
 | Phase 1 – Contract Types & Authoritative Manager | Complete | Contract payloads, enums, math helpers, and the server manager skeleton are feature-flagged and validated. | Monitor parity while client ingestion work consumes the new contracts. |
 | Phase 2 – Transport & Journal (Dual-Write) | Complete | Dual-write journal, transport toggles, and resync policy are active behind rollout flags. | Track resync telemetry during Phase 3 rollout and capture anomalies. |
 | Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Implement spawn/update/end batch processor and move rendering onto replicated metadata. |
-| Phase 4 – Producer Migration | Not Started | Port gameplay producers onto contract-backed definitions with parity gates. | Pick one archetype (melee/projectile) for the first contract-backed port. |
+| Phase 4 – Producer Migration | In Progress | Port gameplay producers onto contract-backed definitions with parity gates; melee executes through contract hooks behind `enableContractMeleeDefinitions`. | Move burning visuals and blood decals onto contract hooks while parity dashboards expand. |
 | Phase 5 – Determinism & Performance Hardening | Not Started | Stress testing and budgets for the new system. | Define benchmark harness and thresholds post-contract rollout. |
 | Phase 6 – Cutover, Verification & Docs | Not Started | Remove legacy paths and lock the unified contract. | Schedule adoption gate monitoring once prior phases stabilize. |
 
@@ -108,7 +108,7 @@ Statuses use the following scale:
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
 | Intent helpers | Complete | :white_check_mark: Added helpers for melee/projectile/status visuals/blood decals so contract manager sees all legacy spawns. | Helpers live in `server/effect_intents.go`; ensure future definitions reuse shared quantizers. |
-| Definition ports | Not Started | Port melee/projectile/burning/blood decal behaviours into `EffectDefinition` hooks. | Gate each archetype behind feature flags and parity dashboards. |
+| Definition ports | Complete | :white_check_mark: Ported melee swings into contract hooks gated by `enableContractMeleeDefinitions`; :white_check_mark: Ported fireball projectiles behind `enableContractProjectileDefinitions`; :white_check_mark: Ported burning status visuals and ticks via `enableContractBurningDefinitions`; :white_check_mark: Ported blood decal visuals via `enableContractBloodDecalDefinitions`. | All archetypes now live behind contract definitions with dedicated rollout flags; continue monitoring parity dashboards before broad enablement. |
 | Compat shim | Not Started | Translate legacy triggers into contract events during transition. | Remove once adoption thresholds satisfied. |
 | Parity metrics | Not Started | Instrument hit counts, damage/tick, miss rates, AoE victim distribution. | Decide logging vs. telemetry sinks during implementation. |
 
@@ -135,6 +135,10 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 27 | Ported blood decal visuals behind `enableContractBloodDecalDefinitions`, added contract lifecycle coverage, and marked the definition ports deliverable complete. | gpt-5-codex |
+| 26 | Ported burning status damage/visuals behind `enableContractBurningDefinitions`, added contract regression tests, and synced the tracker. | gpt-5-codex |
+| 25 | Ported fireball projectiles onto contract hooks gated by `enableContractProjectileDefinitions` and extended server coverage for contract-driven hits. | gpt-5-codex |
+| 24 | Ported melee swings onto contract hooks behind `enableContractMeleeDefinitions`, added rollout flag documentation, and extended tests for contract execution. | gpt-5-codex |
 | 23 | Completed intent helpers by translating status visuals and blood decals into contract intents with tests. | gpt-5-codex |
 | 22 | Added melee/projectile intent helpers and marked the deliverable in progress for contract shims. | gpt-5-codex |
 | 21 | Render loop now prefers contract lifecycle payloads and skips legacy duplicates, completing the render integration deliverable. | gpt-5-codex |

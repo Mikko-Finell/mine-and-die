@@ -58,9 +58,14 @@ func newStatusEffectDefinitions() map[StatusEffectType]*StatusEffectDefinition {
 				if lifetime <= 0 {
 					lifetime = burningTickInterval
 				}
-				inst.attachedEffect = w.attachStatusEffectVisual(actor, "fire", lifetime, now)
+				useContract := w.contractBurningEnabled()
+				if !useContract {
+					inst.attachedEffect = w.attachStatusEffectVisual(actor, effectTypeBurningVisual, lifetime, now)
+				} else {
+					inst.attachedEffect = nil
+				}
 				if enableContractEffectManager && w.effectManager != nil {
-					if intent, ok := NewStatusVisualIntent(actor, inst.SourceID, "fire", lifetime); ok {
+					if intent, ok := NewStatusVisualIntent(actor, inst.SourceID, effectTypeBurningVisual, lifetime); ok {
 						w.effectManager.EnqueueIntent(intent)
 					}
 				}
@@ -237,14 +242,48 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 	if owner == "" {
 		owner = actor.ID
 	}
+	delta := -amount
+	if w.contractBurningEnabled() && w.effectManager != nil {
+		if intent, ok := NewBurningTickIntent(actor, owner, delta); ok {
+			w.effectManager.EnqueueIntent(intent)
+		}
+		return
+	}
+	statusType := StatusEffectBurning
+	if inst != nil && inst.Definition != nil {
+		statusType = inst.Definition.Type
+	}
+	w.applyBurningDamage(owner, actor, statusType, delta, now)
+}
+
+func (w *World) contractBurningEnabled() bool {
+	if w == nil {
+		return false
+	}
+	if !enableContractEffectManager || !enableContractBurningDefinitions {
+		return false
+	}
+	return w.effectManager != nil
+}
+
+func (w *World) applyBurningDamage(owner string, actor *actorState, status StatusEffectType, delta float64, now time.Time) {
+	if w == nil || actor == nil {
+		return
+	}
+	if delta >= 0 || math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return
+	}
 	eff := &effectState{
 		Effect: Effect{
 			Type:   effectTypeBurningTick,
 			Owner:  owner,
 			Start:  now.UnixMilli(),
-			Params: map[string]float64{"healthDelta": -amount},
+			Params: map[string]float64{"healthDelta": delta},
 		},
-		StatusEffect: inst.Definition.Type,
+		StatusEffect: status,
+	}
+	if eff.Effect.Owner == "" {
+		eff.Effect.Owner = actor.ID
 	}
 	w.applyEffectHitActor(eff, actor, now)
 }

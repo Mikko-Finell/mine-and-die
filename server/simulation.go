@@ -427,16 +427,17 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	for _, action := range stagedActions {
 		switch action.command.Name {
 		case effectTypeAttack:
-			if enableContractEffectManager && w.effectManager != nil {
+			triggered := w.triggerMeleeAttack(action.actorID, tick, now)
+			if triggered && enableContractEffectManager && w.effectManager != nil {
 				if owner, _ := w.abilityOwner(action.actorID); owner != nil {
 					if intent, ok := NewMeleeIntent(owner); ok {
 						w.effectManager.EnqueueIntent(intent)
 					}
 				}
 			}
-			w.triggerMeleeAttack(action.actorID, tick, now)
 		case effectTypeFireball:
-			if enableContractEffectManager && w.effectManager != nil {
+			triggered := w.triggerFireball(action.actorID, now)
+			if triggered && enableContractEffectManager && w.effectManager != nil {
 				if owner, _ := w.abilityOwner(action.actorID); owner != nil {
 					if tpl := w.projectileTemplates[effectTypeFireball]; tpl != nil {
 						if intent, ok := NewProjectileIntent(owner, tpl); ok {
@@ -445,7 +446,6 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 					}
 				}
 			}
-			w.triggerFireball(action.actorID, now)
 		}
 	}
 
@@ -468,7 +468,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 				emitEffectEvent(event)
 			}
 		}
-		w.effectManager.RunTick(Tick(int64(tick)), dispatcher)
+		w.effectManager.RunTick(Tick(int64(tick)), now, dispatcher)
 	}
 	w.advanceEffects(now, dt)
 	w.pruneEffects(now)

@@ -41,12 +41,13 @@ type EffectTrigger struct {
 
 type effectState struct {
 	Effect
-	expiresAt      time.Time
-	Projectile     *ProjectileState
-	FollowActorID  string
-	StatusEffect   StatusEffectType
-	version        uint64
-	telemetryEnded bool
+	expiresAt       time.Time
+	Projectile      *ProjectileState
+	FollowActorID   string
+	StatusEffect    StatusEffectType
+	version         uint64
+	telemetryEnded  bool
+	contractManaged bool
 }
 
 type ProjectileTemplate struct {
@@ -119,6 +120,94 @@ func (p *ProjectileState) markHit(id string) bool {
 	return true
 }
 
+func (w *World) resolveMeleeImpact(effect *effectState, owner *actorState, actorID string, tick uint64, now time.Time, area Obstacle) {
+	if w == nil || effect == nil {
+		return
+	}
+
+	for _, obs := range w.obstacles {
+		if obs.Type != obstacleTypeGoldOre {
+			continue
+		}
+		if !obstaclesOverlap(area, obs, 0) {
+			continue
+		}
+		var addErr error
+		if _, ok := w.players[actorID]; ok {
+			addErr = w.MutateInventory(actorID, func(inv *Inventory) error {
+				if inv == nil {
+					return nil
+				}
+				_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+				return err
+			})
+		} else if owner != nil {
+			_, addErr = owner.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+		}
+		if addErr != nil {
+			loggingeconomy.ItemGrantFailed(
+				context.Background(),
+				w.publisher,
+				tick,
+				w.entityRef(actorID),
+				loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 1, Reason: "mine_gold"},
+				map[string]any{"error": addErr.Error(), "obstacle": obs.ID},
+			)
+		}
+		break
+	}
+
+	hitPlayerIDs := make([]string, 0)
+	for id, target := range w.players {
+		if id == actorID {
+			continue
+		}
+		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
+			hitPlayerIDs = append(hitPlayerIDs, id)
+			w.applyEffectHitPlayer(effect, target, now)
+		}
+	}
+
+	hitNPCIDs := make([]string, 0)
+	for id, target := range w.npcs {
+		if id == actorID {
+			continue
+		}
+		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
+			hitNPCIDs = append(hitNPCIDs, id)
+			w.applyEffectHitNPC(effect, target, now)
+		}
+	}
+
+	if len(hitPlayerIDs) == 0 && len(hitNPCIDs) == 0 {
+		return
+	}
+
+	targets := make([]logging.EntityRef, 0, len(hitPlayerIDs)+len(hitNPCIDs))
+	for _, id := range hitPlayerIDs {
+		targets = append(targets, w.entityRef(id))
+	}
+	for _, id := range hitNPCIDs {
+		targets = append(targets, w.entityRef(id))
+	}
+	payload := loggingcombat.AttackOverlapPayload{Ability: effect.Type}
+	if len(hitPlayerIDs) > 0 {
+		payload.PlayerHits = append(payload.PlayerHits, hitPlayerIDs...)
+	}
+	if len(hitNPCIDs) > 0 {
+		payload.NPCHits = append(payload.NPCHits, hitNPCIDs...)
+	}
+	loggingcombat.AttackOverlap(
+		context.Background(),
+		w.publisher,
+		tick,
+		w.entityRef(actorID),
+		targets,
+		payload,
+		nil,
+	)
+}
+
 type effectBehavior interface {
 	OnHit(w *World, eff *effectState, target *actorState, now time.Time)
 }
@@ -140,6 +229,7 @@ const (
 	effectTypeFireball      = "fireball"
 	effectTypeBloodSplatter = "blood-splatter"
 	effectTypeBurningTick   = "burning-tick"
+	effectTypeBurningVisual = "fire"
 
 	bloodSplatterDuration = 1200 * time.Millisecond
 
@@ -429,6 +519,7 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 	}
 
 	rectX, rectY, rectW, rectH := meleeAttackRectangle(state.X, state.Y, facing)
+	area := Obstacle{X: rectX, Y: rectY, Width: rectW, Height: rectH}
 
 	w.pruneEffects(now)
 	w.nextEffectID++
@@ -455,82 +546,9 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 	w.effects = append(w.effects, effect)
 	w.recordEffectSpawn(effectTypeAttack, "melee")
 
-	area := Obstacle{X: rectX, Y: rectY, Width: rectW, Height: rectH}
-	for _, obs := range w.obstacles {
-		if obs.Type != obstacleTypeGoldOre {
-			continue
-		}
-		if !obstaclesOverlap(area, obs, 0) {
-			continue
-		}
-		var addErr error
-		if _, ok := w.players[actorID]; ok {
-			addErr = w.MutateInventory(actorID, func(inv *Inventory) error {
-				_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
-				return err
-			})
-		} else {
-			_, addErr = state.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
-		}
-		if addErr != nil {
-			loggingeconomy.ItemGrantFailed(
-				context.Background(),
-				w.publisher,
-				tick,
-				w.entityRef(actorID),
-				loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 1, Reason: "mine_gold"},
-				map[string]any{"error": addErr.Error(), "obstacle": obs.ID},
-			)
-		}
-		break
-	}
-
-	hitPlayerIDs := make([]string, 0)
-	for id, target := range w.players {
-		if id == actorID {
-			continue
-		}
-		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
-			hitPlayerIDs = append(hitPlayerIDs, id)
-			w.applyEffectHitPlayer(effect, target, now)
-		}
-	}
-
-	hitNPCIDs := make([]string, 0)
-	for id, target := range w.npcs {
-		if id == actorID {
-			continue
-		}
-		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
-			hitNPCIDs = append(hitNPCIDs, id)
-			w.applyEffectHitNPC(effect, target, now)
-		}
-	}
-
-	if len(hitPlayerIDs) > 0 || len(hitNPCIDs) > 0 {
-		targets := make([]logging.EntityRef, 0, len(hitPlayerIDs)+len(hitNPCIDs))
-		for _, id := range hitPlayerIDs {
-			targets = append(targets, w.entityRef(id))
-		}
-		for _, id := range hitNPCIDs {
-			targets = append(targets, w.entityRef(id))
-		}
-		payload := loggingcombat.AttackOverlapPayload{Ability: effectTypeAttack}
-		if len(hitPlayerIDs) > 0 {
-			payload.PlayerHits = append(payload.PlayerHits, hitPlayerIDs...)
-		}
-		if len(hitNPCIDs) > 0 {
-			payload.NPCHits = append(payload.NPCHits, hitNPCIDs...)
-		}
-		loggingcombat.AttackOverlap(
-			context.Background(),
-			w.publisher,
-			tick,
-			w.entityRef(actorID),
-			targets,
-			payload,
-			nil,
-		)
+	useContract := enableContractMeleeDefinitions && enableContractEffectManager && w.effectManager != nil
+	if !useContract {
+		w.resolveMeleeImpact(effect, state, actorID, tick, now, area)
 	}
 
 	return true
@@ -538,8 +556,27 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 
 // triggerFireball launches a projectile effect when the player is ready.
 func (w *World) triggerFireball(actorID string, now time.Time) bool {
-	_, spawned := w.spawnProjectile(actorID, effectTypeFireball, now)
-	return spawned
+	useContract := enableContractEffectManager && enableContractProjectileDefinitions && w.effectManager != nil
+	if !useContract {
+		_, spawned := w.spawnProjectile(actorID, effectTypeFireball, now)
+		return spawned
+	}
+
+	tpl := w.projectileTemplates[effectTypeFireball]
+	if tpl == nil {
+		return false
+	}
+
+	owner, cooldowns := w.abilityOwner(actorID)
+	if owner == nil || cooldowns == nil {
+		return false
+	}
+
+	if !w.cooldownReady(cooldowns, tpl.Type, tpl.Cooldown, now) {
+		return false
+	}
+
+	return true
 }
 
 func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (*effectState, bool) {
@@ -555,6 +592,24 @@ func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (
 
 	if !w.cooldownReady(cooldowns, tpl.Type, tpl.Cooldown, now) {
 		return nil, false
+	}
+
+	w.pruneEffects(now)
+	w.nextEffectID++
+	effectID := fmt.Sprintf("effect-%d", w.nextEffectID)
+	effect := w.buildProjectileEffect(owner, actorID, tpl, now, effectID)
+	if effect == nil {
+		return nil, false
+	}
+
+	w.effects = append(w.effects, effect)
+	w.recordEffectSpawn(tpl.Type, "projectile")
+	return effect, true
+}
+
+func (w *World) buildProjectileEffect(owner *actorState, actorID string, tpl *ProjectileTemplate, now time.Time, effectID string) *effectState {
+	if owner == nil || tpl == nil {
+		return nil
 	}
 
 	facing := owner.Facing
@@ -584,11 +639,9 @@ func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (
 		"dy":     dirY,
 	})
 
-	w.pruneEffects(now)
-	w.nextEffectID++
 	effect := &effectState{
 		Effect: Effect{
-			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
+			ID:       effectID,
 			Type:     tpl.Type,
 			Owner:    actorID,
 			Start:    now.UnixMilli(),
@@ -608,9 +661,150 @@ func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (
 		},
 	}
 
+	return effect
+}
+
+func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, owner *actorState, tpl *ProjectileTemplate, now time.Time) *effectState {
+	if w == nil || instance == nil || owner == nil || tpl == nil {
+		return nil
+	}
+
+	params := intMapToFloat64(instance.BehaviorState.Extra)
+	if params == nil {
+		params = make(map[string]float64)
+	}
+
+	dirX := params["dx"]
+	dirY := params["dy"]
+	if dirX == 0 && dirY == 0 {
+		facing := owner.Facing
+		if facing == "" {
+			facing = defaultFacing
+		}
+		dirX, dirY = facingToVector(facing)
+		if dirX == 0 && dirY == 0 {
+			dirX, dirY = 0, 1
+		}
+	}
+
+	geometry := instance.DeliveryState.Geometry
+	offsetX := dequantizeWorldCoord(geometry.OffsetX)
+	offsetY := dequantizeWorldCoord(geometry.OffsetY)
+	centerX := owner.X + offsetX
+	centerY := owner.Y + offsetY
+
+	width, height := spawnSizeFromShape(tpl)
+	if geometry.Width != 0 {
+		width = dequantizeWorldCoord(geometry.Width)
+	}
+	if geometry.Height != 0 {
+		height = dequantizeWorldCoord(geometry.Height)
+	}
+
+	radius := sanitizedSpawnRadius(tpl.SpawnRadius)
+	if geometry.Radius != 0 {
+		radius = dequantizeWorldCoord(geometry.Radius)
+	} else if val, ok := params["radius"]; ok && val > 0 {
+		radius = val
+	}
+
+	lifetime := effectLifetime(tpl)
+	params = mergeParams(params, map[string]float64{
+		"speed":  tpl.Speed,
+		"radius": radius,
+		"dx":     dirX,
+		"dy":     dirY,
+	})
+	if _, ok := params["range"]; !ok && tpl.MaxDistance > 0 {
+		params["range"] = tpl.MaxDistance
+	}
+
+	effect := &effectState{
+		Effect: Effect{
+			ID:       instance.ID,
+			Type:     tpl.Type,
+			Owner:    instance.OwnerActorID,
+			Start:    now.UnixMilli(),
+			Duration: lifetime.Milliseconds(),
+			X:        centerX - width/2,
+			Y:        centerY - height/2,
+			Width:    width,
+			Height:   height,
+			Params:   params,
+		},
+		expiresAt: now.Add(lifetime),
+		Projectile: &ProjectileState{
+			Template:       tpl,
+			VelocityUnitX:  dirX,
+			VelocityUnitY:  dirY,
+			RemainingRange: tpl.MaxDistance,
+		},
+		contractManaged: true,
+	}
+
+	if remaining, ok := params["range"]; ok && remaining >= 0 {
+		effect.Projectile.RemainingRange = remaining
+	}
+
+	w.pruneEffects(now)
 	w.effects = append(w.effects, effect)
 	w.recordEffectSpawn(tpl.Type, "projectile")
-	return effect, true
+	return effect
+}
+
+func (w *World) spawnContractBloodDecalFromInstance(instance *EffectInstance, now time.Time) *effectState {
+	if w == nil || instance == nil {
+		return nil
+	}
+	params := instance.BehaviorState.Extra
+	if len(params) == 0 {
+		return nil
+	}
+	centerXVal, okX := params["centerX"]
+	centerYVal, okY := params["centerY"]
+	if !okX || !okY {
+		return nil
+	}
+	centerX := dequantizeWorldCoord(centerXVal)
+	centerY := dequantizeWorldCoord(centerYVal)
+	width := dequantizeWorldCoord(instance.DeliveryState.Geometry.Width)
+	if width <= 0 {
+		width = playerHalf * 2
+	}
+	height := dequantizeWorldCoord(instance.DeliveryState.Geometry.Height)
+	if height <= 0 {
+		height = playerHalf * 2
+	}
+	lifetime := ticksToDuration(instance.BehaviorState.TicksRemaining)
+	if lifetime <= 0 {
+		lifetime = bloodSplatterDuration
+	}
+	if lifetime <= 0 {
+		lifetime = time.Millisecond
+	}
+	effectType := instance.DefinitionID
+	if effectType == "" {
+		effectType = effectTypeBloodSplatter
+	}
+	w.pruneEffects(now)
+	effect := &effectState{
+		Effect: Effect{
+			ID:       instance.ID,
+			Type:     effectType,
+			Owner:    instance.OwnerActorID,
+			Start:    now.UnixMilli(),
+			Duration: lifetime.Milliseconds(),
+			X:        centerX - width/2,
+			Y:        centerY - height/2,
+			Width:    width,
+			Height:   height,
+		},
+		expiresAt:       now.Add(lifetime),
+		contractManaged: true,
+	}
+	w.effects = append(w.effects, effect)
+	w.recordEffectSpawn(effectType, "blood-decal")
+	return effect
 }
 
 func spawnSizeFromShape(tpl *ProjectileTemplate) (float64, float64) {
@@ -708,6 +902,12 @@ func (w *World) advanceProjectiles(now time.Time, dt float64) {
 		return
 	}
 	for _, eff := range w.effects {
+		if eff == nil {
+			continue
+		}
+		if eff.contractManaged {
+			continue
+		}
 		p := eff.Projectile
 		if p == nil {
 			continue
@@ -720,15 +920,15 @@ func (w *World) advanceProjectiles(now time.Time, dt float64) {
 	}
 }
 
-func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
+func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) bool {
 	if eff == nil || eff.Projectile == nil {
-		return
+		return false
 	}
 	p := eff.Projectile
 	tpl := p.Template
 	if tpl == nil {
 		w.stopProjectile(eff, now, projectileStopOptions{})
-		return
+		return true
 	}
 
 	if tpl.TravelMode.StraightLine && tpl.Speed > 0 && dt > 0 {
@@ -755,19 +955,19 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
 
 	if tpl.MaxDistance > 0 && p.RemainingRange <= 0 {
 		w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
-		return
+		return true
 	}
 
 	worldW, worldH := w.dimensions()
 	if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldW || eff.Effect.Y+eff.Effect.Height > worldH {
 		w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
-		return
+		return true
 	}
 
 	area := effectAABB(eff)
 	if w.anyObstacleOverlap(area) {
 		w.stopProjectile(eff, now, projectileStopOptions{triggerImpact: true})
-		return
+		return true
 	}
 
 	hitPlayers := make([]string, 0)
@@ -858,8 +1058,9 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) {
 
 	if shouldStop {
 		w.stopProjectile(eff, now, projectileStopOptions{})
-		return
+		return true
 	}
+	return false
 }
 
 func (w *World) advanceNonProjectiles(now time.Time, dt float64) {
@@ -1018,6 +1219,21 @@ func effectAABB(eff *effectState) Obstacle {
 	return Obstacle{X: eff.Effect.X, Y: eff.Effect.Y, Width: eff.Effect.Width, Height: eff.Effect.Height}
 }
 
+func (w *World) findEffectByID(id string) *effectState {
+	if w == nil || id == "" {
+		return nil
+	}
+	for _, eff := range w.effects {
+		if eff == nil {
+			continue
+		}
+		if eff.ID == id {
+			return eff
+		}
+	}
+	return nil
+}
+
 func (w *World) anyObstacleOverlap(area Obstacle) bool {
 	for _, obs := range w.obstacles {
 		if obs.Type == obstacleTypeLava {
@@ -1089,6 +1305,17 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 	}
 
 	w.pruneEffects(now)
+
+	if enableContractEffectManager && w.effectManager != nil {
+		if intent, ok := NewBloodSplatterIntent(eff.Owner, &target.actorState); ok {
+			w.effectManager.EnqueueIntent(intent)
+		}
+	}
+
+	if w.contractBloodDecalsEnabled() {
+		return
+	}
+
 	trigger := EffectTrigger{
 		Type:     effectTypeBloodSplatter,
 		Start:    now.UnixMilli(),
@@ -1099,13 +1326,17 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 		Height:   playerHalf * 2,
 	}
 
-	if enableContractEffectManager && w.effectManager != nil {
-		if intent, ok := NewBloodSplatterIntent(eff.Owner, &target.actorState); ok {
-			w.effectManager.EnqueueIntent(intent)
-		}
-	}
-
 	w.QueueEffectTrigger(trigger, now)
+}
+
+func (w *World) contractBloodDecalsEnabled() bool {
+	if w == nil {
+		return false
+	}
+	if !enableContractEffectManager || !enableContractBloodDecalDefinitions {
+		return false
+	}
+	return w.effectManager != nil
 }
 
 func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now time.Time) {
