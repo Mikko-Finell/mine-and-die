@@ -1,93 +1,105 @@
 # Unified Effects Runtime
 
-The Mine & Die effect pipeline is now entirely contract-driven. The Go server
-translates every melee swing, projectile, status rider, and cosmetic trigger
-into a deterministic lifecycle stream, while the JavaScript client renders that
-stream without inventing state. Use this document as the reference for how
-intents flow through the authoritative manager, how lifecycle events move over
-transport, and how the browser consumes them.
+The Mine & Die effect system now runs end-to-end on the shared contract between
+Go and JavaScript. The server quantises every ability into `EffectIntent`
+records, the authoritative `EffectManager` spawns and advances
+`EffectInstance`s, and lifecycle events flow through the journal so clients can
+replay the exact spawn/update/end stream before handing the data to the
+browser's effect manager.【F:server/effects_manager.go†L26-L172】【F:server/simulation.go†L433-L481】
 
-## Authoritative lifecycle (server)
+## Server pipeline
 
-- **Legacy hooks feed contract intents.** Helpers such as
-  `NewMeleeIntent`, `NewProjectileIntent`, and
-  `NewStatusVisualIntent` quantize legacy gameplay data into
-  `EffectIntent` payloads so contract processing observes the exact
-  geometry, params, and tick durations that the live simulation uses.【F:server/effect_intents.go†L48-L200】
-- **`EffectManager` owns instances.** Each tick the manager drains the
-  intent queue, instantiates `EffectInstance` records, invokes delivery
-  hooks, and emits spawn/update/end envelopes with per-instance sequence
-  counters. Instances track replication rules so definitions can opt out of
-  updates or ends when they are cosmetic-only.【F:server/effects_manager.go†L14-L172】
-- **Definitions & hooks keep parity.** The default registry wires contract
-  lifecycle hooks (melee swings, fireball projectiles, burning visuals,
-  blood decals) directly into the world state so telemetry and gameplay
-  stay aligned without any legacy compat shim.【F:server/effects_manager.go†L47-L65】
+### Intent production
+- `World.Step` translates gameplay into contract intents. When melee attacks or
+  projectiles trigger, the world enqueues intents for the manager instead of
+  directly spawning legacy effects.【F:server/simulation.go†L433-L455】
+- `effect_intents.go` mirrors every legacy trigger (melee swings, fireballs,
+  burning visuals/damage, blood decals) into structured `EffectIntent`
+  payloads so geometry, durations, and numeric parameters stay deterministic
+  across the contract.【F:server/effect_intents.go†L48-L284】
 
-## Lifecycle events & snapshot transport
+### Manager execution
+- `EffectManager.EnqueueIntent` collects intents each tick, while
+  `RunTick` drains the queue, instantiates `EffectInstance` records, emits
+  spawn/update/end envelopes, and evaluates end policies. Sequence counters per
+  instance guarantee monotonic transport ordering.【F:server/effects_manager.go†L70-L172】
+- `instantiateIntent` seeds delivery metadata (follow targets, geometry clones,
+  replication policy) using the registered definition so the runtime knows which
+  payloads to broadcast and how long the instance should live.【F:server/effects_manager.go†L174-L220】
 
-- **Journal stores authoritative history.** `Journal.RecordEffectSpawn`,
-  `.RecordEffectUpdate`, and `.RecordEffectEnd` assign monotonic sequence
-  values, drop out-of-order events, and copy delivery/behaviour payloads
-  into the effect event buffer. `DrainEffectEvents` returns spawns,
-  updates, ends, and the current `LastSeqByID` map so downstream consumers
-  can apply batches idempotently.【F:server/patches.go†L193-L431】
-- **Resync hints are automatic.** The journal tracks lost-spawn patterns
-  and raises a resync hint when unknown-ID updates or similar anomalies
-  breach the per-ten-thousand threshold. `Hub.scheduleResyncIfNeeded`
-  converts the hint into a forced keyframe and flips the `resync` flag on
-  the next broadcast so clients recover deterministically.【F:server/resync_policy.go†L25-L83】【F:server/hub.go†L1144-L1172】
-- **State payloads carry lifecycle arrays.** `stateMessage` now only attaches
-  `effect_spawned`, `effect_update`, `effect_ended`, and
-  `effect_seq_cursors` alongside players, NPCs, obstacles, and ground
-  items—the legacy `effects` snapshot has been removed to reduce payload
-  size. Join responses follow the same shape so every client receives a
-  keyframe plus the lifecycle batch before any diffs apply.【F:server/messages.go†L3-L39】【F:server/hub.go†L1049-L1139】
+### Definition hooks
+- `defaultEffectDefinitions` enumerates contract behaviour for melee swings,
+  fireballs, burning ticks/visuals, and blood decals, including client
+  replication specs and lifecycle policies.【F:server/effects_manager.go†L805-L894】
+- `defaultEffectHookRegistry` wires definition hooks into the legacy world.
+  Hooks call `resolveMeleeImpact`, spawn contract-managed projectiles, keep
+  status visuals attached, apply burning damage, and ensure blood decals are
+  registered so gameplay stays authoritative while the contract drives
+  lifecycles.【F:server/effects_manager.go†L377-L592】
+- World helpers reuse shared state when hooks fire: projectiles sync via
+  `spawnContractProjectileFromInstance`, burning visuals attach to status
+  records, and blood decals register through the existing effect list to keep
+  telemetry aligned.【F:server/effects.go†L779-L870】
 
-## Client consumption & replay
+## Journal and transport
 
-- **Two-pass application.** `applyEffectLifecycleBatch` processes spawns
-  first, retries updates once after the spawn pass, and then applies end
-  events. It maintains a per-effect sequence map, records drops, and
-  exposes unknown updates so diagnostics stay actionable.【F:client/effect-lifecycle.js†L272-L415】
-- **Join + incremental messages share the same path.** The join handler
-  resets lifecycle state, applies the initial batch, and then the WebSocket
-  feed calls the same helper for each `state` payload, keeping
-  `store.lastEffectLifecycleSummary` up to date for the diagnostics UI.【F:client/network.js†L1126-L1341】
-- **Diff recovery stays in lockstep.** Patch replay bookkeeping uses the
-  lifecycle batch to request keyframes when the journal signals a gap, and
-  retries are scheduled via the keyframe retry loop so resyncs stay bounded
-  even under packet loss.【F:client/network.js†L924-L1002】【F:client/network.js†L1231-L1339】
+- `World.recordEffectLifecycleEvent` forwards spawns, updates, and ends into the
+  journal (after recording telemetry source metadata) whenever the manager emits
+  an event.【F:server/simulation.go†L198-L212】
+- The world runs the manager before legacy `advanceEffects`, optionally piping
+  events to the hub so broadcasts and tests see the same batch the journal
+  recorded.【F:server/simulation.go†L433-L481】
+- The journal assigns monotonic sequences, drops out-of-order updates, remembers
+  recently ended IDs, and captures the final per-instance cursor for transport
+  idempotency. `DrainEffectEvents` clears staged batches while
+  `SnapshotEffectEvents` exposes a copy for snapshot-only marshals.【F:server/patches.go†L237-L447】
+- Resync hints are raised from the journal when lost-spawn patterns occur;
+  `Hub.scheduleResyncIfNeeded` consumes the hint, forces the next keyframe, and
+  marks the upcoming state message with `resync` so clients rebuild cleanly.【F:server/patches.go†L449-L459】【F:server/hub.go†L1138-L1157】
+- `Hub.marshalState` only includes lifecycle arrays when both the manager and
+  transport flags are enabled, bundling `effect_spawned`, `effect_update`,
+  `effect_ended`, and `effect_seq_cursors` alongside the usual world payloads.【F:server/hub.go†L980-L1134】
+- Joining the game returns a snapshot without lifecycle arrays; the hub
+  immediately broadcasts a state message (flagged as a resync) so the client
+  receives a keyframe followed by the first contract batch.【F:server/hub.go†L206-L244】
+- Runtime guardrails remain toggleable at build time: `enableContractEffect*`
+  flags keep the contract path on by default but allow targeted rollbacks when
+  debugging transport or gameplay regressions.【F:server/constants.go†L35-L62】
 
-## Visual runtime expectations
+## Client lifecycle ingestion
 
-- **js-effects definitions convert contract payloads.**
-  `render.syncEffectsByType` checks for lifecycle entries, calls each
-  definition's `fromEffect` helper to derive spawn options, and keeps
-  instances updated with contract metadata. Definitions that implement
-  `fromEffect` receive the authoritative payload and can hand off decals or
-  apply custom transforms per update.【F:client/render.js†L320-L417】【F:client/js-effects/effects/meleeSwing.js†L1-L137】
-- **Lifecycle metadata travels with effects.** When contract batches drive
-  `store.effects`, helper utilities mark entries with
-  `__contractDerived` so downstream consumers know which records came from
-  the journal versus legacy snapshots. Rendering prefers these derived
-  entries and removes stale instances automatically.【F:client/render.js†L340-L417】【F:client/effect-lifecycle.js†L168-L220】
+- The join handshake resets the cached lifecycle state, applies the batch that
+  arrived with `/join` (often empty), and stores the summary so diagnostics know
+  how many events landed during the handshake.【F:client/network.js†L1120-L1159】
+- Every `state` message reuses the same path: patches are applied, triggers are
+  queued, and `applyEffectLifecycleBatch` processes the lifecycle arrays while
+  recording dropped/unknown events for debugging.【F:client/network.js†L1270-L1344】
+- `applyEffectLifecycleBatch` normalises payloads, applies spawns, retries
+  updates after the spawn pass, retires ended instances, merges cursor hints,
+  and invokes an `onUnknownUpdate` callback for diagnostics when updates arrive
+  before their spawn.【F:client/effect-lifecycle.js†L168-L415】
 
-## Telemetry & troubleshooting
+## Rendering integration
 
-- **Server exposes lifecycle metrics.** `telemetryCounters` tracks active
-  effect counts, trigger throughput, journal drop reasons, and parity
-  aggregates per effect type/source. The `/diagnostics` payload surfaces
-  total ticks plus per-source hit/miss/damage rates so rollouts can monitor
-  contract parity in real time.【F:server/telemetry.go†L501-L565】
-- **Investigate unknown updates quickly.** If the client records unknown
-  updates after the retry pass, `applyEffectLifecycleBatch` surfaces the
-  offending events for logging. Capture the effect ID and sequence when the
-  diagnostics panel shows dropped updates—this usually signals a missing
-  spawn in the transport or a stale cursor during replay.【F:client/effect-lifecycle.js†L336-L411】
+- Contract-derived effects are tagged with `__contractDerived` metadata and
+  grouped by type so the renderer can prioritise authoritative data over legacy
+  fallbacks when building render buckets.【F:client/render.js†L180-L215】
+- `ensureEffectManager` keeps a single shared js-effects `EffectManager`, hooks
+  up default triggers (blood splatter), and mirrors instances into the store's
+  registry for cross-module lookups.【F:client/render.js†L225-L304】
+- `syncEffectsByType` hydrates js-effects definitions from lifecycle entries, so
+  definitions with `fromEffect`/`onUpdate` implementations receive the exact
+  contract payload and can react to spawn/update/end metadata without inventing
+  state locally.【F:client/render.js†L306-L360】
 
-With the contract stream in place, new gameplay or cosmetic work should
-extend the intent helpers, register a definition, and rely on the lifecycle
-arrays for transport. Avoid reintroducing ad-hoc effect arrays; treat the
-journal as the canonical source of truth for anything that animates in the
-world.
+## Telemetry and troubleshooting
+
+- Server telemetry tracks spawned/updated/ended counts, active gauges, trigger
+  throughput, journal drop reasons, and parity aggregates, exposing the data via
+  `/diagnostics` so rollouts can monitor contract health.【F:server/telemetry.go†L501-L565】
+- Client diagnostics capture the latest lifecycle summary (including unknown
+  updates) after every batch so observers can spot transport gaps quickly.【F:client/network.js†L1284-L1289】【F:client/effect-lifecycle.js†L405-L412】
+
+With this pipeline in place, new gameplay or cosmetic work should focus on
+adding intents, extending definitions, and letting the existing lifecycle
+transport deliver authoritative events end-to-end.
