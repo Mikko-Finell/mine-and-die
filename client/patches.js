@@ -1,3 +1,5 @@
+import { contractLifecycleToEffect } from "./effect-lifecycle-translator.js";
+
 const PATCH_KIND_PLAYER_POS = "player_pos";
 const PATCH_KIND_PLAYER_FACING = "player_facing";
 const PATCH_KIND_PLAYER_INTENT = "player_intent";
@@ -298,6 +300,71 @@ function cloneEffectsMap(source) {
     next[cloned.id] = cloned;
   }
   return next;
+}
+
+function lookupLifecycleEntry(state, effectId) {
+  if (!state || typeof state !== "object" || typeof effectId !== "string") {
+    return null;
+  }
+  const instances = state.instances instanceof Map ? state.instances : null;
+  if (!instances) {
+    return null;
+  }
+  return instances.get(effectId) ?? null;
+}
+
+function deriveEffectViewFromLifecycle(state, effectId, context = {}) {
+  if (typeof effectId !== "string" || effectId.length === 0) {
+    return null;
+  }
+  const entry = lookupLifecycleEntry(state, effectId);
+  if (!entry) {
+    return null;
+  }
+  const lifecycleContext =
+    context && typeof context === "object" ? context : Object.create(null);
+  const store =
+    lifecycleContext && typeof lifecycleContext.store === "object"
+      ? lifecycleContext.store
+      : null;
+  const renderState =
+    lifecycleContext && typeof lifecycleContext.renderState === "object"
+      ? lifecycleContext.renderState
+      : null;
+  const fallbackEffect =
+    lifecycleContext && typeof lifecycleContext.fallbackEffect === "object"
+      ? lifecycleContext.fallbackEffect
+      : null;
+  const converted = contractLifecycleToEffect(entry, {
+    store,
+    renderState,
+    fallbackEffect,
+  });
+  if (!converted || typeof converted !== "object") {
+    return null;
+  }
+  if (typeof converted.id !== "string" || converted.id.length === 0) {
+    converted.id = effectId;
+  }
+  const normalizedId = normalizeEntityId(converted.id) ?? effectId;
+  converted.id = normalizedId;
+  if (typeof converted.type !== "string" || converted.type.length === 0) {
+    const definitionId =
+      entry && typeof entry.instance?.definitionId === "string"
+        ? entry.instance.definitionId
+        : null;
+    if (definitionId) {
+      converted.type = definitionId;
+    }
+  }
+  const view = createEffectView(converted);
+  if (!view) {
+    return null;
+  }
+  if (view.id !== effectId) {
+    view.id = effectId;
+  }
+  return view;
 }
 
 function createGroundItemView(item) {
@@ -926,6 +993,10 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
     : null;
   const batchTick = coerceTick(options.batchTick);
   const batchSequence = coerceTick(options.batchSequence);
+  const lifecycleState =
+    options && typeof options === "object" ? options.lifecycleState ?? null : null;
+  const lifecycleContext =
+    options && typeof options === "object" ? options.lifecycleContext ?? null : null;
 
   if (!Array.isArray(patches) || patches.length === 0) {
     return { players, npcs, effects, groundItems, errors, appliedCount };
@@ -955,7 +1026,18 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
       );
       continue;
     }
-    const view = viewMap[patch.entityId];
+    let view = viewMap[patch.entityId];
+    if (!view && handlerEntry.target === "effects") {
+      const derived = deriveEffectViewFromLifecycle(
+        lifecycleState,
+        patch.entityId,
+        lifecycleContext,
+      );
+      if (derived) {
+        viewMap[patch.entityId] = derived;
+        view = derived;
+      }
+    }
     if (!view) {
       errors.push(
         makePatchError(patch.kind, patch.entityId, "unknown entity for patch"),
@@ -1629,10 +1711,21 @@ export function updatePatchState(previousState, payload, options = {}) {
     };
   }
 
+  const lifecycleState =
+    options && typeof options.lifecycleState === "object"
+      ? options.lifecycleState
+      : null;
+  const lifecycleContext =
+    options && typeof options.lifecycleContext === "object"
+      ? options.lifecycleContext
+      : null;
+
   const patchResult = applyPatchesToSnapshot(baseline, patchList, {
     history,
     batchTick: nextTick,
     batchSequence: nextSequence,
+    lifecycleState,
+    lifecycleContext,
   });
 
   if (patchResult.errors.length > 0) {

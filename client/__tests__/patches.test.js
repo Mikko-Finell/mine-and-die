@@ -816,6 +816,59 @@ describe("updatePatchState", () => {
     });
   });
 
+  it("derives effect placeholders from lifecycle state when available", () => {
+    const lifecycleEntry = {
+      id: "contract-effect-7",
+      seq: 1,
+      tick: 10,
+      instance: {
+        id: "contract-effect-7",
+        definitionId: "attack",
+        deliveryState: { geometry: { width: 4, height: 4, offsetX: 0, offsetY: 0 } },
+        behaviorState: { ticksRemaining: 3 },
+      },
+    };
+    const lifecycleState = {
+      instances: new Map([["contract-effect-7", lifecycleEntry]]),
+    };
+
+    const base = {
+      players: {},
+      npcs: {},
+      effects: {},
+      groundItems: {},
+    };
+
+    const patches = [
+      {
+        kind: PATCH_KIND_EFFECT_POS,
+        entityId: "contract-effect-7",
+        payload: { x: 9, y: 11 },
+      },
+      {
+        kind: PATCH_KIND_EFFECT_PARAMS,
+        entityId: "contract-effect-7",
+        payload: { params: { remaining: 2 } },
+      },
+    ];
+
+    const { effects, errors, appliedCount } = applyPatchesToSnapshot(base, patches, {
+      lifecycleState,
+      lifecycleContext: { store: { TILE_SIZE: 40 } },
+    });
+
+    expect(errors).toEqual([]);
+    expect(appliedCount).toBe(2);
+    expect(Object.keys(effects)).toEqual(["contract-effect-7"]);
+    expect(effects["contract-effect-7"]).toMatchObject({
+      id: "contract-effect-7",
+      type: "attack",
+      x: 9,
+      y: 11,
+      params: { remaining: 2 },
+    });
+  });
+
   it("keeps tick and sequence monotonic when replaying from a fallback snapshot", () => {
     const seeded = updatePatchState(
       createPatchState(),

@@ -2,6 +2,7 @@ import { computeRtt, createHeartbeat } from "./heartbeat.js";
 import { createPatchState, updatePatchState } from "./patches.js";
 import {
   applyEffectLifecycleBatch,
+  peekEffectLifecycleState,
   resetEffectLifecycleState,
 } from "./effect-lifecycle.js";
 
@@ -1021,6 +1022,8 @@ function syncPatchTestingState(store, payload, source) {
     resetHistory,
     requestKeyframe: (sequence, tick, options = {}) =>
       requestKeyframeSnapshot(store, sequence, tick, options),
+    lifecycleState: peekEffectLifecycleState(store),
+    lifecycleContext: { store },
   });
   const prevError = previous && typeof previous === "object" ? previous.lastError : null;
   const prevCount = Array.isArray(previous?.errors) ? previous.errors.length : 0;
