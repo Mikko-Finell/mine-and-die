@@ -300,6 +300,218 @@ function cloneEffectsMap(source) {
   return next;
 }
 
+function readEffectLifecycleArray(payload, keys) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  for (const key of keys) {
+    const value = payload[key];
+    if (Array.isArray(value) && value.length > 0) {
+      return value;
+    }
+  }
+  return [];
+}
+
+function ensureEffectEntry(effects, effectId, fallback) {
+  const id = normalizeEntityId(effectId);
+  if (!id || !effects || typeof effects !== "object") {
+    return null;
+  }
+  const existing = effects[id];
+  if (existing && typeof existing === "object") {
+    if (!existing.params || typeof existing.params !== "object") {
+      existing.params = {};
+    }
+    return existing;
+  }
+  const seed = fallback && typeof fallback === "object" ? fallback : null;
+  const entry = {
+    id,
+    type: typeof seed?.type === "string" ? seed.type : "",
+    owner: typeof seed?.owner === "string" ? seed.owner : "",
+    start: toFiniteNumber(seed?.start, 0),
+    duration: toFiniteNumber(seed?.duration, 0),
+    x: toFiniteNumber(seed?.x, 0),
+    y: toFiniteNumber(seed?.y, 0),
+    width: toFiniteNumber(seed?.width, 0),
+    height: toFiniteNumber(seed?.height, 0),
+    params: cloneEffectParams(seed?.params),
+  };
+  effects[id] = entry;
+  return entry;
+}
+
+function mergeLifecycleParamsIntoEntry(entry, sources) {
+  if (!entry || typeof entry !== "object") {
+    return;
+  }
+  if (!entry.params || typeof entry.params !== "object") {
+    entry.params = {};
+  }
+  for (const source of sources) {
+    if (!source || typeof source !== "object") {
+      continue;
+    }
+    for (const [key, raw] of Object.entries(source)) {
+      if (typeof key !== "string" || key.length === 0) {
+        continue;
+      }
+      const value = toFiniteNumber(raw, null);
+      if (value === null) {
+        continue;
+      }
+      entry.params[key] = value;
+    }
+  }
+}
+
+function applyLifecycleSpawnToEffects(effects, spawn, previousEffects) {
+  if (!spawn || typeof spawn !== "object" || !effects) {
+    return;
+  }
+  const instance =
+    (spawn.instance && typeof spawn.instance === "object" && spawn.instance) ||
+    (spawn.Instance && typeof spawn.Instance === "object" && spawn.Instance);
+  if (!instance) {
+    return;
+  }
+  const id = normalizeEntityId(instance.id ?? instance.ID);
+  if (!id) {
+    return;
+  }
+  const fallback = previousEffects && typeof previousEffects === "object" ? previousEffects[id] : null;
+  const entry = ensureEffectEntry(effects, id, fallback);
+  if (!entry) {
+    return;
+  }
+  const definitionId =
+    typeof instance.definitionId === "string"
+      ? instance.definitionId
+      : typeof instance.DefinitionId === "string"
+        ? instance.DefinitionId
+        : null;
+  if (definitionId && (!entry.type || entry.type.length === 0)) {
+    entry.type = definitionId;
+  }
+  const ownerId =
+    typeof instance.ownerActorId === "string"
+      ? instance.ownerActorId
+      : typeof instance.OwnerActorId === "string"
+        ? instance.OwnerActorId
+        : null;
+  if (ownerId && (!entry.owner || entry.owner.length === 0)) {
+    entry.owner = ownerId;
+  }
+  const startCandidate =
+    instance.startTick ?? instance.StartTick ?? spawn.tick ?? spawn.Tick ?? null;
+  const startTick = coerceTick(startCandidate);
+  if (startTick !== null) {
+    entry.start = startTick;
+  }
+  const behaviorState =
+    (instance.behaviorState && typeof instance.behaviorState === "object" && instance.behaviorState) ||
+    (instance.BehaviorState && typeof instance.BehaviorState === "object" && instance.BehaviorState) ||
+    null;
+  const durationCandidate =
+    behaviorState?.ticksRemaining ?? behaviorState?.TicksRemaining ?? null;
+  const durationTicks = coerceTick(durationCandidate);
+  if (durationTicks !== null) {
+    entry.duration = durationTicks;
+  }
+  mergeLifecycleParamsIntoEntry(entry, [
+    behaviorState?.extra ?? behaviorState?.Extra ?? null,
+    instance.params ?? null,
+  ]);
+}
+
+function applyLifecycleUpdateToEffects(effects, update, previousEffects) {
+  if (!update || typeof update !== "object" || !effects) {
+    return;
+  }
+  const id = normalizeEntityId(update.id ?? update.ID);
+  if (!id) {
+    return;
+  }
+  const fallback = previousEffects && typeof previousEffects === "object" ? previousEffects[id] : null;
+  const entry = ensureEffectEntry(effects, id, fallback);
+  if (!entry) {
+    return;
+  }
+  const behaviorState =
+    (update.behaviorState && typeof update.behaviorState === "object" && update.behaviorState) ||
+    (update.BehaviorState && typeof update.BehaviorState === "object" && update.BehaviorState) ||
+    null;
+  const durationCandidate =
+    behaviorState?.ticksRemaining ?? behaviorState?.TicksRemaining ?? null;
+  const durationTicks = coerceTick(durationCandidate);
+  if (durationTicks !== null) {
+    entry.duration = durationTicks;
+  }
+  mergeLifecycleParamsIntoEntry(entry, [
+    behaviorState?.extra ?? behaviorState?.Extra ?? null,
+    update.params ?? null,
+  ]);
+}
+
+function applyLifecycleEndToEffects(effects, end) {
+  if (!effects || typeof effects !== "object" || !end || typeof end !== "object") {
+    return;
+  }
+  const id = normalizeEntityId(end.id ?? end.ID);
+  if (!id) {
+    return;
+  }
+  delete effects[id];
+}
+
+function applyEffectLifecycleToBaseline(baseline, payload, state) {
+  if (!baseline || typeof baseline !== "object") {
+    return;
+  }
+  if (!baseline.effects || typeof baseline.effects !== "object") {
+    baseline.effects = Object.create(null);
+  }
+  const previousEffects =
+    state &&
+    state.baseline &&
+    typeof state.baseline === "object" &&
+    state.baseline.effects &&
+    typeof state.baseline.effects === "object"
+      ? state.baseline.effects
+      : null;
+
+  const spawnEvents = readEffectLifecycleArray(payload, [
+    "effect_spawned",
+    "effectSpawned",
+    "effect_spawns",
+    "effectSpawns",
+  ]);
+  for (const spawn of spawnEvents) {
+    applyLifecycleSpawnToEffects(baseline.effects, spawn, previousEffects);
+  }
+
+  const updateEvents = readEffectLifecycleArray(payload, [
+    "effect_update",
+    "effectUpdate",
+    "effect_updates",
+    "effectUpdates",
+  ]);
+  for (const update of updateEvents) {
+    applyLifecycleUpdateToEffects(baseline.effects, update, previousEffects);
+  }
+
+  const endEvents = readEffectLifecycleArray(payload, [
+    "effect_ended",
+    "effectEnded",
+    "effect_ends",
+    "effectEnds",
+  ]);
+  for (const end of endEvents) {
+    applyLifecycleEndToEffects(baseline.effects, end);
+  }
+}
+
 function createGroundItemView(item) {
   if (!item || typeof item !== "object") {
     return null;
@@ -1628,6 +1840,8 @@ export function updatePatchState(previousState, payload, options = {}) {
       lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
     };
   }
+
+  applyEffectLifecycleToBaseline(baseline, payload, state);
 
   const patchResult = applyPatchesToSnapshot(baseline, patchList, {
     history,
