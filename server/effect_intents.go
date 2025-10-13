@@ -161,3 +161,82 @@ func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (EffectInte
 
 	return intent, true
 }
+
+// NewStatusVisualIntent converts a status-effect attachment into an
+// EffectIntent that follows the target actor for the duration of the status.
+func NewStatusVisualIntent(target *actorState, sourceID, effectType string, lifetime time.Duration) (EffectIntent, bool) {
+	if target == nil || target.ID == "" || effectType == "" {
+		return EffectIntent{}, false
+	}
+
+	if lifetime <= 0 {
+		lifetime = 100 * time.Millisecond
+	}
+
+	width := quantizeWorldCoord(playerHalf * 2)
+	height := quantizeWorldCoord(playerHalf * 2)
+
+	geometry := EffectGeometry{
+		Shape:   GeometryShapeRect,
+		Width:   width,
+		Height:  height,
+		OffsetX: 0,
+		OffsetY: 0,
+	}
+
+	intent := EffectIntent{
+		TypeID:        effectType,
+		Delivery:      DeliveryKindTarget,
+		SourceActorID: sourceID,
+		TargetActorID: target.ID,
+		Geometry:      geometry,
+		DurationTicks: durationToTicks(lifetime),
+	}
+
+	if intent.DurationTicks < 1 {
+		intent.DurationTicks = 1
+	}
+
+	if intent.SourceActorID == "" {
+		intent.SourceActorID = target.ID
+	}
+
+	return intent, true
+}
+
+// NewBloodSplatterIntent mirrors the legacy blood decal trigger so the contract
+// manager can observe cosmetic spawns tied to melee damage.
+func NewBloodSplatterIntent(sourceID string, target *actorState) (EffectIntent, bool) {
+	if target == nil || target.ID == "" {
+		return EffectIntent{}, false
+	}
+
+	width := quantizeWorldCoord(playerHalf * 2)
+	height := quantizeWorldCoord(playerHalf * 2)
+
+	geometry := EffectGeometry{
+		Shape:  GeometryShapeRect,
+		Width:  width,
+		Height: height,
+	}
+
+	params := map[string]int{
+		"centerX": quantizeWorldCoord(target.X),
+		"centerY": quantizeWorldCoord(target.Y),
+	}
+
+	intent := EffectIntent{
+		TypeID:        effectTypeBloodSplatter,
+		Delivery:      DeliveryKindVisual,
+		SourceActorID: sourceID,
+		Geometry:      geometry,
+		DurationTicks: durationToTicks(bloodSplatterDuration),
+		Params:        params,
+	}
+
+	if intent.DurationTicks < 1 {
+		intent.DurationTicks = 1
+	}
+
+	return intent, true
+}

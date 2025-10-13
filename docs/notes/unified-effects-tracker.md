@@ -107,7 +107,7 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Intent helpers | In Progress | :hammer: Added `NewMeleeIntent`/`NewProjectileIntent` bridging legacy triggers; TODO: cover status/blood decals. | Helpers live in `server/effect_intents.go`; ensure future definitions reuse shared quantizers. |
+| Intent helpers | Complete | :white_check_mark: Added helpers for melee/projectile/status visuals/blood decals so contract manager sees all legacy spawns. | Helpers live in `server/effect_intents.go`; ensure future definitions reuse shared quantizers. |
 | Definition ports | Not Started | Port melee/projectile/burning/blood decal behaviours into `EffectDefinition` hooks. | Gate each archetype behind feature flags and parity dashboards. |
 | Compat shim | Not Started | Translate legacy triggers into contract events during transition. | Remove once adoption thresholds satisfied. |
 | Parity metrics | Not Started | Instrument hit counts, damage/tick, miss rates, AoE victim distribution. | Decide logging vs. telemetry sinks during implementation. |
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 23 | Completed intent helpers by translating status visuals and blood decals into contract intents with tests. | gpt-5-codex |
 | 22 | Added melee/projectile intent helpers and marked the deliverable in progress for contract shims. | gpt-5-codex |
 | 21 | Render loop now prefers contract lifecycle payloads and skips legacy duplicates, completing the render integration deliverable. | gpt-5-codex |
 | 20 | Wired contract unknown-update diagnostics into the debug panel and marked the two-pass processor deliverable complete. | gpt-5-codex |
