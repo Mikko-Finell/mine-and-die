@@ -25,6 +25,100 @@ const KEYFRAME_RETRY_TICK_INTERVAL = 100;
 const heartbeatControllers = new WeakMap();
 const unknownEffectUpdateHandlers = new WeakMap();
 
+function isBloodSplatterIdentifier(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return false;
+  }
+  return value.toLowerCase() === "blood-splatter";
+}
+
+function collectEffectSpawnEvents(payload) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  if (Array.isArray(payload.effect_spawned)) {
+    return payload.effect_spawned;
+  }
+  if (Array.isArray(payload.effectSpawned)) {
+    return payload.effectSpawned;
+  }
+  return [];
+}
+
+function isBloodSplatterSpawn(spawn) {
+  if (!spawn || typeof spawn !== "object") {
+    return false;
+  }
+  const candidates = [];
+  if (typeof spawn.definitionId === "string") {
+    candidates.push(spawn.definitionId);
+  }
+  if (typeof spawn.type === "string") {
+    candidates.push(spawn.type);
+  }
+  if (typeof spawn.typeId === "string") {
+    candidates.push(spawn.typeId);
+  }
+  const spawnDefinition =
+    spawn.definition && typeof spawn.definition === "object" ? spawn.definition : null;
+  if (spawnDefinition) {
+    if (typeof spawnDefinition.type === "string") {
+      candidates.push(spawnDefinition.type);
+    }
+    if (typeof spawnDefinition.typeId === "string") {
+      candidates.push(spawnDefinition.typeId);
+    }
+  }
+  const instance = spawn.instance && typeof spawn.instance === "object" ? spawn.instance : null;
+  if (instance) {
+    if (typeof instance.definitionId === "string") {
+      candidates.push(instance.definitionId);
+    }
+    if (typeof instance.type === "string") {
+      candidates.push(instance.type);
+    }
+    if (typeof instance.typeId === "string") {
+      candidates.push(instance.typeId);
+    }
+    const instanceDefinition =
+      instance.definition && typeof instance.definition === "object"
+        ? instance.definition
+        : null;
+    if (instanceDefinition) {
+      if (typeof instanceDefinition.type === "string") {
+        candidates.push(instanceDefinition.type);
+      }
+      if (typeof instanceDefinition.typeId === "string") {
+        candidates.push(instanceDefinition.typeId);
+      }
+    }
+  }
+  return candidates.some((candidate) => isBloodSplatterIdentifier(candidate));
+}
+
+function shouldLogBloodSplatterSpawn(messageType, payload) {
+  const normalizedType = typeof messageType === "string" ? messageType : null;
+  if (normalizedType !== "state" && normalizedType !== "keyframe" && normalizedType !== "patch") {
+    return false;
+  }
+  const spawns = collectEffectSpawnEvents(payload);
+  if (spawns.length === 0) {
+    return false;
+  }
+  return spawns.some((spawn) => isBloodSplatterSpawn(spawn));
+}
+
+function logBloodSplatterSpawnIfNeeded(messageType, payload, rawMessage) {
+  if (typeof rawMessage !== "string" || rawMessage.length === 0) {
+    return;
+  }
+  if (!shouldLogBloodSplatterSpawn(messageType, payload)) {
+    return;
+  }
+  const context = typeof messageType === "string" && messageType.length > 0 ? messageType : "message";
+  console.log(`[effects] ${context} blood-splatter spawn detected:`, rawMessage);
+}
+
 function computeKeyframeRetryDelay(attempts) {
   const normalized = Math.max(1, Math.floor(attempts));
   const exponential = KEYFRAME_RETRY_BASE_DELAY * Math.pow(2, normalized - 1);
@@ -1268,6 +1362,7 @@ export function connectEvents(store) {
     }
 
     const payload = parsed.data;
+    logBloodSplatterSpawnIfNeeded(parsed.type, payload, event.data);
     handleProtocolVersion(payload, `${parsed.type} message`);
     if (parsed.type === "state") {
         const patchState = syncPatchTestingState(store, payload, "state");
