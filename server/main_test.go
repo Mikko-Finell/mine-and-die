@@ -998,7 +998,7 @@ func TestLavaAppliesBurningStatusEffect(t *testing.T) {
 		t.Fatalf("expected burning status effect to be applied")
 	}
 
-	if !hasFollowEffect(hub.world.effects, "fire", playerID) {
+	if !hasFollowEffect(hub.world.effects, effectTypeBurningVisual, playerID) {
 		t.Fatalf("expected fire effect following player")
 	}
 
@@ -1101,6 +1101,308 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	}
 	if eff.Projectile.VelocityUnitX <= 0 || eff.Projectile.VelocityUnitY != 0 {
 		t.Fatalf("expected projectile to move right, got velocity (%.2f, %.2f)", eff.Projectile.VelocityUnitX, eff.Projectile.VelocityUnitY)
+	}
+}
+
+func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
+	originalManager := enableContractEffectManager
+	originalMelee := enableContractMeleeDefinitions
+	enableContractEffectManager = true
+	enableContractMeleeDefinitions = true
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractMeleeDefinitions = originalMelee
+	}()
+
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager when flag enabled")
+	}
+	world.obstacles = nil
+
+	attacker := newTestPlayerState("contract-attacker")
+	attacker.X = 200
+	attacker.Y = 200
+	attacker.Facing = FacingRight
+	attacker.cooldowns = make(map[string]time.Time)
+	world.AddPlayer(attacker)
+
+	target := newTestPlayerState("contract-target")
+	target.X = 200 + playerHalf + meleeAttackReach/2
+	target.Y = 200
+	world.AddPlayer(target)
+
+	commands := []Command{{ActorID: attacker.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeAttack}}}
+	now := time.Unix(0, 0)
+
+	world.Step(1, now, 1.0/float64(tickRate), commands, nil)
+
+	victim := world.players[target.ID]
+	if victim == nil {
+		t.Fatalf("expected victim to remain in world")
+	}
+	expected := baselinePlayerMaxHealth - meleeAttackDamage
+	if math.Abs(victim.Health-expected) > 1e-6 {
+		t.Fatalf("expected victim health %.1f, got %.1f", expected, victim.Health)
+	}
+}
+
+func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
+	originalManager := enableContractEffectManager
+	originalProjectile := enableContractProjectileDefinitions
+	enableContractEffectManager = true
+	enableContractProjectileDefinitions = true
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractProjectileDefinitions = originalProjectile
+	}()
+
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager when flag enabled")
+	}
+	world.obstacles = nil
+
+	caster := newTestPlayerState("contract-caster")
+	caster.X = 200
+	caster.Y = 200
+	caster.Facing = FacingRight
+	caster.cooldowns = make(map[string]time.Time)
+	world.AddPlayer(caster)
+
+	target := newTestPlayerState("contract-projectile-target")
+	travel := fireballSpeed / float64(tickRate)
+	spawnOffset := playerHalf + fireballSpawnGap + fireballSize/2
+	target.X = caster.X + spawnOffset + travel*5
+	target.Y = caster.Y
+	world.AddPlayer(target)
+
+	commands := []Command{{ActorID: caster.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeFireball}}}
+	now := time.Unix(0, 0)
+	dt := 1.0 / float64(tickRate)
+
+	world.Step(1, now, dt, commands, nil)
+
+	var managed *effectState
+	for _, eff := range world.effects {
+		if eff == nil {
+			continue
+		}
+		if eff.Type == effectTypeFireball {
+			managed = eff
+			break
+		}
+	}
+	if managed == nil {
+		t.Fatalf("expected contract fireball effect to spawn")
+	}
+	if !managed.contractManaged {
+		t.Fatalf("expected contract-managed projectile, got legacy effect")
+	}
+
+	current := now.Add(time.Second / time.Duration(tickRate))
+	var victim *playerState
+	for tick := uint64(2); tick <= 12; tick++ {
+		world.Step(tick, current, dt, nil, nil)
+		current = current.Add(time.Second / time.Duration(tickRate))
+		victim = world.players[target.ID]
+		if victim != nil && victim.Health < baselinePlayerMaxHealth {
+			break
+		}
+	}
+
+	if victim == nil {
+		t.Fatalf("expected target to remain in world")
+	}
+
+	expected := baselinePlayerMaxHealth - fireballDamage - lavaDamagePerSecond*burningTickInterval.Seconds()
+	if math.Abs(victim.Health-expected) > 1e-6 {
+		t.Fatalf("expected victim health %.1f, got %.1f", expected, victim.Health)
+	}
+	if victim.statusEffects == nil || victim.statusEffects[StatusEffectBurning] == nil {
+		t.Fatalf("expected fireball to apply burning status")
+	}
+}
+
+func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
+	originalManager := enableContractEffectManager
+	originalBurning := enableContractBurningDefinitions
+	enableContractEffectManager = true
+	enableContractBurningDefinitions = true
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractBurningDefinitions = originalBurning
+	}()
+
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager when flag enabled")
+	}
+
+	target := newTestPlayerState("contract-burning-target")
+	target.X = 240
+	target.Y = 160
+	world.AddPlayer(target)
+
+	actor := &world.players[target.ID].actorState
+	now := time.Unix(0, 0)
+
+	if applied := world.applyStatusEffect(actor, StatusEffectBurning, "lava-1", now); !applied {
+		t.Fatalf("expected burning status effect to apply")
+	}
+
+	if len(world.effectManager.intentQueue) == 0 {
+		t.Fatalf("expected burning application to enqueue contract intents")
+	}
+
+	world.effectManager.RunTick(1, now, nil)
+
+	burned := world.players[target.ID]
+	expected := baselinePlayerMaxHealth - lavaDamagePerSecond*burningTickInterval.Seconds()
+	if math.Abs(burned.Health-expected) > 1e-6 {
+		t.Fatalf("expected target health %.2f after first tick, got %.2f", expected, burned.Health)
+	}
+
+	inst := burned.statusEffects[StatusEffectBurning]
+	if inst == nil {
+		t.Fatalf("expected burning status effect instance to persist")
+	}
+	if inst.attachedEffect == nil {
+		t.Fatalf("expected burning visual to attach to status effect")
+	}
+	if !inst.attachedEffect.contractManaged {
+		t.Fatalf("expected burning visual to be contract-managed")
+	}
+	if inst.attachedEffect.FollowActorID != target.ID {
+		t.Fatalf("expected burning visual to follow %s", target.ID)
+	}
+
+	next := now.Add(burningTickInterval)
+	world.advanceStatusEffects(next)
+	if len(world.effectManager.intentQueue) == 0 {
+		t.Fatalf("expected burning tick to enqueue contract damage intent")
+	}
+	world.effectManager.RunTick(2, next, nil)
+
+	burned = world.players[target.ID]
+	expected = baselinePlayerMaxHealth - 2*lavaDamagePerSecond*burningTickInterval.Seconds()
+	if math.Abs(burned.Health-expected) > 1e-6 {
+		t.Fatalf("expected target health %.2f after second tick, got %.2f", expected, burned.Health)
+	}
+}
+
+func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
+	originalManager := enableContractEffectManager
+	originalBlood := enableContractBloodDecalDefinitions
+	enableContractEffectManager = true
+	enableContractBloodDecalDefinitions = true
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractBloodDecalDefinitions = originalBlood
+	}()
+
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager when contract flag enabled")
+	}
+
+	attacker := newTestPlayerState("player-blood-attacker")
+	attacker.X = 260
+	attacker.Y = 300
+	world.AddPlayer(attacker)
+
+	npc := &npcState{
+		actorState: actorState{Actor: Actor{
+			ID:        "npc-target",
+			X:         280,
+			Y:         300,
+			Health:    25,
+			MaxHealth: 25,
+			Inventory: NewInventory(),
+		}},
+		stats: stats.DefaultComponent(stats.ArchetypeGoblin),
+		Type:  NPCTypeGoblin,
+	}
+	world.npcs[npc.ID] = npc
+
+	eff := &effectState{Effect: Effect{
+		Type:   effectTypeAttack,
+		Owner:  attacker.ID,
+		X:      npc.X - playerHalf,
+		Y:      npc.Y - playerHalf,
+		Width:  playerHalf * 2,
+		Height: playerHalf * 2,
+	}}
+
+	now := time.Unix(0, 0)
+	world.applyEffectHitNPC(eff, npc, now)
+
+	if len(world.effectManager.intentQueue) == 0 {
+		t.Fatalf("expected blood splatter to enqueue contract intent")
+	}
+	if len(world.effectTriggers) != 0 {
+		t.Fatalf("expected legacy triggers to be suppressed when contract blood decals enabled")
+	}
+
+	world.effectManager.RunTick(1, now, nil)
+
+	if len(world.effectManager.intentQueue) != 0 {
+		t.Fatalf("expected intent queue to drain after tick, got %d", len(world.effectManager.intentQueue))
+	}
+
+	if len(world.effectManager.instances) != 1 {
+		t.Fatalf("expected one contract blood decal instance, got %d", len(world.effectManager.instances))
+	}
+
+	var instance *EffectInstance
+	for _, inst := range world.effectManager.instances {
+		instance = inst
+		break
+	}
+	if instance == nil {
+		t.Fatal("expected contract instance to exist")
+	}
+	if instance.DefinitionID != effectTypeBloodSplatter {
+		t.Fatalf("expected DefinitionID %q, got %q", effectTypeBloodSplatter, instance.DefinitionID)
+	}
+
+	effect := world.effectManager.worldEffects[instance.ID]
+	if effect == nil {
+		t.Fatal("expected contract blood decal to spawn in world state")
+	}
+	if effect.Type != effectTypeBloodSplatter {
+		t.Fatalf("expected world effect type %q, got %q", effectTypeBloodSplatter, effect.Type)
+	}
+	if !effect.contractManaged {
+		t.Fatalf("expected blood decal to be contract-managed")
+	}
+
+	centerXQuant := quantizeWorldCoord(npc.X)
+	centerYQuant := quantizeWorldCoord(npc.Y)
+	if instance.BehaviorState.Extra["centerX"] != centerXQuant {
+		t.Fatalf("expected instance centerX %d, got %d", centerXQuant, instance.BehaviorState.Extra["centerX"])
+	}
+	if instance.BehaviorState.Extra["centerY"] != centerYQuant {
+		t.Fatalf("expected instance centerY %d, got %d", centerYQuant, instance.BehaviorState.Extra["centerY"])
+	}
+
+	width := dequantizeWorldCoord(instance.DeliveryState.Geometry.Width)
+	if width <= 0 {
+		width = playerHalf * 2
+	}
+	height := dequantizeWorldCoord(instance.DeliveryState.Geometry.Height)
+	if height <= 0 {
+		height = playerHalf * 2
+	}
+	centerX := dequantizeWorldCoord(centerXQuant)
+	centerY := dequantizeWorldCoord(centerYQuant)
+	expectedX := centerX - width/2
+	expectedY := centerY - height/2
+	if math.Abs(effect.Effect.X-expectedX) > 1e-6 {
+		t.Fatalf("expected effect X %.2f, got %.2f", expectedX, effect.Effect.X)
+	}
+	if math.Abs(effect.Effect.Y-expectedY) > 1e-6 {
+		t.Fatalf("expected effect Y %.2f, got %.2f", expectedY, effect.Effect.Y)
 	}
 }
 
