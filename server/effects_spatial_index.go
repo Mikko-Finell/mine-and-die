@@ -48,16 +48,36 @@ func (idx *effectSpatialIndex) Upsert(effect *effectState) bool {
 
 	entry, existed := idx.entries[effect.ID]
 	newCells := idx.cellsForEffect(effect)
-	if !existed {
-		if idx.maxPerCell > 0 {
-			for _, cell := range newCells {
-				bucket := idx.cells[cell]
-				if len(bucket) >= idx.maxPerCell {
-					return false
-				}
+	if idx.maxPerCell > 0 {
+		var existingCellCounts map[effectCellKey]int
+		if existed {
+			existingCellCounts = make(map[effectCellKey]int, len(entry.cells))
+			for _, cell := range entry.cells {
+				existingCellCounts[cell]++
 			}
 		}
-	} else {
+
+		checked := make(map[effectCellKey]struct{}, len(newCells))
+		for _, cell := range newCells {
+			if _, seen := checked[cell]; seen {
+				continue
+			}
+			checked[cell] = struct{}{}
+
+			bucket := idx.cells[cell]
+			occupancy := len(bucket)
+			if existed {
+				if count := existingCellCounts[cell]; count > 0 {
+					occupancy -= count
+				}
+			}
+			if occupancy >= idx.maxPerCell {
+				return false
+			}
+		}
+	}
+
+	if existed {
 		idx.removeFromCells(effect.ID, entry.cells)
 	}
 
