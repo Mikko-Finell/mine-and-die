@@ -253,7 +253,7 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 	if inst != nil && inst.Definition != nil {
 		statusType = inst.Definition.Type
 	}
-	w.applyBurningDamage(owner, actor, statusType, delta, now)
+	w.applyBurningDamage(owner, actor, statusType, delta, now, telemetrySourceLegacy)
 }
 
 func (w *World) contractBurningEnabled() bool {
@@ -266,7 +266,7 @@ func (w *World) contractBurningEnabled() bool {
 	return w.effectManager != nil
 }
 
-func (w *World) applyBurningDamage(owner string, actor *actorState, status StatusEffectType, delta float64, now time.Time) {
+func (w *World) applyBurningDamage(owner string, actor *actorState, status StatusEffectType, delta float64, now time.Time, source string) {
 	if w == nil || actor == nil {
 		return
 	}
@@ -280,12 +280,15 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 			Start:  now.UnixMilli(),
 			Params: map[string]float64{"healthDelta": delta},
 		},
-		StatusEffect: status,
+		StatusEffect:       status,
+		telemetrySource:    source,
+		telemetrySpawnTick: Tick(int64(w.currentTick)),
 	}
 	if eff.Effect.Owner == "" {
 		eff.Effect.Owner = actor.ID
 	}
 	w.applyEffectHitActor(eff, actor, now)
+	w.flushEffectTelemetry(eff)
 }
 
 func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, lifetime time.Duration, now time.Time) *effectState {
@@ -312,8 +315,10 @@ func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, l
 			Width:    width,
 			Height:   height,
 		},
-		expiresAt:     now.Add(lifetime),
-		FollowActorID: actor.ID,
+		expiresAt:          now.Add(lifetime),
+		FollowActorID:      actor.ID,
+		telemetrySource:    telemetrySourceLegacy,
+		telemetrySpawnTick: Tick(int64(w.currentTick)),
 	}
 	w.effects = append(w.effects, eff)
 	w.recordEffectSpawn(effectType, "status-effect")

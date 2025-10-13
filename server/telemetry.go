@@ -86,6 +86,156 @@ func (c *layeredCounter) snapshot() map[string]map[string]uint64 {
 	return result
 }
 
+type effectParitySummary struct {
+	EffectType    string
+	Source        string
+	Hits          int
+	UniqueVictims int
+	TotalDamage   float64
+	SpawnTick     Tick
+	FirstHitTick  Tick
+}
+
+type effectParityTotals struct {
+	Hits                 uint64
+	Damage               float64
+	Misses               uint64
+	FirstHitLatencyTicks uint64
+	FirstHitSamples      uint64
+	VictimBuckets        map[string]uint64
+}
+
+type effectParityAggregator struct {
+	mu     sync.Mutex
+	totals map[string]map[string]*effectParityTotals
+}
+
+func (a *effectParityAggregator) record(summary effectParitySummary) {
+	if a == nil {
+		return
+	}
+	normalizedType := normalizeMetricKey(summary.EffectType)
+	normalizedSource := normalizeMetricKey(summary.Source)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.totals == nil {
+		a.totals = make(map[string]map[string]*effectParityTotals)
+	}
+	sources := a.totals[normalizedType]
+	if sources == nil {
+		sources = make(map[string]*effectParityTotals)
+		a.totals[normalizedType] = sources
+	}
+	totals := sources[normalizedSource]
+	if totals == nil {
+		totals = &effectParityTotals{VictimBuckets: make(map[string]uint64)}
+		sources[normalizedSource] = totals
+	}
+	if summary.Hits > 0 {
+		totals.Hits += uint64(summary.Hits)
+		if summary.TotalDamage > 0 {
+			totals.Damage += summary.TotalDamage
+		}
+		if summary.SpawnTick > 0 && summary.FirstHitTick >= summary.SpawnTick {
+			latency := summary.FirstHitTick - summary.SpawnTick
+			if latency < 0 {
+				latency = 0
+			}
+			totals.FirstHitLatencyTicks += uint64(latency)
+			totals.FirstHitSamples++
+		}
+	} else {
+		totals.Misses++
+	}
+	bucket := victimsBucket(summary.UniqueVictims)
+	if bucket != "" {
+		totals.VictimBuckets[bucket]++
+	}
+}
+
+func (a *effectParityAggregator) snapshot(totalTicks uint64) map[string]map[string]telemetryEffectParityEntry {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.totals) == 0 {
+		return nil
+	}
+	result := make(map[string]map[string]telemetryEffectParityEntry, len(a.totals))
+	for effectType, sources := range a.totals {
+		if len(sources) == 0 {
+			continue
+		}
+		entries := make(map[string]telemetryEffectParityEntry, len(sources))
+		for source, totals := range sources {
+			if totals == nil {
+				continue
+			}
+			entries[source] = totals.toSnapshot(totalTicks)
+		}
+		if len(entries) > 0 {
+			result[effectType] = entries
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func victimsBucket(count int) string {
+	switch {
+	case count <= 0:
+		return "0"
+	case count == 1:
+		return "1"
+	case count == 2:
+		return "2"
+	case count == 3:
+		return "3"
+	default:
+		return "4+"
+	}
+}
+
+type telemetryEffectParityEntry struct {
+	Hits                 uint64            `json:"hits"`
+	HitsPer1kTicks       float64           `json:"hitsPer1kTicks"`
+	Damage               float64           `json:"damage"`
+	DamagePer1kTicks     float64           `json:"damagePer1kTicks"`
+	Misses               uint64            `json:"misses"`
+	FirstHitLatencyTicks float64           `json:"firstHitLatencyTicks,omitempty"`
+	FirstHitLatencyMs    float64           `json:"firstHitLatencyMillis,omitempty"`
+	VictimBuckets        map[string]uint64 `json:"victimBuckets,omitempty"`
+}
+
+func (t *effectParityTotals) toSnapshot(totalTicks uint64) telemetryEffectParityEntry {
+	entry := telemetryEffectParityEntry{
+		Hits:   t.Hits,
+		Damage: t.Damage,
+		Misses: t.Misses,
+	}
+	ticks := float64(totalTicks)
+	if ticks > 0 {
+		entry.HitsPer1kTicks = float64(t.Hits) * 1000.0 / ticks
+		entry.DamagePer1kTicks = t.Damage * 1000.0 / ticks
+	}
+	if t.FirstHitSamples > 0 {
+		avgTicks := float64(t.FirstHitLatencyTicks) / float64(t.FirstHitSamples)
+		entry.FirstHitLatencyTicks = avgTicks
+		entry.FirstHitLatencyMs = avgTicks * 1000.0 / float64(tickRate)
+	}
+	if len(t.VictimBuckets) > 0 {
+		copy := make(map[string]uint64, len(t.VictimBuckets))
+		for bucket, count := range t.VictimBuckets {
+			copy[bucket] = count
+		}
+		entry.VictimBuckets = copy
+	}
+	return entry
+}
+
 func normalizeMetricKey(value string) string {
 	if value == "" {
 		return "unknown"
@@ -114,6 +264,9 @@ type telemetryCounters struct {
 	effectsActiveGauge  atomic.Int64
 	triggerEnqueued     simpleCounter
 	journalDrops        simpleCounter
+
+	totalTicks   atomic.Uint64
+	effectParity effectParityAggregator
 }
 
 type telemetrySnapshot struct {
@@ -130,6 +283,7 @@ type telemetrySnapshot struct {
 	Effects                  telemetryEffectsSnapshot        `json:"effects"`
 	EffectTriggers           telemetryEffectTriggersSnapshot `json:"effectTriggers"`
 	JournalDrops             map[string]uint64               `json:"journalDrops,omitempty"`
+	EffectParity             telemetryEffectParitySnapshot   `json:"effectParity"`
 }
 
 type telemetryEffectsSnapshot struct {
@@ -141,6 +295,11 @@ type telemetryEffectsSnapshot struct {
 
 type telemetryEffectTriggersSnapshot struct {
 	EnqueuedTotal map[string]uint64 `json:"enqueuedTotal,omitempty"`
+}
+
+type telemetryEffectParitySnapshot struct {
+	TotalTicks uint64                                           `json:"totalTicks"`
+	Entries    map[string]map[string]telemetryEffectParityEntry `json:"entries,omitempty"`
 }
 
 func newTelemetryCounters() *telemetryCounters {
@@ -170,6 +329,7 @@ func (t *telemetryCounters) RecordTickDuration(duration time.Duration) {
 		millis = 0
 	}
 	t.tickDurationMillis.Store(millis)
+	t.totalTicks.Add(1)
 	if t.debug {
 		effects := t.effectsActiveGauge.Load()
 		spawned := t.effectsSpawnedTotal.snapshot()
@@ -265,11 +425,19 @@ func (t *telemetryCounters) RecordJournalDrop(reason string) {
 	t.journalDrops.add(reason, 1)
 }
 
+func (t *telemetryCounters) RecordEffectParity(summary effectParitySummary) {
+	if t == nil {
+		return
+	}
+	t.effectParity.record(summary)
+}
+
 func (t *telemetryCounters) DebugEnabled() bool {
 	return t.debug
 }
 
 func (t *telemetryCounters) Snapshot() telemetrySnapshot {
+	totalTicks := t.totalTicks.Load()
 	return telemetrySnapshot{
 		BytesSent:                t.bytesSent.Load(),
 		EntitiesSent:             t.entitiesSent.Load(),
@@ -291,5 +459,9 @@ func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 			EnqueuedTotal: t.triggerEnqueued.snapshot(),
 		},
 		JournalDrops: t.journalDrops.snapshot(),
+		EffectParity: telemetryEffectParitySnapshot{
+			TotalTicks: totalTicks,
+			Entries:    t.effectParity.snapshot(totalTicks),
+		},
 	}
 }
