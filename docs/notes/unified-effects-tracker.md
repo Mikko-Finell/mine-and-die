@@ -110,7 +110,7 @@ Statuses use the following scale:
 | Intent helpers | Complete | :white_check_mark: Added helpers for melee/projectile/status visuals/blood decals so contract manager sees all legacy spawns. | Helpers live in `server/effect_intents.go`; ensure future definitions reuse shared quantizers. |
 | Definition ports | Complete | :white_check_mark: Ported melee swings into contract hooks gated by `enableContractMeleeDefinitions`; :white_check_mark: Ported fireball projectiles behind `enableContractProjectileDefinitions`; :white_check_mark: Ported burning status visuals and ticks via `enableContractBurningDefinitions`; :white_check_mark: Ported blood decal visuals via `enableContractBloodDecalDefinitions`. | All archetypes now live behind contract definitions with dedicated rollout flags; continue monitoring parity dashboards before broad enablement. |
 | Compat shim | Not Started | Translate legacy triggers into contract events during transition. | Remove once adoption thresholds satisfied. |
-| Parity metrics | Not Started | Instrument hit counts, damage/tick, miss rates, AoE victim distribution. | Decide logging vs. telemetry sinks during implementation. |
+| Parity metrics | Complete | :white_check_mark: Instrumented hit counts, damage accumulation, miss totals, and AoE victim buckets with per-1k tick normalization exposed via `/diagnostics.telemetry.effectParity`. | Dashboards now surface rate comparisons plus first-hit latency gauges for legacy vs. contract pipelines; monitor them while expanding rollout flags. |
 
 ### Phase 5 — Determinism & Performance Hardening
 
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 28 | Instrumented effect parity telemetry (hit/damage/miss rates and latency buckets) and documented the diagnostics dashboard expectations. | gpt-5-codex |
 | 27 | Ported blood decal visuals behind `enableContractBloodDecalDefinitions`, added contract lifecycle coverage, and marked the definition ports deliverable complete. | gpt-5-codex |
 | 26 | Ported burning status damage/visuals behind `enableContractBurningDefinitions`, added contract regression tests, and synced the tracker. | gpt-5-codex |
 | 25 | Ported fireball projectiles onto contract hooks gated by `enableContractProjectileDefinitions` and extended server coverage for contract-driven hits. | gpt-5-codex |
@@ -162,4 +163,14 @@ Statuses use the following scale:
 | 3 | Catalogued effect regression test red list and closed the Phase 0 baseline test deliverable. | gpt-5-codex |
 | 2 | Recorded snapshot payload audit and marked the Phase 0 wire documentation deliverable complete. | gpt-5-codex |
 | 1 | Initial tracker created. Phase 0 map tooling marked Ready to Start with recommended first PR. | gpt-5-codex |
+
+#### Reading the Parity Metrics
+
+* `/diagnostics.telemetry.effectParity.totalTicks` reports the number of simulation ticks represented in the aggregate rates.
+* Entries are grouped by `effectType` and `source` (legacy vs. contract) with:
+  * `hitsPer1kTicks` and `damagePer1kTicks` for rate comparisons.
+  * `firstHitLatencyTicks`/`Millis` capturing average tick-to-impact delay from spawn.
+  * `misses` indicating total zero-hit completions.
+  * `victimBuckets` distributing unique victim counts (`0`, `1`, `2`, `3`, `4+`) per effect instance.
+* Use these gauges to validate parity before enabling additional contract definitions and record findings back in this tracker.
 
