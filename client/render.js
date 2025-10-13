@@ -76,6 +76,141 @@ function toEffectArray(source) {
   return [];
 }
 
+function mapDefinitionToLegacyType(definitionId) {
+  if (typeof definitionId !== "string" || definitionId.length === 0) {
+    return null;
+  }
+  switch (definitionId) {
+    case "melee-swing":
+      return "attack";
+    default:
+      return definitionId;
+  }
+}
+
+function markHiddenMetadata(target, key, value) {
+  if (!target || typeof target !== "object" || typeof key !== "string") {
+    return;
+  }
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function addEffectToBucket(buckets, type, effect) {
+  if (!buckets || typeof type !== "string" || type.length === 0 || !effect) {
+    return;
+  }
+  const existing = buckets.get(type);
+  if (existing) {
+    existing.push(effect);
+  } else {
+    buckets.set(type, [effect]);
+  }
+}
+
+function resolveLifecycleEffectType(entry, convertedEffect, fallbackEffect) {
+  if (fallbackEffect && typeof fallbackEffect.type === "string") {
+    return fallbackEffect.type;
+  }
+  if (convertedEffect && typeof convertedEffect.type === "string") {
+    const definitionId =
+      entry && typeof entry.instance?.definitionId === "string"
+        ? entry.instance.definitionId
+        : null;
+    if (definitionId && convertedEffect.type !== definitionId) {
+      return convertedEffect.type;
+    }
+    return mapDefinitionToLegacyType(convertedEffect.type);
+  }
+  const definitionId =
+    entry && typeof entry.instance?.definitionId === "string"
+      ? entry.instance.definitionId
+      : null;
+  return mapDefinitionToLegacyType(definitionId);
+}
+
+function collectEffectRenderBuckets(store, renderState) {
+  const buckets = new Map();
+  const lifecycleEntries =
+    renderState?.lifecycle?.entries instanceof Map
+      ? renderState.lifecycle.entries
+      : null;
+  const legacyEffects = Array.isArray(renderState?.effects)
+    ? renderState.effects
+    : [];
+
+  const legacyById = new Map();
+  for (const effect of legacyEffects) {
+    if (!effect || typeof effect !== "object") {
+      continue;
+    }
+    const id = typeof effect.id === "string" ? effect.id : null;
+    if (!id) {
+      continue;
+    }
+    if (!legacyById.has(id)) {
+      legacyById.set(id, effect);
+    }
+  }
+
+  const consumedIds = new Set();
+  if (lifecycleEntries) {
+    for (const [effectId, entry] of lifecycleEntries.entries()) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const fallback = legacyById.get(effectId) ?? null;
+      const converted = contractLifecycleToEffect(entry, {
+        store,
+        renderState,
+        fallbackEffect: fallback,
+      });
+      if (!converted || typeof converted !== "object") {
+        continue;
+      }
+      if (typeof converted.id !== "string" || converted.id.length === 0) {
+        converted.id = effectId;
+      }
+      const legacyType = resolveLifecycleEffectType(entry, converted, fallback);
+      if (!legacyType) {
+        continue;
+      }
+      converted.type = legacyType;
+      markHiddenMetadata(converted, "__contractDerived", true);
+      const definitionId =
+        typeof entry.instance?.definitionId === "string"
+          ? entry.instance.definitionId
+          : null;
+      if (definitionId) {
+        markHiddenMetadata(converted, "__contractDefinitionId", definitionId);
+      }
+      addEffectToBucket(buckets, legacyType, converted);
+      consumedIds.add(effectId);
+    }
+  }
+
+  for (const effect of legacyEffects) {
+    if (!effect || typeof effect !== "object") {
+      continue;
+    }
+    const id = typeof effect.id === "string" ? effect.id : null;
+    if (id && consumedIds.has(id)) {
+      continue;
+    }
+    const type = typeof effect.type === "string" ? effect.type : null;
+    if (!type) {
+      continue;
+    }
+    addEffectToBucket(buckets, type, effect);
+  }
+
+  return buckets;
+}
+
 const EMPTY_LIFECYCLE_VIEW = {
   entries: new Map(),
   lastSeqById: new Map(),
@@ -215,11 +350,15 @@ function syncEffectsByType(
       : lifecycleEntries instanceof Map
         ? lifecycleEntries.get(id) ?? null
         : null;
-    const sourceEffect = contractLifecycleToEffect(lifecycleEntry, {
-      store,
-      renderState,
-      fallbackEffect: effect,
-    });
+    const derivedFromContract =
+      lifecycleEntry && effect && effect.__contractDerived === true;
+    const sourceEffect = derivedFromContract
+      ? effect
+      : contractLifecycleToEffect(lifecycleEntry, {
+          store,
+          renderState,
+          fallbackEffect: effect,
+        });
     if (!sourceEffect || typeof sourceEffect !== "object") {
       continue;
     }
@@ -691,7 +830,7 @@ function prepareEffectPass(
     manager.triggerAll(triggers, { store });
   }
 
-  const effects = Array.isArray(renderState?.effects) ? renderState.effects : [];
+  const effectBuckets = collectEffectRenderBuckets(store, renderState);
 
   syncEffectsByType(
     store,
@@ -699,7 +838,7 @@ function prepareEffectPass(
     "attack",
     MeleeSwingEffectDefinition,
     undefined,
-    effects,
+    effectBuckets.get("attack") ?? [],
     { lifecycle, renderState },
   );
   syncEffectsByType(
@@ -708,7 +847,7 @@ function prepareEffectPass(
     "fire",
     FireEffectDefinition,
     updateFireInstanceTransform,
-    effects,
+    effectBuckets.get("fire") ?? [],
     { lifecycle, renderState },
   );
   syncEffectsByType(
@@ -718,7 +857,7 @@ function prepareEffectPass(
     FireballZoneEffectDefinition,
     (instance, effect, state, lifecycleEntry) =>
       updateRectZoneInstance(instance, effect, state, lifecycleEntry),
-    effects,
+    effectBuckets.get("fireball") ?? [],
     { lifecycle, renderState },
   );
 
