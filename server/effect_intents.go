@@ -204,6 +204,48 @@ func NewStatusVisualIntent(target *actorState, sourceID, effectType string, life
 	return intent, true
 }
 
+// NewBurningTickIntent bridges a burning status-effect tick into a contract
+// EffectIntent so the EffectManager can drive damage-over-time through hook
+// callbacks instead of the legacy status pipeline.
+func NewBurningTickIntent(target *actorState, sourceID string, delta float64) (EffectIntent, bool) {
+	if target == nil || target.ID == "" {
+		return EffectIntent{}, false
+	}
+	if math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return EffectIntent{}, false
+	}
+	rounded := int(math.Round(delta))
+	if rounded == 0 {
+		return EffectIntent{}, false
+	}
+
+	geometry := EffectGeometry{
+		Shape:   GeometryShapeRect,
+		Width:   quantizeWorldCoord(playerHalf * 2),
+		Height:  quantizeWorldCoord(playerHalf * 2),
+		OffsetX: 0,
+		OffsetY: 0,
+	}
+
+	params := map[string]int{"healthDelta": rounded}
+
+	intent := EffectIntent{
+		TypeID:        effectTypeBurningTick,
+		Delivery:      DeliveryKindTarget,
+		SourceActorID: sourceID,
+		TargetActorID: target.ID,
+		Geometry:      geometry,
+		DurationTicks: 1,
+		Params:        params,
+	}
+
+	if intent.SourceActorID == "" {
+		intent.SourceActorID = target.ID
+	}
+
+	return intent, true
+}
+
 // NewBloodSplatterIntent mirrors the legacy blood decal trigger so the contract
 // manager can observe cosmetic spawns tied to melee damage.
 func NewBloodSplatterIntent(sourceID string, target *actorState) (EffectIntent, bool) {

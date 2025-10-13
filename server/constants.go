@@ -42,3 +42,23 @@ var enableContractEffectManager = false
 // `effect_update`, `effect_ended`, and `effect_seq_cursors` fields on the state
 // payload.
 var enableContractEffectTransport = false
+
+// enableContractMeleeDefinitions hands melee behaviour over to the contract
+// EffectManager hooks. When disabled, the legacy melee path remains
+// authoritative even if the manager records intents for observability.
+var enableContractMeleeDefinitions = false
+
+// enableContractProjectileDefinitions hands projectile behaviour over to the
+// contract EffectManager hooks. When disabled, the legacy projectile loop
+// continues to move and resolve hits even if the manager records intents.
+var enableContractProjectileDefinitions = false
+
+// enableContractBurningDefinitions hands burning status visuals and damage
+// ticks over to the contract EffectManager hooks. When disabled, legacy status
+// effects remain authoritative even if intents are recorded for observability.
+var enableContractBurningDefinitions = false
+
+// enableContractBloodDecalDefinitions hands blood decal visuals over to the
+// contract EffectManager hooks. When disabled, the legacy trigger path remains
+// authoritative even if intents are recorded for observability.
+var enableContractBloodDecalDefinitions = false
