@@ -12,6 +12,11 @@ import {
   mirrorEffectInstances,
 } from "./effect-manager-adapter.js";
 import {
+  contractLifecycleToEffect,
+  contractLifecycleToUpdatePayload,
+} from "./effect-lifecycle-translator.js";
+import { peekEffectLifecycleState } from "./effect-lifecycle.js";
+import {
   RENDER_MODE_PATCH,
   RENDER_MODE_SNAPSHOT,
 } from "./render-modes.js";
@@ -71,7 +76,50 @@ function toEffectArray(source) {
   return [];
 }
 
+const EMPTY_LIFECYCLE_VIEW = {
+  entries: new Map(),
+  lastSeqById: new Map(),
+  lastBatchTick: null,
+  getEntry: () => null,
+};
+
+function ensureLifecycleRenderView(store) {
+  const state = peekEffectLifecycleState(store);
+  if (!state) {
+    store.__effectLifecycleView = EMPTY_LIFECYCLE_VIEW;
+    store.__effectLifecycleViewVersion = null;
+    store.__effectLifecycleViewState = null;
+    return EMPTY_LIFECYCLE_VIEW;
+  }
+
+  if (
+    store.__effectLifecycleView &&
+    store.__effectLifecycleViewVersion === state.version &&
+    store.__effectLifecycleViewState === state
+  ) {
+    return store.__effectLifecycleView;
+  }
+
+  const view = {
+    entries: state.instances,
+    lastSeqById: state.lastSeqById,
+    lastBatchTick: state.lastBatchTick,
+    getEntry(effectId) {
+      if (typeof effectId !== "string" || effectId.length === 0) {
+        return null;
+      }
+      return state.instances.get(effectId) ?? null;
+    },
+  };
+
+  store.__effectLifecycleView = view;
+  store.__effectLifecycleViewVersion = state.version;
+  store.__effectLifecycleViewState = state;
+  return view;
+}
+
 function resolveRenderState(store) {
+  const lifecycle = ensureLifecycleRenderView(store);
   const wantsPatchMode = store?.renderMode === RENDER_MODE_PATCH;
   const patchedState = wantsPatchMode ? store?.patchState?.patched : null;
   if (wantsPatchMode && isPlainObject(patchedState)) {
@@ -83,6 +131,7 @@ function resolveRenderState(store) {
       groundItems: toEntriesMap(patchedState.groundItems),
       tick: patchedState.tick,
       sequence: patchedState.sequence,
+      lifecycle,
     };
   }
 
@@ -94,6 +143,7 @@ function resolveRenderState(store) {
     groundItems: toEntriesMap(store?.groundItems),
     tick: store?.lastTick ?? null,
     sequence: null,
+    lifecycle,
   };
 }
 
@@ -120,11 +170,24 @@ function syncEffectsByType(
   type,
   definition,
   onUpdate,
-  effectsOverride
+  effectsOverride,
+  options = {}
 ) {
   if (!manager || typeof type !== "string" || type.length === 0) {
     return;
   }
+  const lifecycleView =
+    options && typeof options === "object" ? options.lifecycle ?? null : null;
+  const lifecycleEntries =
+    lifecycleView && lifecycleView.entries instanceof Map
+      ? lifecycleView.entries
+      : null;
+  const getLifecycleEntry =
+    lifecycleView && typeof lifecycleView.getEntry === "function"
+      ? lifecycleView.getEntry
+      : null;
+  const renderState =
+    options && typeof options === "object" ? options.renderState ?? null : null;
   const effects = Array.isArray(effectsOverride)
     ? effectsOverride
     : Array.isArray(store.effects)
@@ -147,13 +210,26 @@ function syncEffectsByType(
     if (!id) {
       continue;
     }
+    const lifecycleEntry = getLifecycleEntry
+      ? getLifecycleEntry(id)
+      : lifecycleEntries instanceof Map
+        ? lifecycleEntries.get(id) ?? null
+        : null;
+    const sourceEffect = contractLifecycleToEffect(lifecycleEntry, {
+      store,
+      renderState,
+      fallbackEffect: effect,
+    });
+    if (!sourceEffect || typeof sourceEffect !== "object") {
+      continue;
+    }
     seen.add(id);
     let instance = tracked.get(id);
     if (!instance) {
       const spawnOptions =
         typeof definition.fromEffect === "function"
-          ? definition.fromEffect(effect, store)
-          : { ...effect };
+          ? definition.fromEffect(sourceEffect, store, lifecycleEntry)
+          : { ...sourceEffect };
       if (!spawnOptions || typeof spawnOptions !== "object") {
         continue;
       }
@@ -170,8 +246,20 @@ function syncEffectsByType(
         continue;
       }
     }
+    if (instance) {
+      if (lifecycleEntry) {
+        instance.__effectLifecycleEntry = lifecycleEntry;
+      } else if (instance.__effectLifecycleEntry) {
+        delete instance.__effectLifecycleEntry;
+      }
+    }
     if (instance && typeof onUpdate === "function") {
-      onUpdate(instance, effect, store);
+      const updatePayload = contractLifecycleToUpdatePayload(lifecycleEntry, {
+        store,
+        renderState,
+        fallbackEffect: sourceEffect,
+      });
+      onUpdate(instance, updatePayload, store, lifecycleEntry);
     }
   }
 
@@ -182,6 +270,9 @@ function syncEffectsByType(
       }
     }
     if (!seen.has(trackedId)) {
+      if (instance && instance.__effectLifecycleEntry) {
+        delete instance.__effectLifecycleEntry;
+      }
       manager.removeInstance(instance);
     }
   }
@@ -581,15 +672,18 @@ function prepareEffectPass(
   }
 
   const manager = ensureEffectManager(store);
+  const lifecycle = renderState?.lifecycle || ensureLifecycleRenderView(store);
   const normalizedFrameNow = Number.isFinite(frameNow) ? frameNow : null;
+  const lastPass = store.__lastEffectPass;
   if (
     normalizedFrameNow !== null &&
     typeof store.__lastEffectFrameNow === "number" &&
     store.__lastEffectFrameNow === normalizedFrameNow &&
-    store.__lastEffectPass &&
-    store.__lastEffectPass.manager === manager
+    lastPass &&
+    lastPass.manager === manager &&
+    lastPass.lifecycle === lifecycle
   ) {
-    return store.__lastEffectPass;
+    return lastPass;
   }
 
   const triggers = drainPendingEffectTriggers(store);
@@ -605,7 +699,8 @@ function prepareEffectPass(
     "attack",
     MeleeSwingEffectDefinition,
     undefined,
-    effects
+    effects,
+    { lifecycle, renderState },
   );
   syncEffectsByType(
     store,
@@ -613,15 +708,18 @@ function prepareEffectPass(
     "fire",
     FireEffectDefinition,
     updateFireInstanceTransform,
-    effects
+    effects,
+    { lifecycle, renderState },
   );
   syncEffectsByType(
     store,
     manager,
     "fireball",
     FireballZoneEffectDefinition,
-    (instance, effect, state) => updateRectZoneInstance(instance, effect, state),
-    effects
+    (instance, effect, state, lifecycleEntry) =>
+      updateRectZoneInstance(instance, effect, state, lifecycleEntry),
+    effects,
+    { lifecycle, renderState },
   );
 
   const camera = store.camera || { x: 0, y: 0 };
@@ -652,7 +750,7 @@ function prepareEffectPass(
   manager.collectDecals(frameContext.now);
   mirrorEffectInstances(store, manager);
 
-  const effectPass = { manager, frameContext };
+  const effectPass = { manager, frameContext, lifecycle };
   if (normalizedFrameNow !== null) {
     store.__lastEffectFrameNow = normalizedFrameNow;
   } else {

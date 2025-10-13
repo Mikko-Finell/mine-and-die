@@ -127,9 +127,72 @@ describe("effect-lifecycle", () => {
   test("resetEffectLifecycleState clears tracked entries", () => {
     const store = {};
     applyEffectLifecycleBatch(store, { effect_spawned: [createSpawnEvent()] });
+    store.__effectLifecycleView = { stale: true };
+    store.__effectLifecycleViewVersion = 42;
+    store.__effectLifecycleViewState = {};
     resetEffectLifecycleState(store);
     const state = ensureEffectLifecycleState(store);
     expect(state.instances.size).toBe(0);
     expect(state.lastSeqById.size).toBe(0);
+    expect(store.__effectLifecycleView).toBeUndefined();
+    expect(store.__effectLifecycleViewVersion).toBeUndefined();
+    expect(store.__effectLifecycleViewState).toBeUndefined();
+  });
+
+  test("version increments only when lifecycle state mutates", () => {
+    const store = {};
+    const state = ensureEffectLifecycleState(store);
+    expect(state.version).toBe(0);
+
+    applyEffectLifecycleBatch(store, { effect_spawned: [createSpawnEvent()] });
+    expect(state.version).toBe(1);
+
+    applyEffectLifecycleBatch(store, { effect_spawned: [createSpawnEvent()] });
+    expect(state.version).toBe(1);
+
+    applyEffectLifecycleBatch(store, {
+      effect_update: [
+        {
+          id: "effect-1",
+          seq: 2,
+          tick: 11,
+          deliveryState: { geometry: { shape: "rect", width: 4 } },
+        },
+      ],
+    });
+    expect(state.version).toBe(2);
+
+    applyEffectLifecycleBatch(store, {
+      effect_update: [
+        {
+          id: "effect-1",
+          seq: 2,
+          tick: 12,
+        },
+      ],
+    });
+    expect(state.version).toBe(2);
+
+    applyEffectLifecycleBatch(store, {
+      effect_seq_cursors: { "effect-1": 5 },
+    });
+    expect(state.version).toBe(3);
+
+    applyEffectLifecycleBatch(store, {
+      effect_seq_cursors: { "effect-1": 4 },
+    });
+    expect(state.version).toBe(3);
+
+    applyEffectLifecycleBatch(store, {
+      effect_ended: [
+        {
+          id: "effect-1",
+          seq: 6,
+          tick: 15,
+          reason: "expired",
+        },
+      ],
+    });
+    expect(state.version).toBe(4);
   });
 });

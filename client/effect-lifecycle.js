@@ -9,6 +9,7 @@ function createLifecycleState() {
     instances: new Map(),
     lastSeqById: new Map(),
     lastBatchTick: null,
+    version: 0,
   };
 }
 
@@ -16,7 +17,8 @@ function isLifecycleState(value) {
   return (
     isPlainObject(value) &&
     value.instances instanceof Map &&
-    value.lastSeqById instanceof Map
+    value.lastSeqById instanceof Map &&
+    typeof value.version === "number"
   );
 }
 
@@ -245,6 +247,15 @@ export function resetEffectLifecycleState(store) {
     return;
   }
   store[LIFECYCLE_STATE_KEY] = createLifecycleState();
+  if (store.__effectLifecycleView) {
+    delete store.__effectLifecycleView;
+  }
+  if (store.__effectLifecycleViewVersion) {
+    delete store.__effectLifecycleViewVersion;
+  }
+  if (store.__effectLifecycleViewState) {
+    delete store.__effectLifecycleViewState;
+  }
 }
 
 export function getEffectLifecycleEntry(store, effectId) {
@@ -276,6 +287,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
 
   const batch = normalizeLifecycleBatch(payload);
   let latestTick = state.lastBatchTick;
+  let mutated = false;
 
   for (const spawn of batch.spawns) {
     const lastSeq = state.lastSeqById.get(spawn.id);
@@ -294,6 +306,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     state.instances.set(spawn.id, entry);
     state.lastSeqById.set(spawn.id, spawn.seq);
     summary.spawns.push(spawn.id);
+    mutated = true;
     if (spawn.tick !== null) {
       latestTick = latestTick === null ? spawn.tick : Math.max(latestTick, spawn.tick);
     }
@@ -314,6 +327,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     applyUpdate(entry, update);
     state.lastSeqById.set(update.id, update.seq);
     summary.updates.push(update.id);
+    mutated = true;
     if (update.tick !== null) {
       latestTick = latestTick === null ? update.tick : Math.max(latestTick, update.tick);
     }
@@ -334,6 +348,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
       applyUpdate(entry, update);
       state.lastSeqById.set(update.id, update.seq);
       summary.updates.push(update.id);
+      mutated = true;
       if (update.tick !== null) {
         latestTick = latestTick === null ? update.tick : Math.max(latestTick, update.tick);
       }
@@ -350,6 +365,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     if (!entry) {
       summary.droppedEnds.push(end.id);
       state.lastSeqById.set(end.id, end.seq);
+      mutated = true;
       continue;
     }
     entry.seq = end.seq;
@@ -360,6 +376,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     state.lastSeqById.set(end.id, end.seq);
     state.instances.delete(end.id);
     summary.ends.push(end.id);
+    mutated = true;
     if (end.tick !== null) {
       latestTick = latestTick === null ? end.tick : Math.max(latestTick, end.tick);
     }
@@ -369,11 +386,20 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     const lastSeq = state.lastSeqById.get(id);
     if (lastSeq === undefined || seq > lastSeq) {
       state.lastSeqById.set(id, seq);
+      mutated = true;
     }
   }
 
   if (latestTick !== null) {
-    state.lastBatchTick = latestTick;
+    const previousTick = state.lastBatchTick;
+    if (previousTick === null || latestTick > previousTick) {
+      state.lastBatchTick = latestTick;
+      mutated = true;
+    }
+  }
+
+  if (mutated) {
+    state.version = (state.version + 1) >>> 0;
   }
 
   if (Array.isArray(summary.unknownUpdates) && summary.unknownUpdates.length > 0) {
