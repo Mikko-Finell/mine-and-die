@@ -258,12 +258,13 @@ type telemetryCounters struct {
 	keyframeNacksRateLimited     atomic.Uint64
 	keyframeRequestLatencyMillis atomic.Uint64
 
-	effectsSpawnedTotal layeredCounter
-	effectsUpdatedTotal layeredCounter
-	effectsEndedTotal   layeredCounter
-	effectsActiveGauge  atomic.Int64
-	triggerEnqueued     simpleCounter
-	journalDrops        simpleCounter
+	effectsSpawnedTotal    layeredCounter
+	effectsUpdatedTotal    layeredCounter
+	effectsEndedTotal      layeredCounter
+	effectsActiveGauge     atomic.Int64
+	effectsSpatialOverflow simpleCounter
+	triggerEnqueued        simpleCounter
+	journalDrops           simpleCounter
 
 	totalTicks   atomic.Uint64
 	effectParity effectParityAggregator
@@ -287,10 +288,11 @@ type telemetrySnapshot struct {
 }
 
 type telemetryEffectsSnapshot struct {
-	SpawnedTotal map[string]map[string]uint64 `json:"spawnedTotal,omitempty"`
-	UpdatedTotal map[string]map[string]uint64 `json:"updatedTotal,omitempty"`
-	EndedTotal   map[string]map[string]uint64 `json:"endedTotal,omitempty"`
-	ActiveGauge  int64                        `json:"activeGauge"`
+	SpawnedTotal    map[string]map[string]uint64 `json:"spawnedTotal,omitempty"`
+	UpdatedTotal    map[string]map[string]uint64 `json:"updatedTotal,omitempty"`
+	EndedTotal      map[string]map[string]uint64 `json:"endedTotal,omitempty"`
+	ActiveGauge     int64                        `json:"activeGauge"`
+	SpatialOverflow map[string]uint64            `json:"spatialOverflow,omitempty"`
 }
 
 type telemetryEffectTriggersSnapshot struct {
@@ -335,9 +337,10 @@ func (t *telemetryCounters) RecordTickDuration(duration time.Duration) {
 		spawned := t.effectsSpawnedTotal.snapshot()
 		updated := t.effectsUpdatedTotal.snapshot()
 		ended := t.effectsEndedTotal.snapshot()
+		overflow := t.effectsSpatialOverflow.snapshot()
 		triggers := t.triggerEnqueued.snapshot()
 		fmt.Printf(
-			"[telemetry] tick=%dms bytes=%d totalBytes=%d entities=%d totalEntities=%d effectsActive=%d spawned=%v updated=%v ended=%v triggers=%v\n",
+			"[telemetry] tick=%dms bytes=%d totalBytes=%d entities=%d totalEntities=%d effectsActive=%d spawned=%v updated=%v ended=%v overflow=%v triggers=%v\n",
 			millis,
 			t.lastBroadcastBytes.Load(),
 			t.bytesSent.Load(),
@@ -347,6 +350,7 @@ func (t *telemetryCounters) RecordTickDuration(duration time.Duration) {
 			spawned,
 			updated,
 			ended,
+			overflow,
 			triggers,
 		)
 	}
@@ -401,6 +405,13 @@ func (t *telemetryCounters) RecordEffectEnded(effectType, reason string) {
 	t.effectsEndedTotal.add(effectType, reason, 1)
 }
 
+func (t *telemetryCounters) RecordEffectSpatialOverflow(effectType string) {
+	if t == nil {
+		return
+	}
+	t.effectsSpatialOverflow.add(effectType, 1)
+}
+
 func (t *telemetryCounters) RecordEffectsActive(count int) {
 	if t == nil {
 		return
@@ -450,10 +461,11 @@ func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 		KeyframeNacksRateLimited: t.keyframeNacksRateLimited.Load(),
 		KeyframeRequestLatencyMs: t.keyframeRequestLatencyMillis.Load(),
 		Effects: telemetryEffectsSnapshot{
-			SpawnedTotal: t.effectsSpawnedTotal.snapshot(),
-			UpdatedTotal: t.effectsUpdatedTotal.snapshot(),
-			EndedTotal:   t.effectsEndedTotal.snapshot(),
-			ActiveGauge:  t.effectsActiveGauge.Load(),
+			SpawnedTotal:    t.effectsSpawnedTotal.snapshot(),
+			UpdatedTotal:    t.effectsUpdatedTotal.snapshot(),
+			EndedTotal:      t.effectsEndedTotal.snapshot(),
+			ActiveGauge:     t.effectsActiveGauge.Load(),
+			SpatialOverflow: t.effectsSpatialOverflow.snapshot(),
 		},
 		EffectTriggers: telemetryEffectTriggersSnapshot{
 			EnqueuedTotal: t.triggerEnqueued.snapshot(),

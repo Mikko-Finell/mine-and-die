@@ -329,8 +329,18 @@ func (w *World) SetEffectPosition(eff *effectState, x, y float64) {
 		return
 	}
 
+	oldX := eff.X
+	oldY := eff.Y
 	eff.X = x
 	eff.Y = y
+	if w.effectsIndex != nil {
+		if !w.effectsIndex.Upsert(eff) {
+			eff.X = oldX
+			eff.Y = oldY
+			_ = w.effectsIndex.Upsert(eff)
+			return
+		}
+	}
 	eff.version++
 
 	w.appendPatch(PatchEffectPos, eff.ID, EffectPosPayload{X: x, Y: y})
