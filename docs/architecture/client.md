@@ -5,7 +5,8 @@ The client is a lightweight ES module bundle served directly from the Go server.
 ## Module Overview
 - `index.html` – Declares the canvas, status text, diagnostics panel, and loads `main.js` via `<script type="module">`.
 - `main.js` – Builds the shared `store` object, wires diagnostics UI (including the inventory grid and world reset form), seeds the patch-testing container, and starts input, render, and networking flows.【F:client/main.js†L1-L210】 The debug panel exposes toggles, spawn counts, and a deterministic seed input so QA can regenerate identical layouts on demand.【F:client/main.js†L17-L210】
-- `network.js` – Handles the `/join` handshake, WebSocket lifecycle, diff + keyframe plumbing, heartbeat timers, and outbound message helpers (including console commands). It also normalises snapshots into store dictionaries and keeps diagnostics in sync.【F:client/network.js†L905-L1200】【F:client/network.js†L943-L1094】
+- `network.js` – Handles the `/join` handshake, WebSocket lifecycle, diff + keyframe plumbing, heartbeat timers, and outbound message helpers (including console commands). It also normalises snapshots into store dictionaries, applies contract lifecycle batches, and keeps diagnostics in sync.【F:client/network.js†L905-L1341】
+- `effect-lifecycle.js` – Owns the client-side registry of active contract effects, applies lifecycle batches in a two-pass order, and exposes helpers for diagnostics and rendering integration.【F:client/effect-lifecycle.js†L224-L415】
 - `heartbeat.js` – Provides `computeRtt` and the reusable `createHeartbeat` interval helper for latency tracking.【F:client/heartbeat.js†L1-L41】
 - `patches.js` – Maintains a background snapshot, applies server patch batches, tracks keyframe recovery, and surfaces replay diagnostics for the debug panel.【F:client/patches.js†L1-L200】【F:client/patches.js†L720-L964】
 - `input.js` – Converts keyboard events into normalized intents and action messages.
@@ -23,7 +24,8 @@ The client is a lightweight ES module bundle served directly from the Go server.
   - Arrays for `obstacles` and `effects` plus a `groundItems` map so the renderer can draw dropped loot with quantities.【F:client/main.js†L153-L210】【F:client/render.js†L338-L405】
   - Effect runtime: a shared `effectManager` instance drives all combat visuals while
     `pendingEffectTriggers` / `processedEffectTriggerIds` ensure fire-and-forget payloads are
-    applied exactly once on the client.【F:client/main.js†L194-L210】【F:client/network.js†L647-L706】
+    applied exactly once. Contract batches feed `lastEffectLifecycleSummary` and
+    `effectDiagnostics` so the diagnostics drawer can report dropped or unknown events.【F:client/main.js†L728-L777】【F:client/network.js†L1126-L1341】
   - Patch testing: `patchState` stores the diff baseline, error history, pending keyframe requests, and replay queues surfaced in the diagnostics panel.【F:client/main.js†L193-L210】【F:client/network.js†L841-L899】【F:client/index.html†L288-L315】
   - Heartbeat + latency metadata (`lastHeartbeatSentAt`, `lastHeartbeatAckAt`, `latencyMs`, `hudNetworkEls`) keeps HUD chips and diagnostics current.【F:client/main.js†L161-L210】【F:client/network.js†L905-L1141】
   - `worldConfig` mirrors the server's toggles, counts, and seed so the world reset form reflects authoritative values.【F:client/main.js†L78-L210】【F:client/network.js†L943-L1086】
@@ -36,7 +38,7 @@ The client is a lightweight ES module bundle served directly from the Go server.
 5. `connectEvents(store)` sets up WebSocket callbacks, starts heartbeats, and keeps patch/keyframe bookkeeping in sync with every message.【F:client/network.js†L1001-L1141】
 
 ## Networking Details
-- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, optional `effectTriggers`, optional `groundItems`, journaled `patches`, the current tick (`t`), monotonic `sequence`/`keyframeSeq`, `serverTime`, the active world `config`, and a `resync` flag. The client applies the snapshot, queues effect triggers, advances the patch baseline, and updates diagnostics + HUD tick counters.【F:server/messages.go†L17-L32】【F:client/network.js†L1043-L1124】
+- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, effects, optional `effectTriggers`, optional `groundItems`, lifecycle arrays (`effect_spawned`/`effect_update`/`effect_ended` with cursors), journaled `patches`, the current tick (`t`), monotonic `sequence`/`keyframeSeq`, `serverTime`, the active world `config`, and a `resync` flag. The client applies the snapshot, queues effect triggers, runs `applyEffectLifecycleBatch`, advances the patch baseline, and updates diagnostics + HUD tick counters.【F:server/messages.go†L18-L39】【F:client/network.js†L1231-L1339】【F:client/effect-lifecycle.js†L272-L415】
 - **Intents:** `sendCurrentIntent` serializes `{ type: "input", dx, dy, facing }` whenever movement or facing changes.
 - **Path navigation:** `sendMoveTo` sends `{ type: "path", x, y }` for click-to-move requests while `sendCancelPath` clears the server-driven route when WASD input resumes.
 - **Actions:** `sendAction` is used by `input.js` for melee and fireball triggers.
@@ -82,5 +84,6 @@ The client is a lightweight ES module bundle served directly from the Go server.
 ## Troubleshooting Tips
 - Use the diagnostics panel toggle to watch connection state, latency, outbound message counts, and patch replay stats surfaced from `patchState`.【F:client/index.html†L288-L315】【F:client/main.js†L420-L620】
 - The diagnostics drawer also mirrors the background patch baseline, replay summary, and entity counts so you can compare snapshot and diff pipelines at a glance without inspecting the console.【F:client/index.html†L288-L315】【F:client/main.js†L420-L620】
+- Contract lifecycle metrics live next to patch stats—expand the diagnostics drawer to inspect `lastEffectLifecycleSummary` and confirm spawns/updates/ends are flowing for each tick.【F:client/main.js†L728-L777】【F:client/network.js†L1126-L1341】
 - Heartbeat issues usually show up as missing `ack` timestamps—ensure the WebSocket stays open and `sendHeartbeat` is firing.
 - If the client loses track of its player record, the status text will prompt a reconnect; inspect `/diagnostics` on the server for confirmation.

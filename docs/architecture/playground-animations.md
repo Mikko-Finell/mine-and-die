@@ -38,7 +38,9 @@ To add a new animation:
 
 Animations implement the `EffectDefinition<TOptions>` contract. The definition
 is a factory that produces `EffectInstance` objects responsible for simulation
-and drawing.
+and drawing, and in the unified pipeline it also exposes a
+`fromEffect` helper so contract payloads from the server can be converted into
+spawn options automatically.【F:client/render.js†L320-L378】【F:client/js-effects/effects/meleeSwing.js†L90-L137】
 
 ```ts
 export interface EffectDefinition<TOptions> {
@@ -50,13 +52,22 @@ export interface EffectDefinition<TOptions> {
     preset?: EffectPreset | Partial<EffectPreset>,
     overrides?: Record<string, unknown>
   ): EffectInstance;
+  fromEffect?(
+    effect: Record<string, unknown>,
+    store: Record<string, unknown>,
+    lifecycleEntry?: Record<string, unknown>
+  ): Record<string, unknown> | null;
 }
 ```
 
 The playground calls `create` with the current option overrides and the origin
 coordinate whenever you click "Spawn". Optional `createFromPreset` helpers let
 other hosts materialise the animation from serialized presets, but the
-playground only requires `type`, `defaults`, and `create`.
+playground only requires `type`, `defaults`, and `create`. When an animation is
+used inside the game client, `render.syncEffectsByType` will invoke
+`fromEffect` (when provided) with the authoritative contract payload so the
+definition can translate quantized geometry, durations, and custom params into
+runtime-friendly options.【F:client/render.js†L340-L401】
 
 The instance returned by `create` must implement the `EffectInstance`
 interface:
