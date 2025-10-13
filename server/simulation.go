@@ -428,22 +428,22 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 		switch action.command.Name {
 		case effectTypeAttack:
 			if enableContractEffectManager && w.effectManager != nil {
-				w.effectManager.EnqueueIntent(EffectIntent{
-					TypeID:        effectTypeAttack,
-					Delivery:      DeliveryKindArea,
-					SourceActorID: action.actorID,
-					Geometry:      EffectGeometry{Shape: GeometryShapeRect},
-				})
+				if owner, _ := w.abilityOwner(action.actorID); owner != nil {
+					if intent, ok := NewMeleeIntent(owner); ok {
+						w.effectManager.EnqueueIntent(intent)
+					}
+				}
 			}
 			w.triggerMeleeAttack(action.actorID, tick, now)
 		case effectTypeFireball:
 			if enableContractEffectManager && w.effectManager != nil {
-				w.effectManager.EnqueueIntent(EffectIntent{
-					TypeID:        effectTypeFireball,
-					Delivery:      DeliveryKindArea,
-					SourceActorID: action.actorID,
-					Geometry:      EffectGeometry{Shape: GeometryShapeCircle},
-				})
+				if owner, _ := w.abilityOwner(action.actorID); owner != nil {
+					if tpl := w.projectileTemplates[effectTypeFireball]; tpl != nil {
+						if intent, ok := NewProjectileIntent(owner, tpl); ok {
+							w.effectManager.EnqueueIntent(intent)
+						}
+					}
+				}
 			}
 			w.triggerFireball(action.actorID, now)
 		}
