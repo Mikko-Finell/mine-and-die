@@ -27,6 +27,10 @@ function quantizedToWorld(value, tileSize) {
   return (numeric / COORD_SCALE) * tileSize;
 }
 
+function hasOwn(object, key) {
+  return !!object && Object.prototype.hasOwnProperty.call(object, key);
+}
+
 function copyParams(source, target) {
   if (!isPlainObject(source)) {
     return;
@@ -125,6 +129,12 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
 
   const geometry = instance.deliveryState?.geometry ?? null;
   const motion = instance.deliveryState?.motion ?? null;
+  const definitionMotionKind =
+    typeof instance.definition?.motion === "string"
+      ? instance.definition.motion
+      : null;
+  const motionUsesAbsolutePosition =
+    definitionMotionKind === "linear" || definitionMotionKind === "parabolic";
 
   const quantToWorld = (value) => quantizedToWorld(value, tileSize);
 
@@ -147,15 +157,53 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     effect.height = height;
   }
 
-  let centerX = quantToWorld(motion?.positionX);
-  let centerY = quantToWorld(motion?.positionY);
-
   const offsetX = quantToWorld(geometry?.offsetX);
   const offsetY = quantToWorld(geometry?.offsetY);
 
   const anchor =
     findActorPosition(renderState, store, instance.followActorId) ??
     findActorPosition(renderState, store, instance.ownerActorId);
+
+  let centerX = null;
+  let centerY = null;
+
+  const motionCenterX = hasOwn(motion, "positionX")
+    ? quantToWorld(motion.positionX)
+    : null;
+  if (
+    motionCenterX !== null &&
+    (motionCenterX !== 0 ||
+      motionUsesAbsolutePosition ||
+      (!anchor && offsetX === null))
+  ) {
+    centerX = motionCenterX;
+  }
+
+  const motionCenterY = hasOwn(motion, "positionY")
+    ? quantToWorld(motion.positionY)
+    : null;
+  if (
+    motionCenterY !== null &&
+    (motionCenterY !== 0 ||
+      motionUsesAbsolutePosition ||
+      (!anchor && offsetY === null))
+  ) {
+    centerY = motionCenterY;
+  }
+
+  const extra = instance.behaviorState?.extra ?? null;
+  const extraCenterX = hasOwn(extra, "centerX")
+    ? quantToWorld(extra.centerX)
+    : null;
+  const extraCenterY = hasOwn(extra, "centerY")
+    ? quantToWorld(extra.centerY)
+    : null;
+  if (centerX === null && extraCenterX !== null) {
+    centerX = extraCenterX;
+  }
+  if (centerY === null && extraCenterY !== null) {
+    centerY = extraCenterY;
+  }
 
   if (centerX === null && offsetX !== null && anchor) {
     centerX = anchor.x + offsetX;
@@ -169,6 +217,13 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   }
   if (centerY === null && offsetY !== null) {
     centerY = offsetY;
+  }
+
+  if (centerX === null && anchor) {
+    centerX = anchor.x;
+  }
+  if (centerY === null && anchor) {
+    centerY = anchor.y;
   }
 
   if (centerX !== null) {

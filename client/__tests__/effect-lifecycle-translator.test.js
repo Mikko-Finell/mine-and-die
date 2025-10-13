@@ -83,4 +83,40 @@ describe("contractLifecycleToEffect", () => {
     expect(result.x).toBeCloseTo(220);
     expect(result.y).toBeCloseTo(290);
   });
+
+  test("uses owner anchor when motion coordinates are zeroed", () => {
+    const lifecycleEntry = {
+      instance: {
+        id: "contract-melee",
+        definitionId: "attack",
+        ownerActorId: "player-1",
+        definition: { motion: "instant" },
+        deliveryState: {
+          geometry: {
+            shape: "rect",
+            width: 22,
+            height: 16,
+            offsetX: 17,
+          },
+          motion: {
+            positionX: 0,
+            positionY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: 3,
+          extra: { reach: 56 },
+        },
+      },
+    };
+    const store = {
+      TILE_SIZE: 40,
+      players: { "player-1": { x: 200, y: 200 } },
+    };
+
+    const result = contractLifecycleToEffect(lifecycleEntry, { store });
+
+    expect(result.x).toBeCloseTo(215);
+    expect(result.y).toBeCloseTo(180);
+  });
 });
