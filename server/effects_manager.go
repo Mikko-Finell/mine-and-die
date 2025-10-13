@@ -171,6 +171,35 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 	}
 }
 
+// SnapshotSpawnEvents constructs spawn envelopes for every active contract
+// effect without mutating manager state. Callers must coordinate external
+// locking before iterating live instances.
+func (m *EffectManager) SnapshotSpawnEvents() []EffectSpawnEvent {
+	if m == nil {
+		return nil
+	}
+	if len(m.instances) == 0 {
+		return nil
+	}
+	events := make([]EffectSpawnEvent, 0, len(m.instances))
+	for id, instance := range m.instances {
+		if instance == nil {
+			continue
+		}
+		clone := m.cloneInstanceForSpawn(instance)
+		seq := m.seqByInstance[id]
+		if seq <= 0 {
+			seq = 1
+		}
+		events = append(events, EffectSpawnEvent{
+			Tick:     instance.StartTick,
+			Seq:      seq,
+			Instance: clone,
+		})
+	}
+	return events
+}
+
 func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *EffectInstance {
 	m.nextInstanceID++
 	id := fmt.Sprintf("contract-effect-%d", m.nextInstanceID)

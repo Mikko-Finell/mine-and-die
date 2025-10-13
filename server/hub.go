@@ -980,6 +980,10 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	seq, resync := h.nextStateMeta(drainPatches)
 	effectManagerPresent := enableContractEffectManager && h.world.effectManager != nil
 	effectTransportEnabled := effectManagerPresent && enableContractEffectTransport
+	var snapshotSpawns []EffectSpawnEvent
+	if includeSnapshot && effectManagerPresent {
+		snapshotSpawns = h.world.effectManager.SnapshotSpawnEvents()
+	}
 	journal := &h.world.journal
 	h.mu.Unlock()
 
@@ -1124,6 +1128,24 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		msg.EffectEnds = effectBatch.Ends
 		if len(effectBatch.LastSeqByID) > 0 {
 			msg.EffectSeqCursors = effectBatch.LastSeqByID
+		}
+		if includeSnapshot && len(snapshotSpawns) > 0 {
+			existing := make(map[string]struct{}, len(msg.EffectSpawns))
+			for _, spawn := range msg.EffectSpawns {
+				if spawn.Instance.ID == "" {
+					continue
+				}
+				existing[spawn.Instance.ID] = struct{}{}
+			}
+			for _, spawn := range snapshotSpawns {
+				if spawn.Instance.ID == "" {
+					continue
+				}
+				if _, found := existing[spawn.Instance.ID]; found {
+					continue
+				}
+				msg.EffectSpawns = append(msg.EffectSpawns, spawn)
+			}
 		}
 	}
 

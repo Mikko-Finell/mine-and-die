@@ -305,6 +305,75 @@ func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestStateMessageIncludesBaselineSpawnsOnSnapshot(t *testing.T) {
+	originalManager := enableContractEffectManager
+	originalTransport := enableContractEffectTransport
+	enableContractEffectManager = true
+	enableContractEffectTransport = true
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractEffectTransport = originalTransport
+	}()
+
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+
+	if hub.world.effectManager == nil {
+		t.Fatalf("expected effect manager to be initialized when flag enabled")
+	}
+
+	hub.world.effectManager.EnqueueIntent(EffectIntent{
+		TypeID:   effectTypeFireball,
+		Delivery: DeliveryKindArea,
+		Geometry: EffectGeometry{Shape: GeometryShapeCircle},
+	})
+
+	hub.advance(time.Now(), 1.0/float64(tickRate))
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true); err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error on snapshot: %v", err)
+	}
+
+	payload := make(map[string]any)
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+
+	rawSpawns, ok := payload["effect_spawned"]
+	if !ok {
+		t.Fatalf("expected snapshot payload to include baseline effect_spawned events")
+	}
+	spawns, ok := rawSpawns.([]any)
+	if !ok || len(spawns) == 0 {
+		t.Fatalf("expected baseline effect_spawned to be non-empty, got %T len %d", rawSpawns, len(spawns))
+	}
+
+	// Ensure the existing contract effect is represented in the snapshot.
+	found := false
+	for _, entry := range spawns {
+		spawn, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		instance, ok := spawn["instance"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if id, ok := instance["id"].(string); ok && id == "contract-effect-1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected snapshot baseline to include contract-effect-1, got %+v", spawns)
+	}
+}
+
 func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
