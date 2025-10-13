@@ -1,89 +1,176 @@
 # Client Architecture
 
-The client is a lightweight ES module bundle served directly from the Go server. No bundler or framework is required—open `index.html` and the modules bootstrap themselves.
+The browser client is delivered as a set of ES modules that the Go server serves verbatim.
+`index.html` declares the canvas, HUD labels, world reset controls, and mounts a custom
+`<game-client-app>` element; loading `main.js` bootstraps every other module without a
+bundler or framework build step.【F:client/index.html†L1-L65】【F:client/main.js†L1-L37】
 
-## Module Overview
-- `index.html` – Declares the canvas, status text, diagnostics panel, and loads `main.js` via `<script type="module">`.
-- `main.js` – Builds the shared `store` object, wires diagnostics UI (including the inventory grid and world reset form), seeds the patch-testing container, and starts input, render, and networking flows.【F:client/main.js†L1-L210】 The debug panel exposes toggles, spawn counts, and a deterministic seed input so QA can regenerate identical layouts on demand.【F:client/main.js†L17-L210】
-- `network.js` – Handles the `/join` handshake, WebSocket lifecycle, diff + keyframe plumbing, heartbeat timers, and outbound message helpers (including console commands). It also normalises snapshots into store dictionaries, applies contract lifecycle batches, and keeps diagnostics in sync.【F:client/network.js†L905-L1341】
-- `effect-lifecycle.js` – Owns the client-side registry of active contract effects, applies lifecycle batches in a two-pass order, and exposes helpers for diagnostics and rendering integration.【F:client/effect-lifecycle.js†L224-L415】
-- `heartbeat.js` – Provides `computeRtt` and the reusable `createHeartbeat` interval helper for latency tracking.【F:client/heartbeat.js†L1-L41】
-- `patches.js` – Maintains a background snapshot, applies server patch batches, tracks keyframe recovery, and surfaces replay diagnostics for the debug panel.【F:client/patches.js†L1-L200】【F:client/patches.js†L720-L964】
-- `input.js` – Converts keyboard events into normalized intents and action messages.
-- `render.js` – Performs `<canvas>` drawing, lerps network state to display positions, and renders effects/obstacles.
-- `styles.css` – Minimal styling for layout and diagnostics readouts.
-- `vendor/` – Drop-in ES modules for third-party helpers. Import them from client code via `import … from "./vendor/<file>.js"`.
+## Module Map
 
-## Store Shape
-`main.js` creates a plain object (`store`) shared across modules. Key fields:
-- DOM references (canvas, status text, diagnostics elements).
-- Simulation constants (`TILE_SIZE`, `PLAYER_SIZE`, etc.).
-- Connection state (`socket`, `playerId`, heartbeat timestamps, last authoritative tick).
-  - Player dictionaries: `players` (authoritative) and `displayPlayers` (interpolated positions).
-  - NPC dictionaries: `npcs` mirrors neutral enemies from the server, `displayNPCs` lerps their positions for rendering.
-  - Arrays for `obstacles` and `effects` plus a `groundItems` map so the renderer can draw dropped loot with quantities.【F:client/main.js†L153-L210】【F:client/render.js†L338-L405】
-  - Effect runtime: a shared `effectManager` instance drives all combat visuals while
-    `pendingEffectTriggers` / `processedEffectTriggerIds` ensure fire-and-forget payloads are
-    applied exactly once. Contract batches feed `lastEffectLifecycleSummary` and
-    `effectDiagnostics` so the diagnostics drawer can report dropped or unknown events.【F:client/main.js†L728-L777】【F:client/network.js†L1126-L1341】
-  - Patch testing: `patchState` stores the diff baseline, error history, pending keyframe requests, and replay queues surfaced in the diagnostics panel.【F:client/main.js†L193-L210】【F:client/network.js†L841-L899】【F:client/index.html†L288-L315】
-  - Heartbeat + latency metadata (`lastHeartbeatSentAt`, `lastHeartbeatAckAt`, `latencyMs`, `hudNetworkEls`) keeps HUD chips and diagnostics current.【F:client/main.js†L161-L210】【F:client/network.js†L905-L1141】
-  - `worldConfig` mirrors the server's toggles, counts, and seed so the world reset form reflects authoritative values.【F:client/main.js†L78-L210】【F:client/network.js†L943-L1086】
+- [`client/main.js`](../../client/main.js) – Owns the shared `store`, renders the Lit-based
+  control panels, wires diagnostics, manages the world reset form, and kicks off input,
+  rendering, and networking.【F:client/main.js†L1-L210】【F:client/main.js†L689-L793】
+- [`client/network.js`](../../client/network.js) – Handles the `/join` handshake, websocket
+  lifecycle, patch/keyframe bookkeeping, effect trigger queues, outbound message helpers, and
+  world reset requests.【F:client/network.js†L1121-L1320】【F:client/network.js†L1366-L1440】
+- [`client/render.js`](../../client/render.js) – Interpolates entity positions, updates the
+  shared `EffectManager`, draws the scene, and bridges contract lifecycle data to legacy effect
+  definitions.【F:client/render.js†L489-L540】【F:client/render.js†L820-L867】
+- [`client/patches.js`](../../client/patches.js) – Maintains the incremental patch baseline,
+  applies journal batches, and tracks recovery metrics for diagnostics.【F:client/patches.js†L999-L1108】
+- [`client/input.js`](../../client/input.js) – Normalises keyboard input into intents and
+  actions, handles click-to-move cancellation, and exposes the camera toggle shortcut.【F:client/input.js†L14-L124】
+- [`client/heartbeat.js`](../../client/heartbeat.js) – Provides `computeRtt` and a reusable
+  interval wrapper for websocket heartbeats.【F:client/heartbeat.js†L1-L41】
+- [`client/effect-lifecycle.js`](../../client/effect-lifecycle.js) & companions manage the
+  authoritative contract lifecycle cache, translate events for rendering, and track diagnostics
+  when updates arrive out of order.【F:client/effect-lifecycle.js†L224-L415】【F:client/effect-diagnostics.js†L61-L88】
+- [`client/effect-lifecycle-translator.js`](../../client/effect-lifecycle-translator.js) and
+  [`client/effect-manager-adapter.js`](../../client/effect-manager-adapter.js) convert contract
+  payloads into js-effects spawn/update requests and mirror live instances for debugging.【F:client/effect-lifecycle-translator.js†L1-L200】【F:client/effect-manager-adapter.js†L1-L65】
+- [`client/render-modes.js`](../../client/render-modes.js) defines the patch-vs-snapshot
+  rendering modes exposed in the debug UI.【F:client/render-modes.js†L1-L21】
+- [`client/js-effects/`](../../client/js-effects) hosts the generated effect definitions. Edit
+  the TypeScript sources under `tools/js-effects/` and rebuild to change them.
 
-## Initialization Sequence
-1. `main.js` prepares UI helpers, attaches diagnostics toggles, initialises the patch-testing container, and registers the latency override input.【F:client/main.js†L1-L210】
-2. `registerInputHandlers(store)` tracks pressed keys and sends intents/actions.
-3. `startRenderLoop(store)` animates the canvas, interpolating toward server positions every frame.
-4. `joinGame(store)` POSTs `/join`, normalises the response into the store (players, NPCs, ground items, config, effect triggers), seeds the patch baseline, and opens the WebSocket.【F:client/network.js†L943-L1050】
-5. `connectEvents(store)` sets up WebSocket callbacks, starts heartbeats, and keeps patch/keyframe bookkeeping in sync with every message.【F:client/network.js†L1001-L1141】
+## Boot Sequence
 
-## Networking Details
-- **State updates:** The server emits `state` messages containing players, NPCs, obstacles, optional `effectTriggers`, optional `groundItems`, lifecycle arrays (`effect_spawned`/`effect_update`/`effect_ended` with cursors), journaled `patches`, the current tick (`t`), monotonic `sequence`/`keyframeSeq`, `serverTime`, the active world `config`, and a `resync` flag. The legacy `effects` array is no longer sent; the client rebuilds render payloads from the lifecycle state. The client applies the snapshot, queues effect triggers, runs `applyEffectLifecycleBatch`, advances the patch baseline, and updates diagnostics + HUD tick counters.【F:server/messages.go†L18-L39】【F:client/network.js†L1231-L1339】【F:client/effect-lifecycle.js†L272-L415】
-- **Intents:** `sendCurrentIntent` serializes `{ type: "input", dx, dy, facing }` whenever movement or facing changes.
-- **Path navigation:** `sendMoveTo` sends `{ type: "path", x, y }` for click-to-move requests while `sendCancelPath` clears the server-driven route when WASD input resumes.
-- **Actions:** `sendAction` is used by `input.js` for melee and fireball triggers.
-- **Console:** `sendConsoleCommand` dispatches `{ type: "console", cmd, qty? }` so testers can drop or pick up gold via the debug overlay; the handler logs acknowledgements with quantities and stack IDs for traceability.【F:client/network.js†L160-L187】【F:client/network.js†L611-L645】
-- **Heartbeats:** `startHeartbeat` sets an interval that calls `sendHeartbeat`; acknowledgements update latency displays, including the HUD's `RTT: ## ms` chip fed by the latest round-trip measurement.【F:client/network.js†L905-L1141】【F:client/heartbeat.js†L15-L41】
-- **Keyframes:** When the diff pipeline needs recovery, `requestKeyframeSnapshot` emits `{ type: "keyframeRequest", keyframeSeq, keyframeTick? }` and retry loops keep asking until the journal serves the frame or forces a resync.【F:client/network.js†L790-L839】
-- Every outbound payload passes through `sendMessage`, which stamps the negotiated protocol version and the last applied tick acknowledgement so the hub can track client progress.【F:client/network.js†L905-L940】
-- **Reconnects:** Socket closure funnels through `handleConnectionLoss`, which resets state and schedules `joinGame` again.
+1. `index.html` draws the static shell (canvas, HUD labels, world controls) and loads
+   `main.js` as an ES module.【F:client/index.html†L11-L65】
+2. `main.js` registers the Lit `<game-client-app>` tabs, builds the initial `store`, exposes
+   debug helpers on `window`, and defines the DOM-rendering templates for the telemetry,
+   world reset, and inventory panels.【F:client/main.js†L29-L433】【F:client/main.js†L689-L807】
+3. The `bootstrap()` routine queries the DOM, attaches listeners (debug panel toggle, latency
+   override, render mode controls, world reset form, canvas pathing), initialises diagnostics,
+   renders the panels, registers keyboard handlers, starts the render loop, and finally calls
+   `joinGame(store)` to enter the simulation.【F:client/main.js†L891-L1899】
 
-## Rendering Notes
-- Grid + background are redrawn each frame for clarity.
-- Players are drawn as colored squares with a facing indicator line; the local player uses cyan/white, others orange/cream.
-- NPCs are drawn in violet with their facing indicator and optional type label.
-- Obstacles use either a stone block style or a gold ore treatment with deterministic pseudo-random nuggets.
-- All combat visuals run through the shared js-effects `EffectManager`. `render.js` calls the
-  generic `syncEffectsByType` helper for each definition (melee swings, lingering fire, and the
-  rectangular fireball trail) then delegates culling, sorting, updates, and drawing entirely to the
-  manager.
-- Definitions in `client/js-effects/effects/` expose a `fromEffect` helper used by
-  `syncEffectsByType` to translate authoritative payloads into spawn options. Add new types by
-  shipping a definition with `fromEffect` plus any custom `onUpdate` callback required to keep the
-  instance aligned with simulation state.
-- Fire-and-forget triggers drain from `store.pendingEffectTriggers` each frame and are dispatched
-  through `EffectManager.triggerAll`. Registered handlers only receive `(manager, trigger, context)`
-  and should call `manager.spawn()` directly—no ad-hoc maps or stores are needed.
-- Effects that hand off decals call `handoffToDecal()` when they expire. `EffectManager.collectDecals`
-  converts those into long-lived decal instances on the ground layer so `render.js` no longer keeps a
-  separate TTL queue.
-- Ground items draw after actors so loot stacks remain legible; the renderer formats coins with quantities based on `store.groundItems` and the active tile size.【F:client/render.js†L338-L405】
-- When extending the js-effects runtime (new definitions, manager helpers, etc.), make the changes
-  in the TypeScript sources under `tools/js-effects/packages/effects-lib` and run `npm run build`
-  from the repository root. This regenerates the vendored modules in `client/js-effects/`, so edits
-  made directly in the client copy will be overwritten.
+## Shared Store Structure
 
-## Extending the Client
-- Add new HUD elements to `index.html`, register them in the `store`, and update `main.js` diagnostics helpers.
-- Mirror new server fields by adjusting the payload handling inside `network.js` (state, actions, heartbeat logic).
-- Expand rendering logic by extending `render.js`; prefer pure functions that read from the `store` to keep coordination simple.
-- Route new combat visuals through js-effects. Reuse the existing melee swing integration as a template and update the
-  helper maps/cleanup logic in `network.js` if additional tracked instances are required.
-- New input bindings belong in `input.js`; keep the derived intent normalized before sending.
+The plain-object `store` defined in `main.js` is imported by every module; it gathers mutable
+state and helper callbacks so subsystems can cooperate without a framework runtime.【F:client/main.js†L689-L793】
 
-## Troubleshooting Tips
-- Use the diagnostics panel toggle to watch connection state, latency, outbound message counts, and patch replay stats surfaced from `patchState`.【F:client/index.html†L288-L315】【F:client/main.js†L420-L620】
-- The diagnostics drawer also mirrors the background patch baseline, replay summary, and entity counts so you can compare snapshot and diff pipelines at a glance without inspecting the console.【F:client/index.html†L288-L315】【F:client/main.js†L420-L620】
-- Contract lifecycle metrics live next to patch stats—expand the diagnostics drawer to inspect `lastEffectLifecycleSummary` and confirm spawns/updates/ends are flowing for each tick.【F:client/main.js†L728-L777】【F:client/network.js†L1126-L1341】
-- Heartbeat issues usually show up as missing `ack` timestamps—ensure the WebSocket stays open and `sendHeartbeat` is firing.
-- If the client loses track of its player record, the status text will prompt a reconnect; inspect `/diagnostics` on the server for confirmation.
+- **UI references:** Elements for status text, latency readouts, diagnostics grid, HUD labels,
+  world reset inputs, and inventory slots are cached for quick updates.【F:client/main.js†L689-L763】【F:client/main.js†L1890-L1950】
+- **Simulation state:** Authoritative maps for players, NPCs, obstacles, effects, ground items,
+  world dimensions, and camera configuration feed both rendering and diagnostics.【F:client/main.js†L728-L787】【F:client/main.js†L960-L1021】
+- **Networking telemetry:** The store tracks websocket handles, last tick/timestamps, intent
+  send times, heartbeat metrics, message counters, and the currently selected render mode so
+  diagnostics stay in sync with actual traffic.【F:client/main.js†L748-L776】【F:client/main.js†L1101-L1156】
+- **Effects pipeline:** `effectManager`, lifecycle summary, pending effect triggers, and the
+  derived registry of active instances are shared between `network.js` (which queues contract
+  data) and `render.js` (which consumes it).【F:client/main.js†L744-L781】【F:client/network.js†L812-L870】【F:client/render.js†L820-L835】
+- **Patch tester:** `patchState` and related flags (`lastRecovery`, deferred patch counts, keyframe
+  cadence) mirror the incremental diff subsystem so the debug panel can display recovery status
+  alongside snapshot cadence controls.【F:client/main.js†L789-L793】【F:client/main.js†L1101-L1170】
+- **World configuration & inventory:** The current config, dirty-field tracking, inventory slot
+  limits, and the last console acknowledgement feed the world reset form and inventory panel.
+  `renderInventory` reads player inventory data and regenerates the slot grid whenever the
+  authoritative snapshot changes.【F:client/main.js†L786-L793】【F:client/main.js†L1501-L1760】
+
+Helper methods such as `store.setRenderMode`, `store.setLatency`, `store.updateDiagnostics`, and
+`store.updateWorldConfigUI` expose the behaviours other modules need without requiring direct DOM
+access.【F:client/main.js†L828-L878】【F:client/main.js†L1023-L1099】【F:client/main.js†L1864-L1899】
+
+## Networking Pipeline
+
+- **Join handshake:** `joinGame(store)` POSTs `/join`, normalises players/NPCs/ground items,
+  resets lifecycle caches and patch state, mirrors world configuration, seeds display maps, and
+  opens the websocket connection once the response succeeds.【F:client/network.js†L1121-L1218】
+- **Websocket handling:** `connectEvents` constructs the `/ws` URL, resets telemetry counters,
+  listens for `state`, `heartbeat`, `console_ack`, and keyframe messages, and tears down the
+  session when errors occur.【F:client/network.js†L1230-L1371】
+- **State application:** Each `state` message optionally runs through the patch tester, applies
+  the resulting snapshot, queues effect triggers, updates lifecycle caches, reconciles world
+  configuration, and refreshes display maps plus diagnostics.【F:client/network.js†L1270-L1339】
+- **Outbound messages:** `sendCurrentIntent`, `sendMoveTo`, `sendCancelPath`, `sendAction`,
+  `sendConsoleCommand`, and `setKeyframeCadence` all delegate to `sendMessage`, which stamps the
+  protocol version, includes the last acknowledged tick, applies simulated latency, and updates
+  diagnostics counters.【F:client/network.js†L1070-L1118】【F:client/network.js†L1374-L1434】
+- **Heartbeats:** `startHeartbeat(store)` (built on `createHeartbeat`) pings every two seconds;
+  acknowledgements update `latencyMs`, RTT history, and HUD labels.【F:client/network.js†L905-L1141】【F:client/heartbeat.js†L1-L41】
+- **Keyframes & recovery:** `syncPatchTestingState` and the keyframe retry loop request full
+  snapshots when diffs cannot be applied, logging recovery progress and NACK counts so the debug
+  panel can report issues.【F:client/network.js†L934-L1057】【F:client/patches.js†L1038-L1108】
+- **Effect triggers:** Contract-driven `effectTriggers` batches are deduplicated by ID and queued
+  in `store.pendingEffectTriggers`; `render.js` drains and dispatches them through the
+  `EffectManager` each frame.【F:client/network.js†L812-L870】【F:client/render.js†L820-L835】
+- **World resets:** Submitting the world reset form calls `resetWorld(store, config)`, which posts
+  `/world/reset`, normalises the returned config, and refreshes the UI once the server confirms the
+  change.【F:client/network.js†L1429-L1489】【F:client/main.js†L1648-L1698】
+
+## Input & Player Interaction
+
+`registerInputHandlers(store)` attaches `keydown`/`keyup` listeners that maintain a pressed-key set,
+derive facing, cancel click-to-move when WASD resumes, and dispatch intents or actions (space for
+melee, `F` for fireball). The `C` key toggles the camera lock via a store callback.【F:client/input.js†L14-L124】
+
+`initializeCanvasPathing()` listens for pointer clicks on the canvas, translates screen-space
+coordinates into world positions, clamps them to map bounds, and invokes `sendMoveTo` for
+server-driven pathing.【F:client/main.js†L891-L929】【F:client/network.js†L1391-L1414】
+
+## Rendering & Effects
+
+`startRenderLoop(store)` records animation timestamps, lerps display maps toward authoritative
+positions, keeps the optional camera lock centred on the local player, and calls `drawScene` each
+frame.【F:client/render.js†L488-L540】 The renderer delegates combat visuals to a shared
+`EffectManager` instance, ensuring contract lifecycle entries are mirrored into js-effects
+definitions:
+
+- `collectEffectRenderBuckets` merges legacy effect arrays with lifecycle entries to produce a
+  per-type render queue. `contractLifecycleToEffect` and
+  `contractLifecycleToUpdatePayload` translate contract metadata into spawn/update payloads that
+  definitions such as melee swings, fire zones, and fireballs understand.【F:client/render.js†L306-L421】【F:client/effect-lifecycle-translator.js†L93-L200】
+- `mirrorEffectInstances` keeps a map of active `EffectManager` instances keyed by contract ID for
+  debugging, while `ensureEffectLifecycleState` tracks authoritative sequences and provides
+  summaries for diagnostics.【F:client/effect-manager-adapter.js†L7-L43】【F:client/effect-lifecycle.js†L224-L405】
+- `drainPendingEffectTriggers` forwards queued triggers (such as blood splatter decals) to the
+  manager before syncing by type, guaranteeing fire-and-forget effects run once even if the
+  websocket batches arrive late.【F:client/render.js†L820-L948】
+
+When extending visuals, add or update js-effects definitions under `tools/js-effects/`, rebuild the
+bundle, and wire the new type into `render.js` via `syncEffectsByType` and any trigger handlers
+required for custom behaviours.【F:client/render.js†L839-L867】
+
+## Diagnostics & Control Panels
+
+The `<game-client-app>` Lit element renders the three-tab interface (Telemetry, World Controls,
+Inventory), persists the active tab to `localStorage`, and exposes ARIA-friendly keyboard navigation
+for the tablist.【F:client/main.js†L436-L540】 The telemetry panel hosts the debug toggle, live
+diagnostics grid, render mode buttons, and keyframe cadence input driven by store callbacks.【F:client/main.js†L45-L210】【F:client/main.js†L1142-L1200】
+
+`updateDiagnostics()` assembles status strings for connection state, tick counters, input timing,
+heartbeats, patch status, and effect lifecycle anomalies; HUD chips share the same data so the
+canvas overlay and drawer stay aligned.【F:client/main.js†L1023-L1170】 Console helpers on `window`
+(`debugDropGold`, `debugPickupGold`, `debugNetworkStats`, render mode toggles) reuse the networking
+helpers to exercise server-side admin commands.【F:client/main.js†L795-L888】
+
+The world controls tab reflects the authoritative configuration, tracks user edits, and invokes
+`resetWorld`; dirty-state tracking ensures server responses overwrite the form only after successful
+updates.【F:client/main.js†L1501-L1698】 The inventory tab renders the local player's slots with
+icons and quantities, expanding automatically when the server grants more inventory positions.
+【F:client/main.js†L1701-L1760】
+
+## Patch & Snapshot Processing
+
+`createPatchState()` and `updatePatchState()` maintain both the baseline snapshot and the patched
+view, deduplicate entity updates by sequence, cache recent keyframes, and record recovery attempts.
+`network.js` calls `syncPatchTestingState()` for every join/state/keyframe message so diagnostics can
+show baseline ticks, batch counts, and recovery outcomes alongside the main simulation state.
+【F:client/patches.js†L999-L1108】【F:client/network.js†L934-L1057】
+
+## Extending the Client Safely
+
+- **New UI controls:** Render the markup inside `main.js` templates, register references in the
+  store, and update `updateDiagnostics()` or other helpers so state changes propagate.
+- **Protocol changes:** Mirror new payload fields in `joinGame` and `applyStateSnapshot`, then
+  expose them through the store before updating the renderer or diagnostics.【F:client/network.js†L1121-L1339】
+- **Gameplay visuals:** Add js-effects definitions, translate any new contract metadata in
+  `effect-lifecycle-translator.js`, and register sync/trigger handlers in `render.js`.
+- **Input bindings:** Extend `registerInputHandlers()` to keep intent normalisation consistent and
+  update diagnostics so testers can see the new actions firing.【F:client/input.js†L14-L124】
+- **Patch tooling:** When adjusting diff semantics, update `patches.js`, surface new telemetry in
+  the diagnostics grid, and ensure the request/retry helpers stay in sync with the server logic.
+
+Keeping the documentation aligned with these modules makes it easier for contributors to orient
+themselves and evolve the Mine & Die client confidently.
