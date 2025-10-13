@@ -39,10 +39,10 @@ Statuses use the following scale:
 | Phase 0 – Inventory, Observability, Guardrails | Complete | Tooling and telemetry guardrails landed to support future rollout. | Keep the producer map and telemetry docs current as new definitions ship. |
 | Phase 1 – Contract Types & Authoritative Manager | Complete | Contract payloads, enums, math helpers, and the server manager skeleton are feature-flagged and validated. | Monitor parity while client ingestion work consumes the new contracts. |
 | Phase 2 – Transport & Journal (Dual-Write) | Complete | Dual-write journal, transport toggles, and resync policy are active behind rollout flags. | Track resync telemetry during Phase 3 rollout and capture anomalies. |
-| Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Implement spawn/update/end batch processor and move rendering onto replicated metadata. |
+| Phase 3 – Client Ingestion & Visual Manager | Complete | Client ingestion, render sync, and diagnostics now source the contract batches with dual-write suppression removed. | Monitor unknown-update diagnostics while planning legacy array cleanup on the client. |
 | Phase 4 – Producer Migration | Complete | Gameplay producers now execute through contract-backed definitions with parity gates, including melee, projectiles, burning, and blood decals (legacy compat shim removed in Phase 6). | Monitor rollout telemetry while planning Phase 5 determinism and performance hardening. |
 | Phase 5 – Determinism & Performance Hardening | Complete | Stress testing and budgets for the new system. | Keep budget alarms wired while monitoring rollout metrics. |
-| Phase 6 – Cutover, Verification & Docs | In Progress | Remove legacy paths and lock the unified contract. | Prepare the deprecation switch and legacy removal gates after validating contract telemetry. |
+| Phase 6 – Cutover, Verification & Docs | Complete | Legacy transports are disabled, contract definitions default on, and rollout docs are refreshed. | Audit lingering rollback toggles/telemetry labels and scope the final dead-code removals. |
 
 ---
 
@@ -126,7 +126,20 @@ Statuses use the following scale:
 | Table-driven contract tests | Complete | :white_check_mark: Added table-driven lifecycle tests covering area/target/visual deliveries in `server/effects_manager_contract_test.go`. | Keep fixtures versioned with contract spec. |
 | Client join/resync tests | Complete | :white_check_mark: Added join/resync integration tests that exercise the two-pass patch pipeline in `client/__tests__/network.test.js`. | Integrate with existing test harness if possible. |
 | Docs refresh | Complete | :white_check_mark: Refreshed the architecture overview, client module guide, playground authoring instructions, and testing/troubleshooting notes to document the contract transport. | Legacy doc references now point to contract lifecycle batches, client two-pass replay, and diagnostics surfaces. |
-| Deprecation switch | Complete | :white_check_mark: Disabled legacy effect snapshots, removed the compat shim, and defaulted contract definitions to on. | Verify telemetry thresholds (95% adoption, resync rate) before removal. |
+| Deprecation switch | Complete | :white_check_mark: Disabled legacy effect snapshots, removed the compat shim, and defaulted contract definitions to on. | Continue monitoring adoption/resync telemetry and keep rollback toggles documented for emergency use. |
+
+#### Cutover Verification Notes
+
+* Confirmed the contract manager, transport, and all migrated definition flags now default to enabled in [`server/constants.go`](../../server/constants.go), keeping the unified pipeline authoritative without manual toggles.
+* Join/resync/state payloads no longer populate the legacy `effects` array when the contract transport is active, so clients consume the replicated lifecycle batches shipped from [`server/hub.go`](../../server/hub.go).
+* Client lifecycle ingestion and rendering now rely solely on `effect_spawned`/`effect_update`/`effect_ended` batches after the compat shim removal, leaving legacy arrays as defensive fallbacks for targeted rollbacks.
+
+#### Post-Cutover Cleanup Opportunities
+
+* `Hub.marshalState` still materializes legacy effect snapshots before discarding them once the contract transport gate passes; guard the `world.Snapshot` path when unified batches stay enabled to trim the allocation cost.
+* ✅ Contract melee attacks now rely solely on the unified manager without spawning legacy `effectState` shells; the cooldown and telemetry flow advance through contract lifecycle events.
+* Telemetry retains legacy vs. contract buckets to watch rollout parity. After a full release cycle on the unified system, consider collapsing the legacy bucket to simplify ongoing monitoring.
+
 
 ---
 
@@ -134,6 +147,8 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 38 | Removed legacy melee effect shells, routing cooldown and telemetry through contract lifecycle events and updating tracker notes. | gpt-5-codex |
+| 37 | Audited the unified effects pipeline post-shim removal, marked Phase 3/6 complete, and documented remaining cleanup opportunities. | gpt-5-codex |
 | 36 | Removed the legacy effect snapshots and compat shim, defaulted contract definitions to enabled, and closed out the Phase 6 deprecation switch. | gpt-5-codex |
 | 35 | Refreshed contract-era docs (architecture, client module guide, authoring, troubleshooting) and marked the Phase 6 docs deliverable complete. | gpt-5-codex |
 | 34 | Landed client join/resync two-pass integration tests, marked Phase 5 complete, and advanced the Phase 6 tracker. | gpt-5-codex |

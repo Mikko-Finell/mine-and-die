@@ -201,6 +201,9 @@ func (w *World) recordEffectLifecycleEvent(event EffectLifecycleEvent) {
 	}
 	switch e := event.(type) {
 	case EffectSpawnEvent:
+		if producer := contractSpawnProducer(e.Instance.DefinitionID); producer != "" {
+			w.recordEffectSpawn(e.Instance.DefinitionID, producer)
+		}
 		w.journal.RecordEffectSpawn(e)
 	case EffectUpdateEvent:
 		w.journal.RecordEffectUpdate(e)

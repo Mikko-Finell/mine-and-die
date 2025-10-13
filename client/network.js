@@ -555,7 +555,7 @@ function cloneNPCsFromMap(map) {
   return npcs;
 }
 
-function cloneEffectsFromMap(map) {
+function collectEffectsFromMap(map) {
   if (!map || typeof map !== "object") {
     return [];
   }
@@ -564,7 +564,7 @@ function cloneEffectsFromMap(map) {
     if (!entry || typeof entry !== "object") {
       continue;
     }
-    effects.push({ ...entry });
+    effects.push(entry);
   }
   return effects;
 }
@@ -636,15 +636,17 @@ export function applyStateSnapshot(prev, payload, patchedState) {
     : Array.isArray(previousState.obstacles)
       ? previousState.obstacles.slice()
       : [];
-  let effects = Array.isArray(snapshot.effects) ? snapshot.effects.slice() : null;
-  if (!effects) {
-    if (patched?.effects) {
-      effects = cloneEffectsFromMap(patched.effects);
-    } else if (Array.isArray(previousState.effects)) {
-      effects = previousState.effects.slice();
-    } else {
-      effects = [];
-    }
+  let effects = null;
+  if (Array.isArray(snapshot.effects)) {
+    effects = snapshot.effects;
+  } else if (Array.isArray(patched?.effects)) {
+    effects = patched.effects;
+  } else if (patched?.effects) {
+    effects = collectEffectsFromMap(patched.effects);
+  } else if (Array.isArray(previousState.effects)) {
+    effects = previousState.effects;
+  } else {
+    effects = [];
   }
 
   const result = {
