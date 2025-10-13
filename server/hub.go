@@ -1269,16 +1269,16 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 		return
 	}
 
-	for _, marker := range []struct {
-		label  string
-		needle []byte
-	}{
-		{label: "blood-splatter", needle: []byte("\"type\":\"blood-splatter\"")},
-		{label: "fire", needle: []byte("\"type\":\"fire\"")},
-		{label: "fireball", needle: []byte("\"type\":\"fireball\"")},
-		{label: "melee-swing", needle: []byte("\"type\":\"melee-swing\"")},
-	} {
-		if bytes.Contains(data, marker.needle) {
+       for _, marker := range []struct {
+               label  string
+               needle []byte
+       }{
+               {label: "blood-splatter", needle: []byte("blood-splatter")},
+               {label: "fire", needle: []byte("fire")},
+               {label: "fireball", needle: []byte("fireball")},
+               {label: "melee-swing", needle: []byte("melee-swing")},
+       } {
+               if bytes.Contains(data, marker.needle) {
 			stdlog.Printf("[network] broadcasting payload containing %s: %s", marker.label, data)
 		}
 	}
