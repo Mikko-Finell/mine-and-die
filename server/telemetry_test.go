@@ -83,3 +83,75 @@ func TestTelemetryEffectParitySnapshot(t *testing.T) {
 		t.Fatalf("expected zero hits for contract miss entry, got %d", contract.Hits)
 	}
 }
+
+func TestTelemetryTickBudgetOverrunMetrics(t *testing.T) {
+	counters := newTelemetryCounters()
+	budget := time.Second / time.Duration(tickRate)
+
+	if streak := counters.RecordTickBudgetOverrun(budget+budget/2, budget); streak != 1 {
+		t.Fatalf("expected first streak to be 1, got %d", streak)
+	}
+	overrunDuration := 3 * budget
+	if streak := counters.RecordTickBudgetOverrun(overrunDuration, budget); streak != 2 {
+		t.Fatalf("expected second streak to be 2, got %d", streak)
+	}
+
+	snapshot := counters.Snapshot()
+	tickBudget := snapshot.TickBudget
+	if tickBudget.BudgetMillis != budget.Milliseconds() {
+		t.Fatalf("unexpected budget millis: got %d want %d", tickBudget.BudgetMillis, budget.Milliseconds())
+	}
+	if tickBudget.CurrentStreak != 2 {
+		t.Fatalf("expected current streak to be 2, got %d", tickBudget.CurrentStreak)
+	}
+	if tickBudget.MaxStreak != 2 {
+		t.Fatalf("expected max streak to be 2, got %d", tickBudget.MaxStreak)
+	}
+	if tickBudget.LastOverrunMillis != overrunDuration.Milliseconds() {
+		t.Fatalf("expected last overrun millis %d, got %d", overrunDuration.Milliseconds(), tickBudget.LastOverrunMillis)
+	}
+	if count := tickBudget.Overruns["over_1_5x"]; count != 1 {
+		t.Fatalf("expected over_1_5x bucket to be 1, got %d", count)
+	}
+	if count := tickBudget.Overruns["over_gt3x"]; count != 1 {
+		t.Fatalf("expected over_gt3x bucket to be 1, got %d", count)
+	}
+	if tickBudget.AlarmCount != 0 {
+		t.Fatalf("expected alarm count to start at 0, got %d", tickBudget.AlarmCount)
+	}
+
+	counters.RecordTickBudgetAlarm(42, 2.75)
+	snapshot = counters.Snapshot()
+	tickBudget = snapshot.TickBudget
+	if tickBudget.AlarmCount != 1 {
+		t.Fatalf("expected alarm count to be 1, got %d", tickBudget.AlarmCount)
+	}
+	if tickBudget.LastAlarmTick != 42 {
+		t.Fatalf("expected last alarm tick to be 42, got %d", tickBudget.LastAlarmTick)
+	}
+	if math.Abs(tickBudget.LastAlarmRatio-2.75) > 1e-9 {
+		t.Fatalf("expected last alarm ratio 2.75, got %.4f", tickBudget.LastAlarmRatio)
+	}
+
+	counters.ResetTickBudgetOverrunStreak()
+	snapshot = counters.Snapshot()
+	tickBudget = snapshot.TickBudget
+	if tickBudget.CurrentStreak != 0 {
+		t.Fatalf("expected current streak to reset to 0, got %d", tickBudget.CurrentStreak)
+	}
+	if tickBudget.MaxStreak != 2 {
+		t.Fatalf("expected max streak to remain 2, got %d", tickBudget.MaxStreak)
+	}
+	if tickBudget.LastOverrunMillis != overrunDuration.Milliseconds() {
+		t.Fatalf("expected last overrun millis to persist at %d, got %d", overrunDuration.Milliseconds(), tickBudget.LastOverrunMillis)
+	}
+	if tickBudget.AlarmCount != 1 {
+		t.Fatalf("expected alarm count to persist at 1, got %d", tickBudget.AlarmCount)
+	}
+	if tickBudget.LastAlarmTick != 42 {
+		t.Fatalf("expected last alarm tick to persist at 42, got %d", tickBudget.LastAlarmTick)
+	}
+	if math.Abs(tickBudget.LastAlarmRatio-2.75) > 1e-9 {
+		t.Fatalf("expected last alarm ratio to persist at 2.75, got %.4f", tickBudget.LastAlarmRatio)
+	}
+}
