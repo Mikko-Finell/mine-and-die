@@ -607,6 +607,11 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 		return false
 	}
 
+	useContract := enableContractMeleeDefinitions && enableContractEffectManager && w.effectManager != nil
+	if useContract {
+		return true
+	}
+
 	facing := state.Facing
 	if facing == "" {
 		facing = defaultFacing
@@ -643,13 +648,18 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 		return false
 	}
 	w.recordEffectSpawn(effectTypeAttack, "melee")
-
-	useContract := enableContractMeleeDefinitions && enableContractEffectManager && w.effectManager != nil
-	if !useContract {
-		w.resolveMeleeImpact(effect, state, actorID, tick, now, area)
-	}
+	w.resolveMeleeImpact(effect, state, actorID, tick, now, area)
 
 	return true
+}
+
+func contractSpawnProducer(definitionID string) string {
+	switch definitionID {
+	case effectTypeAttack:
+		return "melee"
+	default:
+		return ""
+	}
 }
 
 // triggerFireball launches a projectile effect when the player is ready.

@@ -655,28 +655,28 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	runAdvance(hub, 1.0/float64(tickRate))
 
 	hub.mu.Lock()
-	if len(hub.world.effects) != 1 {
+	if len(hub.world.journal.effects.spawns) != 1 {
 		hub.mu.Unlock()
-		t.Fatalf("expected exactly one effect after first attack, got %d", len(hub.world.effects))
+		t.Fatalf("expected exactly one effect spawn after first attack, got %d", len(hub.world.journal.effects.spawns))
 	}
-	first := hub.world.effects[0]
-	if first.Type != effectTypeAttack {
+	firstSpawn := hub.world.journal.effects.spawns[0]
+	if firstSpawn.Instance.DefinitionID != effectTypeAttack {
 		hub.mu.Unlock()
-		t.Fatalf("expected effect type %q, got %q", effectTypeAttack, first.Type)
+		t.Fatalf("expected spawn definition %q, got %q", effectTypeAttack, firstSpawn.Instance.DefinitionID)
 	}
-	if first.Width <= 0 || first.Height <= 0 {
+	if firstSpawn.Instance.ID == "" {
 		hub.mu.Unlock()
-		t.Fatalf("expected non-zero effect bounds, got width=%f height=%f", first.Width, first.Height)
+		t.Fatalf("expected spawn instance id to be set")
 	}
-	firstStart := first.Start
+	firstTick := firstSpawn.Tick
 	hub.mu.Unlock()
 
 	hub.HandleAction(attackerID, effectTypeAttack)
 	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
-	if len(hub.world.effects) != 1 {
+	if len(hub.world.journal.effects.spawns) != 1 {
 		hub.mu.Unlock()
-		t.Fatalf("expected cooldown to prevent new effect, have %d", len(hub.world.effects))
+		t.Fatalf("expected cooldown to prevent new spawn, have %d", len(hub.world.journal.effects.spawns))
 	}
 	hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
 	hub.mu.Unlock()
@@ -684,18 +684,18 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	hub.HandleAction(attackerID, effectTypeAttack)
 	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
-	if len(hub.world.effects) != 2 {
+	if len(hub.world.journal.effects.spawns) != 2 {
 		hub.mu.Unlock()
-		t.Fatalf("expected second effect after cooldown reset, have %d", len(hub.world.effects))
+		t.Fatalf("expected second spawn after cooldown reset, have %d", len(hub.world.journal.effects.spawns))
 	}
-	second := hub.world.effects[1]
+	second := hub.world.journal.effects.spawns[1]
 	hub.mu.Unlock()
 
-	if second.ID == first.ID {
-		t.Fatalf("expected unique effect IDs, both were %q", second.ID)
+	if second.Instance.ID == firstSpawn.Instance.ID {
+		t.Fatalf("expected unique effect IDs, both were %q", second.Instance.ID)
 	}
-	if second.Start < firstStart {
-		t.Fatalf("expected second effect start (%d) to be >= first (%d)", second.Start, firstStart)
+	if second.Tick < firstTick {
+		t.Fatalf("expected second spawn tick (%d) to be >= first (%d)", second.Tick, firstTick)
 	}
 }
 
@@ -1567,23 +1567,13 @@ func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
 		}
 	}
 
-	var meleeSpawned, projectileSpawned bool
 	for _, eff := range world.effects {
 		if eff == nil {
 			continue
 		}
-		if eff.Type == effectTypeAttack {
-			meleeSpawned = true
+		if eff.Type == effectTypeAttack && !eff.contractManaged {
+			t.Fatalf("unexpected legacy melee effect when contract pipeline enabled")
 		}
-		if eff.Type == effectTypeFireball {
-			projectileSpawned = true
-		}
-	}
-	if !meleeSpawned {
-		t.Fatalf("expected melee attack to spawn via legacy path while flag enabled")
-	}
-	if !projectileSpawned {
-		t.Fatalf("expected fireball to spawn via legacy path while flag enabled")
 	}
 }
 

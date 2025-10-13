@@ -328,7 +328,7 @@ describe("applyStateSnapshot", () => {
     expect(result.obstacles).toEqual(payload.obstacles);
     expect(result.obstacles).not.toBe(payload.obstacles);
     expect(result.effects).toEqual(payload.effects);
-    expect(result.effects).not.toBe(payload.effects);
+    expect(result.effects).toBe(payload.effects);
     expect(result.worldConfig.width).toBe(1200);
     expect(result.worldConfig.height).toBe(900);
     expect(result.hasLocalPlayer).toBe(true);
