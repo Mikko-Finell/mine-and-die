@@ -141,19 +141,21 @@ function collectEffectRenderBuckets(store, renderState) {
       : null;
   const legacyEffects = Array.isArray(renderState?.effects)
     ? renderState.effects
-    : [];
+    : null;
 
   const legacyById = new Map();
-  for (const effect of legacyEffects) {
-    if (!effect || typeof effect !== "object") {
-      continue;
-    }
-    const id = typeof effect.id === "string" ? effect.id : null;
-    if (!id) {
-      continue;
-    }
-    if (!legacyById.has(id)) {
-      legacyById.set(id, effect);
+  if (legacyEffects) {
+    for (const effect of legacyEffects) {
+      if (!effect || typeof effect !== "object") {
+        continue;
+      }
+      const id = typeof effect.id === "string" ? effect.id : null;
+      if (!id) {
+        continue;
+      }
+      if (!legacyById.has(id)) {
+        legacyById.set(id, effect);
+      }
     }
   }
 
@@ -193,19 +195,21 @@ function collectEffectRenderBuckets(store, renderState) {
     }
   }
 
-  for (const effect of legacyEffects) {
-    if (!effect || typeof effect !== "object") {
-      continue;
+  if (legacyEffects) {
+    for (const effect of legacyEffects) {
+      if (!effect || typeof effect !== "object") {
+        continue;
+      }
+      const id = typeof effect.id === "string" ? effect.id : null;
+      if (id && consumedIds.has(id)) {
+        continue;
+      }
+      const type = typeof effect.type === "string" ? effect.type : null;
+      if (!type) {
+        continue;
+      }
+      addEffectToBucket(buckets, type, effect);
     }
-    const id = typeof effect.id === "string" ? effect.id : null;
-    if (id && consumedIds.has(id)) {
-      continue;
-    }
-    const type = typeof effect.type === "string" ? effect.type : null;
-    if (!type) {
-      continue;
-    }
-    addEffectToBucket(buckets, type, effect);
   }
 
   return buckets;
