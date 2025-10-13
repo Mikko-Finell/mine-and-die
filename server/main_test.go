@@ -793,6 +793,114 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 	}
 }
 
+func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
+	originalManager := enableContractEffectManager
+	originalBlood := enableContractBloodDecalDefinitions
+	originalTransport := enableContractEffectTransport
+	originalMelee := enableContractMeleeDefinitions
+	enableContractEffectManager = true
+	enableContractBloodDecalDefinitions = true
+	enableContractEffectTransport = true
+	// When contract melee is active the legacy trigger path short-circuits and
+	// `EffectManager.RunTick` drains the queued swing intent. The blood decal
+	// intent is appended during that same drain, so the slice reset at the end
+	// of the tick clears it before it can instantiate the splatter.
+	enableContractMeleeDefinitions = true
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractBloodDecalDefinitions = originalBlood
+		enableContractEffectTransport = originalTransport
+		enableContractMeleeDefinitions = originalMelee
+	}()
+
+	hub := newHub()
+
+	join := hub.Join()
+	playerID := join.ID
+	if playerID == "" {
+		t.Fatal("expected joined player id")
+	}
+
+	now := time.Unix(0, 0)
+	dt := 1.0 / float64(tickRate)
+
+	const (
+		playerX  = 360.0
+		playerY  = 360.0
+		goblinID = "npc-contract-target"
+	)
+
+	hub.mu.Lock()
+	hub.world.obstacles = nil
+	hub.world.npcs = make(map[string]*npcState)
+	hub.world.SetPosition(playerID, playerX, playerY)
+	hub.world.SetFacing(playerID, FacingRight)
+
+	goblinStats := stats.DefaultComponent(stats.ArchetypeGoblin)
+	goblinStats.Resolve(0)
+	maxHealth := goblinStats.GetDerived(stats.DerivedMaxHealth)
+	if maxHealth <= 0 {
+		hub.mu.Unlock()
+		t.Fatalf("expected goblin max health to be positive, got %.2f", maxHealth)
+	}
+
+	goblin := &npcState{
+		actorState: actorState{Actor: Actor{
+			ID:        goblinID,
+			X:         playerX + playerHalf + meleeAttackReach/2,
+			Y:         playerY,
+			Facing:    FacingLeft,
+			Health:    maxHealth,
+			MaxHealth: maxHealth,
+			Inventory: NewInventory(),
+			Equipment: NewEquipment(),
+		}},
+		stats:     goblinStats,
+		Type:      NPCTypeGoblin,
+		cooldowns: make(map[string]time.Time),
+	}
+	hub.world.npcs[goblin.ID] = goblin
+	hub.mu.Unlock()
+
+	hub.world.journal.DrainPatches()
+	_ = hub.world.journal.DrainEffectEvents()
+
+	if !hub.HandleAction(playerID, effectTypeAttack) {
+		t.Fatalf("expected melee attack command to be accepted")
+	}
+
+	players, npcs, effects, triggers, groundItems, _ := hub.advance(now, dt)
+
+	step := time.Second / time.Duration(tickRate)
+	nextNow := now.Add(step)
+	players, npcs, effects, triggers, groundItems, _ = hub.advance(nextNow, dt)
+
+	data, _, err := hub.marshalState(players, npcs, effects, triggers, groundItems, true, false)
+	if err != nil {
+		t.Fatalf("failed to marshal state message: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state message: %v", err)
+	}
+
+	if len(msg.EffectSpawns) == 0 {
+		t.Fatalf("expected contract effect spawns, got none")
+	}
+
+	foundBlood := false
+	for _, spawn := range msg.EffectSpawns {
+		if spawn.Instance.DefinitionID == effectTypeBloodSplatter {
+			foundBlood = true
+			break
+		}
+	}
+	if !foundBlood {
+		t.Fatalf("expected blood splatter contract effect spawn, got %+v", msg.EffectSpawns)
+	}
+}
+
 func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 	hub := newHub()
 	hub.world.obstacles = []Obstacle{{
