@@ -237,7 +237,6 @@ func (h *Hub) Join() joinResponse {
 		Players:          players,
 		NPCs:             npcs,
 		Obstacles:        obstacles,
-		Effects:          effects,
 		GroundItems:      groundItems,
 		Config:           cfg,
 		Resync:           true,
@@ -1053,9 +1052,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		if npcs == nil {
 			npcs = make([]NPC, 0)
 		}
-		if effects == nil {
-			effects = make([]Effect, 0)
-		}
 	} else {
 		players = nil
 		npcs = nil
@@ -1081,7 +1077,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 			Players:     players,
 			NPCs:        npcs,
 			Obstacles:   obstacles,
-			Effects:     effects,
 			GroundItems: groundItems,
 			Config:      cfg,
 		}
@@ -1110,7 +1105,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		Players:          players,
 		NPCs:             npcs,
 		Obstacles:        obstacles,
-		Effects:          effects,
 		EffectTriggers:   triggers,
 		GroundItems:      groundItems,
 		Patches:          patches,
@@ -1191,7 +1185,6 @@ func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupSt
 			Players:     append([]Player(nil), frame.Players...),
 			NPCs:        append([]NPC(nil), frame.NPCs...),
 			Obstacles:   append([]Obstacle(nil), frame.Obstacles...),
-			Effects:     append([]Effect(nil), frame.Effects...),
 			GroundItems: append([]GroundItem(nil), frame.GroundItems...),
 			Config:      frame.Config,
 		}

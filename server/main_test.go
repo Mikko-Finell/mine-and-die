@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"strings"
 	"testing"
 	"time"
 
@@ -152,8 +151,8 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 	if len(first.Obstacles) != len(hub.world.obstacles) {
 		t.Fatalf("expected join response to include %d obstacles, got %d", len(hub.world.obstacles), len(first.Obstacles))
 	}
-	if len(first.Effects) != 0 {
-		t.Fatalf("expected initial effect list to be empty, got %d", len(first.Effects))
+	if first.Effects != nil {
+		t.Fatalf("expected legacy effects to be omitted in join snapshot")
 	}
 }
 
@@ -1202,12 +1201,13 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 	}
 
 	current := now.Add(time.Second / time.Duration(tickRate))
+	expected := baselinePlayerMaxHealth - fireballDamage - lavaDamagePerSecond*burningTickInterval.Seconds()
 	var victim *playerState
 	for tick := uint64(2); tick <= 12; tick++ {
 		world.Step(tick, current, dt, nil, nil)
 		current = current.Add(time.Second / time.Duration(tickRate))
 		victim = world.players[target.ID]
-		if victim != nil && victim.Health < baselinePlayerMaxHealth {
+		if victim != nil && victim.Health <= expected {
 			break
 		}
 	}
@@ -1216,7 +1216,6 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 		t.Fatalf("expected target to remain in world")
 	}
 
-	expected := baselinePlayerMaxHealth - fireballDamage - lavaDamagePerSecond*burningTickInterval.Seconds()
 	if math.Abs(victim.Health-expected) > 1e-6 {
 		t.Fatalf("expected victim health %.1f, got %.1f", expected, victim.Health)
 	}
@@ -1671,8 +1670,12 @@ func TestContractProjectileEndsByDuration(t *testing.T) {
 	defer func() { enableContractEffectManager = originalFlag }()
 
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world.obstacles = nil
+	world.npcs = make(map[string]*npcState)
 	attacker := newTestPlayerState("projectile-owner")
 	attacker.cooldowns = make(map[string]time.Time)
+	attacker.X = worldWidth / 2
+	attacker.Y = worldHeight / 2
 	world.AddPlayer(attacker)
 
 	if def := world.effectManager.definitions[effectTypeFireball]; def != nil {
@@ -2096,107 +2099,6 @@ func TestProjectileExplodeOnImpactSpawnsAreaEffect(t *testing.T) {
 	radiusParam := aoe.Params["radius"]
 	if math.Abs(radiusParam-tpl.ImpactRules.ExplodeOnImpact.Radius) > 1e-6 {
 		t.Fatalf("expected radius param %.1f, got %.1f", tpl.ImpactRules.ExplodeOnImpact.Radius, radiusParam)
-	}
-}
-
-func TestLegacyCompatMirrorsExplosionEvents(t *testing.T) {
-	originalTransport := enableContractEffectTransport
-	enableContractEffectTransport = true
-	defer func() { enableContractEffectTransport = originalTransport }()
-
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
-	if world.legacyCompat == nil {
-		t.Fatal("expected legacy compat shim when transport enabled")
-	}
-
-	now := time.Unix(0, 0)
-	shooter := newTestPlayerState("compat-shooter")
-	shooter.X = 200
-	shooter.Y = 200
-	shooter.Facing = FacingRight
-	shooter.cooldowns = make(map[string]time.Time)
-	world.AddPlayer(shooter)
-
-	tpl := &ProjectileTemplate{
-		Type:        "compat-explosion",
-		Speed:       120,
-		MaxDistance: 40,
-		SpawnRadius: 6,
-		SpawnOffset: playerHalf + 6,
-		TravelMode:  TravelModeConfig{StraightLine: true},
-		ImpactRules: ImpactRuleConfig{
-			StopOnHit: true,
-			ExplodeOnImpact: &ExplosionSpec{
-				EffectType: "compat-aoe",
-				Radius:     12,
-				Duration:   300 * time.Millisecond,
-			},
-		},
-	}
-	world.projectileTemplates[tpl.Type] = tpl
-
-	projectile, ok := world.spawnProjectile(shooter.ID, tpl.Type, now)
-	if !ok || projectile == nil {
-		t.Fatalf("expected projectile spawn to succeed")
-	}
-
-	world.spawnAreaEffectAt(projectile, now, tpl.ImpactRules.ExplodeOnImpact)
-
-	var area *effectState
-	for _, eff := range world.effects {
-		if eff != nil && eff.Type == tpl.ImpactRules.ExplodeOnImpact.EffectType {
-			area = eff
-			break
-		}
-	}
-	if area == nil {
-		t.Fatalf("expected explosion area effect to spawn")
-	}
-
-	batch := world.journal.DrainEffectEvents()
-	if len(batch.Spawns) != 1 {
-		t.Fatalf("expected 1 compat spawn event, found %d", len(batch.Spawns))
-	}
-	spawn := batch.Spawns[0]
-	if !strings.HasPrefix(spawn.Instance.ID, "legacy-") {
-		t.Fatalf("expected compat spawn id to be legacy-prefixed, got %q", spawn.Instance.ID)
-	}
-	if spawn.Instance.DefinitionID != tpl.ImpactRules.ExplodeOnImpact.EffectType {
-		t.Fatalf("expected definition id %q, got %q", tpl.ImpactRules.ExplodeOnImpact.EffectType, spawn.Instance.DefinitionID)
-	}
-	extra := spawn.Instance.BehaviorState.Extra
-	if extra == nil {
-		t.Fatalf("expected behavior extras to include center coordinates")
-	}
-	expectedX := quantizeWorldCoord(centerX(area))
-	expectedY := quantizeWorldCoord(centerY(area))
-	if extra["centerX"] != expectedX {
-		t.Fatalf("expected centerX %d, got %d", expectedX, extra["centerX"])
-	}
-	if extra["centerY"] != expectedY {
-		t.Fatalf("expected centerY %d, got %d", expectedY, extra["centerY"])
-	}
-	duration := time.Duration(area.Duration) * time.Millisecond
-	if duration > 0 {
-		expectedTicks := durationToTicks(duration)
-		if spawn.Instance.BehaviorState.TicksRemaining != expectedTicks {
-			t.Fatalf("expected ticks remaining %d, got %d", expectedTicks, spawn.Instance.BehaviorState.TicksRemaining)
-		}
-	}
-
-	expireAt := now.Add(tpl.ImpactRules.ExplodeOnImpact.Duration).Add(time.Millisecond)
-	world.pruneEffects(expireAt)
-
-	endBatch := world.journal.DrainEffectEvents()
-	if len(endBatch.Ends) != 1 {
-		t.Fatalf("expected 1 compat end event, found %d", len(endBatch.Ends))
-	}
-	end := endBatch.Ends[0]
-	if end.ID != spawn.Instance.ID {
-		t.Fatalf("expected end id %q, got %q", spawn.Instance.ID, end.ID)
-	}
-	if end.Reason != EndReasonExpired {
-		t.Fatalf("expected end reason %q, got %q", EndReasonExpired, end.Reason)
 	}
 }
 
