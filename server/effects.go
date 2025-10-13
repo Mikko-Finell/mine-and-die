@@ -639,7 +639,9 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 		telemetrySpawnTick: Tick(int64(tick)),
 	}
 
-	w.effects = append(w.effects, effect)
+	if !w.registerEffect(effect) {
+		return false
+	}
 	w.recordEffectSpawn(effectTypeAttack, "melee")
 
 	useContract := enableContractMeleeDefinitions && enableContractEffectManager && w.effectManager != nil
@@ -698,7 +700,9 @@ func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (
 		return nil, false
 	}
 
-	w.effects = append(w.effects, effect)
+	if !w.registerEffect(effect) {
+		return nil, false
+	}
 	w.recordEffectSpawn(tpl.Type, "projectile")
 	return effect, true
 }
@@ -847,7 +851,12 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 	}
 
 	w.pruneEffects(now)
-	w.effects = append(w.effects, effect)
+	if !w.registerEffect(effect) {
+		if instance != nil {
+			instance.BehaviorState.TicksRemaining = 0
+		}
+		return nil
+	}
 	w.recordEffectSpawn(tpl.Type, "projectile")
 	return effect
 }
@@ -904,7 +913,10 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *EffectInstance, no
 		telemetrySource:    telemetrySourceContract,
 		telemetrySpawnTick: instance.StartTick,
 	}
-	w.effects = append(w.effects, effect)
+	if !w.registerEffect(effect) {
+		instance.BehaviorState.TicksRemaining = 0
+		return nil
+	}
 	w.recordEffectSpawn(effectType, "blood-decal")
 	return effect
 }
@@ -969,6 +981,36 @@ func mergeParams(base map[string]float64, overrides map[string]float64) map[stri
 		merged[k] = v
 	}
 	return merged
+}
+
+func (w *World) registerEffect(effect *effectState) bool {
+	if w == nil || effect == nil || effect.ID == "" {
+		return false
+	}
+	if w.effectsByID == nil {
+		w.effectsByID = make(map[string]*effectState)
+	}
+	if w.effectsIndex != nil {
+		if !w.effectsIndex.Upsert(effect) {
+			if w.telemetry != nil {
+				w.telemetry.RecordEffectSpatialOverflow(effect.Type)
+			}
+			return false
+		}
+	}
+	w.effects = append(w.effects, effect)
+	w.effectsByID[effect.ID] = effect
+	return true
+}
+
+func (w *World) unregisterEffect(effect *effectState) {
+	if w == nil || effect == nil || effect.ID == "" {
+		return
+	}
+	if w.effectsIndex != nil {
+		w.effectsIndex.Remove(effect.ID)
+	}
+	delete(w.effectsByID, effect.ID)
 }
 
 // meleeAttackRectangle builds the hitbox in front of a player for a melee swing.
@@ -1309,7 +1351,9 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 		telemetrySource:    source,
 		telemetrySpawnTick: Tick(int64(w.currentTick)),
 	}
-	w.effects = append(w.effects, area)
+	if !w.registerEffect(area) {
+		return
+	}
 	w.recordEffectSpawn(spec.EffectType, "explosion")
 	w.mirrorLegacyAreaEffect(area)
 }
@@ -1356,13 +1400,8 @@ func (w *World) findEffectByID(id string) *effectState {
 	if w == nil || id == "" {
 		return nil
 	}
-	for _, eff := range w.effects {
-		if eff == nil {
-			continue
-		}
-		if eff.ID == id {
-			return eff
-		}
+	if eff := w.effectsByID[id]; eff != nil {
+		return eff
 	}
 	return nil
 }
@@ -1405,6 +1444,7 @@ func (w *World) pruneEffects(now time.Time) {
 		w.mirrorLegacyEffectEnd(eff, "expired")
 		w.recordEffectEnd(eff, "expired")
 		w.purgeEntityPatches(eff.ID)
+		w.unregisterEffect(eff)
 	}
 }
 

@@ -66,6 +66,8 @@ type World struct {
 	players             map[string]*playerState
 	npcs                map[string]*npcState
 	effects             []*effectState
+	effectsByID         map[string]*effectState
+	effectsIndex        *effectSpatialIndex
 	effectTriggers      []EffectTrigger
 	effectManager       *EffectManager
 	legacyCompat        *legacyEffectCompat
@@ -127,6 +129,8 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		players:             make(map[string]*playerState),
 		npcs:                make(map[string]*npcState),
 		effects:             make([]*effectState, 0),
+		effectsByID:         make(map[string]*effectState),
+		effectsIndex:        newEffectSpatialIndex(effectSpatialCellSize, effectSpatialMaxPerCell),
 		effectTriggers:      make([]EffectTrigger, 0),
 		effectBehaviors:     newEffectBehaviors(),
 		projectileTemplates: newProjectileTemplates(),

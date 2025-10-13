@@ -41,7 +41,7 @@ Statuses use the following scale:
 | Phase 2 – Transport & Journal (Dual-Write) | Complete | Dual-write journal, transport toggles, and resync policy are active behind rollout flags. | Track resync telemetry during Phase 3 rollout and capture anomalies. |
 | Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Implement spawn/update/end batch processor and move rendering onto replicated metadata. |
 | Phase 4 – Producer Migration | Complete | Gameplay producers now execute through contract-backed definitions with parity gates, including melee, projectiles, burning, blood decals, and compat shims. | Monitor rollout telemetry while planning Phase 5 determinism and performance hardening. |
-| Phase 5 – Determinism & Performance Hardening | Not Started | Stress testing and budgets for the new system. | Define benchmark harness and thresholds post-contract rollout. |
+| Phase 5 – Determinism & Performance Hardening | In Progress | Stress testing and budgets for the new system. | Add tick budget guards now that the spatial index is capped. |
 | Phase 6 – Cutover, Verification & Docs | Not Started | Remove legacy paths and lock the unified contract. | Schedule adoption gate monitoring once prior phases stabilize. |
 
 ---
@@ -116,7 +116,7 @@ Statuses use the following scale:
 
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
-| Spatial index tuning | Not Started | Optimize integer grid and cap active effects per cell. | Measure against projectile swarm benchmarks. |
+| Spatial index tuning | Complete | :white_check_mark: Tuned tile-aligned spatial index, enforced per-cell cap, and surfaced overflow telemetry. | `effects.spatialOverflow` captures capped spawns; continue validating with projectile swarm benchmarks. |
 | Tick budget guards | Not Started | Add instrumentation and guardrails when tick budget exceeded. | Evaluate logging + metrics; tie into alarms later. |
 | Benchmarks & SLO gates | Not Started | Create CI runnable swarm/AoE benchmarks with pass/fail thresholds. | Publish results table in docs when ready. |
 
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 30 | Tile-aligned spatial index now caps active effects per cell, updates deterministically with integer math, and emits overflow telemetry for benchmark tracking. | gpt-5-codex |
 | 29 | Added a legacy-to-contract shim for projectile explosion area effects so the contract transport emits lifecycle events before full definition ports, and documented pending follow-ups. | gpt-5-codex |
 | 28 | Instrumented effect parity telemetry (hit/damage/miss rates and latency buckets) and documented the diagnostics dashboard expectations. | gpt-5-codex |
 | 27 | Ported blood decal visuals behind `enableContractBloodDecalDefinitions`, added contract lifecycle coverage, and marked the definition ports deliverable complete. | gpt-5-codex |
