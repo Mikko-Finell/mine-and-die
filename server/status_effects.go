@@ -59,6 +59,11 @@ func newStatusEffectDefinitions() map[StatusEffectType]*StatusEffectDefinition {
 					lifetime = burningTickInterval
 				}
 				inst.attachedEffect = w.attachStatusEffectVisual(actor, "fire", lifetime, now)
+				if enableContractEffectManager && w.effectManager != nil {
+					if intent, ok := NewStatusVisualIntent(actor, inst.SourceID, "fire", lifetime); ok {
+						w.effectManager.EnqueueIntent(intent)
+					}
+				}
 			},
 			OnTick: func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time) {
 				if w == nil || actor == nil || inst == nil {

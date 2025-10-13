@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	logging "mine-and-die/server/logging"
 )
 
 func TestDurationToTicks(t *testing.T) {
@@ -99,5 +101,153 @@ func TestNewProjectileIntent(t *testing.T) {
 
 	if intent.Params["dx"] != 1 || intent.Params["dy"] != 0 {
 		t.Fatalf("expected direction (1,0), got (%d,%d)", intent.Params["dx"], intent.Params["dy"])
+	}
+}
+
+func TestNewStatusVisualIntent(t *testing.T) {
+	target := &actorState{Actor: Actor{ID: "player-3", X: 120, Y: 180}}
+	lifetime := 1500 * time.Millisecond
+
+	intent, ok := NewStatusVisualIntent(target, "lava-1", "fire", lifetime)
+	if !ok {
+		t.Fatal("expected status visual intent to be constructed")
+	}
+
+	if intent.TypeID != "fire" {
+		t.Fatalf("expected TypeID 'fire', got %q", intent.TypeID)
+	}
+	if intent.SourceActorID != "lava-1" {
+		t.Fatalf("expected SourceActorID 'lava-1', got %q", intent.SourceActorID)
+	}
+	if intent.TargetActorID != target.ID {
+		t.Fatalf("expected TargetActorID %q, got %q", target.ID, intent.TargetActorID)
+	}
+	if intent.Delivery != DeliveryKindTarget {
+		t.Fatalf("expected DeliveryKindTarget, got %q", intent.Delivery)
+	}
+
+	expectedDuration := durationToTicks(lifetime)
+	if intent.DurationTicks != expectedDuration {
+		t.Fatalf("expected DurationTicks %d, got %d", expectedDuration, intent.DurationTicks)
+	}
+
+	expectedFootprint := quantizeWorldCoord(playerHalf * 2)
+	if intent.Geometry.Width != expectedFootprint || intent.Geometry.Height != expectedFootprint {
+		t.Fatalf("expected footprint %d, got width=%d height=%d", expectedFootprint, intent.Geometry.Width, intent.Geometry.Height)
+	}
+
+	fallbackIntent, ok := NewStatusVisualIntent(target, "", "fire", lifetime)
+	if !ok {
+		t.Fatal("expected fallback intent to be constructed")
+	}
+	if fallbackIntent.SourceActorID != target.ID {
+		t.Fatalf("expected SourceActorID to fall back to %q, got %q", target.ID, fallbackIntent.SourceActorID)
+	}
+}
+
+func TestNewBloodSplatterIntent(t *testing.T) {
+	target := &actorState{Actor: Actor{ID: "npc-5", X: 200, Y: 260}}
+
+	intent, ok := NewBloodSplatterIntent("player-8", target)
+	if !ok {
+		t.Fatal("expected blood splatter intent to be constructed")
+	}
+
+	if intent.TypeID != effectTypeBloodSplatter {
+		t.Fatalf("expected TypeID %q, got %q", effectTypeBloodSplatter, intent.TypeID)
+	}
+	if intent.SourceActorID != "player-8" {
+		t.Fatalf("expected SourceActorID 'player-8', got %q", intent.SourceActorID)
+	}
+	if intent.Delivery != DeliveryKindVisual {
+		t.Fatalf("expected DeliveryKindVisual, got %q", intent.Delivery)
+	}
+
+	expectedDuration := durationToTicks(bloodSplatterDuration)
+	if intent.DurationTicks != expectedDuration {
+		t.Fatalf("expected DurationTicks %d, got %d", expectedDuration, intent.DurationTicks)
+	}
+
+	expectedFootprint := quantizeWorldCoord(playerHalf * 2)
+	if intent.Geometry.Width != expectedFootprint || intent.Geometry.Height != expectedFootprint {
+		t.Fatalf("expected footprint %d, got width=%d height=%d", expectedFootprint, intent.Geometry.Width, intent.Geometry.Height)
+	}
+
+	if intent.Params["centerX"] != quantizeWorldCoord(target.X) {
+		t.Fatalf("expected centerX %d, got %d", quantizeWorldCoord(target.X), intent.Params["centerX"])
+	}
+	if intent.Params["centerY"] != quantizeWorldCoord(target.Y) {
+		t.Fatalf("expected centerY %d, got %d", quantizeWorldCoord(target.Y), intent.Params["centerY"])
+	}
+}
+
+func TestApplyStatusEffectQueuesIntent(t *testing.T) {
+	prev := enableContractEffectManager
+	enableContractEffectManager = true
+	defer func() {
+		enableContractEffectManager = prev
+	}()
+
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager to be initialised")
+	}
+	world.effectManager.intentQueue = world.effectManager.intentQueue[:0]
+
+	actor := &actorState{Actor: Actor{ID: "player-status", X: 140, Y: 160}}
+	now := time.Unix(0, 0)
+
+	if applied := world.applyStatusEffect(actor, StatusEffectBurning, "lava-bridge", now); !applied {
+		t.Fatal("expected status effect to be applied")
+	}
+
+	if len(world.effectManager.intentQueue) != 1 {
+		t.Fatalf("expected 1 intent enqueued, got %d", len(world.effectManager.intentQueue))
+	}
+
+	intent := world.effectManager.intentQueue[0]
+	if intent.TypeID != "fire" {
+		t.Fatalf("expected TypeID 'fire', got %q", intent.TypeID)
+	}
+	if intent.TargetActorID != actor.ID {
+		t.Fatalf("expected TargetActorID %q, got %q", actor.ID, intent.TargetActorID)
+	}
+	if intent.SourceActorID != "lava-bridge" {
+		t.Fatalf("expected SourceActorID 'lava-bridge', got %q", intent.SourceActorID)
+	}
+}
+
+func TestMaybeSpawnBloodSplatterQueuesIntent(t *testing.T) {
+	prev := enableContractEffectManager
+	enableContractEffectManager = true
+	defer func() {
+		enableContractEffectManager = prev
+	}()
+
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager to be initialised")
+	}
+	world.effectManager.intentQueue = world.effectManager.intentQueue[:0]
+
+	eff := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "player-attacker"}}
+	target := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 220, Y: 300}}, Type: NPCTypeGoblin}
+	now := time.Unix(0, 0)
+
+	world.maybeSpawnBloodSplatter(eff, target, now)
+
+	if len(world.effectManager.intentQueue) != 1 {
+		t.Fatalf("expected 1 intent enqueued, got %d", len(world.effectManager.intentQueue))
+	}
+
+	intent := world.effectManager.intentQueue[0]
+	if intent.TypeID != effectTypeBloodSplatter {
+		t.Fatalf("expected TypeID %q, got %q", effectTypeBloodSplatter, intent.TypeID)
+	}
+	if intent.SourceActorID != "player-attacker" {
+		t.Fatalf("expected SourceActorID 'player-attacker', got %q", intent.SourceActorID)
+	}
+	if intent.Params["centerX"] != quantizeWorldCoord(target.X) {
+		t.Fatalf("expected centerX %d, got %d", quantizeWorldCoord(target.X), intent.Params["centerX"])
 	}
 }
