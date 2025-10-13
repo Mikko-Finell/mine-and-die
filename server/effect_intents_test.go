@@ -237,19 +237,27 @@ func TestApplyStatusEffectQueuesIntent(t *testing.T) {
 		t.Fatal("expected status effect to be applied")
 	}
 
-	if len(world.effectManager.intentQueue) != 1 {
-		t.Fatalf("expected 1 intent enqueued, got %d", len(world.effectManager.intentQueue))
+	if len(world.effectManager.intentQueue) != 2 {
+		t.Fatalf("expected 2 intents enqueued (visual + tick), got %d", len(world.effectManager.intentQueue))
 	}
 
-	intent := world.effectManager.intentQueue[0]
-	if intent.TypeID != effectTypeBurningVisual {
-		t.Fatalf("expected TypeID %q, got %q", effectTypeBurningVisual, intent.TypeID)
+	visual := world.effectManager.intentQueue[0]
+	if visual.TypeID != effectTypeBurningVisual {
+		t.Fatalf("expected first intent TypeID %q, got %q", effectTypeBurningVisual, visual.TypeID)
 	}
-	if intent.TargetActorID != actor.ID {
-		t.Fatalf("expected TargetActorID %q, got %q", actor.ID, intent.TargetActorID)
+	if visual.TargetActorID != actor.ID {
+		t.Fatalf("expected visual TargetActorID %q, got %q", actor.ID, visual.TargetActorID)
 	}
-	if intent.SourceActorID != "lava-bridge" {
-		t.Fatalf("expected SourceActorID 'lava-bridge', got %q", intent.SourceActorID)
+	if visual.SourceActorID != "lava-bridge" {
+		t.Fatalf("expected visual SourceActorID 'lava-bridge', got %q", visual.SourceActorID)
+	}
+
+	tick := world.effectManager.intentQueue[1]
+	if tick.TypeID != effectTypeBurningTick {
+		t.Fatalf("expected second intent TypeID %q, got %q", effectTypeBurningTick, tick.TypeID)
+	}
+	if tick.TargetActorID != actor.ID {
+		t.Fatalf("expected tick TargetActorID %q, got %q", actor.ID, tick.TargetActorID)
 	}
 }
 

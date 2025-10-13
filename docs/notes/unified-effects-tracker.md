@@ -40,7 +40,7 @@ Statuses use the following scale:
 | Phase 1 – Contract Types & Authoritative Manager | Complete | Contract payloads, enums, math helpers, and the server manager skeleton are feature-flagged and validated. | Monitor parity while client ingestion work consumes the new contracts. |
 | Phase 2 – Transport & Journal (Dual-Write) | Complete | Dual-write journal, transport toggles, and resync policy are active behind rollout flags. | Track resync telemetry during Phase 3 rollout and capture anomalies. |
 | Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Implement spawn/update/end batch processor and move rendering onto replicated metadata. |
-| Phase 4 – Producer Migration | Complete | Gameplay producers now execute through contract-backed definitions with parity gates, including melee, projectiles, burning, blood decals, and compat shims. | Monitor rollout telemetry while planning Phase 5 determinism and performance hardening. |
+| Phase 4 – Producer Migration | Complete | Gameplay producers now execute through contract-backed definitions with parity gates, including melee, projectiles, burning, and blood decals (legacy compat shim removed in Phase 6). | Monitor rollout telemetry while planning Phase 5 determinism and performance hardening. |
 | Phase 5 – Determinism & Performance Hardening | Complete | Stress testing and budgets for the new system. | Keep budget alarms wired while monitoring rollout metrics. |
 | Phase 6 – Cutover, Verification & Docs | In Progress | Remove legacy paths and lock the unified contract. | Prepare the deprecation switch and legacy removal gates after validating contract telemetry. |
 
@@ -126,7 +126,7 @@ Statuses use the following scale:
 | Table-driven contract tests | Complete | :white_check_mark: Added table-driven lifecycle tests covering area/target/visual deliveries in `server/effects_manager_contract_test.go`. | Keep fixtures versioned with contract spec. |
 | Client join/resync tests | Complete | :white_check_mark: Added join/resync integration tests that exercise the two-pass patch pipeline in `client/__tests__/network.test.js`. | Integrate with existing test harness if possible. |
 | Docs refresh | Complete | :white_check_mark: Refreshed the architecture overview, client module guide, playground authoring instructions, and testing/troubleshooting notes to document the contract transport. | Legacy doc references now point to contract lifecycle batches, client two-pass replay, and diagnostics surfaces. |
-| Deprecation switch | Not Started | Disable legacy arrays and remove compat shim once adoption gate satisfied. | Verify telemetry thresholds (95% adoption, resync rate) before removal. |
+| Deprecation switch | Complete | :white_check_mark: Disabled legacy effect snapshots, removed the compat shim, and defaulted contract definitions to on. | Verify telemetry thresholds (95% adoption, resync rate) before removal. |
 
 ---
 
@@ -134,6 +134,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 36 | Removed the legacy effect snapshots and compat shim, defaulted contract definitions to enabled, and closed out the Phase 6 deprecation switch. | gpt-5-codex |
 | 35 | Refreshed contract-era docs (architecture, client module guide, authoring, troubleshooting) and marked the Phase 6 docs deliverable complete. | gpt-5-codex |
 | 34 | Landed client join/resync two-pass integration tests, marked Phase 5 complete, and advanced the Phase 6 tracker. | gpt-5-codex |
 | 33 | Added table-driven contract lifecycle tests covering delivery kinds and marked the Phase 6 contract test deliverable complete. | gpt-5-codex |

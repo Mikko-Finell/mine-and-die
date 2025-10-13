@@ -21,8 +21,8 @@ transport, and how the browser consumes them.
   updates or ends when they are cosmetic-only.【F:server/effects_manager.go†L14-L172】
 - **Definitions & hooks keep parity.** The default registry wires contract
   lifecycle hooks (melee swings, fireball projectiles, burning visuals,
-  blood decals) back into the legacy world structures so telemetry and
-  compat shims stay in sync while the contract drives rendering.【F:server/effects_manager.go†L47-L65】
+  blood decals) directly into the world state so telemetry and gameplay
+  stay aligned without any legacy compat shim.【F:server/effects_manager.go†L47-L65】
 
 ## Lifecycle events & snapshot transport
 
@@ -37,12 +37,12 @@ transport, and how the browser consumes them.
   breach the per-ten-thousand threshold. `Hub.scheduleResyncIfNeeded`
   converts the hint into a forced keyframe and flips the `resync` flag on
   the next broadcast so clients recover deterministically.【F:server/resync_policy.go†L25-L83】【F:server/hub.go†L1144-L1172】
-- **State payloads carry lifecycle arrays.** When the contract transport is
-  enabled, `stateMessage` attaches `effect_spawned`, `effect_update`,
-  `effect_ended`, and `effect_seq_cursors` alongside the traditional
-  snapshot fields. The join response mirrors the same structure so every
-  client receives a keyframe plus the lifecycle batch before any diffs
-  apply.【F:server/messages.go†L3-L39】【F:server/hub.go†L1049-L1139】
+- **State payloads carry lifecycle arrays.** `stateMessage` now only attaches
+  `effect_spawned`, `effect_update`, `effect_ended`, and
+  `effect_seq_cursors` alongside players, NPCs, obstacles, and ground
+  items—the legacy `effects` snapshot has been removed to reduce payload
+  size. Join responses follow the same shape so every client receives a
+  keyframe plus the lifecycle batch before any diffs apply.【F:server/messages.go†L3-L39】【F:server/hub.go†L1049-L1139】
 
 ## Client consumption & replay
 
