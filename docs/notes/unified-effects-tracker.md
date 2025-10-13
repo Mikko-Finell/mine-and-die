@@ -100,7 +100,7 @@ Statuses use the following scale:
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
 | Client EffectManager adapter | Complete | :white_check_mark: Mirror server IDs in JS manager keyed by `EffectID`; :white_check_mark: Wired spawn/update/end batch ingestion with sequence dedupe and unknown-ID logging; :white_check_mark: Exposed cached lifecycle metadata to the rendering path; :white_check_mark: Translated contract lifecycle payloads into definition spawn/update inputs for default effects. | Registry mirrored in client store for lookup without duplicating arrays; lifecycle view cached for render helpers, translated into definition spawn/update payloads, and passed through effect sync for contract-driven integration. |
-| Two-pass processor | Not Started | Implement batch processing order (spawns → updates → ends) with retry semantics. | Surface diagnostics event when unknown after retry. |
+| Two-pass processor | Complete | :white_check_mark: Added dedicated diagnostics state and wired network ingestion to reuse the two-pass lifecycle retry handler. | Unknown updates now drive the debug panel counter via `client/effect-diagnostics.js`; retry policy logs once per batch. |
 | Render integration & duplication guard | Not Started | Swap rendering onto replicated metadata and prevent double rendering during dual-write. | Validate via patch/keyframe tests. |
 
 ### Phase 4 — Producer Migration (Incremental, Shimmable)
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 20 | Wired contract unknown-update diagnostics into the debug panel and marked the two-pass processor deliverable complete. | gpt-5-codex |
 | 19 | Completed the client lifecycle translator so render definitions receive contract spawn/update payloads. | gpt-5-codex |
 | 18 | Exposed cached lifecycle metadata to render helpers and surfaced contract entries through the client effect sync path. | gpt-5-codex |
 | 17 | Added client lifecycle batch processor to ingest contract events, track sequence cursors, and surface unknown update diagnostics. | gpt-5-codex |

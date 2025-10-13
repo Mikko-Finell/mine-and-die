@@ -10,6 +10,11 @@ import {
   DEFAULT_WORLD_HEIGHT,
 } from "./network.js";
 import { createPatchState } from "./patches.js";
+import {
+  createEffectDiagnosticsState,
+  recordUnknownEffectUpdate,
+  resetEffectDiagnosticsState,
+} from "./effect-diagnostics.js";
 import { startRenderLoop } from "./render.js";
 import {
   RENDER_MODE_PATCH,
@@ -134,14 +139,18 @@ const renderDebugPanelContent = () => html`
               <span id="diag-sim-latency" class="diagnostic-stat__value">0 ms</span>
             </div>
             <div class="diagnostic-stat">
-              <span class="diagnostic-stat__label">Messages sent</span>
-              <span id="diag-messages" class="diagnostic-stat__value">none</span>
-            </div>
-            <div class="diagnostic-stat">
-              <span class="diagnostic-stat__label">Snapshot cadence</span>
-              <span id="diag-keyframe-cadence" class="diagnostic-stat__value">—</span>
-            </div>
-            <div class="diagnostic-stat">
+          <span class="diagnostic-stat__label">Messages sent</span>
+          <span id="diag-messages" class="diagnostic-stat__value">none</span>
+        </div>
+        <div class="diagnostic-stat">
+          <span class="diagnostic-stat__label">Effect lifecycle</span>
+          <span id="diag-effect-lifecycle" class="diagnostic-stat__value">No anomalies</span>
+        </div>
+        <div class="diagnostic-stat">
+          <span class="diagnostic-stat__label">Snapshot cadence</span>
+          <span id="diag-keyframe-cadence" class="diagnostic-stat__value">—</span>
+        </div>
+        <div class="diagnostic-stat">
               <span class="diagnostic-stat__label">Patch baseline</span>
               <span id="diag-patch-baseline" class="diagnostic-stat__value">—</span>
             </div>
@@ -765,6 +774,7 @@ const store = {
   effects: [],
   effectInstancesById: null,
   lastEffectLifecycleSummary: null,
+  effectDiagnostics: createEffectDiagnosticsState(),
   pendingEffectTriggers: [],
   processedEffectTriggerIds: new Set(),
   keyframeRetryTimer: null,
@@ -1055,6 +1065,19 @@ function formatRttLabel(value) {
   return "RTT: —";
 }
 
+function recordEffectLifecycleDiagnostic(event) {
+  if (!store.effectDiagnostics || typeof store.effectDiagnostics !== "object") {
+    store.effectDiagnostics = createEffectDiagnosticsState();
+  }
+  recordUnknownEffectUpdate(store.effectDiagnostics, event);
+  updateDiagnostics();
+}
+
+function resetEffectLifecycleDiagnostics() {
+  resetEffectDiagnosticsState(store.effectDiagnostics);
+  updateDiagnostics();
+}
+
 // updateDiagnostics refreshes the diagnostics sidebar with live values.
 function updateDiagnostics() {
   const els = store.diagnosticsEls;
@@ -1131,6 +1154,37 @@ function updateDiagnostics() {
       : "";
     const base = `${store.messagesSent} (${store.bytesSent} bytes)`;
     els.messages.textContent = lastSentText ? `${base} · ${lastSentText}` : base;
+  }
+
+  if (els.effectLifecycle) {
+    const diagnostics =
+      store.effectDiagnostics && typeof store.effectDiagnostics === "object"
+        ? store.effectDiagnostics
+        : null;
+    if (!diagnostics) {
+      els.effectLifecycle.textContent = "—";
+    } else {
+      const count = Number.isFinite(diagnostics.unknownUpdateCount)
+        ? Math.max(0, Math.floor(diagnostics.unknownUpdateCount))
+        : 0;
+      if (count === 0) {
+        els.effectLifecycle.textContent = "No anomalies";
+      } else {
+        const parts = [`Unknown updates: ${count}`];
+        const last = diagnostics.lastUnknownUpdate;
+        if (last && typeof last === "object") {
+          const { id, seq } = last;
+          if (typeof id === "string" && id.length > 0) {
+            const seqSuffix = Number.isFinite(seq) ? `#${seq}` : "";
+            parts.push(`last ${id}${seqSuffix}`);
+          }
+        }
+        if (Number.isFinite(diagnostics.lastUnknownUpdateAt)) {
+          parts.push(`seen ${formatAgo(diagnostics.lastUnknownUpdateAt)}`);
+        }
+        els.effectLifecycle.textContent = parts.join(" · ");
+      }
+    }
   }
 
   if (els.keyframeCadence) {
@@ -1863,6 +1917,8 @@ store.updateRenderModeUI = () => syncRenderControls();
 store.setCameraLock = setCameraLock;
 store.toggleCameraLock = toggleCameraLock;
 store.requestKeyframeCadence = (value) => requestKeyframeCadence(value);
+store.recordEffectLifecycleDiagnostic = recordEffectLifecycleDiagnostic;
+store.resetEffectLifecycleDiagnostics = resetEffectLifecycleDiagnostics;
 
 async function bootstrap() {
   await customElements.whenDefined("game-client-app");
@@ -1886,6 +1942,7 @@ async function bootstrap() {
     ["latency", "diag-latency"],
     ["simLatency", "diag-sim-latency"],
     ["messages", "diag-messages"],
+    ["effectLifecycle", "diag-effect-lifecycle"],
     ["keyframeCadence", "diag-keyframe-cadence"],
     ["patchBaseline", "diag-patch-baseline"],
     ["patchBatch", "diag-patch-batch"],

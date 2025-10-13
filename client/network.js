@@ -23,6 +23,7 @@ const KEYFRAME_RETRY_BASE_DELAY = 200;
 const KEYFRAME_RETRY_MAX_STEP = 2000;
 const KEYFRAME_RETRY_TICK_INTERVAL = 100;
 const heartbeatControllers = new WeakMap();
+const unknownEffectUpdateHandlers = new WeakMap();
 
 function computeKeyframeRetryDelay(attempts) {
   const normalized = Math.max(1, Math.floor(attempts));
@@ -34,15 +35,37 @@ function computeKeyframeRetryDelay(attempts) {
   return bounded;
 }
 
-function logUnknownEffectUpdate(event) {
-  const id = typeof event?.id === "string" && event.id.length > 0 ? event.id : "<unknown>";
-  const seqValue =
-    typeof event?.seq === "number" && Number.isFinite(event.seq)
-      ? Math.floor(event.seq)
-      : "unknown";
-  console.warn(
-    `[effects] Received effect_update for unknown effect ${id} (seq ${seqValue}).`,
-  );
+function createUnknownEffectUpdateHandler(store) {
+  return function handleUnknownEffectUpdate(event) {
+    const id = typeof event?.id === "string" && event.id.length > 0 ? event.id : "<unknown>";
+    let seqValue = "unknown";
+    if (typeof event?.seq === "number" && Number.isFinite(event.seq)) {
+      seqValue = Math.floor(event.seq);
+    } else if (typeof event?.seq === "string" && event.seq.trim().length > 0) {
+      const parsed = Number(event.seq);
+      if (Number.isFinite(parsed)) {
+        seqValue = Math.floor(parsed);
+      }
+    }
+    console.warn(
+      `[effects] Received effect_update for unknown effect ${id} (seq ${seqValue}).`,
+    );
+    if (typeof store?.recordEffectLifecycleDiagnostic === "function") {
+      store.recordEffectLifecycleDiagnostic(event);
+    }
+  };
+}
+
+function getUnknownEffectUpdateHandler(store) {
+  if (!store || typeof store !== "object") {
+    return createUnknownEffectUpdateHandler(store);
+  }
+  let handler = unknownEffectUpdateHandlers.get(store);
+  if (!handler) {
+    handler = createUnknownEffectUpdateHandler(store);
+    unknownEffectUpdateHandlers.set(store, handler);
+  }
+  return handler;
 }
 
 function normalizeProtocolVersionValue(value) {
@@ -1123,10 +1146,13 @@ export async function joinGame(store) {
     store.pendingEffectTriggers = [];
     store.processedEffectTriggerIds = new Set();
     resetEffectLifecycleState(store);
+    if (typeof store.resetEffectLifecycleDiagnostics === "function") {
+      store.resetEffectLifecycleDiagnostics();
+    }
     store.lastEffectLifecycleSummary = null;
     queueEffectTriggers(store, payload.effectTriggers);
     const joinLifecycleSummary = applyEffectLifecycleBatch(store, payload, {
-      onUnknownUpdate: logUnknownEffectUpdate,
+      onUnknownUpdate: getUnknownEffectUpdateHandler(store),
     });
     store.lastEffectLifecycleSummary = joinLifecycleSummary;
     syncPatchTestingState(store, payload, "join");
@@ -1256,7 +1282,7 @@ export function connectEvents(store) {
         store.groundItems = snapshot.groundItems || {};
         queueEffectTriggers(store, payload.effectTriggers);
         const lifecycleSummary = applyEffectLifecycleBatch(store, payload, {
-          onUnknownUpdate: logUnknownEffectUpdate,
+          onUnknownUpdate: getUnknownEffectUpdateHandler(store),
         });
         store.lastEffectLifecycleSummary = lifecycleSummary;
 
@@ -1559,6 +1585,9 @@ function handleConnectionLoss(store) {
   store.npcs = {};
   store.displayNPCs = {};
   resetEffectLifecycleState(store);
+  if (typeof store.resetEffectLifecycleDiagnostics === "function") {
+    store.resetEffectLifecycleDiagnostics();
+  }
   store.lastEffectLifecycleSummary = null;
   if (store.effectManager && typeof store.effectManager.clear === "function") {
     store.effectManager.clear();
