@@ -195,4 +195,28 @@ describe("effect-lifecycle", () => {
     });
     expect(state.version).toBe(4);
   });
+
+  test("spawn and end in same batch expose ephemeral entry", () => {
+    const store = {};
+    const spawn = createSpawnEvent({ id: "flash", seq: 1, tick: 20 });
+    applyEffectLifecycleBatch(store, {
+      effect_spawned: [spawn],
+      effect_ended: [
+        {
+          id: "flash",
+          seq: 2,
+          tick: 20,
+          reason: "expired",
+        },
+      ],
+    });
+    const state = ensureEffectLifecycleState(store);
+    expect(state.instances.size).toBe(0);
+    expect(state.ephemeralEntries instanceof Map).toBe(true);
+    expect(state.ephemeralEntries.has("flash")).toBe(true);
+    const entry = getEffectLifecycleEntry(store, "flash");
+    expect(entry).not.toBeNull();
+    expect(entry.lastEventKind).toBe("end");
+    expect(entry.lastEvent).toMatchObject({ reason: "expired", tick: 20 });
+  });
 });

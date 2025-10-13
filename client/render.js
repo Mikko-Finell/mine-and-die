@@ -139,6 +139,10 @@ function collectEffectRenderBuckets(store, renderState) {
     renderState?.lifecycle?.entries instanceof Map
       ? renderState.lifecycle.entries
       : null;
+  const lifecycleEphemeral =
+    renderState?.lifecycle?.ephemeralEntries instanceof Map
+      ? renderState.lifecycle.ephemeralEntries
+      : null;
   const legacyEffects = Array.isArray(renderState?.effects)
     ? renderState.effects
     : null;
@@ -160,38 +164,52 @@ function collectEffectRenderBuckets(store, renderState) {
   }
 
   const consumedIds = new Set();
+
+  const processLifecycleEntry = (effectId, entry) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+    const fallback = legacyById.get(effectId) ?? null;
+    const converted = contractLifecycleToEffect(entry, {
+      store,
+      renderState,
+      fallbackEffect: fallback,
+    });
+    if (!converted || typeof converted !== "object") {
+      return;
+    }
+    if (typeof converted.id !== "string" || converted.id.length === 0) {
+      converted.id = effectId;
+    }
+    const legacyType = resolveLifecycleEffectType(entry, converted, fallback);
+    if (!legacyType) {
+      return;
+    }
+    converted.type = legacyType;
+    markHiddenMetadata(converted, "__contractDerived", true);
+    const definitionId =
+      typeof entry.instance?.definitionId === "string"
+        ? entry.instance.definitionId
+        : null;
+    if (definitionId) {
+      markHiddenMetadata(converted, "__contractDefinitionId", definitionId);
+    }
+    addEffectToBucket(buckets, legacyType, converted);
+    consumedIds.add(effectId);
+  };
+
   if (lifecycleEntries) {
     for (const [effectId, entry] of lifecycleEntries.entries()) {
-      if (!entry || typeof entry !== "object") {
+      processLifecycleEntry(effectId, entry);
+    }
+  }
+
+  if (lifecycleEphemeral) {
+    for (const [effectId, entry] of lifecycleEphemeral.entries()) {
+      if (consumedIds.has(effectId)) {
         continue;
       }
-      const fallback = legacyById.get(effectId) ?? null;
-      const converted = contractLifecycleToEffect(entry, {
-        store,
-        renderState,
-        fallbackEffect: fallback,
-      });
-      if (!converted || typeof converted !== "object") {
-        continue;
-      }
-      if (typeof converted.id !== "string" || converted.id.length === 0) {
-        converted.id = effectId;
-      }
-      const legacyType = resolveLifecycleEffectType(entry, converted, fallback);
-      if (!legacyType) {
-        continue;
-      }
-      converted.type = legacyType;
-      markHiddenMetadata(converted, "__contractDerived", true);
-      const definitionId =
-        typeof entry.instance?.definitionId === "string"
-          ? entry.instance.definitionId
-          : null;
-      if (definitionId) {
-        markHiddenMetadata(converted, "__contractDefinitionId", definitionId);
-      }
-      addEffectToBucket(buckets, legacyType, converted);
-      consumedIds.add(effectId);
+      processLifecycleEntry(effectId, entry);
     }
   }
 
@@ -219,6 +237,7 @@ const EMPTY_LIFECYCLE_VIEW = {
   entries: new Map(),
   lastSeqById: new Map(),
   lastBatchTick: null,
+  ephemeralEntries: new Map(),
   getEntry: () => null,
 };
 
@@ -243,17 +262,30 @@ function ensureLifecycleRenderView(store) {
     entries: state.instances,
     lastSeqById: state.lastSeqById,
     lastBatchTick: state.lastBatchTick,
+    ephemeralEntries:
+      state.ephemeralEntries instanceof Map ? state.ephemeralEntries : new Map(),
     getEntry(effectId) {
       if (typeof effectId !== "string" || effectId.length === 0) {
         return null;
       }
-      return state.instances.get(effectId) ?? null;
+      if (state.instances.has(effectId)) {
+        return state.instances.get(effectId) ?? null;
+      }
+      if (state.ephemeralEntries instanceof Map) {
+        return state.ephemeralEntries.get(effectId) ?? null;
+      }
+      return null;
     },
   };
+
+  const ephemeralSnapshot =
+    state.ephemeralEntries instanceof Map ? state.ephemeralEntries : new Map();
+  state.ephemeralEntries = new Map();
 
   store.__effectLifecycleView = view;
   store.__effectLifecycleViewVersion = state.version;
   store.__effectLifecycleViewState = state;
+  view.ephemeralEntries = ephemeralSnapshot;
   return view;
 }
 
@@ -380,6 +412,9 @@ function syncEffectsByType(
         spawnOptions.effectId = id;
       }
       instance = manager.spawn(definition, spawnOptions);
+      if (instance && derivedFromContract) {
+        instance.__effectLifecycleManaged = true;
+      }
     }
     if (instance && crossType) {
       if (typeof instance.__hostEffectType !== "string") {
@@ -390,9 +425,12 @@ function syncEffectsByType(
       }
     }
     if (instance) {
+      if (derivedFromContract) {
+        instance.__effectLifecycleManaged = true;
+      }
       if (lifecycleEntry) {
         instance.__effectLifecycleEntry = lifecycleEntry;
-      } else if (instance.__effectLifecycleEntry) {
+      } else if (!instance.__effectLifecycleManaged && instance.__effectLifecycleEntry) {
         delete instance.__effectLifecycleEntry;
       }
     }
@@ -413,6 +451,9 @@ function syncEffectsByType(
       }
     }
     if (!seen.has(trackedId)) {
+      if (instance && instance.__effectLifecycleManaged) {
+        continue;
+      }
       if (instance && instance.__effectLifecycleEntry) {
         delete instance.__effectLifecycleEntry;
       }

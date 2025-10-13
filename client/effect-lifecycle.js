@@ -9,6 +9,7 @@ function createLifecycleState() {
     instances: new Map(),
     lastSeqById: new Map(),
     lastBatchTick: null,
+    ephemeralEntries: new Map(),
     version: 0,
   };
 }
@@ -18,6 +19,7 @@ function isLifecycleState(value) {
     isPlainObject(value) &&
     value.instances instanceof Map &&
     value.lastSeqById instanceof Map &&
+    value.ephemeralEntries instanceof Map &&
     typeof value.version === "number"
   );
 }
@@ -266,7 +268,13 @@ export function getEffectLifecycleEntry(store, effectId) {
   if (!state) {
     return null;
   }
-  return state.instances.get(effectId) ?? null;
+  if (state.instances.has(effectId)) {
+    return state.instances.get(effectId) ?? null;
+  }
+  if (state.ephemeralEntries instanceof Map) {
+    return state.ephemeralEntries.get(effectId) ?? null;
+  }
+  return null;
 }
 
 export function applyEffectLifecycleBatch(store, payload, options = {}) {
@@ -305,6 +313,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     };
     state.instances.set(spawn.id, entry);
     state.lastSeqById.set(spawn.id, spawn.seq);
+    state.ephemeralEntries.delete(spawn.id);
     summary.spawns.push(spawn.id);
     mutated = true;
     if (spawn.tick !== null) {
@@ -375,6 +384,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     entry.endReason = end.reason ?? null;
     state.lastSeqById.set(end.id, end.seq);
     state.instances.delete(end.id);
+    state.ephemeralEntries.set(end.id, entry);
     summary.ends.push(end.id);
     mutated = true;
     if (end.tick !== null) {
