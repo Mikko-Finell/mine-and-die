@@ -1147,6 +1147,134 @@ func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
 	}
 }
 
+func TestMeleeAttackProducesPatchesAndEffectEvents(t *testing.T) {
+	originalManager := enableContractEffectManager
+	originalMelee := enableContractMeleeDefinitions
+	originalBlood := enableContractBloodDecalDefinitions
+	enableContractEffectManager = true
+	enableContractMeleeDefinitions = true
+	enableContractBloodDecalDefinitions = true
+	defer func() {
+		enableContractEffectManager = originalManager
+		enableContractMeleeDefinitions = originalMelee
+		enableContractBloodDecalDefinitions = originalBlood
+	}()
+
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager when contract flag enabled")
+	}
+	world.obstacles = nil
+
+	attacker := newTestPlayerState("melee-sim-attacker")
+	attacker.X = 320
+	attacker.Y = 320
+	attacker.Facing = FacingRight
+	attacker.cooldowns = make(map[string]time.Time)
+	world.AddPlayer(attacker)
+
+	goblin := &npcState{
+		actorState: actorState{Actor: Actor{
+			ID:        "melee-target",
+			X:         attacker.X + playerHalf + meleeAttackReach/2,
+			Y:         attacker.Y,
+			Facing:    FacingLeft,
+			Health:    30,
+			MaxHealth: 30,
+			Inventory: NewInventory(),
+		}},
+		stats: stats.DefaultComponent(stats.ArchetypeGoblin),
+		Type:  NPCTypeGoblin,
+	}
+	world.npcs[goblin.ID] = goblin
+
+	initialHealth := goblin.Health
+
+	commands := []Command{{ActorID: attacker.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeAttack}}}
+	dt := 1.0 / float64(tickRate)
+	tickDuration := time.Duration(float64(time.Second) * dt)
+	start := time.Unix(0, 0)
+
+	for tick := 1; tick <= 4; tick++ {
+		var staged []Command
+		if tick == 1 {
+			staged = commands
+		}
+		world.Step(uint64(tick), start.Add(time.Duration(tick-1)*tickDuration), dt, staged, nil)
+	}
+
+	patches := world.journal.SnapshotPatches()
+	if len(patches) == 0 {
+		t.Fatalf("expected patches to be recorded for melee attack")
+	}
+
+	expectedHealth := initialHealth - meleeAttackDamage
+	foundHealthPatch := false
+	for _, patch := range patches {
+		if patch.Kind != PatchNPCHealth || patch.EntityID != goblin.ID {
+			continue
+		}
+		payload, ok := patch.Payload.(HealthPayload)
+		if !ok {
+			t.Fatalf("expected health payload, got %T", patch.Payload)
+		}
+		if math.Abs(payload.Health-expectedHealth) > 1e-6 {
+			continue
+		}
+		foundHealthPatch = true
+		break
+	}
+	if !foundHealthPatch {
+		t.Fatalf("expected npc health patch for %s", goblin.ID)
+	}
+
+	events := world.journal.SnapshotEffectEvents()
+	if len(events.Spawns) == 0 {
+		t.Fatalf("expected effect spawn events to be recorded")
+	}
+
+	var attackID string
+	attackSpawn := false
+	bloodSpawn := false
+	for _, spawn := range events.Spawns {
+		switch spawn.Instance.DefinitionID {
+		case effectTypeAttack:
+			attackSpawn = true
+			attackID = spawn.Instance.ID
+		case effectTypeBloodSplatter:
+			bloodSpawn = true
+		}
+	}
+	if !attackSpawn {
+		t.Fatalf("expected melee swing effect spawn to be recorded")
+	}
+	if !bloodSpawn {
+		t.Fatalf("expected blood splatter effect spawn to be recorded")
+	}
+
+	attackUpdate := false
+	for _, update := range events.Updates {
+		if update.ID == attackID {
+			attackUpdate = true
+			break
+		}
+	}
+	if !attackUpdate {
+		t.Fatalf("expected melee swing effect update for %s", attackID)
+	}
+
+	attackEnd := false
+	for _, end := range events.Ends {
+		if end.ID == attackID {
+			attackEnd = true
+			break
+		}
+	}
+	if !attackEnd {
+		t.Fatalf("expected melee swing effect end for %s", attackID)
+	}
+}
+
 func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 	originalManager := enableContractEffectManager
 	originalProjectile := enableContractProjectileDefinitions
