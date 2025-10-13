@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -199,6 +200,23 @@ func victimsBucket(count int) string {
 	}
 }
 
+func tickBudgetOverrunBucket(duration, budget time.Duration) string {
+	if budget <= 0 {
+		return "unknown"
+	}
+	ratio := float64(duration) / float64(budget)
+	switch {
+	case ratio < 1.5:
+		return "over_1x"
+	case ratio < 2.0:
+		return "over_1_5x"
+	case ratio < 3.0:
+		return "over_2x"
+	default:
+		return "over_gt3x"
+	}
+}
+
 type telemetryEffectParityEntry struct {
 	Hits                 uint64            `json:"hits"`
 	HitsPer1kTicks       float64           `json:"hitsPer1kTicks"`
@@ -266,6 +284,14 @@ type telemetryCounters struct {
 	triggerEnqueued        simpleCounter
 	journalDrops           simpleCounter
 
+	tickBudgetOverruns               simpleCounter
+	tickBudgetLastOverrunMillis      atomic.Int64
+	tickBudgetConsecutiveOverruns    atomic.Uint64
+	tickBudgetMaxConsecutiveOverruns atomic.Uint64
+	tickBudgetAlarms                 atomic.Uint64
+	tickBudgetLastAlarmTick          atomic.Uint64
+	tickBudgetLastAlarmRatio         atomic.Uint64
+
 	totalTicks   atomic.Uint64
 	effectParity effectParityAggregator
 }
@@ -285,6 +311,7 @@ type telemetrySnapshot struct {
 	EffectTriggers           telemetryEffectTriggersSnapshot `json:"effectTriggers"`
 	JournalDrops             map[string]uint64               `json:"journalDrops,omitempty"`
 	EffectParity             telemetryEffectParitySnapshot   `json:"effectParity"`
+	TickBudget               telemetryTickBudgetSnapshot     `json:"tickBudget"`
 }
 
 type telemetryEffectsSnapshot struct {
@@ -302,6 +329,17 @@ type telemetryEffectTriggersSnapshot struct {
 type telemetryEffectParitySnapshot struct {
 	TotalTicks uint64                                           `json:"totalTicks"`
 	Entries    map[string]map[string]telemetryEffectParityEntry `json:"entries,omitempty"`
+}
+
+type telemetryTickBudgetSnapshot struct {
+	BudgetMillis      int64             `json:"budgetMillis"`
+	LastOverrunMillis int64             `json:"lastOverrunMillis,omitempty"`
+	CurrentStreak     uint64            `json:"currentStreak"`
+	MaxStreak         uint64            `json:"maxStreak"`
+	Overruns          map[string]uint64 `json:"overruns,omitempty"`
+	AlarmCount        uint64            `json:"alarmCount"`
+	LastAlarmTick     uint64            `json:"lastAlarmTick,omitempty"`
+	LastAlarmRatio    float64           `json:"lastAlarmRatio,omitempty"`
 }
 
 func newTelemetryCounters() *telemetryCounters {
@@ -354,6 +392,54 @@ func (t *telemetryCounters) RecordTickDuration(duration time.Duration) {
 			triggers,
 		)
 	}
+}
+
+func (t *telemetryCounters) RecordTickBudgetOverrun(duration, budget time.Duration) uint64 {
+	if t == nil {
+		return 0
+	}
+	if budget <= 0 {
+		budget = time.Second / time.Duration(tickRate)
+	}
+	bucket := tickBudgetOverrunBucket(duration, budget)
+	if bucket != "" {
+		t.tickBudgetOverruns.add(bucket, 1)
+	}
+	millis := duration.Milliseconds()
+	if millis < 0 {
+		millis = 0
+	}
+	t.tickBudgetLastOverrunMillis.Store(millis)
+	streak := t.tickBudgetConsecutiveOverruns.Add(1)
+	for {
+		current := t.tickBudgetMaxConsecutiveOverruns.Load()
+		if streak <= current {
+			break
+		}
+		if t.tickBudgetMaxConsecutiveOverruns.CompareAndSwap(current, streak) {
+			break
+		}
+	}
+	return streak
+}
+
+func (t *telemetryCounters) RecordTickBudgetAlarm(tick uint64, ratio float64) {
+	if t == nil {
+		return
+	}
+	t.tickBudgetAlarms.Add(1)
+	if tick > 0 {
+		t.tickBudgetLastAlarmTick.Store(tick)
+	}
+	bits := math.Float64bits(ratio)
+	t.tickBudgetLastAlarmRatio.Store(bits)
+}
+
+func (t *telemetryCounters) ResetTickBudgetOverrunStreak() {
+	if t == nil {
+		return
+	}
+	t.tickBudgetConsecutiveOverruns.Store(0)
 }
 
 func (t *telemetryCounters) RecordKeyframeJournal(size int, oldest, newest uint64) {
@@ -449,7 +535,8 @@ func (t *telemetryCounters) DebugEnabled() bool {
 
 func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 	totalTicks := t.totalTicks.Load()
-	return telemetrySnapshot{
+	tickBudget := time.Second / time.Duration(tickRate)
+	snapshot := telemetrySnapshot{
 		BytesSent:                t.bytesSent.Load(),
 		EntitiesSent:             t.entitiesSent.Load(),
 		TickDuration:             t.tickDurationMillis.Load(),
@@ -476,4 +563,24 @@ func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 			Entries:    t.effectParity.snapshot(totalTicks),
 		},
 	}
+	tickBudgetSnapshot := telemetryTickBudgetSnapshot{
+		BudgetMillis:  tickBudget.Milliseconds(),
+		CurrentStreak: t.tickBudgetConsecutiveOverruns.Load(),
+		MaxStreak:     t.tickBudgetMaxConsecutiveOverruns.Load(),
+		Overruns:      t.tickBudgetOverruns.snapshot(),
+		AlarmCount:    t.tickBudgetAlarms.Load(),
+	}
+	if last := t.tickBudgetLastOverrunMillis.Load(); last > 0 {
+		tickBudgetSnapshot.LastOverrunMillis = last
+	}
+	if tickBudgetSnapshot.AlarmCount > 0 {
+		if tick := t.tickBudgetLastAlarmTick.Load(); tick > 0 {
+			tickBudgetSnapshot.LastAlarmTick = tick
+		}
+		if bits := t.tickBudgetLastAlarmRatio.Load(); bits != 0 {
+			tickBudgetSnapshot.LastAlarmRatio = math.Float64frombits(bits)
+		}
+	}
+	snapshot.TickBudget = tickBudgetSnapshot
+	return snapshot
 }
