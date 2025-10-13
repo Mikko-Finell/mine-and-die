@@ -1099,6 +1099,12 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 		Height:   playerHalf * 2,
 	}
 
+	if enableContractEffectManager && w.effectManager != nil {
+		if intent, ok := NewBloodSplatterIntent(eff.Owner, &target.actorState); ok {
+			w.effectManager.EnqueueIntent(intent)
+		}
+	}
+
 	w.QueueEffectTrigger(trigger, now)
 }
 
