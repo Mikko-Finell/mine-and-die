@@ -343,7 +343,9 @@ func (w *World) SetEffectPosition(eff *effectState, x, y float64) {
 	}
 	eff.version++
 
-	w.appendPatch(PatchEffectPos, eff.ID, EffectPosPayload{X: x, Y: y})
+	if !eff.contractManaged {
+		w.appendPatch(PatchEffectPos, eff.ID, EffectPosPayload{X: x, Y: y})
+	}
 	w.recordEffectUpdate(eff, "position")
 }
 
@@ -364,7 +366,9 @@ func (w *World) SetEffectParam(eff *effectState, key string, value float64) {
 	eff.Params[key] = value
 	eff.version++
 
-	w.appendPatch(PatchEffectParams, eff.ID, EffectParamsPayload{Params: cloneEffectParams(eff.Params)})
+	if !eff.contractManaged {
+		w.appendPatch(PatchEffectParams, eff.ID, EffectParamsPayload{Params: cloneEffectParams(eff.Params)})
+	}
 	w.recordEffectUpdate(eff, "param")
 }
 
