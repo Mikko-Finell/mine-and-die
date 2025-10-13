@@ -39,7 +39,7 @@ Statuses use the following scale:
 | Phase 0 – Inventory, Observability, Guardrails | Complete | Tooling and telemetry guardrails landed to support future rollout. | Keep the producer map and telemetry docs current as new definitions ship. |
 | Phase 1 – Contract Types & Authoritative Manager | Complete | Contract payloads, enums, math helpers, and the server manager skeleton are feature-flagged and validated. | Monitor parity while client ingestion work consumes the new contracts. |
 | Phase 2 – Transport & Journal (Dual-Write) | Complete | Dual-write journal, transport toggles, and resync policy are active behind rollout flags. | Track resync telemetry during Phase 3 rollout and capture anomalies. |
-| Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Implement spawn/update/end batch processor and move rendering onto replicated metadata. |
+| Phase 3 – Client Ingestion & Visual Manager | In Progress | Client-side scaffolding mirrors authoritative IDs; ingestion pipeline still pending. | Move rendering onto replicated metadata and guard against dual-write duplication. |
 | Phase 4 – Producer Migration | Not Started | Port gameplay producers onto contract-backed definitions with parity gates. | Pick one archetype (melee/projectile) for the first contract-backed port. |
 | Phase 5 – Determinism & Performance Hardening | Not Started | Stress testing and budgets for the new system. | Define benchmark harness and thresholds post-contract rollout. |
 | Phase 6 – Cutover, Verification & Docs | Not Started | Remove legacy paths and lock the unified contract. | Schedule adoption gate monitoring once prior phases stabilize. |
@@ -100,7 +100,7 @@ Statuses use the following scale:
 | Deliverable | Status | Action Items | Notes |
 | --- | --- | --- | --- |
 | Client EffectManager adapter | Complete | :white_check_mark: Mirror server IDs in JS manager keyed by `EffectID`; :white_check_mark: Wired spawn/update/end batch ingestion with sequence dedupe and unknown-ID logging; :white_check_mark: Exposed cached lifecycle metadata to the rendering path; :white_check_mark: Translated contract lifecycle payloads into definition spawn/update inputs for default effects. | Registry mirrored in client store for lookup without duplicating arrays; lifecycle view cached for render helpers, translated into definition spawn/update payloads, and passed through effect sync for contract-driven integration. |
-| Two-pass processor | Not Started | Implement batch processing order (spawns → updates → ends) with retry semantics. | Surface diagnostics event when unknown after retry. |
+| Two-pass processor | Complete | :white_check_mark: Added `client/effect-lifecycle.js` batch ingestion to process spawn → update → end with a retry pass for late updates; :white_check_mark: Surfaced `onUnknownUpdate` callback so `client/network.js` can log diagnostics after retries fail. | Lifecycle summaries now persist on the client store (`store.lastEffectLifecycleSummary`) for debugging while dual-write remains active. |
 | Render integration & duplication guard | Not Started | Swap rendering onto replicated metadata and prevent double rendering during dual-write. | Validate via patch/keyframe tests. |
 
 ### Phase 4 — Producer Migration (Incremental, Shimmable)
@@ -135,6 +135,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 20 | Closed the client two-pass processor deliverable and documented the retry/diagnostics wiring for lifecycle ingestion. | gpt-5-codex |
 | 19 | Completed the client lifecycle translator so render definitions receive contract spawn/update payloads. | gpt-5-codex |
 | 18 | Exposed cached lifecycle metadata to render helpers and surfaced contract entries through the client effect sync path. | gpt-5-codex |
 | 17 | Added client lifecycle batch processor to ingest contract events, track sequence cursors, and surface unknown update diagnostics. | gpt-5-codex |
