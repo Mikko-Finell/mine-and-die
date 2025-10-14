@@ -49,10 +49,9 @@ const FireballZoneEffectDefinition = makeRectZoneDefinition("fireball", {
   lineWidth: 2,
 });
 
-const CONTRACT_SELF_MANAGED_DEFINITION_IDS = new Set([
-  "attack",
-  "melee-swing",
-]);
+// Hard cap for how long a client-managed instance may outlive its contract entry
+// before the renderer forces a cleanup.
+const CLIENT_MANAGED_EFFECT_MAX_AGE_MS = 2000;
 
 if (typeof EffectLayer !== "object" || typeof EffectLayer.ActorOverlay !== "number") {
   throw new Error("EffectLayer.ActorOverlay is not defined; rebuild js-effects to sync layers.");
@@ -91,6 +90,20 @@ function mapDefinitionToLegacyType(definitionId) {
     default:
       return definitionId;
   }
+}
+
+function isLifecycleClientManaged(entry) {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const definitionManaged =
+    entry.instance?.definition?.client?.managedByClient === true;
+  if (definitionManaged) {
+    return true;
+  }
+  const replicationManaged =
+    entry.instance?.replication?.managedByClient === true;
+  return replicationManaged;
 }
 
 function markHiddenMetadata(target, key, value) {
@@ -228,6 +241,10 @@ function collectEffectRenderBuckets(store, renderState) {
         : null;
     if (definitionId) {
       markHiddenMetadata(converted, "__contractDefinitionId", definitionId);
+    }
+    const managedByClient = isLifecycleClientManaged(entry);
+    if (managedByClient) {
+      markHiddenMetadata(converted, "__contractManagedByClient", true);
     }
     addEffectToBucket(buckets, legacyType, converted);
     consumedIds.add(effectId);
@@ -387,6 +404,10 @@ function syncEffectsByType(
       : null;
   const renderState =
     options && typeof options === "object" ? options.renderState ?? null : null;
+  const nowMs =
+    options && typeof options === "object" && Number.isFinite(options.frameNow)
+      ? options.frameNow
+      : null;
   const effects = Array.isArray(effectsOverride)
     ? effectsOverride
     : Array.isArray(store.effects)
@@ -457,18 +478,30 @@ function syncEffectsByType(
       if (lifecycleEntry) {
         instance.__effectLifecycleEntry = lifecycleEntry;
         instance.__effectLifecycleManaged = true;
+        const lifecycleManagedByClient = isLifecycleClientManaged(lifecycleEntry);
+        instance.__effectLifecycleClientManaged = lifecycleManagedByClient;
+        if ("__effectLifecycleGcDeadline" in instance) {
+          delete instance.__effectLifecycleGcDeadline;
+        }
       } else {
-        const contractDefinitionId =
-          derivedFromContract && typeof effect.__contractDefinitionId === "string"
-            ? effect.__contractDefinitionId
-            : null;
-        const allowLifecycleManagement =
-          !!contractDefinitionId &&
-          CONTRACT_SELF_MANAGED_DEFINITION_IDS.has(contractDefinitionId);
-        if (allowLifecycleManagement) {
+        const clientManaged =
+          instance.__effectLifecycleClientManaged === true ||
+          (derivedFromContract && effect?.__contractManagedByClient === true);
+        if (clientManaged) {
           instance.__effectLifecycleManaged = true;
+          instance.__effectLifecycleClientManaged = true;
+          if (
+            nowMs !== null &&
+            typeof instance.__effectLifecycleGcDeadline !== "number"
+          ) {
+            instance.__effectLifecycleGcDeadline =
+              nowMs + CLIENT_MANAGED_EFFECT_MAX_AGE_MS;
+          }
         } else if (instance.__effectLifecycleManaged) {
           delete instance.__effectLifecycleManaged;
+        }
+        if (!clientManaged && "__effectLifecycleClientManaged" in instance) {
+          delete instance.__effectLifecycleClientManaged;
         }
         if (instance.__effectLifecycleEntry) {
           delete instance.__effectLifecycleEntry;
@@ -485,6 +518,7 @@ function syncEffectsByType(
     }
   }
 
+
   for (const [trackedId, instance] of Array.from(tracked.entries())) {
     if (crossType) {
       if (!instance || instance.__hostEffectType !== type) {
@@ -498,9 +532,51 @@ function syncEffectsByType(
         delete instance.__effectLifecycleEntry;
       }
       if (lifecycleManaged) {
-        continue;
+        const clientManaged =
+          instance && instance.__effectLifecycleClientManaged === true;
+        if (!clientManaged) {
+          if (instance && instance.__effectLifecycleManaged) {
+            delete instance.__effectLifecycleManaged;
+          }
+          if (instance && "__effectLifecycleClientManaged" in instance) {
+            delete instance.__effectLifecycleClientManaged;
+          }
+          manager.removeInstance(instance);
+          if (instance && "__effectLifecycleGcDeadline" in instance) {
+            delete instance.__effectLifecycleGcDeadline;
+          }
+          continue;
+        }
+        const deadline =
+          typeof instance.__effectLifecycleGcDeadline === "number"
+            ? instance.__effectLifecycleGcDeadline
+            : null;
+        if (deadline !== null && nowMs !== null) {
+          if (nowMs <= deadline) {
+            continue;
+          }
+        } else if (deadline === null && nowMs !== null) {
+          instance.__effectLifecycleGcDeadline =
+            nowMs + CLIENT_MANAGED_EFFECT_MAX_AGE_MS;
+          continue;
+        } else if (deadline === null && nowMs === null) {
+          continue;
+        } else if (deadline !== null && nowMs === null) {
+          continue;
+        }
       }
       manager.removeInstance(instance);
+      if (instance) {
+        if (instance.__effectLifecycleManaged) {
+          delete instance.__effectLifecycleManaged;
+        }
+        if (instance.__effectLifecycleClientManaged) {
+          delete instance.__effectLifecycleClientManaged;
+        }
+        if (instance.__effectLifecycleGcDeadline) {
+          delete instance.__effectLifecycleGcDeadline;
+        }
+      }
     }
   }
 }
@@ -626,6 +702,11 @@ export function startRenderLoop(store) {
 
   requestAnimationFrame(gameLoop);
 }
+
+export const __testing__ = {
+  syncEffectsByType,
+  CLIENT_MANAGED_EFFECT_MAX_AGE_MS,
+};
 
 // drawScene paints the background, obstacles, effects, and players.
 function drawScene(store, renderState, frameDt, frameNow) {
@@ -927,7 +1008,7 @@ function prepareEffectPass(
     MeleeSwingEffectDefinition,
     undefined,
     effectBuckets.get("attack") ?? [],
-    { lifecycle, renderState },
+    { lifecycle, renderState, frameNow: normalizedFrameNow },
   );
   syncEffectsByType(
     store,
@@ -936,7 +1017,7 @@ function prepareEffectPass(
     BloodSplatterDefinition,
     undefined,
     effectBuckets.get("blood-splatter") ?? [],
-    { lifecycle, renderState },
+    { lifecycle, renderState, frameNow: normalizedFrameNow },
   );
   syncEffectsByType(
     store,
@@ -945,7 +1026,7 @@ function prepareEffectPass(
     FireEffectDefinition,
     updateFireInstanceTransform,
     effectBuckets.get("fire") ?? [],
-    { lifecycle, renderState },
+    { lifecycle, renderState, frameNow: normalizedFrameNow },
   );
   syncEffectsByType(
     store,
@@ -955,7 +1036,7 @@ function prepareEffectPass(
     (instance, effect, state, lifecycleEntry) =>
       updateRectZoneInstance(instance, effect, state, lifecycleEntry),
     effectBuckets.get("fireball") ?? [],
-    { lifecycle, renderState },
+    { lifecycle, renderState, frameNow: normalizedFrameNow },
   );
 
   const camera = store.camera || { x: 0, y: 0 };

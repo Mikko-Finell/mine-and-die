@@ -30,7 +30,11 @@ browser's effect manager.【F:server/effects_manager.go†L26-L172】【F:server
 ### Definition hooks
 - `defaultEffectDefinitions` enumerates contract behaviour for melee swings,
   fireballs, burning ticks/visuals, and blood decals, including client
-  replication specs and lifecycle policies.【F:server/effects_manager.go†L805-L894】
+  replication specs and lifecycle policies. Definitions that produce
+  fire-and-forget visuals set `managedByClient: true` so the renderer keeps
+  them alive just long enough to finish their local animation, while
+  server-driven projectiles, auras, and status visuals leave the flag false so
+  clients retire them immediately when the contract signals completion.【F:server/effects_manager.go†L805-L894】
 - `defaultEffectHookRegistry` wires definition hooks into the legacy world.
   Hooks call `resolveMeleeImpact`, spawn contract-managed projectiles, keep
   status visuals attached, apply burning damage, and ensure blood decals are

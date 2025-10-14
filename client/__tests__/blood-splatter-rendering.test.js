@@ -11,11 +11,11 @@ const ATTACK_STATE_MESSAGE =
   '"displayPlayers":{"player-2":{"x":904,"y":1238}},"npcs":[{"id":"npc-rat-3","x":898.8969594381456,"y":1242.443619937173,"facing":"left","type":"rat","maxHealth":60,"health":60}],' +
   '"displayNPCs":{"npc-rat-3":{"x":898.8969594381456,"y":1242.443619937173}},"effect_spawned":[{"tick":2451,"seq":1,' +
   '"instance":{"id":"contract-effect-5","definitionId":"attack","definition":{"typeId":"attack","delivery":"area","shape":"rect","motion":"instant","impact":"first-hit","lifetimeTicks":1,' +
-  '"hooks":{"onSpawn":"melee.spawn"},"client":{"sendSpawn":true,"sendUpdates":true,"sendEnd":true},"end":{"kind":1,' +
+  '"hooks":{"onSpawn":"melee.spawn"},"client":{"sendSpawn":true,"sendUpdates":true,"sendEnd":true,"managedByClient":true},"end":{"kind":1,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}},' +
   '"startTick":2451,"deliveryState":{"geometry":{"shape":"rect","offsetX":-17,"width":22,"height":16},"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"},' +
   '"behaviorState":{"ticksRemaining":3,"extra":{"healthDelta":-10,"reach":56,"width":40}},"ownerActorId":"player-2",' +
-  '"replication":{"sendSpawn":true,"sendUpdates":true,"sendEnd":true},"end":{"kind":1,' +
+  '"replication":{"sendSpawn":true,"sendUpdates":true,"sendEnd":true,"managedByClient":true},"end":{"kind":1,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}}}],' +
   '"effect_update":[{"tick":2451,"seq":2,"id":"contract-effect-5","deliveryState":{"geometry":{"shape":"rect","offsetX":-17,"width":22,"height":16},' +
   '"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"},"behaviorState":{"ticksRemaining":3,' +
@@ -32,11 +32,11 @@ const BLOOD_SPLATTER_STATE_MESSAGE =
   '"minDroplets":4,"minStainRadius":4,"spawnInterval":1.1,"speed":3},"colors":["#7a0e12","#4a090b"]}],' +
   '"effect_spawned":[{"tick":2452,"seq":1,' +
   '"instance":{"id":"contract-effect-6","definitionId":"blood-splatter","definition":{"typeId":"blood-splatter","delivery":"visual","shape":"rect","motion":"none","impact":"first-hit","lifetimeTicks":18,' +
-  '"hooks":{"onSpawn":"visual.blood.splatter","onTick":"visual.blood.splatter"},"client":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true},"end":{"kind":0,' +
+  '"hooks":{"onSpawn":"visual.blood.splatter","onTick":"visual.blood.splatter"},"client":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true,"managedByClient":true},"end":{"kind":0,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}},' +
   '"startTick":2452,"deliveryState":{"geometry":{"shape":"rect","width":11,"height":11},"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"},' +
   '"behaviorState":{"ticksRemaining":18,"extra":{"centerX":18,"centerY":71}},"ownerActorId":"player-2",' +
-  '"colors":["#7a0e12","#4a090b"],"replication":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true},"end":{"kind":0,' +
+  '"colors":["#7a0e12","#4a090b"],"replication":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true,"managedByClient":true},"end":{"kind":0,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}}}],' +
   '"effect_seq_cursors":{"contract-effect-6":1},"patches":[{"kind":"npc_pos","entityId":"npc-rat-3","payload":{"x":907.2384585405665,"y":1235.7951290070935}}]}';
 

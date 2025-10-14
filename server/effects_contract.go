@@ -162,12 +162,14 @@ type EffectBehaviorState struct {
 }
 
 // ReplicationSpec describes which lifecycle payloads the server emits for an effect,
-// and (optionally) a whitelist of fields included in updates.
+// (optionally) a whitelist of fields included in updates, and who manages the
+// visual lifecycle once the contract signals completion.
 type ReplicationSpec struct {
-	SendSpawn    bool            `json:"sendSpawn"`
-	SendUpdates  bool            `json:"sendUpdates"`
-	SendEnd      bool            `json:"sendEnd"`
-	UpdateFields map[string]bool `json:"updateFields,omitempty"`
+	SendSpawn       bool            `json:"sendSpawn"`
+	SendUpdates     bool            `json:"sendUpdates"`
+	SendEnd         bool            `json:"sendEnd"`
+	ManagedByClient bool            `json:"managedByClient,omitempty"`
+	UpdateFields    map[string]bool `json:"updateFields,omitempty"`
 }
 
 // EffectInstance represents a server-owned effect with live state tracked by the simulation.
