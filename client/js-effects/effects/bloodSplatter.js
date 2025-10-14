@@ -14,6 +14,45 @@ const createBlob = (rand, radius, points, jaggedness) => {
     }
     return coords;
 };
+const computeStainBounds = (stain) => {
+    const cos = Math.cos(stain.rotation);
+    const sin = Math.sin(stain.rotation);
+    let minX = stain.x;
+    let minY = stain.y;
+    let maxX = stain.x;
+    let maxY = stain.y;
+    let seeded = false;
+    const includePath = (path) => {
+        for (let i = 0; i < path.length; i += 2) {
+            const localX = path[i];
+            const localY = path[i + 1] * stain.squish;
+            const rotX = localX * cos - localY * sin;
+            const rotY = localX * sin + localY * cos;
+            const worldX = stain.x + rotX;
+            const worldY = stain.y + rotY;
+            if (!seeded) {
+                minX = maxX = worldX;
+                minY = maxY = worldY;
+                seeded = true;
+                continue;
+            }
+            if (worldX < minX)
+                minX = worldX;
+            if (worldX > maxX)
+                maxX = worldX;
+            if (worldY < minY)
+                minY = worldY;
+            if (worldY > maxY)
+                maxY = worldY;
+        }
+    };
+    includePath(stain.basePath);
+    includePath(stain.midPath);
+    if (!seeded) {
+        return { minX: stain.x, minY: stain.y, maxX: stain.x, maxY: stain.y };
+    }
+    return { minX, minY, maxX, maxY };
+};
 class BloodSplatterInstance {
     constructor(opts) {
         this.id = `blood-splatter-${Math.random().toString(36).slice(2)}`;
@@ -203,7 +242,9 @@ class BloodSplatterInstance {
             midColor,
             darkColor,
             boundingRadius: baseRadius * 1.5,
+            bounds: { minX: x, minY: y, maxX: x, maxY: y },
         };
+        stain.bounds = computeStainBounds(stain);
         if (this.stains.length < this.opts.maxStains) {
             this.stains.push(stain);
             return;
@@ -240,11 +281,11 @@ class BloodSplatterInstance {
             }
         }
         for (const stain of this.stains) {
-            const radius = stain.boundingRadius;
-            const dxMin = stain.x - radius;
-            const dxMax = stain.x + radius;
-            const dyMin = stain.y - radius;
-            const dyMax = stain.y + radius;
+            const bounds = stain.bounds;
+            const dxMin = bounds.minX;
+            const dxMax = bounds.maxX;
+            const dyMin = bounds.minY;
+            const dyMax = bounds.maxY;
             if (!hasContent) {
                 minX = dxMin;
                 maxX = dxMax;

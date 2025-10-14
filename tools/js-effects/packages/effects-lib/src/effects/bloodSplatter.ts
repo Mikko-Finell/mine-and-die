@@ -23,6 +23,13 @@ interface Droplet {
   age: number;
 }
 
+interface StainBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 interface Stain {
   x: number;
   y: number;
@@ -33,6 +40,7 @@ interface Stain {
   midColor: string;
   darkColor: string;
   boundingRadius: number;
+  bounds: StainBounds;
 }
 
 export interface BloodSplatterOptions {
@@ -66,6 +74,49 @@ const createBlob = (rand: RandomSource, radius: number, points: number, jaggedne
   }
 
   return coords;
+};
+
+const computeStainBounds = (stain: Pick<Stain, "x" | "y" | "rotation" | "squish" | "basePath" | "midPath">): StainBounds => {
+  const cos = Math.cos(stain.rotation);
+  const sin = Math.sin(stain.rotation);
+
+  let minX = stain.x;
+  let minY = stain.y;
+  let maxX = stain.x;
+  let maxY = stain.y;
+  let seeded = false;
+
+  const includePath = (path: number[]): void => {
+    for (let i = 0; i < path.length; i += 2) {
+      const localX = path[i];
+      const localY = path[i + 1] * stain.squish;
+      const rotX = localX * cos - localY * sin;
+      const rotY = localX * sin + localY * cos;
+      const worldX = stain.x + rotX;
+      const worldY = stain.y + rotY;
+
+      if (!seeded) {
+        minX = maxX = worldX;
+        minY = maxY = worldY;
+        seeded = true;
+        continue;
+      }
+
+      if (worldX < minX) minX = worldX;
+      if (worldX > maxX) maxX = worldX;
+      if (worldY < minY) minY = worldY;
+      if (worldY > maxY) maxY = worldY;
+    }
+  };
+
+  includePath(stain.basePath);
+  includePath(stain.midPath);
+
+  if (!seeded) {
+    return { minX: stain.x, minY: stain.y, maxX: stain.x, maxY: stain.y };
+  }
+
+  return { minX, minY, maxX, maxY };
 };
 
 class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
@@ -293,7 +344,10 @@ class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
       midColor,
       darkColor,
       boundingRadius: baseRadius * 1.5,
+      bounds: { minX: x, minY: y, maxX: x, maxY: y },
     };
+
+    stain.bounds = computeStainBounds(stain);
 
     if (this.stains.length < this.opts.maxStains) {
       this.stains.push(stain);
@@ -334,11 +388,11 @@ class BloodSplatterInstance implements EffectInstance<BloodSplatterOptions> {
     }
 
     for (const stain of this.stains) {
-      const radius = stain.boundingRadius;
-      const dxMin = stain.x - radius;
-      const dxMax = stain.x + radius;
-      const dyMin = stain.y - radius;
-      const dyMax = stain.y + radius;
+      const bounds = stain.bounds;
+      const dxMin = bounds.minX;
+      const dxMax = bounds.maxX;
+      const dyMin = bounds.minY;
+      const dyMax = bounds.maxY;
       if (!hasContent) {
         minX = dxMin;
         maxX = dxMax;
