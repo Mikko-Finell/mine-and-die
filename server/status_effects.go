@@ -248,10 +248,10 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 	if inst != nil && inst.Definition != nil {
 		statusType = inst.Definition.Type
 	}
-	w.applyBurningDamage(owner, actor, statusType, delta, now, telemetrySourceLegacy)
+	w.applyBurningDamage(owner, actor, statusType, delta, now)
 }
 
-func (w *World) applyBurningDamage(owner string, actor *actorState, status StatusEffectType, delta float64, now time.Time, source string) {
+func (w *World) applyBurningDamage(owner string, actor *actorState, status StatusEffectType, delta float64, now time.Time) {
 	if w == nil || actor == nil {
 		return
 	}
@@ -266,7 +266,6 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 			Params: map[string]float64{"healthDelta": delta},
 		},
 		StatusEffect:       status,
-		telemetrySource:    source,
 		telemetrySpawnTick: Tick(int64(w.currentTick)),
 	}
 	if eff.Effect.Owner == "" {
@@ -302,7 +301,6 @@ func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, l
 		},
 		expiresAt:          now.Add(lifetime),
 		FollowActorID:      actor.ID,
-		telemetrySource:    telemetrySourceLegacy,
 		telemetrySpawnTick: Tick(int64(w.currentTick)),
 	}
 	if !w.registerEffect(eff) {
