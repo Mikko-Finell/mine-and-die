@@ -66,6 +66,7 @@ func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 	journal.AttachTelemetry(newTelemetryCounters())
 
 	extra := map[string]int{"damage": 15}
+	params := map[string]int{"damage": 15}
 	spawn := journal.RecordEffectSpawn(EffectSpawnEvent{
 		Tick: 10,
 		Instance: EffectInstance{
@@ -74,6 +75,7 @@ func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 				Geometry: EffectGeometry{Shape: GeometryShapeCircle, Radius: 4},
 			},
 			BehaviorState: EffectBehaviorState{TicksRemaining: 5, Extra: extra},
+			Params:        params,
 			Replication:   ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true},
 		},
 	})
@@ -90,16 +92,21 @@ func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 		t.Fatalf("expected spawn clone to protect behavior state map")
 	}
 
-	params := map[string]int{"damage": 20}
+	params["damage"] = 25
+	if spawn.Instance.Params["damage"] != 15 {
+		t.Fatalf("expected spawn clone to protect params map")
+	}
+
+	updateParams := map[string]int{"damage": 20}
 	update := journal.RecordEffectUpdate(EffectUpdateEvent{
 		Tick:   11,
 		ID:     "effect-1",
-		Params: params,
+		Params: updateParams,
 	})
 	if update.Seq != 2 {
 		t.Fatalf("expected update sequence 2, got %d", update.Seq)
 	}
-	params["damage"] = 35
+	updateParams["damage"] = 35
 	if update.Params["damage"] != 20 {
 		t.Fatalf("expected update params to be cloned from input")
 	}
