@@ -9,6 +9,7 @@ function createLifecycleState() {
     instances: new Map(),
     lastSeqById: new Map(),
     lastBatchTick: null,
+    recentlyEnded: new Map(),
     version: 0,
   };
 }
@@ -227,6 +228,9 @@ export function ensureEffectLifecycleState(store) {
   }
   const existing = store[LIFECYCLE_STATE_KEY];
   if (isLifecycleState(existing)) {
+    if (!(existing.recentlyEnded instanceof Map)) {
+      existing.recentlyEnded = new Map();
+    }
     return existing;
   }
   const created = createLifecycleState();
@@ -239,7 +243,13 @@ export function peekEffectLifecycleState(store) {
     return null;
   }
   const state = store[LIFECYCLE_STATE_KEY];
-  return isLifecycleState(state) ? state : null;
+  if (!isLifecycleState(state)) {
+    return null;
+  }
+  if (!(state.recentlyEnded instanceof Map)) {
+    state.recentlyEnded = new Map();
+  }
+  return state;
 }
 
 export function resetEffectLifecycleState(store) {
@@ -271,6 +281,11 @@ export function getEffectLifecycleEntry(store, effectId) {
 
 export function applyEffectLifecycleBatch(store, payload, options = {}) {
   const state = ensureEffectLifecycleState(store);
+  if (!(state.recentlyEnded instanceof Map)) {
+    state.recentlyEnded = new Map();
+  } else if (state.recentlyEnded.size > 0) {
+    state.recentlyEnded.clear();
+  }
   const summary = {
     spawns: [],
     updates: [],
@@ -294,6 +309,9 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     if (lastSeq !== undefined && spawn.seq <= lastSeq) {
       summary.droppedSpawns.push(spawn.id);
       continue;
+    }
+    if (state.recentlyEnded instanceof Map) {
+      state.recentlyEnded.delete(spawn.id);
     }
     const entry = {
       id: spawn.id,
@@ -374,6 +392,9 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     entry.lastEvent = end;
     entry.endReason = end.reason ?? null;
     state.lastSeqById.set(end.id, end.seq);
+    if (state.recentlyEnded instanceof Map) {
+      state.recentlyEnded.set(end.id, entry);
+    }
     state.instances.delete(end.id);
     summary.ends.push(end.id);
     mutated = true;
@@ -400,6 +421,17 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
 
   if (mutated) {
     state.version = (state.version + 1) >>> 0;
+  }
+
+  if (Array.isArray(summary.droppedSpawns) && summary.droppedSpawns.length > 0) {
+    const reporter = typeof console !== "undefined" && console && console.error
+      ? console.error.bind(console)
+      : null;
+    if (reporter) {
+      for (const id of summary.droppedSpawns) {
+        reporter(`[effects] Dropped spawn for reused effect id ${id}.`);
+      }
+    }
   }
 
   if (Array.isArray(summary.unknownUpdates) && summary.unknownUpdates.length > 0) {

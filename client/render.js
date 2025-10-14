@@ -112,6 +112,37 @@ function addEffectToBucket(buckets, type, effect) {
   }
 }
 
+function rekeyTrackedInstance(manager, instance, contractId, trackedType) {
+  if (
+    !manager ||
+    !instance ||
+    typeof contractId !== "string" ||
+    contractId.length === 0
+  ) {
+    return;
+  }
+  const currentId = typeof instance.id === "string" ? instance.id : null;
+  if (currentId === contractId) {
+    return;
+  }
+  const canUnregister = typeof manager.unregisterInstance === "function";
+  const canRegister = typeof manager.registerInstance === "function";
+  if (canUnregister) {
+    manager.unregisterInstance(instance);
+  }
+  instance.id = contractId;
+  if (canRegister) {
+    manager.registerInstance(instance);
+    return;
+  }
+  if (typeof manager.getTrackedInstances === "function") {
+    const map = manager.getTrackedInstances(trackedType || contractId);
+    if (map && typeof map.set === "function") {
+      map.set(contractId, instance);
+    }
+  }
+}
+
 function resolveLifecycleEffectType(entry, convertedEffect, fallbackEffect) {
   if (fallbackEffect && typeof fallbackEffect.type === "string") {
     return fallbackEffect.type;
@@ -139,6 +170,10 @@ function collectEffectRenderBuckets(store, renderState) {
     renderState?.lifecycle?.entries instanceof Map
       ? renderState.lifecycle.entries
       : null;
+  const recentlyEnded =
+    renderState?.lifecycle?.recentlyEnded instanceof Map
+      ? renderState.lifecycle.recentlyEnded
+      : null;
   const legacyEffects = Array.isArray(renderState?.effects)
     ? renderState.effects
     : null;
@@ -160,39 +195,53 @@ function collectEffectRenderBuckets(store, renderState) {
   }
 
   const consumedIds = new Set();
+  const processLifecycleEntry = (effectId, entry) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+    const fallback = legacyById.get(effectId) ?? null;
+    const converted = contractLifecycleToEffect(entry, {
+      store,
+      renderState,
+      fallbackEffect: fallback,
+    });
+    if (!converted || typeof converted !== "object") {
+      return;
+    }
+    if (typeof converted.id !== "string" || converted.id.length === 0) {
+      converted.id = effectId;
+    }
+    const legacyType = resolveLifecycleEffectType(entry, converted, fallback);
+    if (!legacyType) {
+      return;
+    }
+    converted.type = legacyType;
+    markHiddenMetadata(converted, "__contractDerived", true);
+    const definitionId =
+      typeof entry.instance?.definitionId === "string"
+        ? entry.instance.definitionId
+        : null;
+    if (definitionId) {
+      markHiddenMetadata(converted, "__contractDefinitionId", definitionId);
+    }
+    addEffectToBucket(buckets, legacyType, converted);
+    consumedIds.add(effectId);
+  };
+
   if (lifecycleEntries) {
     for (const [effectId, entry] of lifecycleEntries.entries()) {
-      if (!entry || typeof entry !== "object") {
-        continue;
-      }
-      const fallback = legacyById.get(effectId) ?? null;
-      const converted = contractLifecycleToEffect(entry, {
-        store,
-        renderState,
-        fallbackEffect: fallback,
-      });
-      if (!converted || typeof converted !== "object") {
-        continue;
-      }
-      if (typeof converted.id !== "string" || converted.id.length === 0) {
-        converted.id = effectId;
-      }
-      const legacyType = resolveLifecycleEffectType(entry, converted, fallback);
-      if (!legacyType) {
-        continue;
-      }
-      converted.type = legacyType;
-      markHiddenMetadata(converted, "__contractDerived", true);
-      const definitionId =
-        typeof entry.instance?.definitionId === "string"
-          ? entry.instance.definitionId
-          : null;
-      if (definitionId) {
-        markHiddenMetadata(converted, "__contractDefinitionId", definitionId);
-      }
-      addEffectToBucket(buckets, legacyType, converted);
-      consumedIds.add(effectId);
+      processLifecycleEntry(effectId, entry);
     }
+  }
+
+  if (recentlyEnded) {
+    for (const [effectId, entry] of recentlyEnded.entries()) {
+      if (consumedIds.has(effectId)) {
+        continue;
+      }
+      processLifecycleEntry(effectId, entry);
+    }
+    recentlyEnded.clear();
   }
 
   if (legacyEffects) {
@@ -219,6 +268,7 @@ const EMPTY_LIFECYCLE_VIEW = {
   entries: new Map(),
   lastSeqById: new Map(),
   lastBatchTick: null,
+  recentlyEnded: new Map(),
   getEntry: () => null,
 };
 
@@ -239,15 +289,20 @@ function ensureLifecycleRenderView(store) {
     return store.__effectLifecycleView;
   }
 
+  if (!(state.recentlyEnded instanceof Map)) {
+    state.recentlyEnded = new Map();
+  }
+
   const view = {
     entries: state.instances,
     lastSeqById: state.lastSeqById,
     lastBatchTick: state.lastBatchTick,
+    recentlyEnded: state.recentlyEnded,
     getEntry(effectId) {
       if (typeof effectId !== "string" || effectId.length === 0) {
         return null;
       }
-      return state.instances.get(effectId) ?? null;
+      return state.instances.get(effectId) ?? state.recentlyEnded.get(effectId) ?? null;
     },
   };
 
@@ -337,7 +392,7 @@ function syncEffectsByType(
       ? definition.type
       : null;
   const trackedType = definitionType || type;
-  const tracked = manager.getTrackedInstances(trackedType);
+  let tracked = manager.getTrackedInstances(trackedType);
   const crossType = trackedType !== type;
   const seen = new Set();
 
@@ -380,6 +435,10 @@ function syncEffectsByType(
         spawnOptions.effectId = id;
       }
       instance = manager.spawn(definition, spawnOptions);
+      if (instance) {
+        rekeyTrackedInstance(manager, instance, id, trackedType);
+        tracked = manager.getTrackedInstances(trackedType);
+      }
     }
     if (instance && crossType) {
       if (typeof instance.__hostEffectType !== "string") {
@@ -843,6 +902,15 @@ function prepareEffectPass(
     MeleeSwingEffectDefinition,
     undefined,
     effectBuckets.get("attack") ?? [],
+    { lifecycle, renderState },
+  );
+  syncEffectsByType(
+    store,
+    manager,
+    "blood-splatter",
+    BloodSplatterDefinition,
+    undefined,
+    effectBuckets.get("blood-splatter") ?? [],
     { lifecycle, renderState },
   );
   syncEffectsByType(
