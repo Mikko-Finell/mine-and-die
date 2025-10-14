@@ -157,18 +157,24 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     findActorPosition(renderState, store, instance.followActorId) ??
     findActorPosition(renderState, store, instance.ownerActorId);
 
-  if (centerX === null && offsetX !== null && anchor) {
-    centerX = anchor.x + offsetX;
-  }
-  if (centerY === null && offsetY !== null && anchor) {
-    centerY = anchor.y + offsetY;
-  }
-
-  if (centerX === null && offsetX !== null) {
-    centerX = offsetX;
-  }
-  if (centerY === null && offsetY !== null) {
-    centerY = offsetY;
+  if (anchor) {
+    if (offsetX !== null) {
+      centerX = anchor.x + offsetX;
+    } else if (centerX === null || centerX === 0) {
+      centerX = anchor.x;
+    }
+    if (offsetY !== null) {
+      centerY = anchor.y + offsetY;
+    } else if (centerY === null || centerY === 0) {
+      centerY = anchor.y;
+    }
+  } else {
+    if (centerX === null && offsetX !== null) {
+      centerX = offsetX;
+    }
+    if (centerY === null && offsetY !== null) {
+      centerY = offsetY;
+    }
   }
 
   if (centerX !== null) {
