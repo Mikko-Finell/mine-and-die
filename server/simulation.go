@@ -144,9 +144,7 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		groundItemsByTile:   make(map[groundTileKey]map[string]*groundItemState),
 		journal:             newJournal(capacity, maxAge),
 	}
-	if enableContractEffectManager {
-		w.effectManager = newEffectManager(w)
-	}
+	w.effectManager = newEffectManager(w)
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
 	return w
@@ -429,7 +427,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 		switch action.command.Name {
 		case effectTypeAttack:
 			triggered := w.triggerMeleeAttack(action.actorID, tick, now)
-			if triggered && enableContractEffectManager && w.effectManager != nil {
+			if triggered && w.effectManager != nil {
 				if owner, _ := w.abilityOwner(action.actorID); owner != nil {
 					if intent, ok := NewMeleeIntent(owner); ok {
 						w.effectManager.EnqueueIntent(intent)
@@ -438,7 +436,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 			}
 		case effectTypeFireball:
 			triggered := w.triggerFireball(action.actorID, now)
-			if triggered && enableContractEffectManager && w.effectManager != nil {
+			if triggered && w.effectManager != nil {
 				if owner, _ := w.abilityOwner(action.actorID); owner != nil {
 					if tpl := w.projectileTemplates[effectTypeFireball]; tpl != nil {
 						if intent, ok := NewProjectileIntent(owner, tpl); ok {
@@ -461,7 +459,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	w.applyEnvironmentalStatusEffects(actorsForHazards, now)
 
 	w.advanceStatusEffects(now)
-	if enableContractEffectManager && w.effectManager != nil {
+	if w.effectManager != nil {
 		dispatcher := w.recordEffectLifecycleEvent
 		if emitEffectEvent != nil {
 			dispatcher = func(event EffectLifecycleEvent) {

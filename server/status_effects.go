@@ -58,13 +58,8 @@ func newStatusEffectDefinitions() map[StatusEffectType]*StatusEffectDefinition {
 				if lifetime <= 0 {
 					lifetime = burningTickInterval
 				}
-				useContract := w.contractBurningEnabled()
-				if !useContract {
-					inst.attachedEffect = w.attachStatusEffectVisual(actor, effectTypeBurningVisual, lifetime, now)
-				} else {
-					inst.attachedEffect = nil
-				}
-				if enableContractEffectManager && w.effectManager != nil {
+				inst.attachedEffect = nil
+				if w.effectManager != nil {
 					if intent, ok := NewStatusVisualIntent(actor, inst.SourceID, effectTypeBurningVisual, lifetime); ok {
 						w.effectManager.EnqueueIntent(intent)
 					}
@@ -243,7 +238,7 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 		owner = actor.ID
 	}
 	delta := -amount
-	if w.contractBurningEnabled() && w.effectManager != nil {
+	if w.effectManager != nil {
 		if intent, ok := NewBurningTickIntent(actor, owner, delta); ok {
 			w.effectManager.EnqueueIntent(intent)
 		}
@@ -254,16 +249,6 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 		statusType = inst.Definition.Type
 	}
 	w.applyBurningDamage(owner, actor, statusType, delta, now, telemetrySourceLegacy)
-}
-
-func (w *World) contractBurningEnabled() bool {
-	if w == nil {
-		return false
-	}
-	if !enableContractEffectManager || !enableContractBurningDefinitions {
-		return false
-	}
-	return w.effectManager != nil
 }
 
 func (w *World) applyBurningDamage(owner string, actor *actorState, status StatusEffectType, delta float64, now time.Time, source string) {

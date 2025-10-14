@@ -218,12 +218,6 @@ func TestNewBloodSplatterIntent(t *testing.T) {
 }
 
 func TestApplyStatusEffectQueuesIntent(t *testing.T) {
-	prev := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() {
-		enableContractEffectManager = prev
-	}()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialised")
@@ -262,12 +256,6 @@ func TestApplyStatusEffectQueuesIntent(t *testing.T) {
 }
 
 func TestMaybeSpawnBloodSplatterQueuesIntent(t *testing.T) {
-	prev := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() {
-		enableContractEffectManager = prev
-	}()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialised")

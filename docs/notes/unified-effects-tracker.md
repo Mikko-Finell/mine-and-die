@@ -130,7 +130,7 @@ Statuses use the following scale:
 
 #### Cutover Verification Notes
 
-* Confirmed the contract manager, transport, and all migrated definition flags now default to enabled in [`server/constants.go`](../../server/constants.go), keeping the unified pipeline authoritative without manual toggles.
+* Confirmed the contract manager, transport, and all migrated definition flags now default to enabled in [`server/constants.go`](../../server/constants.go), keeping the unified pipeline authoritative without manual toggles. *(Superseded by Entry 41 — toggles removed entirely.)*
 * Join/resync/state payloads no longer populate the legacy `effects` array when the contract transport is active, so clients consume the replicated lifecycle batches shipped from [`server/hub.go`](../../server/hub.go).
 * Client lifecycle ingestion and rendering now rely solely on `effect_spawned`/`effect_update`/`effect_ended` batches after the compat shim removal, leaving legacy arrays as defensive fallbacks for targeted rollbacks.
 
@@ -143,9 +143,9 @@ Statuses use the following scale:
   * :white_check_mark: Removed the `renderState.effects` merge path from `collectEffectRenderBuckets` and the associated snapshot wiring in `client/render.js`, leaving lifecycle batches as the sole render source.
   * :white_check_mark: Updated renderer coverage so tests ingest contract lifecycle payloads (without legacy snapshots) and still assert diagnostics hooks.
 * **Retire rollout toggles and legacy producer branches.**
-  * Remove `enableContractEffect*` flags from `server/constants.go` and make contract definitions the sole execution path.
-  * Delete legacy branches in `triggerMeleeAttack`, `triggerFireball`, `spawnProjectile`, and companion helpers so gameplay can no longer spawn legacy shells.
-  * Audit tests/docs for references to the removed flags and update them to match the permanent pipeline.
+  * :white_check_mark: Removed the `enableContractEffect*` flags from `server/constants.go`, making the contract manager and definitions the only execution path.
+  * :white_check_mark: Deleted legacy branches in `triggerMeleeAttack`, `triggerFireball`, removed the old `spawnProjectile` path, and routed blood/status hooks exclusively through the contract manager.
+  * :white_check_mark: Updated tests and docs to drop flag gating and mirror the contract-only pipeline.
 * **Collapse effect parity telemetry to a single contract stream.**
   * Flatten the effect parity aggregator in `server/telemetry.go` so it no longer emits a `legacy` bucket.
   * Remove `telemetrySourceLegacy` bookkeeping from `server/effects.go` and adjust metrics/tests that expected dual-source output.
@@ -158,6 +158,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 41 | Retired the contract rollout toggles, removed legacy melee/projectile/burning/blood branches, refreshed docs/tests, and locked gameplay to the contract manager. | gpt-5-codex |
 | 40 | Removed the legacy `state.effects` payload, rewired joins/resets/broadcasts to rely on lifecycle batches, refreshed tests, and updated docs. | gpt-5-codex |
 | 39 | Documented melee swing visibility regression caused by missing geometry fallbacks after the params transport change and noted the translator fix. | gpt-5-codex |
 | 38 | Removed legacy melee effect shells, routing cooldown and telemetry through contract lifecycle events and updating tracker notes. | gpt-5-codex |

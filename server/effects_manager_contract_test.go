@@ -30,10 +30,6 @@ func (c *lifecycleCollector) collect(evt EffectLifecycleEvent) {
 }
 
 func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
-	originalFlag := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() { enableContractEffectManager = originalFlag }()
-
 	cases := []struct {
 		name       string
 		definition *EffectDefinition

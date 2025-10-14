@@ -61,16 +61,15 @@ browser's effect manager.【F:server/effects_manager.go†L26-L172】【F:server
   `Hub.scheduleResyncIfNeeded` consumes the hint, forces the next keyframe, and
   marks the upcoming state message with `resync` so clients rebuild cleanly.【F:server/patches.go†L449-L459】【F:server/hub.go†L1138-L1157】
 - `Hub.marshalState` no longer ships the legacy `effects` snapshot; state and
-  keyframe payloads rely solely on contract lifecycle batches. When both the
-  manager and transport flags are enabled the message bundles `effect_spawned`,
-  `effect_update`, `effect_ended`, and `effect_seq_cursors` alongside the usual
-  world payloads.【F:server/hub.go†L960-L1126】
+  keyframe payloads rely solely on contract lifecycle batches. The message
+  always bundles `effect_spawned`, `effect_update`, `effect_ended`, and
+  `effect_seq_cursors` alongside the usual world payloads.【F:server/hub.go†L960-L1126】
 - Joining the game returns a snapshot without lifecycle arrays; the hub
   immediately broadcasts a state message (flagged as a resync) so the client
   receives a keyframe followed by the first contract batch.【F:server/hub.go†L206-L244】
-- Runtime guardrails remain toggleable at build time: `enableContractEffect*`
-  flags keep the contract path on by default but allow targeted rollbacks when
-  debugging transport or gameplay regressions.【F:server/constants.go†L35-L62】
+- Runtime guardrails now run unconditionally; the contract effect manager and
+  transport are the only execution path for gameplay and telemetry, eliminating
+  the legacy rollbacks documented earlier in the migration.【F:server/simulation.go†L136-L214】【F:server/hub.go†L960-L1126】
 
 ## Client lifecycle ingestion
 

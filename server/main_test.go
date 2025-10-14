@@ -44,6 +44,40 @@ func slicesEqual(a, b []string) bool {
 	return true
 }
 
+func spawnProjectileForTest(w *World, actorID, projectileType string, now time.Time) (*effectState, bool) {
+	if w == nil {
+		return nil, false
+	}
+
+	tpl := w.projectileTemplates[projectileType]
+	if tpl == nil {
+		return nil, false
+	}
+
+	owner, cooldowns := w.abilityOwner(actorID)
+	if owner == nil || cooldowns == nil {
+		return nil, false
+	}
+
+	if !w.cooldownReady(cooldowns, tpl.Type, tpl.Cooldown, now) {
+		return nil, false
+	}
+
+	w.pruneEffects(now)
+	w.nextEffectID++
+	effectID := fmt.Sprintf("effect-%d", w.nextEffectID)
+	effect := w.buildProjectileEffect(owner, actorID, tpl, now, effectID)
+	if effect == nil {
+		return nil, false
+	}
+
+	if !w.registerEffect(effect) {
+		return nil, false
+	}
+	w.recordEffectSpawn(tpl.Type, "projectile")
+	return effect, true
+}
+
 func newTestPlayerState(id string) *playerState {
 	return &playerState{
 		actorState: actorState{
@@ -803,25 +837,6 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 }
 
 func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
-	originalManager := enableContractEffectManager
-	originalBlood := enableContractBloodDecalDefinitions
-	originalTransport := enableContractEffectTransport
-	originalMelee := enableContractMeleeDefinitions
-	enableContractEffectManager = true
-	enableContractBloodDecalDefinitions = true
-	enableContractEffectTransport = true
-	// When contract melee is active the legacy trigger path short-circuits and
-	// `EffectManager.RunTick` drains the queued swing intent. The blood decal
-	// intent is appended during that same drain, so the slice reset at the end
-	// of the tick clears it before it can instantiate the splatter.
-	enableContractMeleeDefinitions = true
-	defer func() {
-		enableContractEffectManager = originalManager
-		enableContractBloodDecalDefinitions = originalBlood
-		enableContractEffectTransport = originalTransport
-		enableContractMeleeDefinitions = originalMelee
-	}()
-
 	hub := newHub()
 
 	join := hub.Join()
@@ -1225,18 +1240,9 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 }
 
 func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
-	originalManager := enableContractEffectManager
-	originalMelee := enableContractMeleeDefinitions
-	enableContractEffectManager = true
-	enableContractMeleeDefinitions = true
-	defer func() {
-		enableContractEffectManager = originalManager
-		enableContractMeleeDefinitions = originalMelee
-	}()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
-		t.Fatal("expected effect manager when flag enabled")
+		t.Fatal("expected effect manager to be initialized")
 	}
 	world.obstacles = nil
 
@@ -1268,18 +1274,9 @@ func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
-	originalManager := enableContractEffectManager
-	originalProjectile := enableContractProjectileDefinitions
-	enableContractEffectManager = true
-	enableContractProjectileDefinitions = true
-	defer func() {
-		enableContractEffectManager = originalManager
-		enableContractProjectileDefinitions = originalProjectile
-	}()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
-		t.Fatal("expected effect manager when flag enabled")
+		t.Fatal("expected effect manager to be initialized")
 	}
 	world.obstacles = nil
 
@@ -1345,18 +1342,9 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
-	originalManager := enableContractEffectManager
-	originalBurning := enableContractBurningDefinitions
-	enableContractEffectManager = true
-	enableContractBurningDefinitions = true
-	defer func() {
-		enableContractEffectManager = originalManager
-		enableContractBurningDefinitions = originalBurning
-	}()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
-		t.Fatal("expected effect manager when flag enabled")
+		t.Fatal("expected effect manager to be initialized")
 	}
 
 	target := newTestPlayerState("contract-burning-target")
@@ -1412,18 +1400,9 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
-	originalManager := enableContractEffectManager
-	originalBlood := enableContractBloodDecalDefinitions
-	enableContractEffectManager = true
-	enableContractBloodDecalDefinitions = true
-	defer func() {
-		enableContractEffectManager = originalManager
-		enableContractBloodDecalDefinitions = originalBlood
-	}()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
-		t.Fatal("expected effect manager when contract flag enabled")
+		t.Fatal("expected effect manager to be initialized")
 	}
 
 	attacker := newTestPlayerState("player-blood-attacker")
@@ -1552,10 +1531,6 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 }
 
 func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
-	originalFlag := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() { enableContractEffectManager = originalFlag }()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	world.obstacles = nil
 	attacker := newTestPlayerState("attacker")
@@ -1745,10 +1720,6 @@ func (c *effectEventCollector) collect(evt EffectLifecycleEvent) {
 }
 
 func TestContractMeleeEndsInstantly(t *testing.T) {
-	originalFlag := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() { enableContractEffectManager = originalFlag }()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	attacker := newTestPlayerState("melee-owner")
 	attacker.cooldowns = make(map[string]time.Time)
@@ -1800,10 +1771,6 @@ func TestContractMeleeEndsInstantly(t *testing.T) {
 }
 
 func TestContractProjectileEndsByDuration(t *testing.T) {
-	originalFlag := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() { enableContractEffectManager = originalFlag }()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	world.obstacles = nil
 	world.npcs = make(map[string]*npcState)
@@ -1876,10 +1843,6 @@ func TestContractProjectileEndsByDuration(t *testing.T) {
 }
 
 func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
-	originalFlag := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() { enableContractEffectManager = originalFlag }()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	owner := newTestPlayerState("anchor-owner")
 	owner.cooldowns = make(map[string]time.Time)
@@ -1942,10 +1905,6 @@ func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
 }
 
 func TestContractReplicationOffSkipsUpdates(t *testing.T) {
-	originalFlag := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() { enableContractEffectManager = originalFlag }()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 
 	const spawnOnlyType = "spawn-only"
@@ -1990,10 +1949,6 @@ func TestContractReplicationOffSkipsUpdates(t *testing.T) {
 }
 
 func TestContractSeqMonotonicAcrossTicks(t *testing.T) {
-	originalFlag := enableContractEffectManager
-	enableContractEffectManager = true
-	defer func() { enableContractEffectManager = originalFlag }()
-
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 
 	const seqType = "seq-effect"
@@ -2194,7 +2149,7 @@ func TestProjectileExplodeOnImpactSpawnsAreaEffect(t *testing.T) {
 	}
 	hub.world.projectileTemplates[tpl.Type] = tpl
 
-	eff, ok := hub.world.spawnProjectile(shooterID, tpl.Type, now)
+	eff, ok := spawnProjectileForTest(hub.world, shooterID, tpl.Type, now)
 	if !ok || eff == nil {
 		t.Fatalf("expected projectile spawn to succeed")
 	}
@@ -2265,7 +2220,7 @@ func TestProjectileExplodeOnExpirySpawnsAreaEffect(t *testing.T) {
 	}
 	hub.world.projectileTemplates[tpl.Type] = tpl
 
-	eff, ok := hub.world.spawnProjectile(shooterID, tpl.Type, now)
+	eff, ok := spawnProjectileForTest(hub.world, shooterID, tpl.Type, now)
 	if !ok || eff == nil {
 		t.Fatalf("expected projectile spawn to succeed")
 	}
@@ -2384,7 +2339,7 @@ func TestProjectileStopPolicies(t *testing.T) {
 		tpl.ImpactRules.MaxTargets = 0
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned || eff == nil {
 			t.Fatalf("expected projectile spawn to succeed")
 		}
@@ -2439,7 +2394,7 @@ func TestProjectileStopPolicies(t *testing.T) {
 		tpl.ImpactRules.MaxTargets = 0
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned || eff == nil {
 			t.Fatalf("expected projectile spawn to succeed")
 		}
@@ -2492,7 +2447,7 @@ func TestProjectileMaxTargetsLimit(t *testing.T) {
 	tpl.ImpactRules.MaxTargets = 2
 	registerTestProjectileTemplate(hub.world, tpl)
 
-	eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+	eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 	if !spawned || eff == nil {
 		t.Fatalf("expected projectile spawn to succeed")
 	}
@@ -2542,7 +2497,7 @@ func TestProjectileObstacleImpactExplosion(t *testing.T) {
 	tpl.ImpactRules.ExplodeOnImpact = &ExplosionSpec{EffectType: "impact-aoe", Radius: 10, Duration: 300 * time.Millisecond}
 	registerTestProjectileTemplate(hub.world, tpl)
 
-	eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+	eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 	if !spawned || eff == nil {
 		t.Fatalf("expected projectile spawn to succeed")
 	}
@@ -2578,7 +2533,7 @@ func TestProjectileExpiryExplosionPolicy(t *testing.T) {
 		tpl.ImpactRules.ExpiryOnlyIfNoHits = true
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned || eff == nil {
 			t.Fatalf("expected projectile spawn to succeed")
 		}
@@ -2619,7 +2574,7 @@ func TestProjectileExpiryExplosionPolicy(t *testing.T) {
 		tpl.ImpactRules.ExpiryOnlyIfNoHits = true
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned || eff == nil {
 			t.Fatalf("expected projectile spawn to succeed")
 		}
@@ -2660,7 +2615,7 @@ func TestProjectileExpiryExplosionPolicy(t *testing.T) {
 		tpl.ImpactRules.ExpiryOnlyIfNoHits = false
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned || eff == nil {
 			t.Fatalf("expected projectile spawn to succeed")
 		}
@@ -2696,7 +2651,7 @@ func TestProjectileBoundsAndLifetimeExpiry(t *testing.T) {
 		tpl.ImpactRules.ExplodeOnExpiry = &ExplosionSpec{EffectType: "bounds-aoe", Radius: 18, Duration: 150 * time.Millisecond}
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		_, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		_, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned {
 			t.Fatalf("expected projectile spawn to succeed")
 		}
@@ -2729,7 +2684,7 @@ func TestProjectileBoundsAndLifetimeExpiry(t *testing.T) {
 		tpl.ImpactRules.ExplodeOnExpiry = &ExplosionSpec{EffectType: "lifetime-aoe", Radius: 12, Duration: 120 * time.Millisecond}
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		_, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		_, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned {
 			t.Fatalf("expected projectile spawn to succeed")
 		}
@@ -2761,7 +2716,7 @@ func TestProjectileSpawnDefaults(t *testing.T) {
 	tpl.CollisionShape = CollisionShapeConfig{UseRect: true, RectWidth: 0, RectHeight: 0}
 	registerTestProjectileTemplate(hub.world, tpl)
 
-	eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+	eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 	if !spawned || eff == nil {
 		t.Fatalf("expected projectile spawn to succeed")
 	}
@@ -2798,7 +2753,7 @@ func TestProjectileOwnerImmunity(t *testing.T) {
 		tpl.ImpactRules.AffectsOwner = false
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned || eff == nil {
 			t.Fatalf("expected projectile spawn to succeed")
 		}
@@ -2837,7 +2792,7 @@ func TestProjectileOwnerImmunity(t *testing.T) {
 		tpl.ImpactRules.AffectsOwner = true
 		registerTestProjectileTemplate(hub.world, tpl)
 
-		eff, spawned := hub.world.spawnProjectile(shooter.ID, tpl.Type, now)
+		eff, spawned := spawnProjectileForTest(hub.world, shooter.ID, tpl.Type, now)
 		if !spawned || eff == nil {
 			t.Fatalf("expected projectile spawn to succeed")
 		}

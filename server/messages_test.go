@@ -215,20 +215,11 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 }
 
 func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
-	originalManager := enableContractEffectManager
-	originalTransport := enableContractEffectTransport
-	enableContractEffectManager = true
-	enableContractEffectTransport = true
-	defer func() {
-		enableContractEffectManager = originalManager
-		enableContractEffectTransport = originalTransport
-	}()
-
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
 
 	if hub.world.effectManager == nil {
-		t.Fatalf("expected effect manager to be initialized when flag enabled")
+		t.Fatalf("expected effect manager to be initialized")
 	}
 
 	hub.world.effectManager.EnqueueIntent(EffectIntent{

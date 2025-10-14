@@ -88,11 +88,10 @@ keyframe. 【F:server/hub.go†L900-L919】【F:server/main.go†L385-L392】
 
 ## Effect Transport
 
-The unified effect pipeline is enabled by default (`enableContractEffectManager`
-plus `enableContractEffectTransport`). When active, the server streams
-`effect_spawned`, `effect_update`, and `effect_ended` arrays alongside the main
-`state` payload and tracks `effect_seq_cursors` to help clients discard stale
-updates. 【F:server/constants.go†L35-L62】【F:server/hub.go†L981-L1127】
+The unified effect pipeline now runs unconditionally. Every state broadcast
+streams `effect_spawned`, `effect_update`, and `effect_ended` arrays alongside
+the main payload and tracks `effect_seq_cursors` to help clients discard stale
+updates. 【F:server/hub.go†L960-L1126】
 
 Each event is strongly typed: spawns include the replicated `EffectInstance`,
 updates carry delivery/behaviour state deltas, and ends record the terminal

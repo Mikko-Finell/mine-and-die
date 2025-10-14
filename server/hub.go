@@ -978,8 +978,8 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	cfg := h.config
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
-	effectManagerPresent := enableContractEffectManager && h.world.effectManager != nil
-	effectTransportEnabled := effectManagerPresent && enableContractEffectTransport
+	effectManagerPresent := h.world.effectManager != nil
+	effectTransportEnabled := effectManagerPresent
 	journal := &h.world.journal
 	h.mu.Unlock()
 
