@@ -49,6 +49,11 @@ const FireballZoneEffectDefinition = makeRectZoneDefinition("fireball", {
   lineWidth: 2,
 });
 
+const CONTRACT_SELF_MANAGED_DEFINITION_IDS = new Set([
+  "attack",
+  "melee-swing",
+]);
+
 if (typeof EffectLayer !== "object" || typeof EffectLayer.ActorOverlay !== "number") {
   throw new Error("EffectLayer.ActorOverlay is not defined; rebuild js-effects to sync layers.");
 }
@@ -453,8 +458,17 @@ function syncEffectsByType(
         instance.__effectLifecycleEntry = lifecycleEntry;
         instance.__effectLifecycleManaged = true;
       } else {
-        if (derivedFromContract) {
+        const contractDefinitionId =
+          derivedFromContract && typeof effect.__contractDefinitionId === "string"
+            ? effect.__contractDefinitionId
+            : null;
+        const allowLifecycleManagement =
+          !!contractDefinitionId &&
+          CONTRACT_SELF_MANAGED_DEFINITION_IDS.has(contractDefinitionId);
+        if (allowLifecycleManagement) {
           instance.__effectLifecycleManaged = true;
+        } else if (instance.__effectLifecycleManaged) {
+          delete instance.__effectLifecycleManaged;
         }
         if (instance.__effectLifecycleEntry) {
           delete instance.__effectLifecycleEntry;
