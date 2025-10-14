@@ -10,6 +10,8 @@ function createLifecycleState() {
     lastSeqById: new Map(),
     lastBatchTick: null,
     version: 0,
+    recentlyEnded: new Map(),
+    recentlyEndedVersion: 0,
   };
 }
 
@@ -18,7 +20,9 @@ function isLifecycleState(value) {
     isPlainObject(value) &&
     value.instances instanceof Map &&
     value.lastSeqById instanceof Map &&
-    typeof value.version === "number"
+    typeof value.version === "number" &&
+    value.recentlyEnded instanceof Map &&
+    typeof value.recentlyEndedVersion === "number"
   );
 }
 
@@ -256,6 +260,9 @@ export function resetEffectLifecycleState(store) {
   if (store.__effectLifecycleViewState) {
     delete store.__effectLifecycleViewState;
   }
+  if (Object.prototype.hasOwnProperty.call(store, "__consumedEndedVersion")) {
+    delete store.__consumedEndedVersion;
+  }
 }
 
 export function getEffectLifecycleEntry(store, effectId) {
@@ -288,11 +295,22 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
   const batch = normalizeLifecycleBatch(payload);
   let latestTick = state.lastBatchTick;
   let mutated = false;
+  if (!(state.recentlyEnded instanceof Map)) {
+    state.recentlyEnded = new Map();
+  } else {
+    state.recentlyEnded.clear();
+  }
+  let recordedEndedEntries = false;
 
   for (const spawn of batch.spawns) {
     const lastSeq = state.lastSeqById.get(spawn.id);
     if (lastSeq !== undefined && spawn.seq <= lastSeq) {
       summary.droppedSpawns.push(spawn.id);
+      if (typeof console !== "undefined" && typeof console.error === "function") {
+        console.error(
+          `Rejected effect spawn for "${spawn.id}" because sequence ${spawn.seq} is not greater than ${lastSeq}.`,
+        );
+      }
       continue;
     }
     const entry = {
@@ -374,6 +392,8 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     entry.lastEvent = end;
     entry.endReason = end.reason ?? null;
     state.lastSeqById.set(end.id, end.seq);
+    state.recentlyEnded.set(end.id, entry);
+    recordedEndedEntries = true;
     state.instances.delete(end.id);
     summary.ends.push(end.id);
     mutated = true;
@@ -400,6 +420,10 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
 
   if (mutated) {
     state.version = (state.version + 1) >>> 0;
+  }
+
+  if (recordedEndedEntries) {
+    state.recentlyEndedVersion = (state.recentlyEndedVersion + 1) >>> 0;
   }
 
   if (Array.isArray(summary.unknownUpdates) && summary.unknownUpdates.length > 0) {

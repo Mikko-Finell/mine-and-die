@@ -157,11 +157,34 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     findActorPosition(renderState, store, instance.followActorId) ??
     findActorPosition(renderState, store, instance.ownerActorId);
 
+  const positionXValue = Number(motion?.positionX);
+  const positionYValue = Number(motion?.positionY);
+  const rawPositionX = Number.isFinite(positionXValue) ? positionXValue : null;
+  const rawPositionY = Number.isFinite(positionYValue) ? positionYValue : null;
+  const velocityXValue = Number(motion?.velocityX);
+  const velocityYValue = Number(motion?.velocityY);
+  const zeroVelocity =
+    Number.isFinite(velocityXValue) &&
+    Number.isFinite(velocityYValue) &&
+    velocityXValue === 0 &&
+    velocityYValue === 0;
+
   if (centerX === null && offsetX !== null && anchor) {
     centerX = anchor.x + offsetX;
   }
   if (centerY === null && offsetY !== null && anchor) {
     centerY = anchor.y + offsetY;
+  }
+
+  if (anchor && zeroVelocity) {
+    const resolvedOffsetX = offsetX ?? 0;
+    const resolvedOffsetY = offsetY ?? 0;
+    if (centerX === null || rawPositionX === null || rawPositionX === 0) {
+      centerX = anchor.x + resolvedOffsetX;
+    }
+    if (centerY === null || rawPositionY === null || rawPositionY === 0) {
+      centerY = anchor.y + resolvedOffsetY;
+    }
   }
 
   if (centerX === null && offsetX !== null) {
