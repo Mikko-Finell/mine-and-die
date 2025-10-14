@@ -147,9 +147,9 @@ Statuses use the following scale:
   * :white_check_mark: Deleted legacy branches in `triggerMeleeAttack`, `triggerFireball`, removed the old `spawnProjectile` path, and routed blood/status hooks exclusively through the contract manager.
   * :white_check_mark: Updated tests and docs to drop flag gating and mirror the contract-only pipeline.
 * **Collapse effect parity telemetry to a single contract stream.**
-  * Flatten the effect parity aggregator in `server/telemetry.go` so it no longer emits a `legacy` bucket.
-  * Remove `telemetrySourceLegacy` bookkeeping from `server/effects.go` and adjust metrics/tests that expected dual-source output.
-  * Update diagnostics/tracker docs to document the contract-only telemetry surface.
+  * :white_check_mark: Flattened the effect parity aggregator in `server/telemetry.go` so it now emits a single contract-backed bucket per effect type.
+  * :white_check_mark: Removed legacy telemetry source bookkeeping from `server/effects.go`/`server/status_effects.go` and updated metrics/tests for the single-stream output.
+  * :white_check_mark: Refreshed diagnostics notes in this tracker to call out the contract-only telemetry surface.
 
 
 ---
@@ -158,6 +158,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 42 | Collapsed effect parity telemetry to a single contract stream, removed legacy source bookkeeping, and refreshed tracker guidance. | gpt-5-codex |
 | 41 | Retired the contract rollout toggles, removed legacy melee/projectile/burning/blood branches, refreshed docs/tests, and locked gameplay to the contract manager. | gpt-5-codex |
 | 40 | Removed the legacy `state.effects` payload, rewired joins/resets/broadcasts to rely on lifecycle batches, refreshed tests, and updated docs. | gpt-5-codex |
 | 39 | Documented melee swing visibility regression caused by missing geometry fallbacks after the params transport change and noted the translator fix. | gpt-5-codex |
@@ -203,10 +204,10 @@ Statuses use the following scale:
 #### Reading the Parity Metrics
 
 * `/diagnostics.telemetry.effectParity.totalTicks` reports the number of simulation ticks represented in the aggregate rates.
-* Entries are grouped by `effectType` and `source` (legacy vs. contract) with:
+* Entries are keyed by `effectType` (contract stream only) with:
   * `hitsPer1kTicks` and `damagePer1kTicks` for rate comparisons.
   * `firstHitLatencyTicks`/`Millis` capturing average tick-to-impact delay from spawn.
   * `misses` indicating total zero-hit completions.
   * `victimBuckets` distributing unique victim counts (`0`, `1`, `2`, `3`, `4+`) per effect instance.
-* Use these gauges to validate parity before enabling additional contract definitions and record findings back in this tracker.
+* Use these gauges to validate parity across contract definitions and record findings back in this tracker.
 

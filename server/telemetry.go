@@ -89,7 +89,6 @@ func (c *layeredCounter) snapshot() map[string]map[string]uint64 {
 
 type effectParitySummary struct {
 	EffectType    string
-	Source        string
 	Hits          int
 	UniqueVictims int
 	TotalDamage   float64
@@ -108,7 +107,7 @@ type effectParityTotals struct {
 
 type effectParityAggregator struct {
 	mu     sync.Mutex
-	totals map[string]map[string]*effectParityTotals
+	totals map[string]*effectParityTotals
 }
 
 func (a *effectParityAggregator) record(summary effectParitySummary) {
@@ -116,21 +115,15 @@ func (a *effectParityAggregator) record(summary effectParitySummary) {
 		return
 	}
 	normalizedType := normalizeMetricKey(summary.EffectType)
-	normalizedSource := normalizeMetricKey(summary.Source)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.totals == nil {
-		a.totals = make(map[string]map[string]*effectParityTotals)
+		a.totals = make(map[string]*effectParityTotals)
 	}
-	sources := a.totals[normalizedType]
-	if sources == nil {
-		sources = make(map[string]*effectParityTotals)
-		a.totals[normalizedType] = sources
-	}
-	totals := sources[normalizedSource]
+	totals := a.totals[normalizedType]
 	if totals == nil {
 		totals = &effectParityTotals{VictimBuckets: make(map[string]uint64)}
-		sources[normalizedSource] = totals
+		a.totals[normalizedType] = totals
 	}
 	if summary.Hits > 0 {
 		totals.Hits += uint64(summary.Hits)
@@ -154,7 +147,7 @@ func (a *effectParityAggregator) record(summary effectParitySummary) {
 	}
 }
 
-func (a *effectParityAggregator) snapshot(totalTicks uint64) map[string]map[string]telemetryEffectParityEntry {
+func (a *effectParityAggregator) snapshot(totalTicks uint64) map[string]telemetryEffectParityEntry {
 	if a == nil {
 		return nil
 	}
@@ -163,21 +156,12 @@ func (a *effectParityAggregator) snapshot(totalTicks uint64) map[string]map[stri
 	if len(a.totals) == 0 {
 		return nil
 	}
-	result := make(map[string]map[string]telemetryEffectParityEntry, len(a.totals))
-	for effectType, sources := range a.totals {
-		if len(sources) == 0 {
+	result := make(map[string]telemetryEffectParityEntry, len(a.totals))
+	for effectType, totals := range a.totals {
+		if totals == nil {
 			continue
 		}
-		entries := make(map[string]telemetryEffectParityEntry, len(sources))
-		for source, totals := range sources {
-			if totals == nil {
-				continue
-			}
-			entries[source] = totals.toSnapshot(totalTicks)
-		}
-		if len(entries) > 0 {
-			result[effectType] = entries
-		}
+		result[effectType] = totals.toSnapshot(totalTicks)
 	}
 	if len(result) == 0 {
 		return nil
@@ -327,8 +311,8 @@ type telemetryEffectTriggersSnapshot struct {
 }
 
 type telemetryEffectParitySnapshot struct {
-	TotalTicks uint64                                           `json:"totalTicks"`
-	Entries    map[string]map[string]telemetryEffectParityEntry `json:"entries,omitempty"`
+	TotalTicks uint64                                `json:"totalTicks"`
+	Entries    map[string]telemetryEffectParityEntry `json:"entries,omitempty"`
 }
 
 type telemetryTickBudgetSnapshot struct {
