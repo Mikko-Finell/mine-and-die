@@ -203,6 +203,8 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 	if ticksRemaining <= 0 && definition != nil && endPolicy.Kind == EndDuration {
 		ticksRemaining = definition.LifetimeTicks
 	}
+	params := copyIntMap(intent.Params)
+	extra := copyIntMap(intent.Params)
 	instance := &EffectInstance{
 		ID:           id,
 		DefinitionID: intent.TypeID,
@@ -215,8 +217,9 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 		},
 		BehaviorState: EffectBehaviorState{
 			TicksRemaining: ticksRemaining,
-			Extra:          copyIntMap(intent.Params),
+			Extra:          extra,
 		},
+		Params:        params,
 		FollowActorID: intent.TargetActorID,
 		OwnerActorID:  intent.SourceActorID,
 		Replication:   replication,
@@ -242,6 +245,7 @@ func (m *EffectManager) cloneInstanceForSpawn(instance *EffectInstance) EffectIn
 	clone.DeliveryState.Geometry = cloneGeometry(clone.DeliveryState.Geometry)
 	clone.BehaviorState.Extra = copyIntMap(clone.BehaviorState.Extra)
 	clone.BehaviorState.Stacks = copyIntMap(clone.BehaviorState.Stacks)
+	clone.Params = copyIntMap(clone.Params)
 	clone.Replication.UpdateFields = copyBoolMap(clone.Replication.UpdateFields)
 	return clone
 }
@@ -653,12 +657,19 @@ func (m *EffectManager) syncProjectileInstance(instance *EffectInstance, owner *
 	if instance.BehaviorState.Extra == nil {
 		instance.BehaviorState.Extra = make(map[string]int)
 	}
+	if instance.Params == nil {
+		instance.Params = make(map[string]int)
+	}
 	if effect.Projectile != nil {
 		instance.BehaviorState.Extra["remainingRange"] = int(math.Round(effect.Projectile.RemainingRange))
+		instance.Params["remainingRange"] = instance.BehaviorState.Extra["remainingRange"]
 		instance.BehaviorState.Extra["dx"] = int(math.Round(effect.Projectile.VelocityUnitX))
+		instance.Params["dx"] = instance.BehaviorState.Extra["dx"]
 		instance.BehaviorState.Extra["dy"] = int(math.Round(effect.Projectile.VelocityUnitY))
+		instance.Params["dy"] = instance.BehaviorState.Extra["dy"]
 		if tpl := effect.Projectile.Template; tpl != nil && tpl.MaxDistance > 0 {
 			instance.BehaviorState.Extra["range"] = int(math.Round(tpl.MaxDistance))
+			instance.Params["range"] = instance.BehaviorState.Extra["range"]
 		}
 	}
 	geometry := instance.DeliveryState.Geometry
@@ -783,8 +794,15 @@ func (m *EffectManager) syncBloodDecalInstance(instance *EffectInstance, effect 
 	if instance.BehaviorState.Extra == nil {
 		instance.BehaviorState.Extra = make(map[string]int)
 	}
-	instance.BehaviorState.Extra["centerX"] = quantizeWorldCoord(centerX(effect))
-	instance.BehaviorState.Extra["centerY"] = quantizeWorldCoord(centerY(effect))
+	if instance.Params == nil {
+		instance.Params = make(map[string]int)
+	}
+	centerX := quantizeWorldCoord(centerX(effect))
+	centerY := quantizeWorldCoord(centerY(effect))
+	instance.BehaviorState.Extra["centerX"] = centerX
+	instance.BehaviorState.Extra["centerY"] = centerY
+	instance.Params["centerX"] = centerX
+	instance.Params["centerY"] = centerY
 }
 
 func intMapToFloat64(src map[string]int) map[string]float64 {

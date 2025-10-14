@@ -670,6 +670,7 @@ func cloneEffectInstance(instance EffectInstance) EffectInstance {
 	clone := instance
 	clone.DeliveryState = cloneEffectDeliveryState(instance.DeliveryState)
 	clone.BehaviorState = cloneEffectBehaviorState(instance.BehaviorState)
+	clone.Params = copyIntMap(instance.Params)
 	clone.Replication.UpdateFields = copyBoolMap(instance.Replication.UpdateFields)
 	if instance.Definition != nil {
 		defCopy := *instance.Definition
