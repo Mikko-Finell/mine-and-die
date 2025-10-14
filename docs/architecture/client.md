@@ -14,8 +14,8 @@ bundler or framework build step.【F:client/index.html†L1-L65】【F:client/ma
   lifecycle, patch/keyframe bookkeeping, effect trigger queues, outbound message helpers, and
   world reset requests.【F:client/network.js†L1121-L1320】【F:client/network.js†L1366-L1440】
 - [`client/render.js`](../../client/render.js) – Interpolates entity positions, updates the
-  shared `EffectManager`, draws the scene, and bridges contract lifecycle data to legacy effect
-  definitions.【F:client/render.js†L489-L540】【F:client/render.js†L820-L867】
+  shared `EffectManager`, draws the scene, and feeds contract lifecycle data straight into the
+  effect definitions now that the legacy snapshot array has been retired.【F:client/render.js†L489-L540】【F:client/render.js†L820-L867】
 - [`client/patches.js`](../../client/patches.js) – Maintains the incremental patch baseline,
   applies journal batches, and tracks recovery metrics for diagnostics.【F:client/patches.js†L999-L1108】
 - [`client/input.js`](../../client/input.js) – Normalises keyboard input into intents and
@@ -117,8 +117,8 @@ frame.【F:client/render.js†L488-L540】 The renderer delegates combat visuals
 `EffectManager` instance, ensuring contract lifecycle entries are mirrored into js-effects
 definitions:
 
-- `collectEffectRenderBuckets` merges legacy effect arrays with lifecycle entries to produce a
-  per-type render queue. `contractLifecycleToEffect` and
+- `collectEffectRenderBuckets` builds per-type render queues straight from lifecycle entries,
+  including the `recentlyEnded` cache carried between frames. `contractLifecycleToEffect` and
   `contractLifecycleToUpdatePayload` translate contract metadata into spawn/update payloads that
   definitions such as melee swings, fire zones, and fireballs understand.【F:client/render.js†L306-L421】【F:client/effect-lifecycle-translator.js†L93-L200】
 - `mirrorEffectInstances` keeps a map of active `EffectManager` instances keyed by contract ID for

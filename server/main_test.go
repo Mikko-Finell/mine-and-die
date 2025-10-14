@@ -62,9 +62,9 @@ func newTestPlayerState(id string) *playerState {
 	}
 }
 
-func runAdvance(h *Hub, dt float64) ([]Player, []NPC, []Effect) {
-	players, npcs, effects, _, _, _ := h.advance(time.Now(), dt)
-	return players, npcs, effects
+func runAdvance(h *Hub, dt float64) ([]Player, []NPC) {
+	players, npcs, _, _, _ := h.advance(time.Now(), dt)
+	return players, npcs
 }
 
 func newProjectileTestTemplate(id string) *ProjectileTemplate {
@@ -163,9 +163,6 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 	if len(first.Obstacles) != len(hub.world.obstacles) {
 		t.Fatalf("expected join response to include %d obstacles, got %d", len(hub.world.obstacles), len(first.Obstacles))
 	}
-	if first.Effects != nil {
-		t.Fatalf("expected legacy effects to be omitted in join snapshot")
-	}
 }
 
 func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
@@ -185,7 +182,7 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 
 	dt := 1.0 / float64(tickRate)
 	now := time.Now()
-	players, npcs, effects, triggers, groundItems, _ := hub.advance(now, dt)
+	players, npcs, triggers, groundItems, _ := hub.advance(now, dt)
 
 	hub.mu.Lock()
 	player := hub.world.players[playerID]
@@ -238,7 +235,7 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	}
 	hub.mu.Unlock()
 
-	data, _, err := hub.marshalState(players, npcs, effects, triggers, groundItems, true, true)
+	data, _, err := hub.marshalState(players, npcs, triggers, groundItems, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -445,7 +442,7 @@ func TestPlayerPathCommands(t *testing.T) {
 		t.Fatalf("expected SetPlayerPath to succeed")
 	}
 	now := time.Now()
-	_, _, _, _, _, _ = hub.advance(now, 1.0/float64(tickRate))
+	_, _, _, _, _ = hub.advance(now, 1.0/float64(tickRate))
 
 	state := hub.world.players[playerID]
 	if state == nil {
@@ -464,7 +461,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.UpdateIntent(playerID, 1, 0, string(FacingRight)) {
 		t.Fatalf("expected UpdateIntent to succeed")
 	}
-	_, _, _, _, _, _ = hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _ = hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
 
 	state = hub.world.players[playerID]
 	if len(state.path.Path) != 0 {
@@ -477,7 +474,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.SetPlayerPath(playerID, 200, 280) {
 		t.Fatalf("expected second SetPlayerPath to succeed")
 	}
-	_, _, _, _, _, _ = hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _ = hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
 	state = hub.world.players[playerID]
 	if len(state.path.Path) == 0 {
 		t.Fatalf("expected path to be populated after second command")
@@ -486,7 +483,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	if !hub.ClearPlayerPath(playerID) {
 		t.Fatalf("expected ClearPlayerPath to succeed")
 	}
-	_, _, _, _, _, _ = hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
+	_, _, _, _, _ = hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
 	state = hub.world.players[playerID]
 	if len(state.path.Path) != 0 {
 		t.Fatalf("expected player path to be cleared after explicit cancel")
@@ -518,7 +515,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	hub.world.AddPlayer(boundaryState)
 	hub.world.SetIntent(boundaryID, 1, 0)
 
-	players, _, _, _, _, toClose := hub.advance(now, 0.5)
+	players, _, _, _, toClose := hub.advance(now, 0.5)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers to close, got %d", len(toClose))
 	}
@@ -637,7 +634,7 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	staleState.lastHeartbeat = time.Now().Add(-disconnectAfter - time.Second)
 	hub.world.players[staleID] = staleState
 
-	players, _, _, _, _, toClose := hub.advance(time.Now(), 0)
+	players, _, _, _, toClose := hub.advance(time.Now(), 0)
 	if len(toClose) != 0 {
 		t.Fatalf("expected no subscribers returned when none registered")
 	}
@@ -881,13 +878,13 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 		t.Fatalf("expected melee attack command to be accepted")
 	}
 
-	players, npcs, effects, triggers, groundItems, _ := hub.advance(now, dt)
+	players, npcs, triggers, groundItems, _ := hub.advance(now, dt)
 
 	step := time.Second / time.Duration(tickRate)
 	nextNow := now.Add(step)
-	players, npcs, effects, triggers, groundItems, _ = hub.advance(nextNow, dt)
+	players, npcs, triggers, groundItems, _ = hub.advance(nextNow, dt)
 
-	data, _, err := hub.marshalState(players, npcs, effects, triggers, groundItems, true, false)
+	data, _, err := hub.marshalState(players, npcs, triggers, groundItems, true, false)
 	if err != nil {
 		t.Fatalf("failed to marshal state message: %v", err)
 	}
@@ -1069,7 +1066,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	hub.world.AddPlayer(blockState)
 	hub.world.SetIntent(playerID, 1, 0)
 
-	players, _, _, _, _, _ := hub.advance(now, 1)
+	players, _, _, _, _ := hub.advance(now, 1)
 	blocker := findPlayer(players, playerID)
 	if blocker == nil {
 		t.Fatalf("expected player in snapshot")
@@ -1101,7 +1098,7 @@ func TestLavaAppliesBurningStatusEffect(t *testing.T) {
 	walkerState.lastHeartbeat = now
 	hub.world.players[playerID] = walkerState
 
-	players, _, _, _, _, _ := hub.advance(now, 1.0)
+	players, _, _, _, _ := hub.advance(now, 1.0)
 
 	damaged := findPlayer(players, playerID)
 	if damaged == nil {
@@ -1133,7 +1130,7 @@ func TestLavaAppliesBurningStatusEffect(t *testing.T) {
 	stepNow := now
 	for i := 0; i < 3; i++ {
 		stepNow = stepNow.Add(burningTickInterval)
-		players, _, _, _, _, _ = hub.advance(stepNow, burningTickInterval.Seconds())
+		players, _, _, _, _ = hub.advance(stepNow, burningTickInterval.Seconds())
 	}
 
 	cooled := findPlayer(players, playerID)
@@ -1167,7 +1164,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	hub.world.AddPlayer(secondState)
 	hub.world.SetIntent(secondID, -1, 0)
 
-	players, _, _, _, _, _ := hub.advance(now, 1)
+	players, _, _, _, _ := hub.advance(now, 1)
 
 	first := findPlayer(players, firstID)
 	second := findPlayer(players, secondID)
@@ -2096,7 +2093,7 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 	step := time.Second / time.Duration(tickRate)
 	current := now
 	for i := 0; i < 3; i++ {
-		_, _, _, _, _, _ = hub.advance(current, dt)
+		_, _, _, _, _ = hub.advance(current, dt)
 		current = current.Add(step)
 	}
 
@@ -2344,7 +2341,7 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 
 	for i := 0; i < tickRate*2; i++ {
 		current = current.Add(step)
-		_, _, _, _, _, _ = hub.advance(current, dt)
+		_, _, _, _, _ = hub.advance(current, dt)
 		if len(hub.world.effects) == 0 {
 			expired = true
 			break

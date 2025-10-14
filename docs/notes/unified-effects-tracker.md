@@ -137,12 +137,11 @@ Statuses use the following scale:
 #### Post-Cutover Cleanup Opportunities
 
 * **Remove legacy effect snapshots from the server state payloads.**
-  * Delete `w.effects` bookkeeping by excising the snapshot/build paths in `World.Snapshot`, `World.Step`, and helpers in `server/effects.go`.
-  * Stop marshalling `effects` inside `hub.marshalState` and prune the associated message fields so transports rely exclusively on lifecycle batches.
-  * Refresh server/client tests and docs that referenced the legacy array so join/resync expectations stay accurate.
+  * :white_check_mark: Stopped building the legacy `effects` snapshot in `World.Snapshot`, removed the field from `stateMessage`/`keyframeMessage`, and rewired join/reset/broadcast paths to rely solely on lifecycle batches.
+  * :white_check_mark: Updated server/client tests and architecture docs to reflect the contract-only transport.
 * **Drop the client render fallback for legacy arrays.**
-  * Remove the `renderState.effects` merge path from `collectEffectRenderBuckets` and related state wiring in `client/render.js`.
-  * Update renderer tests to ingest only contract lifecycle batches while keeping diagnostics coverage intact.
+  * :white_check_mark: Removed the `renderState.effects` merge path from `collectEffectRenderBuckets` and the associated snapshot wiring in `client/render.js`, leaving lifecycle batches as the sole render source.
+  * :white_check_mark: Updated renderer coverage so tests ingest contract lifecycle payloads (without legacy snapshots) and still assert diagnostics hooks.
 * **Retire rollout toggles and legacy producer branches.**
   * Remove `enableContractEffect*` flags from `server/constants.go` and make contract definitions the sole execution path.
   * Delete legacy branches in `triggerMeleeAttack`, `triggerFireball`, `spawnProjectile`, and companion helpers so gameplay can no longer spawn legacy shells.
@@ -159,6 +158,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 40 | Removed the legacy `state.effects` payload, rewired joins/resets/broadcasts to rely on lifecycle batches, refreshed tests, and updated docs. | gpt-5-codex |
 | 39 | Documented melee swing visibility regression caused by missing geometry fallbacks after the params transport change and noted the translator fix. | gpt-5-codex |
 | 38 | Removed legacy melee effect shells, routing cooldown and telemetry through contract lifecycle events and updating tracker notes. | gpt-5-codex |
 | 37 | Audited the unified effects pipeline post-shim removal, marked Phase 3/6 complete, and documented remaining cleanup opportunities. | gpt-5-codex |

@@ -27,15 +27,14 @@ const BLOOD_SPLATTER_STATE_MESSAGE =
   '"config":{"width":2400,"height":1800},"players":[{"id":"player-2","x":904,"y":1238,"facing":"right","maxHealth":100,"health":100}],' +
   '"displayPlayers":{"player-2":{"x":904,"y":1238}},"npcs":[{"id":"npc-rat-3","x":907.2384585405665,"y":1235.7951290070935,"facing":"left","type":"rat","maxHealth":60,"health":60}],' +
   '"displayNPCs":{"npc-rat-3":{"x":907.2384585405665,"y":1235.7951290070935}},' +
-  '"effects":[{"id":"contract-effect-6","type":"blood-splatter","x":900,"y":1200,"width":11,"height":11,' +
-  '"params":{"drag":0.92,"dropletRadius":3,"maxBursts":0,"maxDroplets":33,"maxStainRadius":6,"maxStains":140,' +
-  '"minDroplets":4,"minStainRadius":4,"spawnInterval":1.1,"speed":3},"colors":["#7a0e12","#4a090b"]}],' +
   '"effect_spawned":[{"tick":2452,"seq":1,' +
   '"instance":{"id":"contract-effect-6","definitionId":"blood-splatter","definition":{"typeId":"blood-splatter","delivery":"visual","shape":"rect","motion":"none","impact":"first-hit","lifetimeTicks":18,' +
   '"hooks":{"onSpawn":"visual.blood.splatter","onTick":"visual.blood.splatter"},"client":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true,"managedByClient":true},"end":{"kind":0,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}},' +
   '"startTick":2452,"deliveryState":{"geometry":{"shape":"rect","width":11,"height":11},"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"},' +
-  '"behaviorState":{"ticksRemaining":18,"extra":{"centerX":18,"centerY":71}},"ownerActorId":"player-2",' +
+  '"behaviorState":{"ticksRemaining":18,"extra":{"centerX":18,"centerY":71}},"params":{"drag":0.92,"dropletRadius":3,' +
+  '"maxBursts":0,"maxDroplets":33,"maxStainRadius":6,"maxStains":140,"minDroplets":4,"minStainRadius":4,' +
+  '"spawnInterval":1.1,"speed":3},"ownerActorId":"player-2",' +
   '"colors":["#7a0e12","#4a090b"],"replication":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true,"managedByClient":true},"end":{"kind":0,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}}}],' +
   '"effect_seq_cursors":{"contract-effect-6":1},"patches":[{"kind":"npc_pos","entityId":"npc-rat-3","payload":{"x":907.2384585405665,"y":1235.7951290070935}}]}';

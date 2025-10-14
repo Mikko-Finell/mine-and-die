@@ -6,7 +6,6 @@ type joinResponse struct {
 	Players          []Player        `json:"players"`
 	NPCs             []NPC           `json:"npcs"`
 	Obstacles        []Obstacle      `json:"obstacles"`
-	Effects          []Effect        `json:"effects,omitempty"`
 	EffectTriggers   []EffectTrigger `json:"effectTriggers,omitempty"`
 	GroundItems      []GroundItem    `json:"groundItems,omitempty"`
 	Patches          []Patch         `json:"patches,omitempty"`
@@ -21,7 +20,6 @@ type stateMessage struct {
 	Players          []Player            `json:"players,omitempty"`
 	NPCs             []NPC               `json:"npcs,omitempty"`
 	Obstacles        []Obstacle          `json:"obstacles,omitempty"`
-	Effects          []Effect            `json:"effects,omitempty"`
 	EffectTriggers   []EffectTrigger     `json:"effectTriggers,omitempty"`
 	EffectSpawns     []EffectSpawnEvent  `json:"effect_spawned,omitempty"`
 	EffectUpdates    []EffectUpdateEvent `json:"effect_update,omitempty"`
@@ -46,7 +44,6 @@ type keyframeMessage struct {
 	Players     []Player     `json:"players"`
 	NPCs        []NPC        `json:"npcs"`
 	Obstacles   []Obstacle   `json:"obstacles"`
-	Effects     []Effect     `json:"effects,omitempty"`
 	GroundItems []GroundItem `json:"groundItems"`
 	Config      worldConfig  `json:"config"`
 }

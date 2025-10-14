@@ -83,7 +83,7 @@ func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
 		t.Fatalf("expected staged end id %q to match spawn id", stagedEvents.Ends[0].ID)
 	}
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
