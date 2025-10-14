@@ -103,4 +103,36 @@ describe("contractLifecycleToEffect", () => {
 
     expect(result.colors).toEqual(["#7a0e12", "#4a090b"]);
   });
+
+  test("falls back to reach params when geometry omits dimensions", () => {
+    const lifecycleEntry = {
+      instance: {
+        id: "contract-reach",
+        definitionId: "attack",
+        ownerActorId: "player-1",
+        deliveryState: {
+          geometry: {
+            shape: "rect",
+            offsetX: 0,
+            offsetY: 16,
+          },
+        },
+        behaviorState: {},
+        params: { width: 40, reach: 56 },
+      },
+    };
+    const store = {
+      TILE_SIZE: 40,
+      players: {
+        "player-1": { x: 480, y: 320 },
+      },
+    };
+
+    const result = contractLifecycleToEffect(lifecycleEntry, { store });
+
+    expect(result.width).toBeCloseTo(40);
+    expect(result.height).toBeCloseTo(56);
+    expect(result.x).toBeCloseTo(460);
+    expect(result.y).toBeCloseTo(332);
+  });
 });
