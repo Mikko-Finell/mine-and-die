@@ -39,6 +39,13 @@ function isFireIdentifier(value) {
   return value.toLowerCase() === "fire";
 }
 
+function isAttackIdentifier(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return false;
+  }
+  return value.toLowerCase() === "attack";
+}
+
 function isMeleeSwingIdentifier(value) {
   if (typeof value !== "string" || value.length === 0) {
     return false;
@@ -161,6 +168,57 @@ function isFireSpawn(spawn) {
   return candidates.some((candidate) => isFireIdentifier(candidate));
 }
 
+function isAttackSpawn(spawn) {
+  if (!spawn || typeof spawn !== "object") {
+    return false;
+  }
+  const candidates = [];
+  if (typeof spawn.definitionId === "string") {
+    candidates.push(spawn.definitionId);
+  }
+  if (typeof spawn.type === "string") {
+    candidates.push(spawn.type);
+  }
+  if (typeof spawn.typeId === "string") {
+    candidates.push(spawn.typeId);
+  }
+  const spawnDefinition =
+    spawn.definition && typeof spawn.definition === "object" ? spawn.definition : null;
+  if (spawnDefinition) {
+    if (typeof spawnDefinition.type === "string") {
+      candidates.push(spawnDefinition.type);
+    }
+    if (typeof spawnDefinition.typeId === "string") {
+      candidates.push(spawnDefinition.typeId);
+    }
+  }
+  const instance = spawn.instance && typeof spawn.instance === "object" ? spawn.instance : null;
+  if (instance) {
+    if (typeof instance.definitionId === "string") {
+      candidates.push(instance.definitionId);
+    }
+    if (typeof instance.type === "string") {
+      candidates.push(instance.type);
+    }
+    if (typeof instance.typeId === "string") {
+      candidates.push(instance.typeId);
+    }
+    const instanceDefinition =
+      instance.definition && typeof instance.definition === "object"
+        ? instance.definition
+        : null;
+    if (instanceDefinition) {
+      if (typeof instanceDefinition.type === "string") {
+        candidates.push(instanceDefinition.type);
+      }
+      if (typeof instanceDefinition.typeId === "string") {
+        candidates.push(instanceDefinition.typeId);
+      }
+    }
+  }
+  return candidates.some((candidate) => isAttackIdentifier(candidate));
+}
+
 function isMeleeSwingSpawn(spawn) {
   if (!spawn || typeof spawn !== "object") {
     return false;
@@ -236,6 +294,18 @@ function shouldLogFireSpawn(messageType, payload) {
   return spawns.some((spawn) => isFireSpawn(spawn));
 }
 
+function shouldLogAttackSpawn(messageType, payload) {
+  const normalizedType = typeof messageType === "string" ? messageType : null;
+  if (normalizedType !== "state" && normalizedType !== "keyframe" && normalizedType !== "patch") {
+    return false;
+  }
+  const spawns = collectEffectSpawnEvents(payload);
+  if (spawns.length === 0) {
+    return false;
+  }
+  return spawns.some((spawn) => isAttackSpawn(spawn));
+}
+
 function shouldLogMeleeSwingSpawn(messageType, payload) {
   const normalizedType = typeof messageType === "string" ? messageType : null;
   if (normalizedType !== "state" && normalizedType !== "keyframe" && normalizedType !== "patch") {
@@ -268,6 +338,17 @@ function logFireSpawnIfNeeded(messageType, payload, rawMessage) {
   }
   const context = typeof messageType === "string" && messageType.length > 0 ? messageType : "message";
   console.log(`[effects] ${context} fire spawn detected:`, rawMessage);
+}
+
+function logAttackSpawnIfNeeded(messageType, payload, rawMessage) {
+  if (typeof rawMessage !== "string" || rawMessage.length === 0) {
+    return;
+  }
+  if (!shouldLogAttackSpawn(messageType, payload)) {
+    return;
+  }
+  const context = typeof messageType === "string" && messageType.length > 0 ? messageType : "message";
+  console.log(`[effects] ${context} attack spawn detected:`, rawMessage);
 }
 
 function logMeleeSwingSpawnIfNeeded(messageType, payload, rawMessage) {
@@ -1526,6 +1607,7 @@ export function connectEvents(store) {
     const payload = parsed.data;
     logBloodSplatterSpawnIfNeeded(parsed.type, payload, event.data);
     logFireSpawnIfNeeded(parsed.type, payload, event.data);
+    logAttackSpawnIfNeeded(parsed.type, payload, event.data);
     logMeleeSwingSpawnIfNeeded(parsed.type, payload, event.data);
     handleProtocolVersion(payload, `${parsed.type} message`);
     if (parsed.type === "state") {
