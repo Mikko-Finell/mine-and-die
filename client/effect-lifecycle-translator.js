@@ -73,26 +73,61 @@ function cloneEffect(fallbackEffect) {
   return clone;
 }
 
+function readActorEntry(source, actorId) {
+  if (!source || typeof actorId !== "string" || actorId.length === 0) {
+    return null;
+  }
+  if (source instanceof Map) {
+    const entry = source.get(actorId);
+    return entry && typeof entry === "object" ? entry : null;
+  }
+  if (Array.isArray(source)) {
+    for (const candidate of source) {
+      if (!candidate || typeof candidate !== "object") {
+        continue;
+      }
+      const id = typeof candidate.id === "string" ? candidate.id : null;
+      if (id === actorId) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+  if (typeof source === "object") {
+    const entry = source[actorId];
+    return entry && typeof entry === "object" ? entry : null;
+  }
+  return null;
+}
+
+function readActorPosition(source, actorId) {
+  const entry = readActorEntry(source, actorId);
+  if (!entry) {
+    return null;
+  }
+  const x = Number(entry.x);
+  const y = Number(entry.y);
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    return { x, y };
+  }
+  return null;
+}
+
 function findActorPosition(renderState, store, actorId) {
   if (typeof actorId !== "string" || actorId.length === 0) {
     return null;
   }
   const sources = [
-    renderState?.players?.[actorId],
-    store?.displayPlayers?.[actorId],
-    store?.players?.[actorId],
-    renderState?.npcs?.[actorId],
-    store?.displayNPCs?.[actorId],
-    store?.npcs?.[actorId],
+    readActorPosition(renderState?.players, actorId),
+    readActorPosition(store?.displayPlayers, actorId),
+    readActorPosition(store?.players, actorId),
+    readActorPosition(renderState?.npcs, actorId),
+    readActorPosition(store?.displayNPCs, actorId),
+    readActorPosition(store?.npcs, actorId),
   ];
-  for (const source of sources) {
-    if (!source || typeof source !== "object") {
-      continue;
-    }
-    const x = Number(source.x);
-    const y = Number(source.y);
-    if (Number.isFinite(x) && Number.isFinite(y)) {
-      return { x, y };
+  for (const position of sources) {
+    if (position) {
+      return position;
     }
   }
   return null;

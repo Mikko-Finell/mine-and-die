@@ -103,4 +103,38 @@ describe("contractLifecycleToEffect", () => {
 
     expect(result.colors).toEqual(["#7a0e12", "#4a090b"]);
   });
+
+  test("resolves actor anchors stored in Maps", () => {
+    const lifecycleEntry = {
+      instance: {
+        id: "contract-map-attack",
+        definitionId: "attack",
+        ownerActorId: "player-map",
+        deliveryState: {
+          geometry: {
+            shape: "rect",
+            width: 16,
+            height: 16,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: 1,
+        },
+      },
+    };
+
+    const renderState = {
+      players: new Map([["player-map", { x: 320, y: 160 }]]),
+    };
+
+    const result = contractLifecycleToEffect(lifecycleEntry, {
+      store: { TILE_SIZE: 40 },
+      renderState,
+    });
+
+    expect(result.width).toBeCloseTo(40);
+    expect(result.height).toBeCloseTo(40);
+    expect(result.x).toBeCloseTo(300);
+    expect(result.y).toBeCloseTo(140);
+  });
 });
