@@ -16,7 +16,12 @@ const createBlob = (rand, radius, points, jaggedness) => {
 };
 class BloodSplatterInstance {
     constructor(opts) {
-        this.id = `blood-splatter-${Math.random().toString(36).slice(2)}`;
+        const providedId = typeof (opts === null || opts === void 0 ? void 0 : opts.effectId) === "string"
+            ? opts.effectId
+            : "";
+        this.id = providedId && providedId.length > 0
+            ? providedId
+            : `blood-splatter-${Math.random().toString(36).slice(2)}`;
         this.type = BloodSplatterDefinition.type;
         this.layer = EffectLayer.GroundDecal;
         this.sublayer = 0;

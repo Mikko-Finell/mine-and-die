@@ -256,6 +256,13 @@ export function resetEffectLifecycleState(store) {
   if (store.__effectLifecycleViewState) {
     delete store.__effectLifecycleViewState;
   }
+  if (store.__effectLifecycleEphemeralEntries instanceof Map) {
+    store.__effectLifecycleEphemeralEntries.clear();
+    delete store.__effectLifecycleEphemeralEntries;
+  }
+  if (store.__effectLifecycleLoggedSummary) {
+    delete store.__effectLifecycleLoggedSummary;
+  }
 }
 
 export function getEffectLifecycleEntry(store, effectId) {
@@ -280,6 +287,8 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     droppedEnds: [],
     unknownUpdates: [],
   };
+  const ephemeralEntries = new Map();
+  summary.ephemeralEntries = ephemeralEntries;
 
   if (!payload || typeof payload !== "object") {
     return summary;
@@ -375,6 +384,9 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     entry.endReason = end.reason ?? null;
     state.lastSeqById.set(end.id, end.seq);
     state.instances.delete(end.id);
+    if (!ephemeralEntries.has(end.id)) {
+      ephemeralEntries.set(end.id, entry);
+    }
     summary.ends.push(end.id);
     mutated = true;
     if (end.tick !== null) {
@@ -412,4 +424,24 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
   }
 
   return summary;
+}
+
+export function updateEphemeralEffectLifecycleEntries(store, summary) {
+  if (!store || typeof store !== "object") {
+    return;
+  }
+  if (!summary || typeof summary !== "object") {
+    if (store.__effectLifecycleEphemeralEntries instanceof Map) {
+      store.__effectLifecycleEphemeralEntries.clear();
+      delete store.__effectLifecycleEphemeralEntries;
+    }
+    return;
+  }
+  const entries = summary.ephemeralEntries instanceof Map ? summary.ephemeralEntries : null;
+  if (entries && entries.size > 0) {
+    store.__effectLifecycleEphemeralEntries = new Map(entries);
+  } else if (store.__effectLifecycleEphemeralEntries instanceof Map) {
+    store.__effectLifecycleEphemeralEntries.clear();
+    delete store.__effectLifecycleEphemeralEntries;
+  }
 }

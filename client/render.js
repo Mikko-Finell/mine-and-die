@@ -139,6 +139,10 @@ function collectEffectRenderBuckets(store, renderState) {
     renderState?.lifecycle?.entries instanceof Map
       ? renderState.lifecycle.entries
       : null;
+  const ephemeralEntries =
+    store?.__effectLifecycleEphemeralEntries instanceof Map
+      ? store.__effectLifecycleEphemeralEntries
+      : null;
   const legacyEffects = Array.isArray(renderState?.effects)
     ? renderState.effects
     : null;
@@ -160,13 +164,24 @@ function collectEffectRenderBuckets(store, renderState) {
   }
 
   const consumedIds = new Set();
-  if (lifecycleEntries) {
-    for (const [effectId, entry] of lifecycleEntries.entries()) {
-      if (!entry || typeof entry !== "object") {
-        continue;
-      }
-      const fallback = legacyById.get(effectId) ?? null;
-      const converted = contractLifecycleToEffect(entry, {
+  if (lifecycleEntries || ephemeralEntries) {
+    const sources = [];
+    if (lifecycleEntries) {
+      sources.push(lifecycleEntries);
+    }
+    if (ephemeralEntries) {
+      sources.push(ephemeralEntries);
+    }
+    for (const source of sources) {
+      for (const [effectId, entry] of source.entries()) {
+        if (consumedIds.has(effectId)) {
+          continue;
+        }
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+        const fallback = legacyById.get(effectId) ?? null;
+        const converted = contractLifecycleToEffect(entry, {
         store,
         renderState,
         fallbackEffect: fallback,
@@ -193,6 +208,8 @@ function collectEffectRenderBuckets(store, renderState) {
       addEffectToBucket(buckets, legacyType, converted);
       consumedIds.add(effectId);
     }
+  }
+
   }
 
   if (legacyEffects) {
@@ -829,6 +846,27 @@ function prepareEffectPass(
     return lastPass;
   }
 
+  if (
+    store &&
+    store.lastEffectLifecycleSummary &&
+    store.lastEffectLifecycleSummary !== store.__effectLifecycleLoggedSummary
+  ) {
+    const dropped = Array.isArray(store.lastEffectLifecycleSummary.droppedSpawns)
+      ? store.lastEffectLifecycleSummary.droppedSpawns
+      : [];
+    if (dropped.length > 0) {
+      for (const id of dropped) {
+        if (typeof id !== "string" || id.length === 0) {
+          continue;
+        }
+        console.error(
+          `Dropped effect spawn for reused identifier "${id}". Ignoring stale lifecycle batch.`
+        );
+      }
+    }
+    store.__effectLifecycleLoggedSummary = store.lastEffectLifecycleSummary;
+  }
+
   const triggers = drainPendingEffectTriggers(store);
   if (triggers.length > 0) {
     manager.triggerAll(triggers, { store });
@@ -843,6 +881,15 @@ function prepareEffectPass(
     MeleeSwingEffectDefinition,
     undefined,
     effectBuckets.get("attack") ?? [],
+    { lifecycle, renderState },
+  );
+  syncEffectsByType(
+    store,
+    manager,
+    "blood-splatter",
+    BloodSplatterDefinition,
+    undefined,
+    effectBuckets.get("blood-splatter") ?? [],
     { lifecycle, renderState },
   );
   syncEffectsByType(
@@ -892,6 +939,10 @@ function prepareEffectPass(
   manager.updateAll(frameContext);
   manager.collectDecals(frameContext.now);
   mirrorEffectInstances(store, manager);
+  if (store?.__effectLifecycleEphemeralEntries instanceof Map) {
+    store.__effectLifecycleEphemeralEntries.clear();
+    delete store.__effectLifecycleEphemeralEntries;
+  }
 
   const effectPass = { manager, frameContext, lifecycle };
   if (normalizedFrameNow !== null) {

@@ -53,6 +53,29 @@ function cloneEffect(fallbackEffect) {
   return clone;
 }
 
+function isZeroComponent(value) {
+  if (value === null || value === undefined) {
+    return true;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return false;
+  }
+  return numeric === 0;
+}
+
+function isZeroMotionVector(motion) {
+  if (!isPlainObject(motion)) {
+    return false;
+  }
+  return (
+    isZeroComponent(motion.positionX) &&
+    isZeroComponent(motion.positionY) &&
+    isZeroComponent(motion.velocityX) &&
+    isZeroComponent(motion.velocityY)
+  );
+}
+
 function findActorPosition(renderState, store, actorId) {
   if (typeof actorId !== "string" || actorId.length === 0) {
     return null;
@@ -125,6 +148,7 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
 
   const geometry = instance.deliveryState?.geometry ?? null;
   const motion = instance.deliveryState?.motion ?? null;
+  const zeroMotion = isZeroMotionVector(motion);
 
   const quantToWorld = (value) => quantizedToWorld(value, tileSize);
 
@@ -157,11 +181,18 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     findActorPosition(renderState, store, instance.followActorId) ??
     findActorPosition(renderState, store, instance.ownerActorId);
 
-  if (centerX === null && offsetX !== null && anchor) {
-    centerX = anchor.x + offsetX;
-  }
-  if (centerY === null && offsetY !== null && anchor) {
-    centerY = anchor.y + offsetY;
+  if (anchor && zeroMotion) {
+    const anchorOffsetX = Number.isFinite(offsetX) ? offsetX : 0;
+    const anchorOffsetY = Number.isFinite(offsetY) ? offsetY : 0;
+    centerX = anchor.x + anchorOffsetX;
+    centerY = anchor.y + anchorOffsetY;
+  } else {
+    if (centerX === null && offsetX !== null && anchor) {
+      centerX = anchor.x + offsetX;
+    }
+    if (centerY === null && offsetY !== null && anchor) {
+      centerY = anchor.y + offsetY;
+    }
   }
 
   if (centerX === null && offsetX !== null) {

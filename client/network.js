@@ -3,6 +3,7 @@ import { createPatchState, updatePatchState } from "./patches.js";
 import {
   applyEffectLifecycleBatch,
   resetEffectLifecycleState,
+  updateEphemeralEffectLifecycleEntries,
 } from "./effect-lifecycle.js";
 
 const HEARTBEAT_INTERVAL = 2000;
@@ -1494,6 +1495,7 @@ export async function joinGame(store) {
       onUnknownUpdate: getUnknownEffectUpdateHandler(store),
     });
     store.lastEffectLifecycleSummary = joinLifecycleSummary;
+    updateEphemeralEffectLifecycleEntries(store, joinLifecycleSummary);
     syncPatchTestingState(store, payload, "join");
     store.worldConfig = normalizeWorldConfig(payload.config);
     store.WORLD_WIDTH = store.worldConfig.width;
@@ -1628,6 +1630,7 @@ export function connectEvents(store) {
           onUnknownUpdate: getUnknownEffectUpdateHandler(store),
         });
         store.lastEffectLifecycleSummary = lifecycleSummary;
+        updateEphemeralEffectLifecycleEntries(store, lifecycleSummary);
 
         if (snapshot.worldConfig) {
           store.worldConfig = snapshot.worldConfig;

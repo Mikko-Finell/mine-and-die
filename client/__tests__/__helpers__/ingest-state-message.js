@@ -1,5 +1,13 @@
-import { parseServerEvent, handleProtocolVersion, applyStateSnapshot, deriveDisplayMaps } from "../../network.js";
-import { applyEffectLifecycleBatch } from "../../effect-lifecycle.js";
+import {
+  parseServerEvent,
+  handleProtocolVersion,
+  applyStateSnapshot,
+  deriveDisplayMaps,
+} from "../../network.js";
+import {
+  applyEffectLifecycleBatch,
+  updateEphemeralEffectLifecycleEntries,
+} from "../../effect-lifecycle.js";
 
 export function ingestStateMessage(store, rawMessage) {
   const parsed = parseServerEvent(rawMessage);
@@ -42,6 +50,7 @@ export function ingestStateMessage(store, rawMessage) {
 
   const lifecycleSummary = applyEffectLifecycleBatch(store, parsed.data);
   store.lastEffectLifecycleSummary = lifecycleSummary;
+  updateEphemeralEffectLifecycleEntries(store, lifecycleSummary);
 
   return { parsed, snapshot, lifecycleSummary };
 }
