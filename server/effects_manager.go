@@ -246,6 +246,9 @@ func (m *EffectManager) cloneInstanceForSpawn(instance *EffectInstance) EffectIn
 	clone.BehaviorState.Extra = copyIntMap(clone.BehaviorState.Extra)
 	clone.BehaviorState.Stacks = copyIntMap(clone.BehaviorState.Stacks)
 	clone.Params = copyIntMap(clone.Params)
+	if len(clone.Colors) > 0 {
+		clone.Colors = append([]string(nil), clone.Colors...)
+	}
 	clone.Replication.UpdateFields = copyBoolMap(clone.Replication.UpdateFields)
 	return clone
 }
@@ -803,6 +806,7 @@ func (m *EffectManager) syncBloodDecalInstance(instance *EffectInstance, effect 
 	instance.BehaviorState.Extra["centerY"] = centerY
 	instance.Params["centerX"] = centerX
 	instance.Params["centerY"] = centerY
+	instance.Colors = bloodSplatterColors()
 }
 
 func intMapToFloat64(src map[string]int) map[string]float64 {

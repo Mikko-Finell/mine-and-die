@@ -32,6 +32,18 @@ func hasFollowEffect(effects []*effectState, effectType, actorID string) bool {
 	return false
 }
 
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func newTestPlayerState(id string) *playerState {
 	return &playerState{
 		actorState: actorState{
@@ -891,9 +903,12 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 
 	foundBlood := false
 	for _, spawn := range msg.EffectSpawns {
-		if spawn.Instance.DefinitionID == effectTypeBloodSplatter {
-			foundBlood = true
-			break
+		if spawn.Instance.DefinitionID != effectTypeBloodSplatter {
+			continue
+		}
+		foundBlood = true
+		if !slicesEqual(spawn.Instance.Colors, []string{"#7a0e12", "#4a090b"}) {
+			t.Fatalf("expected spawn colors %v, got %v", []string{"#7a0e12", "#4a090b"}, spawn.Instance.Colors)
 		}
 	}
 	if !foundBlood {
@@ -1485,6 +1500,27 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 		t.Fatalf("expected blood decal to be contract-managed")
 	}
 
+	expectedColors := []string{"#7a0e12", "#4a090b"}
+	if !slicesEqual(effect.Colors, expectedColors) {
+		t.Fatalf("expected effect colors %v, got %v", expectedColors, effect.Colors)
+	}
+	for key, expected := range map[string]float64{
+		"drag":           0.92,
+		"dropletRadius":  3,
+		"maxBursts":      0,
+		"maxDroplets":    33,
+		"maxStainRadius": 6,
+		"maxStains":      140,
+		"minDroplets":    4,
+		"minStainRadius": 4,
+		"spawnInterval":  1.1,
+		"speed":          3,
+	} {
+		if value, ok := effect.Params[key]; !ok || math.Abs(value-expected) > 1e-6 {
+			t.Fatalf("expected effect param %s=%.2f, got %.2f (present=%t)", key, expected, value, ok)
+		}
+	}
+
 	centerXQuant := quantizeWorldCoord(npc.X)
 	centerYQuant := quantizeWorldCoord(npc.Y)
 	if instance.BehaviorState.Extra["centerX"] != centerXQuant {
@@ -1511,6 +1547,10 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	}
 	if math.Abs(effect.Effect.Y-expectedY) > 1e-6 {
 		t.Fatalf("expected effect Y %.2f, got %.2f", expectedY, effect.Effect.Y)
+	}
+
+	if !slicesEqual(instance.Colors, expectedColors) {
+		t.Fatalf("expected instance colors %v, got %v", expectedColors, instance.Colors)
 	}
 }
 

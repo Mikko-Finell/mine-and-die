@@ -42,6 +42,23 @@ function copyParams(source, target) {
   }
 }
 
+function normalizeColorList(source) {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+  const colors = [];
+  for (const entry of source) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (trimmed.length > 0) {
+      colors.push(trimmed);
+    }
+  }
+  return colors;
+}
+
 function cloneEffect(fallbackEffect) {
   if (!isPlainObject(fallbackEffect)) {
     return {};
@@ -49,6 +66,9 @@ function cloneEffect(fallbackEffect) {
   const clone = { ...fallbackEffect };
   if (isPlainObject(fallbackEffect.params)) {
     clone.params = { ...fallbackEffect.params };
+  }
+  if (Array.isArray(fallbackEffect.colors)) {
+    clone.colors = fallbackEffect.colors.slice();
   }
   return clone;
 }
@@ -117,6 +137,25 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     copyParams(instance.behaviorState.extra, params);
   }
   effect.params = Object.keys(params).length > 0 ? params : undefined;
+  if (effect.params) {
+    for (const [key, value] of Object.entries(effect.params)) {
+      if (typeof key !== "string" || key.length === 0) {
+        continue;
+      }
+      if (!(key in effect) && Number.isFinite(value)) {
+        effect[key] = value;
+      }
+    }
+  }
+
+  const fallbackColors = normalizeColorList(effect.colors);
+  const instanceColors = normalizeColorList(instance.colors);
+  const colors = instanceColors.length > 0 ? instanceColors : fallbackColors;
+  if (colors.length > 0) {
+    effect.colors = colors;
+  } else if ("colors" in effect) {
+    delete effect.colors;
+  }
 
   const ticksRemaining = Number(instance.behaviorState?.ticksRemaining);
   if (Number.isFinite(ticksRemaining) && ticksRemaining > 0) {
