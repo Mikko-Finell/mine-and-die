@@ -83,4 +83,24 @@ describe("contractLifecycleToEffect", () => {
     expect(result.x).toBeCloseTo(220);
     expect(result.y).toBeCloseTo(290);
   });
+
+  test("prefers lifecycle colors and trims fallback palettes", () => {
+    const lifecycleEntry = {
+      instance: {
+        id: "contract-colors",
+        definitionId: "blood-splatter",
+        colors: [" #7a0e12 ", "", "#4a090b", null],
+      },
+    };
+    const fallbackEffect = {
+      id: "legacy-colors",
+      colors: ["#123456", "#654321"],
+    };
+
+    const result = contractLifecycleToEffect(lifecycleEntry, {
+      fallbackEffect,
+    });
+
+    expect(result.colors).toEqual(["#7a0e12", "#4a090b"]);
+  });
 });

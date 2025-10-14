@@ -179,6 +179,7 @@ type EffectInstance struct {
 	DeliveryState EffectDeliveryState `json:"deliveryState"`
 	BehaviorState EffectBehaviorState `json:"behaviorState"`
 	Params        map[string]int      `json:"params,omitempty"`
+	Colors        []string            `json:"colors,omitempty"`
 	FollowActorID string              `json:"followActorId,omitempty"`
 	OwnerActorID  string              `json:"ownerActorId,omitempty"`
 	Replication   ReplicationSpec     `json:"replication"`

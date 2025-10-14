@@ -1045,13 +1045,17 @@ function handleBloodSplatterTrigger({ manager, trigger, context }) {
   const maxStainRadius = readNumber("maxStainRadius", 6);
   const maxStains = readNumber("maxStains", 140);
   const maxBursts = readNumber("maxBursts", 0);
-  const midColor = readColor("midColor", "#7a0e12");
-  const darkColor = readColor("darkColor", "#4a090b");
+
+  const rawPalette = Array.isArray(trigger.colors) ? trigger.colors : [];
+  const palette = rawPalette.filter((value) => typeof value === "string" && value.length > 0);
+  const midColor = palette.length > 0 ? palette[0] : readColor("midColor", "#7a0e12");
+  const darkColor = palette.length > 1 ? palette[1] : readColor("darkColor", "#4a090b");
+  const colors = [midColor, darkColor];
 
   manager.spawn(BloodSplatterDefinition, {
     x: centerX,
     y: centerY,
-    colors: [midColor, darkColor],
+    colors,
     drag,
     dropletRadius,
     maxBursts,

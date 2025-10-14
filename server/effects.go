@@ -23,6 +23,7 @@ type Effect struct {
 	Width    float64            `json:"width,omitempty"`
 	Height   float64            `json:"height,omitempty"`
 	Params   map[string]float64 `json:"params,omitempty"`
+	Colors   []string           `json:"colors,omitempty"`
 }
 
 // EffectTrigger represents a one-shot visual instruction that the client may
@@ -37,6 +38,7 @@ type EffectTrigger struct {
 	Width    float64            `json:"width,omitempty"`
 	Height   float64            `json:"height,omitempty"`
 	Params   map[string]float64 `json:"params,omitempty"`
+	Colors   []string           `json:"colors,omitempty"`
 }
 
 type effectState struct {
@@ -253,6 +255,27 @@ const (
 )
 
 var fireballLifetime = time.Duration(fireballRange / fireballSpeed * float64(time.Second))
+
+var bloodSplatterColorPalette = []string{"#7a0e12", "#4a090b"}
+
+func newBloodSplatterParams() map[string]float64 {
+	return map[string]float64{
+		"drag":           0.92,
+		"dropletRadius":  3,
+		"maxBursts":      0,
+		"maxDroplets":    33,
+		"maxStainRadius": 6,
+		"maxStains":      140,
+		"minDroplets":    4,
+		"minStainRadius": 4,
+		"spawnInterval":  1.1,
+		"speed":          3,
+	}
+}
+
+func bloodSplatterColors() []string {
+	return append([]string(nil), bloodSplatterColorPalette...)
+}
 
 func newProjectileTemplates() map[string]*ProjectileTemplate {
 	return map[string]*ProjectileTemplate{
@@ -917,6 +940,8 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *EffectInstance, no
 			Y:        centerY - height/2,
 			Width:    width,
 			Height:   height,
+			Params:   newBloodSplatterParams(),
+			Colors:   bloodSplatterColors(),
 		},
 		expiresAt:          now.Add(lifetime),
 		contractManaged:    true,
@@ -1479,6 +1504,8 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 		Y:        target.Y - playerHalf,
 		Width:    playerHalf * 2,
 		Height:   playerHalf * 2,
+		Params:   newBloodSplatterParams(),
+		Colors:   bloodSplatterColors(),
 	}
 
 	w.QueueEffectTrigger(trigger, now)
