@@ -834,7 +834,7 @@ func defaultEffectDefinitions() map[string]*EffectDefinition {
 			Delivery:      DeliveryKindArea,
 			Shape:         GeometryShapeRect,
 			Motion:        MotionKindInstant,
-			Impact:        ImpactPolicyFirstHit,
+			Impact:        ImpactPolicyAllInPath,
 			LifetimeTicks: 1,
 			Hooks: EffectHooks{
 				OnSpawn: meleeSpawnHookID,
@@ -905,7 +905,7 @@ func defaultEffectDefinitions() map[string]*EffectDefinition {
 			Delivery:      DeliveryKindVisual,
 			Shape:         GeometryShapeRect,
 			Motion:        MotionKindNone,
-			Impact:        ImpactPolicyFirstHit,
+			Impact:        ImpactPolicyNone,
 			LifetimeTicks: durationToTicks(bloodSplatterDuration),
 			Hooks: EffectHooks{
 				OnSpawn: visualBloodSplatterHookID,

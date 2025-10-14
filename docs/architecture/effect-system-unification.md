@@ -44,7 +44,8 @@ EffectDefinition
   - DeliveryKind (Area | Target | Visual)
   - Shape: circle / rect / arc / segment / capsule
   - Motion: none | instant | linear | parabolic | follow
-  - ImpactPolicy: first-hit | all-in-path | pierce N
+  - ImpactPolicy: none | first-hit | all-in-path | pierce N
+    - Use `none` for purely cosmetic definitions with no collision handling.
   - Lifetime: duration or range
   - Params: small numeric/config map (damage, tint, speed, etc.)
   - Hooks: OnSpawn / OnTick / OnHit / OnExpire

@@ -67,6 +67,7 @@ const (
 	ImpactPolicyFirstHit   ImpactPolicy = "first-hit"
 	ImpactPolicyAllInPath  ImpactPolicy = "all-in-path"
 	ImpactPolicyPierceMany ImpactPolicy = "pierce"
+	ImpactPolicyNone       ImpactPolicy = "none"
 )
 
 // EndReason qualifies why an effect ended; used in EffectEndEvent and for analytics.
