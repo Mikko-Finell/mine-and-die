@@ -70,16 +70,6 @@ function toEntriesMap(source) {
   return Object.create(null);
 }
 
-function toEffectArray(source) {
-  if (Array.isArray(source)) {
-    return source;
-  }
-  if (isPlainObject(source)) {
-    return Object.values(source);
-  }
-  return [];
-}
-
 function mapDefinitionToLegacyType(definitionId) {
   if (typeof definitionId !== "string" || definitionId.length === 0) {
     return null;
@@ -192,36 +182,15 @@ function collectEffectRenderBuckets(store, renderState) {
     renderState?.lifecycle?.recentlyEnded instanceof Map
       ? renderState.lifecycle.recentlyEnded
       : null;
-  const legacyEffects = Array.isArray(renderState?.effects)
-    ? renderState.effects
-    : null;
-
-  const legacyById = new Map();
-  if (legacyEffects) {
-    for (const effect of legacyEffects) {
-      if (!effect || typeof effect !== "object") {
-        continue;
-      }
-      const id = typeof effect.id === "string" ? effect.id : null;
-      if (!id) {
-        continue;
-      }
-      if (!legacyById.has(id)) {
-        legacyById.set(id, effect);
-      }
-    }
-  }
 
   const consumedIds = new Set();
   const processLifecycleEntry = (effectId, entry) => {
     if (!entry || typeof entry !== "object") {
       return;
     }
-    const fallback = legacyById.get(effectId) ?? null;
     const converted = contractLifecycleToEffect(entry, {
       store,
       renderState,
-      fallbackEffect: fallback,
     });
     if (!converted || typeof converted !== "object") {
       return;
@@ -229,7 +198,7 @@ function collectEffectRenderBuckets(store, renderState) {
     if (typeof converted.id !== "string" || converted.id.length === 0) {
       converted.id = effectId;
     }
-    const legacyType = resolveLifecycleEffectType(entry, converted, fallback);
+    const legacyType = resolveLifecycleEffectType(entry, converted, null);
     if (!legacyType) {
       return;
     }
@@ -264,23 +233,6 @@ function collectEffectRenderBuckets(store, renderState) {
       processLifecycleEntry(effectId, entry);
     }
     recentlyEnded.clear();
-  }
-
-  if (legacyEffects) {
-    for (const effect of legacyEffects) {
-      if (!effect || typeof effect !== "object") {
-        continue;
-      }
-      const id = typeof effect.id === "string" ? effect.id : null;
-      if (id && consumedIds.has(id)) {
-        continue;
-      }
-      const type = typeof effect.type === "string" ? effect.type : null;
-      if (!type) {
-        continue;
-      }
-      addEffectToBucket(buckets, type, effect);
-    }
   }
 
   return buckets;
@@ -343,7 +295,6 @@ function resolveRenderState(store) {
       mode: RENDER_MODE_PATCH,
       players: toEntriesMap(patchedState.players),
       npcs: toEntriesMap(patchedState.npcs),
-      effects: toEffectArray(patchedState.effects),
       groundItems: toEntriesMap(patchedState.groundItems),
       tick: patchedState.tick,
       sequence: patchedState.sequence,
@@ -355,7 +306,6 @@ function resolveRenderState(store) {
     mode: RENDER_MODE_SNAPSHOT,
     players: toEntriesMap(store?.players),
     npcs: toEntriesMap(store?.npcs),
-    effects: Array.isArray(store?.effects) ? store.effects : [],
     groundItems: toEntriesMap(store?.groundItems),
     tick: store?.lastTick ?? null,
     sequence: null,

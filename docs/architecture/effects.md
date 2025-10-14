@@ -60,9 +60,11 @@ browser's effect manager.【F:server/effects_manager.go†L26-L172】【F:server
 - Resync hints are raised from the journal when lost-spawn patterns occur;
   `Hub.scheduleResyncIfNeeded` consumes the hint, forces the next keyframe, and
   marks the upcoming state message with `resync` so clients rebuild cleanly.【F:server/patches.go†L449-L459】【F:server/hub.go†L1138-L1157】
-- `Hub.marshalState` only includes lifecycle arrays when both the manager and
-  transport flags are enabled, bundling `effect_spawned`, `effect_update`,
-  `effect_ended`, and `effect_seq_cursors` alongside the usual world payloads.【F:server/hub.go†L980-L1134】
+- `Hub.marshalState` no longer ships the legacy `effects` snapshot; state and
+  keyframe payloads rely solely on contract lifecycle batches. When both the
+  manager and transport flags are enabled the message bundles `effect_spawned`,
+  `effect_update`, `effect_ended`, and `effect_seq_cursors` alongside the usual
+  world payloads.【F:server/hub.go†L960-L1126】
 - Joining the game returns a snapshot without lifecycle arrays; the hub
   immediately broadcasts a state message (flagged as a resync) so the client
   receives a keyframe followed by the first contract batch.【F:server/hub.go†L206-L244】

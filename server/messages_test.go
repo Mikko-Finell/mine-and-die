@@ -12,7 +12,7 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 	hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		hub.advance(time.Now(), dt)
 
-		data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+		data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 		if err != nil {
 			t.Fatalf("marshalState returned error: %v", err)
 		}
@@ -132,7 +132,7 @@ func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
 	hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -171,7 +171,6 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 		Players:        nil,
 		NPCs:           nil,
 		Obstacles:      nil,
-		Effects:        nil,
 		EffectTriggers: nil,
 		GroundItems:    nil,
 		Patches: []Patch{
@@ -240,7 +239,7 @@ func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
 
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -281,7 +280,7 @@ func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
 		t.Fatalf("expected effect_seq_cursors to decode as non-empty map, got %T with len %d", rawCursors, len(cursors))
 	}
 
-	followUp, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	followUp, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error on follow-up: %v", err)
 	}
@@ -310,14 +309,14 @@ func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 	hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, false, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
 
 	assertResyncFlag(t, data, true)
 
-	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	data, _, err = hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error for steady broadcast: %v", err)
 	}
@@ -326,14 +325,14 @@ func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 
 	hub.ResetWorld(defaultWorldConfig())
 
-	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	data, _, err = hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error after reset: %v", err)
 	}
 
 	assertResyncFlag(t, data, true)
 
-	data, _, err = hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	data, _, err = hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error on follow-up broadcast: %v", err)
 	}
@@ -362,7 +361,7 @@ func TestHubSchedulesResyncAfterJournalHint(t *testing.T) {
 		t.Fatalf("expected forced keyframe after resync hint")
 	}
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, includeSnapshot)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, includeSnapshot)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -402,7 +401,7 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 	hub.world.journal.AppendPatch(Patch{Kind: PatchPlayerPos, EntityID: "player-1"})
 	hub.mu.Unlock()
 
-	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true); err != nil {
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, false, true); err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
 
@@ -413,7 +412,7 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 	}
 	hub.mu.Unlock()
 
-	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true); err != nil {
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, true, true); err != nil {
 		t.Fatalf("marshalState returned error when draining: %v", err)
 	}
 
@@ -429,7 +428,7 @@ func TestMarshalStateRecordsKeyframe(t *testing.T) {
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, false, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, false, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -463,9 +462,6 @@ func TestMarshalStateRecordsKeyframe(t *testing.T) {
 	if len(snapshot.NPCs) != len(msg.NPCs) {
 		t.Fatalf("expected %d NPCs in keyframe, got %d", len(msg.NPCs), len(snapshot.NPCs))
 	}
-	if len(snapshot.Effects) != len(msg.Effects) {
-		t.Fatalf("expected %d effects in keyframe, got %d", len(msg.Effects), len(snapshot.Effects))
-	}
 	if len(snapshot.GroundItems) != len(msg.GroundItems) {
 		t.Fatalf("expected %d ground items in keyframe, got %d", len(msg.GroundItems), len(snapshot.GroundItems))
 	}
@@ -479,7 +475,7 @@ func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -506,7 +502,7 @@ func TestHandleKeyframeRequestExpired(t *testing.T) {
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
 
-	first, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true)
+	first, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -515,7 +511,7 @@ func TestHandleKeyframeRequestExpired(t *testing.T) {
 		t.Fatalf("failed to decode payload: %v", err)
 	}
 
-	if _, _, err := hub.marshalState(nil, nil, nil, nil, nil, true, true); err != nil {
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, true, true); err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
 

@@ -152,8 +152,8 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 	return w
 }
 
-// Snapshot copies players, NPCs, and effects into broadcast-friendly structs.
-func (w *World) Snapshot(now time.Time) ([]Player, []NPC, []Effect) {
+// Snapshot copies players and NPCs into broadcast-friendly structs.
+func (w *World) Snapshot(now time.Time) ([]Player, []NPC) {
 	players := make([]Player, 0, len(w.players))
 	for _, player := range w.players {
 		players = append(players, player.snapshot())
@@ -162,13 +162,7 @@ func (w *World) Snapshot(now time.Time) ([]Player, []NPC, []Effect) {
 	for _, npc := range w.npcs {
 		npcs = append(npcs, npc.snapshot())
 	}
-	effects := make([]Effect, 0, len(w.effects))
-	for _, eff := range w.effects {
-		if now.Before(eff.expiresAt) {
-			effects = append(effects, eff.Effect)
-		}
-	}
-	return players, npcs, effects
+	return players, npcs
 }
 
 // flushEffectTriggersLocked drains the queued fire-and-forget triggers. Callers

@@ -161,9 +161,9 @@ func main() {
 
 		cfg = cfg.normalized()
 
-		players, npcs, effects := hub.ResetWorld(cfg)
+		players, npcs := hub.ResetWorld(cfg)
 		hub.forceKeyframe()
-		go hub.broadcastState(players, npcs, effects, nil, nil)
+		go hub.broadcastState(players, npcs, nil, nil)
 
 		response := struct {
 			Status string      `json:"status"`
@@ -220,7 +220,7 @@ func main() {
 			return
 		}
 
-		sub, snapshotPlayers, snapshotNPCs, snapshotEffects, snapshotGroundItems, ok := hub.Subscribe(playerID, conn)
+		sub, snapshotPlayers, snapshotNPCs, snapshotGroundItems, ok := hub.Subscribe(playerID, conn)
 		if !ok {
 			message := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unknown player")
 			conn.WriteMessage(websocket.CloseMessage, message)
@@ -228,13 +228,13 @@ func main() {
 			return
 		}
 
-		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, snapshotEffects, nil, snapshotGroundItems, false, true)
+		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, nil, snapshotGroundItems, false, true)
 		if err != nil {
 			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
-			players, npcs, effects := hub.Disconnect(playerID)
+			players, npcs := hub.Disconnect(playerID)
 			if players != nil {
 				hub.forceKeyframe()
-				go hub.broadcastState(players, npcs, effects, nil, nil)
+				go hub.broadcastState(players, npcs, nil, nil)
 			}
 			return
 		}
@@ -243,10 +243,10 @@ func main() {
 		conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			sub.mu.Unlock()
-			players, npcs, effects := hub.Disconnect(playerID)
+			players, npcs := hub.Disconnect(playerID)
 			if players != nil {
 				hub.forceKeyframe()
-				go hub.broadcastState(players, npcs, effects, nil, nil)
+				go hub.broadcastState(players, npcs, nil, nil)
 			}
 			return
 		}
@@ -258,10 +258,10 @@ func main() {
 		for {
 			_, payload, err := conn.ReadMessage()
 			if err != nil {
-				players, npcs, effects := hub.Disconnect(playerID)
+				players, npcs := hub.Disconnect(playerID)
 				if players != nil {
 					hub.forceKeyframe()
-					go hub.broadcastState(players, npcs, effects, nil, nil)
+					go hub.broadcastState(players, npcs, nil, nil)
 				}
 				return
 			}
@@ -321,10 +321,10 @@ func main() {
 				conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 					sub.mu.Unlock()
-					players, npcs, effects := hub.Disconnect(playerID)
+					players, npcs := hub.Disconnect(playerID)
 					if players != nil {
 						hub.forceKeyframe()
-						go hub.broadcastState(players, npcs, effects, nil, nil)
+						go hub.broadcastState(players, npcs, nil, nil)
 					}
 					return
 				}
@@ -343,10 +343,10 @@ func main() {
 				conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 					sub.mu.Unlock()
-					players, npcs, effects := hub.Disconnect(playerID)
+					players, npcs := hub.Disconnect(playerID)
 					if players != nil {
 						hub.forceKeyframe()
-						go hub.broadcastState(players, npcs, effects, nil, nil)
+						go hub.broadcastState(players, npcs, nil, nil)
 					}
 					return
 				}
@@ -374,10 +374,10 @@ func main() {
 				conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 					sub.mu.Unlock()
-					players, npcs, effects := hub.Disconnect(playerID)
+					players, npcs := hub.Disconnect(playerID)
 					if players != nil {
 						hub.forceKeyframe()
-						go hub.broadcastState(players, npcs, effects, nil, nil)
+						go hub.broadcastState(players, npcs, nil, nil)
 					}
 					return
 				}

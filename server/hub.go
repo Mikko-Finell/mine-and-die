@@ -214,7 +214,7 @@ func (h *Hub) Join() joinResponse {
 
 	h.mu.Lock()
 	h.world.AddPlayer(player)
-	players, npcs, effects := h.world.Snapshot(now)
+	players, npcs := h.world.Snapshot(now)
 	groundItems := h.world.GroundItemsSnapshot()
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
@@ -230,7 +230,7 @@ func (h *Hub) Join() joinResponse {
 	)
 
 	h.forceKeyframe()
-	go h.broadcastState(players, npcs, effects, nil, groundItems)
+	go h.broadcastState(players, npcs, nil, groundItems)
 
 	return joinResponse{
 		Ver:              ProtocolVersion,
@@ -246,7 +246,7 @@ func (h *Hub) Join() joinResponse {
 }
 
 // ResetWorld replaces the current world with a freshly generated instance.
-func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
+func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 	cfg = cfg.normalized()
 	now := time.Now()
 
@@ -268,14 +268,14 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC, []Effect) {
 	}
 	h.world = newW
 	h.config = cfg
-	players, npcs, effects := h.world.Snapshot(now)
+	players, npcs := h.world.Snapshot(now)
 	h.mu.Unlock()
 
 	h.tick.Store(0)
 	h.resyncNext.Store(true)
 	h.forceKeyframe()
 
-	return players, npcs, effects
+	return players, npcs
 }
 
 // CurrentConfig returns a copy of the active world configuration.
@@ -286,13 +286,13 @@ func (h *Hub) CurrentConfig() worldConfig {
 }
 
 // Subscribe associates a WebSocket connection with an existing player.
-func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, []NPC, []Effect, []GroundItem, bool) {
+func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, []NPC, []GroundItem, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	state, ok := h.world.players[playerID]
 	if !ok {
-		return nil, nil, nil, nil, nil, false
+		return nil, nil, nil, nil, false
 	}
 
 	state.lastHeartbeat = time.Now()
@@ -304,9 +304,9 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 	sub := &subscriber{conn: conn, limiter: newKeyframeRateLimiter(keyframeLimiterCapacity, keyframeLimiterRefillPer)}
 	h.subscribers[playerID] = sub
 	now := time.Now()
-	players, npcs, effects := h.world.Snapshot(now)
+	players, npcs := h.world.Snapshot(now)
 	groundItems := h.world.GroundItemsSnapshot()
-	return sub, players, npcs, effects, groundItems, true
+	return sub, players, npcs, groundItems, true
 }
 
 // RecordAck updates the latest acknowledged tick for the given subscriber.
@@ -343,7 +343,7 @@ func (h *Hub) RecordAck(playerID string, ack uint64) {
 }
 
 // Disconnect removes a player and closes any active subscriber connection.
-func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
+func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
 	h.mu.Lock()
 	sub, subOK := h.subscribers[playerID]
 	if subOK {
@@ -353,10 +353,9 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 	removed := h.world.RemovePlayer(playerID)
 	var players []Player
 	var npcs []NPC
-	var effects []Effect
 	if removed {
 		now := time.Now()
-		players, npcs, effects = h.world.Snapshot(now)
+		players, npcs = h.world.Snapshot(now)
 	}
 	h.mu.Unlock()
 
@@ -365,7 +364,7 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 	}
 
 	if !removed {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	logginglifecycle.PlayerDisconnected(
@@ -377,7 +376,7 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC, []Effect) {
 		nil,
 	)
 
-	return players, npcs, effects
+	return players, npcs
 }
 
 // UpdateIntent stores the latest movement vector and facing for a player.
@@ -511,7 +510,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 		if stack != nil {
 			ack.StackID = stack.ID
 		}
-		go h.broadcastState(nil, nil, nil, nil, groundItems)
+		go h.broadcastState(nil, nil, nil, groundItems)
 		return ack, true
 	case "equip_slot":
 		if qty < 0 {
@@ -535,7 +534,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 		}
 		ack.Status = "ok"
 		ack.Slot = string(slot)
-		go h.broadcastState(nil, nil, nil, nil, nil)
+		go h.broadcastState(nil, nil, nil, nil)
 		return ack, true
 	case "unequip_slot":
 		slot, ok := equipSlotFromOrdinal(qty)
@@ -561,7 +560,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 		ack.Status = "ok"
 		ack.Slot = string(slot)
 		ack.Qty = item.Quantity
-		go h.broadcastState(nil, nil, nil, nil, nil)
+		go h.broadcastState(nil, nil, nil, nil)
 		return ack, true
 	case "pickup_gold":
 		h.mu.Lock()
@@ -653,7 +652,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 		ack.Status = "ok"
 		ack.Qty = qty
 		ack.StackID = stackID
-		go h.broadcastState(nil, nil, nil, nil, groundItems)
+		go h.broadcastState(nil, nil, nil, groundItems)
 		return ack, true
 	default:
 		ack.Status = "error"
@@ -717,15 +716,15 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 }
 
 // advance runs a single simulation step and returns updated snapshots plus stale subscribers.
-func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []EffectTrigger, []GroundItem, []*subscriber) {
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigger, []GroundItem, []*subscriber) {
 	tick := h.tick.Add(1)
 	commands := h.drainCommands()
 
 	h.mu.Lock()
 	removed := h.world.Step(tick, now, dt, commands, nil)
-	players, npcs, effects := h.world.Snapshot(now)
+	players, npcs := h.world.Snapshot(now)
 	if h.telemetry != nil {
-		h.telemetry.RecordEffectsActive(len(effects))
+		h.telemetry.RecordEffectsActive(len(h.world.effects))
 	}
 	groundItems := h.world.GroundItemsSnapshot()
 	triggers := h.world.flushEffectTriggersLocked()
@@ -738,7 +737,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []Effect, []E
 	}
 	h.mu.Unlock()
 
-	return players, npcs, effects, triggers, groundItems, toClose
+	return players, npcs, triggers, groundItems, toClose
 }
 
 // RunSimulation drives the fixed-rate tick loop until the stop channel closes.
@@ -769,11 +768,11 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 			}
 			last = now
 
-			players, npcs, effects, triggers, groundItems, toClose := h.advance(now, dt)
+			players, npcs, triggers, groundItems, toClose := h.advance(now, dt)
 			for _, sub := range toClose {
 				sub.conn.Close()
 			}
-			h.broadcastState(players, npcs, effects, triggers, groundItems)
+			h.broadcastState(players, npcs, triggers, groundItems)
 			duration := time.Since(tickStart)
 			if h.telemetry != nil {
 				h.telemetry.RecordTickDuration(duration)
@@ -952,11 +951,11 @@ func (h *Hub) shouldIncludeSnapshot() bool {
 	return tick >= last && tick-last >= interval64
 }
 
-func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
+func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	h.mu.Lock()
-	if (players == nil || npcs == nil || effects == nil) && includeSnapshot {
+	if (players == nil || npcs == nil) && includeSnapshot {
 		now := time.Now()
-		players, npcs, effects = h.world.Snapshot(now)
+		players, npcs = h.world.Snapshot(now)
 		if triggers == nil {
 			triggers = h.world.flushEffectTriggersLocked()
 		}
@@ -1000,9 +999,8 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	if len(patches) > 0 {
 		alivePlayers := players
 		aliveNPCs := npcs
-		aliveEffects := effects
 		aliveItems := groundItems
-		total := len(alivePlayers) + len(aliveNPCs) + len(aliveEffects)
+		total := len(alivePlayers) + len(aliveNPCs)
 		if aliveItems != nil {
 			total += len(aliveItems)
 		}
@@ -1019,12 +1017,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 					continue
 				}
 				alive[npc.ID] = struct{}{}
-			}
-			for _, eff := range aliveEffects {
-				if eff.ID == "" {
-					continue
-				}
-				alive[eff.ID] = struct{}{}
 			}
 			for _, item := range aliveItems {
 				if item.ID == "" {
@@ -1056,7 +1048,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 	} else {
 		players = nil
 		npcs = nil
-		effects = nil
 	}
 	if triggers == nil {
 		triggers = make([]EffectTrigger, 0)
@@ -1128,7 +1119,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, effects []Effect, trigg
 		}
 	}
 
-	entities := len(msg.Players) + len(msg.NPCs) + len(msg.Obstacles) + len(msg.Effects) + len(msg.EffectTriggers) + len(msg.GroundItems)
+	entities := len(msg.Players) + len(msg.NPCs) + len(msg.Obstacles) + len(msg.EffectTriggers) + len(msg.GroundItems)
 	if effectTransportEnabled && (len(msg.EffectSpawns) > 0 || len(msg.EffectUpdates) > 0 || len(msg.EffectEnds) > 0) {
 		entities += len(msg.EffectSpawns) + len(msg.EffectUpdates) + len(msg.EffectEnds)
 	}
@@ -1260,10 +1251,10 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 }
 
 // broadcastState sends the latest world snapshot to every subscriber.
-func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, triggers []EffectTrigger, groundItems []GroundItem) {
+func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem) {
 	h.scheduleResyncIfNeeded()
 	includeSnapshot := h.shouldIncludeSnapshot()
-	data, entities, err := h.marshalState(players, npcs, effects, triggers, groundItems, true, includeSnapshot)
+	data, entities, err := h.marshalState(players, npcs, triggers, groundItems, true, includeSnapshot)
 	if err != nil {
 		stdlog.Printf("failed to marshal state message: %v", err)
 		return
@@ -1298,10 +1289,10 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, effects []Effect, tri
 		sub.mu.Unlock()
 		if err != nil {
 			stdlog.Printf("failed to send update to %s: %v", id, err)
-			players, npcs, effects := h.Disconnect(id)
+			players, npcs := h.Disconnect(id)
 			if players != nil {
 				h.forceKeyframe()
-				go h.broadcastState(players, npcs, effects, nil, nil)
+				go h.broadcastState(players, npcs, nil, nil)
 			}
 		}
 	}
