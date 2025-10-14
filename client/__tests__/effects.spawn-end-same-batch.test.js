@@ -9,7 +9,8 @@ const SAME_BATCH_MESSAGE =
   '"config":{"width":2400,"height":1800},"players":[{"id":"player-1","x":544,"y":352,"facing":"down","maxHealth":100,"health":100}],' +
   '"effect_spawned":[{"tick":128,"seq":1,"instance":{"id":"contract-effect-one-tick","definitionId":"attack","ownerActorId":"player-1",' +
   '"deliveryState":{"geometry":{"shape":"rect","width":12,"height":12},"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"},' +
-  '"behaviorState":{"ticksRemaining":1},"params":{"lifetimeTicks":1}}}],"effect_update":[{"tick":128,"seq":2,"id":"contract-effect-one-tick",' +
+  '"behaviorState":{"ticksRemaining":1},"params":{"lifetimeTicks":1},' +
+  '"replication":{"sendSpawn":true,"sendUpdates":true,"sendEnd":true,"managedByClient":true}}}],"effect_update":[{"tick":128,"seq":2,"id":"contract-effect-one-tick",' +
   '"deliveryState":{"geometry":{"shape":"rect","width":12,"height":12},"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"}}],' +
   '"effect_ended":[{"tick":128,"seq":3,"id":"contract-effect-one-tick","reason":"expired"}],"effect_seq_cursors":{"contract-effect-one-tick":3},' +
   '"patches":[{"kind":"player_pos","entityId":"player-1","payload":{"x":544,"y":352}}]}';
