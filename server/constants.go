@@ -31,32 +31,3 @@ const (
 	goldOreMinSize        = 56.0
 	goldOreMaxSize        = 96.0
 )
-
-// enableContractEffectManager gates the contract-backed EffectManager skeleton.
-// With the unified pipeline rolled out, it now defaults to enabled so the
-// contract journal remains authoritative for all effect lifecycles.
-var enableContractEffectManager = true
-
-// enableContractEffectTransport gates the transport for contract effect events.
-// Unified clients rely on these batches, so keep the transport enabled unless a
-// targeted rollback is required for debugging.
-var enableContractEffectTransport = true
-
-// enableContractMeleeDefinitions hands melee behaviour over to the contract
-// EffectManager hooks. Default it to enabled so the unified definitions remain
-// authoritative.
-var enableContractMeleeDefinitions = true
-
-// enableContractProjectileDefinitions hands projectile behaviour over to the
-// contract EffectManager hooks. Default it to enabled for unified execution.
-var enableContractProjectileDefinitions = true
-
-// enableContractBurningDefinitions hands burning status visuals and damage
-// ticks over to the contract EffectManager hooks. Default it to enabled for the
-// unified runtime.
-var enableContractBurningDefinitions = true
-
-// enableContractBloodDecalDefinitions hands blood decal visuals over to the
-// contract EffectManager hooks. Default it to enabled to keep the unified
-// transport authoritative.
-var enableContractBloodDecalDefinitions = true

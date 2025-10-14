@@ -11,18 +11,9 @@ type endDecision struct {
 	reason    EndReason
 }
 
-// EffectManager owns the contract-driven effect pipeline. The current
-// implementation translates queued intents into minimal EffectInstance records
-// and emits the contract transport events so downstream plumbing can observe
-// spawn/update/end ordering while the legacy gameplay systems remain
-// authoritative.
-//
-// The manager intentionally lives behind the enableContractEffectManager flag
-// so it can collect intents and metrics without altering live gameplay until
-// dual-write plumbing is ready. While wiring lands, totalEnqueued and
-// totalDrained provide a temporary sanity check that tick execution drains all
-// staged intents; expect these counters to be removed or repurposed once
-// spawning transitions fully into the manager.
+// EffectManager owns the contract-driven effect pipeline. It translates queued
+// intents into EffectInstance records, emits lifecycle events for transport,
+// and mirrors authoritative world bookkeeping for gameplay resolution.
 type EffectManager struct {
 	intentQueue       []EffectIntent
 	instances         map[string]*EffectInstance
@@ -64,9 +55,7 @@ func newEffectManager(world *World) *EffectManager {
 	}
 }
 
-// EnqueueIntent stages an EffectIntent for future processing. The skeleton
-// version simply records the request for observability while legacy systems
-// remain authoritative.
+// EnqueueIntent stages an EffectIntent for processing on the next tick.
 func (m *EffectManager) EnqueueIntent(intent EffectIntent) {
 	if m == nil {
 		return
@@ -76,14 +65,10 @@ func (m *EffectManager) EnqueueIntent(intent EffectIntent) {
 }
 
 // RunTick advances the manager by one simulation tick. It drains the queued
-// intents, instantiates minimal effect records, and emits contract events for
-// observers while still letting the legacy systems drive gameplay state.
+// intents, instantiates effect records, and emits contract lifecycle events for
+// downstream consumers before invoking per-effect hooks.
 func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecycleEvent)) {
 	if m == nil {
-		return
-	}
-	if !enableContractEffectManager {
-		m.intentQueue = m.intentQueue[:0]
 		return
 	}
 	m.lastTickProcessed = tick
@@ -388,9 +373,6 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 	registry := make(map[string]effectHookSet)
 	registry[meleeSpawnHookID] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
-			if !enableContractEffectManager || !enableContractMeleeDefinitions {
-				return
-			}
 			if m == nil || instance == nil || m.world == nil {
 				return
 			}
@@ -407,9 +389,6 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 	}
 	registry[projectileLifecycleHookID] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
-			if !enableContractEffectManager || !enableContractProjectileDefinitions {
-				return
-			}
 			if m == nil || instance == nil || m.world == nil {
 				return
 			}
@@ -432,9 +411,6 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			}
 		},
 		OnTick: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
-			if !enableContractEffectManager || !enableContractProjectileDefinitions {
-				return
-			}
 			if m == nil || instance == nil || m.world == nil {
 				return
 			}
@@ -468,9 +444,6 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 	}
 	registry[statusBurningVisualHookID] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
-			if !enableContractEffectManager || !enableContractBurningDefinitions {
-				return
-			}
 			if m == nil || instance == nil || m.world == nil {
 				return
 			}
@@ -500,9 +473,6 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			m.syncStatusVisualInstance(instance, actor, effect)
 		},
 		OnTick: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
-			if !enableContractEffectManager || !enableContractBurningDefinitions {
-				return
-			}
 			if m == nil || instance == nil || m.world == nil {
 				return
 			}
@@ -549,9 +519,6 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 	}
 	registry[statusBurningDamageHookID] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
-			if !enableContractEffectManager || !enableContractBurningDefinitions {
-				return
-			}
 			if m == nil || instance == nil || m.world == nil {
 				return
 			}
@@ -586,15 +553,9 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 	}
 	registry[visualBloodSplatterHookID] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
-			if !enableContractEffectManager || !enableContractBloodDecalDefinitions {
-				return
-			}
 			m.ensureBloodDecalInstance(instance, now)
 		},
 		OnTick: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
-			if !enableContractEffectManager || !enableContractBloodDecalDefinitions {
-				return
-			}
 			m.ensureBloodDecalInstance(instance, now)
 		},
 	}

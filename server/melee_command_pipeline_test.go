@@ -7,18 +7,6 @@ import (
 )
 
 func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
-	originalManager := enableContractEffectManager
-	originalTransport := enableContractEffectTransport
-	originalMelee := enableContractMeleeDefinitions
-	enableContractEffectManager = true
-	enableContractEffectTransport = true
-	enableContractMeleeDefinitions = true
-	defer func() {
-		enableContractEffectManager = originalManager
-		enableContractEffectTransport = originalTransport
-		enableContractMeleeDefinitions = originalMelee
-	}()
-
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
 

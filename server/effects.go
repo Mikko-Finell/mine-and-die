@@ -630,50 +630,7 @@ func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) b
 		return false
 	}
 
-	useContract := enableContractMeleeDefinitions && enableContractEffectManager && w.effectManager != nil
-	if useContract {
-		return true
-	}
-
-	facing := state.Facing
-	if facing == "" {
-		facing = defaultFacing
-	}
-
-	rectX, rectY, rectW, rectH := meleeAttackRectangle(state.X, state.Y, facing)
-	area := Obstacle{X: rectX, Y: rectY, Width: rectW, Height: rectH}
-
-	w.pruneEffects(now)
-	w.nextEffectID++
-	effect := &effectState{
-		Effect: Effect{
-			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
-			Type:     effectTypeAttack,
-			Owner:    actorID,
-			Start:    now.UnixMilli(),
-			Duration: meleeAttackDuration.Milliseconds(),
-			X:        rectX,
-			Y:        rectY,
-			Width:    rectW,
-			Height:   rectH,
-			Params: map[string]float64{
-				"healthDelta": -meleeAttackDamage,
-				"reach":       meleeAttackReach,
-				"width":       meleeAttackWidth,
-			},
-		},
-		expiresAt:          now.Add(meleeAttackDuration),
-		telemetrySource:    telemetrySourceLegacy,
-		telemetrySpawnTick: Tick(int64(tick)),
-	}
-
-	if !w.registerEffect(effect) {
-		return false
-	}
-	w.recordEffectSpawn(effectTypeAttack, "melee")
-	w.resolveMeleeImpact(effect, state, actorID, tick, now, area)
-
-	return true
+	return w.effectManager != nil
 }
 
 func contractSpawnProducer(definitionID string) string {
@@ -687,12 +644,6 @@ func contractSpawnProducer(definitionID string) string {
 
 // triggerFireball launches a projectile effect when the player is ready.
 func (w *World) triggerFireball(actorID string, now time.Time) bool {
-	useContract := enableContractEffectManager && enableContractProjectileDefinitions && w.effectManager != nil
-	if !useContract {
-		_, spawned := w.spawnProjectile(actorID, effectTypeFireball, now)
-		return spawned
-	}
-
 	tpl := w.projectileTemplates[effectTypeFireball]
 	if tpl == nil {
 		return false
@@ -707,37 +658,7 @@ func (w *World) triggerFireball(actorID string, now time.Time) bool {
 		return false
 	}
 
-	return true
-}
-
-func (w *World) spawnProjectile(actorID, projectileType string, now time.Time) (*effectState, bool) {
-	tpl := w.projectileTemplates[projectileType]
-	if tpl == nil {
-		return nil, false
-	}
-
-	owner, cooldowns := w.abilityOwner(actorID)
-	if owner == nil || cooldowns == nil {
-		return nil, false
-	}
-
-	if !w.cooldownReady(cooldowns, tpl.Type, tpl.Cooldown, now) {
-		return nil, false
-	}
-
-	w.pruneEffects(now)
-	w.nextEffectID++
-	effectID := fmt.Sprintf("effect-%d", w.nextEffectID)
-	effect := w.buildProjectileEffect(owner, actorID, tpl, now, effectID)
-	if effect == nil {
-		return nil, false
-	}
-
-	if !w.registerEffect(effect) {
-		return nil, false
-	}
-	w.recordEffectSpawn(tpl.Type, "projectile")
-	return effect, true
+	return w.effectManager != nil
 }
 
 func (w *World) buildProjectileEffect(owner *actorState, actorID string, tpl *ProjectileTemplate, now time.Time, effectID string) *effectState {
@@ -1486,39 +1407,11 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 
 	w.pruneEffects(now)
 
-	if enableContractEffectManager && w.effectManager != nil {
+	if w.effectManager != nil {
 		if intent, ok := NewBloodSplatterIntent(eff.Owner, &target.actorState); ok {
 			w.effectManager.EnqueueIntent(intent)
 		}
 	}
-
-	if w.contractBloodDecalsEnabled() {
-		return
-	}
-
-	trigger := EffectTrigger{
-		Type:     effectTypeBloodSplatter,
-		Start:    now.UnixMilli(),
-		Duration: bloodSplatterDuration.Milliseconds(),
-		X:        target.X - playerHalf,
-		Y:        target.Y - playerHalf,
-		Width:    playerHalf * 2,
-		Height:   playerHalf * 2,
-		Params:   newBloodSplatterParams(),
-		Colors:   bloodSplatterColors(),
-	}
-
-	w.QueueEffectTrigger(trigger, now)
-}
-
-func (w *World) contractBloodDecalsEnabled() bool {
-	if w == nil {
-		return false
-	}
-	if !enableContractEffectManager || !enableContractBloodDecalDefinitions {
-		return false
-	}
-	return w.effectManager != nil
 }
 
 func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now time.Time) {
