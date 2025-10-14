@@ -201,16 +201,41 @@ function ensureInstance(entry) {
   return entry.instance;
 }
 
+function mergeLifecycleObject(existing, updates) {
+  if (!isPlainObject(updates)) {
+    return updates;
+  }
+  const base = isPlainObject(existing) ? { ...existing } : {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (isPlainObject(value)) {
+      base[key] = mergeLifecycleObject(base[key], value);
+    } else {
+      base[key] = value;
+    }
+  }
+  return base;
+}
+
 function applyUpdate(entry, event) {
   if (!entry || !event) {
     return;
   }
   const instance = ensureInstance(entry);
-  if (event.deliveryState) {
-    instance.deliveryState = event.deliveryState;
+  if (Object.prototype.hasOwnProperty.call(event, "deliveryState")) {
+    const update = event.deliveryState;
+    if (isPlainObject(update)) {
+      instance.deliveryState = mergeLifecycleObject(instance.deliveryState, update);
+    } else {
+      instance.deliveryState = update ?? null;
+    }
   }
-  if (event.behaviorState) {
-    instance.behaviorState = event.behaviorState;
+  if (Object.prototype.hasOwnProperty.call(event, "behaviorState")) {
+    const update = event.behaviorState;
+    if (isPlainObject(update)) {
+      instance.behaviorState = mergeLifecycleObject(instance.behaviorState, update);
+    } else {
+      instance.behaviorState = update ?? null;
+    }
   }
   if (event.params) {
     const existing = isPlainObject(instance.params) ? instance.params : {};

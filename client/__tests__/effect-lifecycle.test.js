@@ -83,6 +83,57 @@ describe("effect-lifecycle", () => {
     expect(state.lastSeqById.get("effect-1")).toBe(3);
   });
 
+  test("updates preserve existing delivery state fields when omitted", () => {
+    const store = {};
+    applyEffectLifecycleBatch(store, {
+      effect_spawned: [
+        {
+          tick: 10,
+          seq: 1,
+          instance: {
+            id: "effect-geometry",
+            definitionId: "attack",
+            deliveryState: {
+              geometry: { shape: "rect", width: 18, height: 12 },
+              motion: {
+                positionX: 32,
+                positionY: 40,
+                velocityX: 0,
+                velocityY: 0,
+              },
+            },
+            behaviorState: { ticksRemaining: 2 },
+          },
+        },
+      ],
+    });
+
+    applyEffectLifecycleBatch(store, {
+      effect_update: [
+        {
+          id: "effect-geometry",
+          seq: 2,
+          tick: 11,
+          deliveryState: {
+            motion: { positionX: 48 },
+          },
+        },
+      ],
+    });
+
+    const entry = getEffectLifecycleEntry(store, "effect-geometry");
+    expect(entry).not.toBeNull();
+    expect(entry.instance.deliveryState).toEqual({
+      geometry: { shape: "rect", width: 18, height: 12 },
+      motion: {
+        positionX: 48,
+        positionY: 40,
+        velocityX: 0,
+        velocityY: 0,
+      },
+    });
+  });
+
   test("applyEffectLifecycleBatch drops stale events and reports unknown updates", () => {
     const store = {};
     applyEffectLifecycleBatch(store, { effect_spawned: [createSpawnEvent()] });
