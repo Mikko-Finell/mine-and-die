@@ -136,9 +136,21 @@ Statuses use the following scale:
 
 #### Post-Cutover Cleanup Opportunities
 
-* `Hub.marshalState` still materializes legacy effect snapshots before discarding them once the contract transport gate passes; guard the `world.Snapshot` path when unified batches stay enabled to trim the allocation cost.
-* ✅ Contract melee attacks now rely solely on the unified manager without spawning legacy `effectState` shells; the cooldown and telemetry flow advance through contract lifecycle events.
-* Telemetry retains legacy vs. contract buckets to watch rollout parity. After a full release cycle on the unified system, consider collapsing the legacy bucket to simplify ongoing monitoring.
+* **Remove legacy effect snapshots from the server state payloads.**
+  * Delete `w.effects` bookkeeping by excising the snapshot/build paths in `World.Snapshot`, `World.Step`, and helpers in `server/effects.go`.
+  * Stop marshalling `effects` inside `hub.marshalState` and prune the associated message fields so transports rely exclusively on lifecycle batches.
+  * Refresh server/client tests and docs that referenced the legacy array so join/resync expectations stay accurate.
+* **Drop the client render fallback for legacy arrays.**
+  * Remove the `renderState.effects` merge path from `collectEffectRenderBuckets` and related state wiring in `client/render.js`.
+  * Update renderer tests to ingest only contract lifecycle batches while keeping diagnostics coverage intact.
+* **Retire rollout toggles and legacy producer branches.**
+  * Remove `enableContractEffect*` flags from `server/constants.go` and make contract definitions the sole execution path.
+  * Delete legacy branches in `triggerMeleeAttack`, `triggerFireball`, `spawnProjectile`, and companion helpers so gameplay can no longer spawn legacy shells.
+  * Audit tests/docs for references to the removed flags and update them to match the permanent pipeline.
+* **Collapse effect parity telemetry to a single contract stream.**
+  * Flatten the effect parity aggregator in `server/telemetry.go` so it no longer emits a `legacy` bucket.
+  * Remove `telemetrySourceLegacy` bookkeeping from `server/effects.go` and adjust metrics/tests that expected dual-source output.
+  * Update diagnostics/tracker docs to document the contract-only telemetry surface.
 
 
 ---
