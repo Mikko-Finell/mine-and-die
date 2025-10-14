@@ -410,7 +410,7 @@ function syncEffectsByType(
         ? lifecycleEntries.get(id) ?? null
         : null;
     const derivedFromContract =
-      lifecycleEntry && effect && effect.__contractDerived === true;
+      effect && effect.__contractDerived === true;
     const sourceEffect = derivedFromContract
       ? effect
       : contractLifecycleToEffect(lifecycleEntry, {
@@ -451,8 +451,14 @@ function syncEffectsByType(
     if (instance) {
       if (lifecycleEntry) {
         instance.__effectLifecycleEntry = lifecycleEntry;
-      } else if (instance.__effectLifecycleEntry) {
-        delete instance.__effectLifecycleEntry;
+        instance.__effectLifecycleManaged = true;
+      } else {
+        if (derivedFromContract) {
+          instance.__effectLifecycleManaged = true;
+        }
+        if (instance.__effectLifecycleEntry) {
+          delete instance.__effectLifecycleEntry;
+        }
       }
     }
     if (instance && typeof onUpdate === "function") {
@@ -472,8 +478,13 @@ function syncEffectsByType(
       }
     }
     if (!seen.has(trackedId)) {
+      const lifecycleManaged =
+        !!(instance && instance.__effectLifecycleManaged === true);
       if (instance && instance.__effectLifecycleEntry) {
         delete instance.__effectLifecycleEntry;
+      }
+      if (lifecycleManaged) {
+        continue;
       }
       manager.removeInstance(instance);
     }

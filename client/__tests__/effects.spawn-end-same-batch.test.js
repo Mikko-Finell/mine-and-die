@@ -46,9 +46,16 @@ describe("effect lifecycle – spawn and end in same batch", () => {
 
     startRenderLoop(store);
     expect(typeof rafCallback).toBe("function");
-    rafCallback(performance.now() + 16);
+    const firstFrameTime = performance.now() + 16;
+    rafCallback(firstFrameTime);
 
-    const tracked = store.effectManager.getTrackedInstances("melee-swing");
+    let tracked = store.effectManager.getTrackedInstances("melee-swing");
+    expect(tracked.size).toBeGreaterThanOrEqual(1);
+
+    expect(typeof rafCallback).toBe("function");
+    rafCallback(firstFrameTime + 16);
+
+    tracked = store.effectManager.getTrackedInstances("melee-swing");
     expect(tracked.size).toBeGreaterThanOrEqual(1);
   });
 });
