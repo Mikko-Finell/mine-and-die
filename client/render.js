@@ -227,6 +227,7 @@ function ensureLifecycleRenderView(store) {
   if (!state) {
     store.__effectLifecycleView = EMPTY_LIFECYCLE_VIEW;
     store.__effectLifecycleViewVersion = null;
+    store.__effectLifecycleViewEphemeralVersion = null;
     store.__effectLifecycleViewState = null;
     return EMPTY_LIFECYCLE_VIEW;
   }
@@ -234,26 +235,52 @@ function ensureLifecycleRenderView(store) {
   if (
     store.__effectLifecycleView &&
     store.__effectLifecycleViewVersion === state.version &&
+    store.__effectLifecycleViewEphemeralVersion === state.ephemeralVersion &&
     store.__effectLifecycleViewState === state
   ) {
     return store.__effectLifecycleView;
   }
 
+  const entries = new Map(
+    state.instances instanceof Map ? state.instances : new Map(),
+  );
+  const ephemeralEntries =
+    state.ephemeralInstances instanceof Map ? state.ephemeralInstances : null;
+  if (ephemeralEntries && ephemeralEntries.size > 0) {
+    for (const [effectId, entry] of ephemeralEntries.entries()) {
+      if (!entries.has(effectId) && entry && typeof entry === "object") {
+        entries.set(effectId, entry);
+      }
+    }
+  }
+
   const view = {
-    entries: state.instances,
+    entries,
     lastSeqById: state.lastSeqById,
     lastBatchTick: state.lastBatchTick,
     getEntry(effectId) {
       if (typeof effectId !== "string" || effectId.length === 0) {
         return null;
       }
-      return state.instances.get(effectId) ?? null;
+      if (state.instances instanceof Map && state.instances.has(effectId)) {
+        return state.instances.get(effectId) ?? null;
+      }
+      if (ephemeralEntries && ephemeralEntries.has(effectId)) {
+        return ephemeralEntries.get(effectId) ?? null;
+      }
+      return null;
     },
   };
 
   store.__effectLifecycleView = view;
   store.__effectLifecycleViewVersion = state.version;
+  store.__effectLifecycleViewEphemeralVersion = state.ephemeralVersion;
   store.__effectLifecycleViewState = state;
+
+  if (ephemeralEntries && ephemeralEntries.size > 0) {
+    ephemeralEntries.clear();
+    state.ephemeralVersion = (state.ephemeralVersion + 1) >>> 0;
+  }
   return view;
 }
 
@@ -378,6 +405,9 @@ function syncEffectsByType(
       }
       if (!spawnOptions.effectId) {
         spawnOptions.effectId = id;
+      }
+      if (!spawnOptions.id) {
+        spawnOptions.id = id;
       }
       instance = manager.spawn(definition, spawnOptions);
     }
@@ -862,6 +892,15 @@ function prepareEffectPass(
     (instance, effect, state, lifecycleEntry) =>
       updateRectZoneInstance(instance, effect, state, lifecycleEntry),
     effectBuckets.get("fireball") ?? [],
+    { lifecycle, renderState },
+  );
+  syncEffectsByType(
+    store,
+    manager,
+    "blood-splatter",
+    BloodSplatterDefinition,
+    undefined,
+    effectBuckets.get("blood-splatter") ?? [],
     { lifecycle, renderState },
   );
 

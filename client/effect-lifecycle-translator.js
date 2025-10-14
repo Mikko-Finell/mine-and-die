@@ -153,15 +153,34 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   const offsetX = quantToWorld(geometry?.offsetX);
   const offsetY = quantToWorld(geometry?.offsetY);
 
+  const hasMotionX =
+    isPlainObject(motion) && Object.prototype.hasOwnProperty.call(motion, "positionX");
+  const hasMotionY =
+    isPlainObject(motion) && Object.prototype.hasOwnProperty.call(motion, "positionY");
+
   const anchor =
     findActorPosition(renderState, store, instance.followActorId) ??
     findActorPosition(renderState, store, instance.ownerActorId);
 
-  if (centerX === null && offsetX !== null && anchor) {
-    centerX = anchor.x + offsetX;
-  }
-  if (centerY === null && offsetY !== null && anchor) {
-    centerY = anchor.y + offsetY;
+  if (anchor) {
+    if (centerX === null && offsetX !== null) {
+      centerX = anchor.x + offsetX;
+    } else if (
+      hasMotionX &&
+      (centerX === null || Number(motion.positionX) === 0)
+    ) {
+      const offset = Number.isFinite(offsetX) ? offsetX : 0;
+      centerX = anchor.x + offset;
+    }
+    if (centerY === null && offsetY !== null) {
+      centerY = anchor.y + offsetY;
+    } else if (
+      hasMotionY &&
+      (centerY === null || Number(motion.positionY) === 0)
+    ) {
+      const offset = Number.isFinite(offsetY) ? offsetY : 0;
+      centerY = anchor.y + offset;
+    }
   }
 
   if (centerX === null && offsetX !== null) {
@@ -169,6 +188,13 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   }
   if (centerY === null && offsetY !== null) {
     centerY = offsetY;
+  }
+
+  if (centerX === null && anchor) {
+    centerX = anchor.x;
+  }
+  if (centerY === null && anchor) {
+    centerY = anchor.y;
   }
 
   if (centerX !== null) {

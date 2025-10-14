@@ -9,6 +9,8 @@ function createLifecycleState() {
     instances: new Map(),
     lastSeqById: new Map(),
     lastBatchTick: null,
+    ephemeralInstances: new Map(),
+    ephemeralVersion: 0,
     version: 0,
   };
 }
@@ -193,6 +195,22 @@ function normalizeLifecycleBatch(payload) {
   };
 }
 
+function cloneLifecycleEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const clonedInstance = cloneStructured(entry.instance) ?? entry.instance ?? null;
+  return {
+    id: entry.id,
+    seq: entry.seq,
+    tick: entry.tick,
+    instance: clonedInstance,
+    lastEventKind: entry.lastEventKind,
+    lastEvent: entry.lastEvent,
+    endReason: entry.endReason ?? null,
+  };
+}
+
 function ensureInstance(entry) {
   if (!entry.instance || !isPlainObject(entry.instance)) {
     entry.instance = {};
@@ -253,6 +271,9 @@ export function resetEffectLifecycleState(store) {
   if (store.__effectLifecycleViewVersion) {
     delete store.__effectLifecycleViewVersion;
   }
+  if (store.__effectLifecycleViewEphemeralVersion) {
+    delete store.__effectLifecycleViewEphemeralVersion;
+  }
   if (store.__effectLifecycleViewState) {
     delete store.__effectLifecycleViewState;
   }
@@ -285,14 +306,30 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     return summary;
   }
 
+  if (state.ephemeralInstances.size > 0) {
+    state.ephemeralInstances.clear();
+    state.ephemeralVersion = (state.ephemeralVersion + 1) >>> 0;
+  }
+
   const batch = normalizeLifecycleBatch(payload);
   let latestTick = state.lastBatchTick;
   let mutated = false;
+  const spawnedThisBatch = new Set();
 
   for (const spawn of batch.spawns) {
     const lastSeq = state.lastSeqById.get(spawn.id);
     if (lastSeq !== undefined && spawn.seq <= lastSeq) {
       summary.droppedSpawns.push(spawn.id);
+      if (typeof console !== "undefined" && typeof console.error === "function") {
+        console.error(
+          "Effect lifecycle rejected spawn with reused or stale sequence",
+          {
+            id: spawn.id,
+            seq: spawn.seq,
+            lastSeq,
+          },
+        );
+      }
       continue;
     }
     const entry = {
@@ -306,6 +343,7 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
     state.instances.set(spawn.id, entry);
     state.lastSeqById.set(spawn.id, spawn.seq);
     summary.spawns.push(spawn.id);
+    spawnedThisBatch.add(spawn.id);
     mutated = true;
     if (spawn.tick !== null) {
       latestTick = latestTick === null ? spawn.tick : Math.max(latestTick, spawn.tick);
@@ -368,6 +406,14 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
       mutated = true;
       continue;
     }
+    if (spawnedThisBatch.has(end.id)) {
+      const ephemeralEntry = cloneLifecycleEntry(entry);
+      if (ephemeralEntry) {
+        ephemeralEntry.endReason = end.reason ?? ephemeralEntry.endReason ?? null;
+        ephemeralEntry.__ephemeral = true;
+        state.ephemeralInstances.set(end.id, ephemeralEntry);
+      }
+    }
     entry.seq = end.seq;
     entry.tick = end.tick;
     entry.lastEventKind = "end";
@@ -400,6 +446,10 @@ export function applyEffectLifecycleBatch(store, payload, options = {}) {
 
   if (mutated) {
     state.version = (state.version + 1) >>> 0;
+  }
+
+  if (state.ephemeralInstances.size > 0) {
+    state.ephemeralVersion = (state.ephemeralVersion + 1) >>> 0;
   }
 
   if (Array.isArray(summary.unknownUpdates) && summary.unknownUpdates.length > 0) {
