@@ -130,6 +130,18 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
 
   let width = quantToWorld(geometry?.width);
   let height = quantToWorld(geometry?.height);
+  if ((width === null || width <= 0) && Number.isFinite(params.width)) {
+    const paramWidth = Number(params.width);
+    if (Number.isFinite(paramWidth) && paramWidth > 0) {
+      width = paramWidth;
+    }
+  }
+  if ((height === null || height <= 0) && Number.isFinite(params.height)) {
+    const paramHeight = Number(params.height);
+    if (Number.isFinite(paramHeight) && paramHeight > 0) {
+      height = paramHeight;
+    }
+  }
   const radius = quantToWorld(geometry?.radius);
   if (radius !== null) {
     const diameter = radius * 2;

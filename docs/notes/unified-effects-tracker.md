@@ -147,6 +147,7 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 39 | Documented melee swing visibility regression caused by missing geometry fallbacks after the params transport change and noted the translator fix. | gpt-5-codex |
 | 38 | Removed legacy melee effect shells, routing cooldown and telemetry through contract lifecycle events and updating tracker notes. | gpt-5-codex |
 | 37 | Audited the unified effects pipeline post-shim removal, marked Phase 3/6 complete, and documented remaining cleanup opportunities. | gpt-5-codex |
 | 36 | Removed the legacy effect snapshots and compat shim, defaulted contract definitions to enabled, and closed out the Phase 6 deprecation switch. | gpt-5-codex |
