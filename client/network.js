@@ -32,6 +32,20 @@ function isBloodSplatterIdentifier(value) {
   return value.toLowerCase() === "blood-splatter";
 }
 
+function isFireIdentifier(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return false;
+  }
+  return value.toLowerCase() === "fire";
+}
+
+function isMeleeSwingIdentifier(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return false;
+  }
+  return value.toLowerCase() === "melee-swing";
+}
+
 function collectEffectSpawnEvents(payload) {
   if (!payload || typeof payload !== "object") {
     return [];
@@ -96,6 +110,108 @@ function isBloodSplatterSpawn(spawn) {
   return candidates.some((candidate) => isBloodSplatterIdentifier(candidate));
 }
 
+function isFireSpawn(spawn) {
+  if (!spawn || typeof spawn !== "object") {
+    return false;
+  }
+  const candidates = [];
+  if (typeof spawn.definitionId === "string") {
+    candidates.push(spawn.definitionId);
+  }
+  if (typeof spawn.type === "string") {
+    candidates.push(spawn.type);
+  }
+  if (typeof spawn.typeId === "string") {
+    candidates.push(spawn.typeId);
+  }
+  const spawnDefinition =
+    spawn.definition && typeof spawn.definition === "object" ? spawn.definition : null;
+  if (spawnDefinition) {
+    if (typeof spawnDefinition.type === "string") {
+      candidates.push(spawnDefinition.type);
+    }
+    if (typeof spawnDefinition.typeId === "string") {
+      candidates.push(spawnDefinition.typeId);
+    }
+  }
+  const instance = spawn.instance && typeof spawn.instance === "object" ? spawn.instance : null;
+  if (instance) {
+    if (typeof instance.definitionId === "string") {
+      candidates.push(instance.definitionId);
+    }
+    if (typeof instance.type === "string") {
+      candidates.push(instance.type);
+    }
+    if (typeof instance.typeId === "string") {
+      candidates.push(instance.typeId);
+    }
+    const instanceDefinition =
+      instance.definition && typeof instance.definition === "object"
+        ? instance.definition
+        : null;
+    if (instanceDefinition) {
+      if (typeof instanceDefinition.type === "string") {
+        candidates.push(instanceDefinition.type);
+      }
+      if (typeof instanceDefinition.typeId === "string") {
+        candidates.push(instanceDefinition.typeId);
+      }
+    }
+  }
+  return candidates.some((candidate) => isFireIdentifier(candidate));
+}
+
+function isMeleeSwingSpawn(spawn) {
+  if (!spawn || typeof spawn !== "object") {
+    return false;
+  }
+  const candidates = [];
+  if (typeof spawn.definitionId === "string") {
+    candidates.push(spawn.definitionId);
+  }
+  if (typeof spawn.type === "string") {
+    candidates.push(spawn.type);
+  }
+  if (typeof spawn.typeId === "string") {
+    candidates.push(spawn.typeId);
+  }
+  const spawnDefinition =
+    spawn.definition && typeof spawn.definition === "object" ? spawn.definition : null;
+  if (spawnDefinition) {
+    if (typeof spawnDefinition.type === "string") {
+      candidates.push(spawnDefinition.type);
+    }
+    if (typeof spawnDefinition.typeId === "string") {
+      candidates.push(spawnDefinition.typeId);
+    }
+  }
+  const instance = spawn.instance && typeof spawn.instance === "object" ? spawn.instance : null;
+  if (instance) {
+    if (typeof instance.definitionId === "string") {
+      candidates.push(instance.definitionId);
+    }
+    if (typeof instance.type === "string") {
+      candidates.push(instance.type);
+    }
+    if (typeof instance.typeId === "string") {
+      candidates.push(instance.typeId);
+    }
+    const instanceDefinition =
+      instance.definition && typeof instance.definition === "object"
+        ? instance.definition
+        : null;
+    if (instanceDefinition) {
+      if (typeof instanceDefinition.type === "string") {
+        candidates.push(instanceDefinition.type);
+      }
+      if (typeof instanceDefinition.typeId === "string") {
+        candidates.push(instanceDefinition.typeId);
+      }
+    }
+  }
+  return candidates.some((candidate) => isMeleeSwingIdentifier(candidate));
+}
+
 function shouldLogBloodSplatterSpawn(messageType, payload) {
   const normalizedType = typeof messageType === "string" ? messageType : null;
   if (normalizedType !== "state" && normalizedType !== "keyframe" && normalizedType !== "patch") {
@@ -108,6 +224,30 @@ function shouldLogBloodSplatterSpawn(messageType, payload) {
   return spawns.some((spawn) => isBloodSplatterSpawn(spawn));
 }
 
+function shouldLogFireSpawn(messageType, payload) {
+  const normalizedType = typeof messageType === "string" ? messageType : null;
+  if (normalizedType !== "state" && normalizedType !== "keyframe" && normalizedType !== "patch") {
+    return false;
+  }
+  const spawns = collectEffectSpawnEvents(payload);
+  if (spawns.length === 0) {
+    return false;
+  }
+  return spawns.some((spawn) => isFireSpawn(spawn));
+}
+
+function shouldLogMeleeSwingSpawn(messageType, payload) {
+  const normalizedType = typeof messageType === "string" ? messageType : null;
+  if (normalizedType !== "state" && normalizedType !== "keyframe" && normalizedType !== "patch") {
+    return false;
+  }
+  const spawns = collectEffectSpawnEvents(payload);
+  if (spawns.length === 0) {
+    return false;
+  }
+  return spawns.some((spawn) => isMeleeSwingSpawn(spawn));
+}
+
 function logBloodSplatterSpawnIfNeeded(messageType, payload, rawMessage) {
   if (typeof rawMessage !== "string" || rawMessage.length === 0) {
     return;
@@ -117,6 +257,28 @@ function logBloodSplatterSpawnIfNeeded(messageType, payload, rawMessage) {
   }
   const context = typeof messageType === "string" && messageType.length > 0 ? messageType : "message";
   console.log(`[effects] ${context} blood-splatter spawn detected:`, rawMessage);
+}
+
+function logFireSpawnIfNeeded(messageType, payload, rawMessage) {
+  if (typeof rawMessage !== "string" || rawMessage.length === 0) {
+    return;
+  }
+  if (!shouldLogFireSpawn(messageType, payload)) {
+    return;
+  }
+  const context = typeof messageType === "string" && messageType.length > 0 ? messageType : "message";
+  console.log(`[effects] ${context} fire spawn detected:`, rawMessage);
+}
+
+function logMeleeSwingSpawnIfNeeded(messageType, payload, rawMessage) {
+  if (typeof rawMessage !== "string" || rawMessage.length === 0) {
+    return;
+  }
+  if (!shouldLogMeleeSwingSpawn(messageType, payload)) {
+    return;
+  }
+  const context = typeof messageType === "string" && messageType.length > 0 ? messageType : "message";
+  console.log(`[effects] ${context} melee-swing spawn detected:`, rawMessage);
 }
 
 function computeKeyframeRetryDelay(attempts) {
@@ -1363,6 +1525,8 @@ export function connectEvents(store) {
 
     const payload = parsed.data;
     logBloodSplatterSpawnIfNeeded(parsed.type, payload, event.data);
+    logFireSpawnIfNeeded(parsed.type, payload, event.data);
+    logMeleeSwingSpawnIfNeeded(parsed.type, payload, event.data);
     handleProtocolVersion(payload, `${parsed.type} message`);
     if (parsed.type === "state") {
         const patchState = syncPatchTestingState(store, payload, "state");
