@@ -14,8 +14,6 @@ import {
   PATCH_KIND_NPC_HEALTH,
   PATCH_KIND_NPC_INVENTORY,
   PATCH_KIND_NPC_EQUIPMENT,
-  PATCH_KIND_EFFECT_POS,
-  PATCH_KIND_EFFECT_PARAMS,
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
   applyPatchesToSnapshot,
@@ -60,16 +58,6 @@ function makeGroundItem(overrides = {}) {
     x: 8,
     y: 9,
     qty: 3,
-    ...overrides,
-  };
-}
-
-function makeEffect(overrides = {}) {
-  return {
-    id: "effect-1",
-    x: 0,
-    y: 0,
-    params: { width: 10 },
     ...overrides,
   };
 }
@@ -161,9 +149,8 @@ describe("updatePatchState", () => {
       x: 4,
       y: 5,
     });
-    expect(Object.keys(result.baseline.effects)).toEqual([]);
-    expect(Object.keys(result.patched.effects)).toEqual([]);
-    expect(result.baseline.effects).not.toBe(result.patched.effects);
+    expect(result.baseline).not.toHaveProperty("effects");
+    expect(result.patched).not.toHaveProperty("effects");
     expect(Object.keys(result.baseline.groundItems)).toEqual(["ground-1"]);
     expect(Object.keys(result.patched.groundItems)).toEqual(["ground-1"]);
     expect(result.baseline.groundItems["ground-1"]).not.toBe(
@@ -465,69 +452,6 @@ describe("updatePatchState", () => {
     expect(result.patched.sequence).toBe(7);
   });
 
-  it("hydrates effect position and parameter patches", () => {
-    const seeded = updatePatchState(
-      createPatchState(),
-      deepFreeze({ t: 5, players: [makePlayer()] }),
-      { source: "join" },
-    );
-    freezeState(seeded);
-
-    const payload = deepFreeze({
-      t: 6,
-      patches: [
-        { kind: PATCH_KIND_EFFECT_POS, entityId: "effect-new", payload: { x: 19.5, y: 27.25 } },
-        {
-          kind: PATCH_KIND_EFFECT_PARAMS,
-          entityId: "effect-new",
-          payload: { params: { width: 40, height: 12.5, junk: "ignored" } },
-        },
-      ],
-    });
-
-    const result = updatePatchState(seeded, payload, { source: "state" });
-
-    expect(result.lastAppliedPatchCount).toBe(2);
-    const effect = result.patched.effects["effect-new"];
-    expect(effect).toBeDefined();
-    expect(effect.x).toBe(19.5);
-    expect(effect.y).toBe(27.25);
-    expect(effect.params).toEqual({ width: 40, height: 12.5 });
-    expect(result.baseline.effects["effect-new"].params).toEqual({ width: 40, height: 12.5 });
-    expect(result.errors).toEqual([]);
-  });
-
-  it("hydrates effect parameter patches when params are provided directly", () => {
-    const seeded = updatePatchState(
-      createPatchState(),
-      deepFreeze({ t: 8, players: [makePlayer()] }),
-      { source: "join" },
-    );
-    freezeState(seeded);
-
-    const payload = deepFreeze({
-      t: 9,
-      patches: [
-        {
-          kind: PATCH_KIND_EFFECT_PARAMS,
-          entityId: "effect-direct",
-          payload: { width: "5.25", height: 11, junk: "ignored" },
-        },
-      ],
-    });
-
-    const result = updatePatchState(seeded, payload, { source: "state" });
-
-    expect(result.lastAppliedPatchCount).toBe(1);
-    const effect = result.patched.effects["effect-direct"];
-    expect(effect).toBeDefined();
-    expect(effect.x).toBe(0);
-    expect(effect.y).toBe(0);
-    expect(effect.params).toEqual({ width: 5.25, height: 11 });
-    expect(result.baseline.effects["effect-direct"].params).toEqual({ width: 5.25, height: 11 });
-    expect(result.errors).toEqual([]);
-  });
-
   it("normalizes entity identifiers when seeding baseline state", () => {
     const payload = deepFreeze({
       t: 11,
@@ -540,7 +464,7 @@ describe("updatePatchState", () => {
 
     expect(Object.keys(baseline.players)).toEqual(["player-1"]);
     expect(Object.keys(baseline.npcs)).toEqual(["npc-2"]);
-    expect(Object.keys(baseline.effects)).toEqual([]);
+    expect(baseline).not.toHaveProperty("effects");
     expect(Object.keys(baseline.groundItems)).toEqual(["ground-4"]);
     expect(baseline.players["player-1"].id).toBe("player-1");
     expect(baseline.npcs["npc-2"].id).toBe("npc-2");
@@ -591,23 +515,16 @@ describe("updatePatchState", () => {
       groundItems: {
         " ground-4 ": makeGroundItem({ id: " ground-4 " }),
       },
-      effects: {
-        " effect-7 ": makeEffect({ id: " effect-7 ", x: 12.5, y: 9.25 }),
-      },
     };
 
-    const { players, npcs, groundItems, effects } = applyPatchesToSnapshot(base, []);
+    const { players, npcs, groundItems } = applyPatchesToSnapshot(base, []);
 
     expect(Object.keys(players)).toEqual(["player-1"]);
     expect(Object.keys(npcs)).toEqual(["npc-2"]);
     expect(Object.keys(groundItems)).toEqual(["ground-4"]);
-    expect(Object.keys(effects)).toEqual(["effect-7"]);
     expect(players["player-1"].id).toBe("player-1");
     expect(npcs["npc-2"].id).toBe("npc-2");
     expect(groundItems["ground-4"].id).toBe("ground-4");
-    expect(effects["effect-7"].id).toBe("effect-7");
-    expect(effects["effect-7"].x).toBe(12.5);
-    expect(effects["effect-7"].y).toBe(9.25);
   });
 
   it("records errors for invalid patch envelopes and respects the history limit", () => {
@@ -909,7 +826,6 @@ describe("updatePatchState", () => {
         players: { ...seeded.baseline.players },
         npcs: { ...seeded.baseline.npcs },
         groundItems: { ...seeded.baseline.groundItems },
-        effects: { ...seeded.baseline.effects },
       },
       patched: {
         ...seeded.patched,
@@ -918,7 +834,6 @@ describe("updatePatchState", () => {
         players: { ...seeded.patched.players },
         npcs: { ...seeded.patched.npcs },
         groundItems: { ...seeded.patched.groundItems },
-        effects: { ...seeded.patched.effects },
       },
       lastTick: 20,
       lastSequence: 20,
