@@ -1078,8 +1078,12 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	if triggers == nil {
 		triggers = make([]EffectTrigger, 0)
 	}
-	if includeSnapshot && groundItems == nil {
-		groundItems = make([]GroundItem, 0)
+	if includeSnapshot {
+		if groundItems == nil {
+			groundItems = make([]GroundItem, 0)
+		}
+	} else {
+		groundItems = nil
 	}
 	if obstacles == nil {
 		obstacles = make([]Obstacle, 0)
