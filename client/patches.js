@@ -3,10 +3,12 @@ const PATCH_KIND_PLAYER_FACING = "player_facing";
 const PATCH_KIND_PLAYER_INTENT = "player_intent";
 const PATCH_KIND_PLAYER_HEALTH = "player_health";
 const PATCH_KIND_PLAYER_INVENTORY = "player_inventory";
+const PATCH_KIND_PLAYER_EQUIPMENT = "player_equipment";
 const PATCH_KIND_NPC_POS = "npc_pos";
 const PATCH_KIND_NPC_FACING = "npc_facing";
 const PATCH_KIND_NPC_HEALTH = "npc_health";
 const PATCH_KIND_NPC_INVENTORY = "npc_inventory";
+const PATCH_KIND_NPC_EQUIPMENT = "npc_equipment";
 const PATCH_KIND_GROUND_ITEM_POS = "ground_item_pos";
 const PATCH_KIND_GROUND_ITEM_QTY = "ground_item_qty";
 
@@ -16,10 +18,12 @@ const KNOWN_PATCH_KINDS = new Set([
   PATCH_KIND_PLAYER_INTENT,
   PATCH_KIND_PLAYER_HEALTH,
   PATCH_KIND_PLAYER_INVENTORY,
+  PATCH_KIND_PLAYER_EQUIPMENT,
   PATCH_KIND_NPC_POS,
   PATCH_KIND_NPC_FACING,
   PATCH_KIND_NPC_HEALTH,
   PATCH_KIND_NPC_INVENTORY,
+  PATCH_KIND_NPC_EQUIPMENT,
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
 ]);
@@ -69,6 +73,21 @@ function readFungibilityKey(itemSource) {
   return null;
 }
 
+function cloneItemStack(itemSource) {
+  const source = itemSource && typeof itemSource === "object" ? itemSource : {};
+  const type = typeof source.type === "string" ? source.type : "";
+  const quantity = toFiniteInt(source.quantity, 0);
+  const fungibilityKey = readFungibilityKey(source);
+  const item = {
+    type,
+    quantity,
+  };
+  if (fungibilityKey !== null) {
+    item.fungibility_key = fungibilityKey;
+  }
+  return item;
+}
+
 function cloneInventorySlots(slots) {
   if (!Array.isArray(slots) || slots.length === 0) {
     return [];
@@ -82,16 +101,42 @@ function cloneInventorySlots(slots) {
     if (slotIndex === null) {
       continue;
     }
-    const itemSource = slot.item && typeof slot.item === "object" ? slot.item : {};
-    const type = typeof itemSource.type === "string" ? itemSource.type : "";
-    const quantity = toFiniteInt(itemSource.quantity, 0);
-    const fungibilityKey = readFungibilityKey(itemSource);
-    const item = { type, quantity };
-    if (fungibilityKey !== null) {
-      item.fungibility_key = fungibilityKey;
-    }
+    const item = cloneItemStack(slot.item);
     cloned.push({
       slot: slotIndex,
+      item,
+    });
+  }
+  return cloned;
+}
+
+function normalizeEquipmentSlot(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  return trimmed;
+}
+
+function cloneEquipmentSlots(slots) {
+  if (!Array.isArray(slots) || slots.length === 0) {
+    return [];
+  }
+  const cloned = [];
+  for (const entry of slots) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const slotName = normalizeEquipmentSlot(entry.slot);
+    if (!slotName) {
+      continue;
+    }
+    const item = cloneItemStack(entry.item);
+    cloned.push({
+      slot: slotName,
       item,
     });
   }
@@ -110,6 +155,10 @@ function createPlayerView(player) {
     player.inventory && typeof player.inventory === "object"
       ? player.inventory
       : { slots: [] };
+  const equipmentSource =
+    player.equipment && typeof player.equipment === "object"
+      ? player.equipment
+      : { slots: [] };
   const intentDX =
     player.intentDX ?? player.intentDx ?? player.intent_x ?? player.intentx ?? 0;
   const intentDY =
@@ -125,6 +174,7 @@ function createPlayerView(player) {
     intentDX: toFiniteNumber(intentDX, 0),
     intentDY: toFiniteNumber(intentDY, 0),
     inventory: { slots: cloneInventorySlots(inventorySource.slots) },
+    equipment: { slots: cloneEquipmentSlots(equipmentSource.slots) },
   };
 }
 
@@ -149,6 +199,13 @@ function clonePlayerView(view) {
       slots: cloneInventorySlots(
         view.inventory && typeof view.inventory === "object"
           ? view.inventory.slots
+          : [],
+      ),
+    },
+    equipment: {
+      slots: cloneEquipmentSlots(
+        view.equipment && typeof view.equipment === "object"
+          ? view.equipment.slots
           : [],
       ),
     },
@@ -182,6 +239,10 @@ function createNPCView(npc) {
     npc.inventory && typeof npc.inventory === "object"
       ? npc.inventory
       : { slots: [] };
+  const equipmentSource =
+    npc.equipment && typeof npc.equipment === "object"
+      ? npc.equipment
+      : { slots: [] };
   return {
     id,
     x: toFiniteNumber(npc.x, 0),
@@ -193,6 +254,7 @@ function createNPCView(npc) {
     aiControlled: npc.aiControlled === true,
     experienceReward: toFiniteInt(npc.experienceReward, 0),
     inventory: { slots: cloneInventorySlots(inventorySource.slots) },
+    equipment: { slots: cloneEquipmentSlots(equipmentSource.slots) },
   };
 }
 
@@ -218,6 +280,13 @@ function cloneNPCView(view) {
       slots: cloneInventorySlots(
         view.inventory && typeof view.inventory === "object"
           ? view.inventory.slots
+          : [],
+      ),
+    },
+    equipment: {
+      slots: cloneEquipmentSlots(
+        view.equipment && typeof view.equipment === "object"
+          ? view.equipment.slots
           : [],
       ),
     },
@@ -781,10 +850,20 @@ function applyPlayerInventory(view, payload) {
   return { applied: true };
 }
 
+function applyPlayerEquipment(view, payload) {
+  if (!payload || typeof payload !== "object") {
+    return { applied: false, error: "invalid equipment payload" };
+  }
+  const slots = cloneEquipmentSlots(payload.slots);
+  view.equipment = { slots };
+  return { applied: true };
+}
+
 const applyNPCPosition = applyPlayerPosition;
 const applyNPCFacing = applyPlayerFacing;
 const applyNPCHealth = applyPlayerHealth;
 const applyNPCInventory = applyPlayerInventory;
+const applyNPCEquipment = applyPlayerEquipment;
 const applyGroundItemPosition = applyPlayerPosition;
 
 function applyGroundItemQuantity(view, payload) {
@@ -805,10 +884,12 @@ const PATCH_HANDLERS = {
   [PATCH_KIND_PLAYER_INTENT]: { target: "players", apply: applyPlayerIntent },
   [PATCH_KIND_PLAYER_HEALTH]: { target: "players", apply: applyPlayerHealth },
   [PATCH_KIND_PLAYER_INVENTORY]: { target: "players", apply: applyPlayerInventory },
+  [PATCH_KIND_PLAYER_EQUIPMENT]: { target: "players", apply: applyPlayerEquipment },
   [PATCH_KIND_NPC_POS]: { target: "npcs", apply: applyNPCPosition },
   [PATCH_KIND_NPC_FACING]: { target: "npcs", apply: applyNPCFacing },
   [PATCH_KIND_NPC_HEALTH]: { target: "npcs", apply: applyNPCHealth },
   [PATCH_KIND_NPC_INVENTORY]: { target: "npcs", apply: applyNPCInventory },
+  [PATCH_KIND_NPC_EQUIPMENT]: { target: "npcs", apply: applyNPCEquipment },
   [PATCH_KIND_GROUND_ITEM_POS]: { target: "groundItems", apply: applyGroundItemPosition },
   [PATCH_KIND_GROUND_ITEM_QTY]: { target: "groundItems", apply: applyGroundItemQuantity },
 };
@@ -1602,10 +1683,12 @@ export {
   PATCH_KIND_PLAYER_INTENT,
   PATCH_KIND_PLAYER_HEALTH,
   PATCH_KIND_PLAYER_INVENTORY,
+  PATCH_KIND_PLAYER_EQUIPMENT,
   PATCH_KIND_NPC_POS,
   PATCH_KIND_NPC_FACING,
   PATCH_KIND_NPC_HEALTH,
   PATCH_KIND_NPC_INVENTORY,
+  PATCH_KIND_NPC_EQUIPMENT,
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
   applyPatchesToSnapshot,

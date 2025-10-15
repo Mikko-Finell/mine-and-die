@@ -7,10 +7,12 @@ import {
   PATCH_KIND_PLAYER_INTENT,
   PATCH_KIND_PLAYER_HEALTH,
   PATCH_KIND_PLAYER_INVENTORY,
+  PATCH_KIND_PLAYER_EQUIPMENT,
   PATCH_KIND_NPC_POS,
   PATCH_KIND_NPC_FACING,
   PATCH_KIND_NPC_HEALTH,
   PATCH_KIND_NPC_INVENTORY,
+  PATCH_KIND_NPC_EQUIPMENT,
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
   applyPatchesToSnapshot,
@@ -26,6 +28,7 @@ function makePlayer(overrides = {}) {
     health: 10,
     maxHealth: 10,
     inventory: { slots: [] },
+    equipment: { slots: [] },
     ...overrides,
   };
 }
@@ -42,6 +45,7 @@ function makeNPC(overrides = {}) {
     aiControlled: true,
     experienceReward: 5,
     inventory: { slots: [] },
+    equipment: { slots: [] },
     ...overrides,
   };
 }
@@ -191,6 +195,47 @@ describe("updatePatchState", () => {
     ]);
   });
 
+  it("hydrates equipment slots for players and NPCs", () => {
+    const payload = deepFreeze({
+      t: 3,
+      players: [
+        makePlayer({
+          equipment: {
+            slots: [
+              {
+                slot: "MainHand",
+                item: { type: "iron_sword", quantity: 1, fungibility_key: "iron_sword::tier1" },
+              },
+            ],
+          },
+        }),
+      ],
+      npcs: [
+        makeNPC({
+          equipment: {
+            slots: [
+              {
+                slot: "Head",
+                item: { type: "bronze_helm", quantity: 1 },
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const baseline = buildBaselineFromSnapshot(payload);
+
+    expect(baseline.players["player-1"].equipment).toEqual({
+      slots: [
+        { slot: "MainHand", item: { type: "iron_sword", quantity: 1, fungibility_key: "iron_sword::tier1" } },
+      ],
+    });
+    expect(baseline.npcs["npc-1"].equipment).toEqual({
+      slots: [{ slot: "Head", item: { type: "bronze_helm", quantity: 1 } }],
+    });
+  });
+
   it("applies player patches onto the baseline snapshot", () => {
     const seeded = updatePatchState(createPatchState(), deepFreeze({ t: 2, players: [makePlayer()] }), {
       source: "join",
@@ -273,6 +318,54 @@ describe("updatePatchState", () => {
     expect(errors).toEqual([]);
     expect(players["player-1"].inventory.slots).toEqual([
       { slot: 0, item: { type: "iron_dagger", quantity: 1, fungibility_key: patchKey } },
+    ]);
+  });
+
+  it("applies equipment patches for players and NPCs", () => {
+    const base = buildBaselineFromSnapshot(
+      deepFreeze({
+        t: 5,
+        players: [makePlayer()],
+        npcs: [makeNPC()],
+      }),
+    );
+
+    const patches = [
+      {
+        kind: PATCH_KIND_PLAYER_EQUIPMENT,
+        entityId: "player-1",
+        payload: {
+          slots: [
+            {
+              slot: "MainHand",
+              item: { type: "steel_sword", quantity: 1, fungibility_key: "steel_sword::tier2" },
+            },
+          ],
+        },
+      },
+      {
+        kind: PATCH_KIND_NPC_EQUIPMENT,
+        entityId: "npc-1",
+        payload: {
+          slots: [
+            {
+              slot: "Body",
+              item: { type: "chain_mail", quantity: 1 },
+            },
+          ],
+        },
+      },
+    ];
+
+    const { players, npcs, errors, appliedCount } = applyPatchesToSnapshot(base, patches);
+
+    expect(errors).toEqual([]);
+    expect(appliedCount).toBe(2);
+    expect(players["player-1"].equipment.slots).toEqual([
+      { slot: "MainHand", item: { type: "steel_sword", quantity: 1, fungibility_key: "steel_sword::tier2" } },
+    ]);
+    expect(npcs["npc-1"].equipment.slots).toEqual([
+      { slot: "Body", item: { type: "chain_mail", quantity: 1 } },
     ]);
   });
 
