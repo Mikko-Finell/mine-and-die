@@ -99,8 +99,10 @@ func TestNewProjectileIntent(t *testing.T) {
 		t.Fatalf("expected offsetX %d, got %d", expectedOffsetX, intent.Geometry.OffsetX)
 	}
 
-	if intent.Params["dx"] != 1 || intent.Params["dy"] != 0 {
-		t.Fatalf("expected direction (1,0), got (%d,%d)", intent.Params["dx"], intent.Params["dy"])
+	expectedDX := QuantizeCoord(1)
+	expectedDY := QuantizeCoord(0)
+	if intent.Params["dx"] != expectedDX || intent.Params["dy"] != expectedDY {
+		t.Fatalf("expected direction (%d,%d), got (%d,%d)", expectedDX, expectedDY, intent.Params["dx"], intent.Params["dy"])
 	}
 }
 
