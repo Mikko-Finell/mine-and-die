@@ -32,6 +32,10 @@
 * Taxes are taken from the incoming amount (no duplication or minting).
 * Tax rates are stored on the Faction and editable by the King; changes apply to subsequent income.
 
+### 3.1 Pocket Change (UI)
+
+Each member shows a **Tax Pocket Change** meter for their superior edge. It displays the integer remainder (0–99¢) toward the next 1g tax, accumulated via `raw = income × rate` cents and settled by `owed = floor((raw + R)/100)`. On promotion or reassignment, the remainder moves with the member. On leaving the faction, the remainder resets to **0¢**.
+
 ---
 
 ## 4) Deaths, Coups, and Succession (Permadeath)

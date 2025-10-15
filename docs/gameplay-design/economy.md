@@ -83,6 +83,22 @@
 * When gold **enters** a member’s inventory by mining, trade, loot, or transfer, **tax percentages** route upward through the member’s Faction chain **immediately** (see *Faction Hierarchy — Taxation*).
 * Taxes are taken from the incoming amount; no duplication.
 
+### 5.1 Pocket Change (Fractional Remainder)
+
+* Gold is integer-based; percentage taxes therefore produce fractional remainders below 1 gold.
+* Each payer → superior edge maintains a **pocket-change buffer** (0–99 ¢).
+* On income `A` with rate `p%`:
+
+  ```
+  raw = A * p
+  owed = floor((raw + R) / 100)
+  R = (raw + R) % 100
+  ```
+
+  The payer transfers `owed` gold upward; `R` is retained as cents until it reaches 100 ¢, at which point 1 gold tax is taken automatically.
+* This prevents rounding exploits such as splitting 1 g transfers to avoid tax.
+* The current remainder may be shown in-game as **“Pocket Change”**, a non-spendable display (`37 ¢ / 100 ¢`) that moves with the player’s tax relationship and resets on leaving the Faction.
+
 ---
 
 ## 6) PvP Effects on Economy
