@@ -537,7 +537,7 @@ describe("applyStateSnapshot", () => {
     expect(result.npcs["npc-2"].facing).toBe("up");
     expect(result.obstacles).toEqual(payload.obstacles);
     expect(result.obstacles).not.toBe(payload.obstacles);
-    expect(result).not.toHaveProperty("effects");
+    expect(result.effects).toEqual({});
     expect(result.worldConfig.width).toBe(1200);
     expect(result.worldConfig.height).toBe(900);
     expect(result.hasLocalPlayer).toBe(true);
@@ -556,7 +556,7 @@ describe("applyStateSnapshot", () => {
     expect(result.players).toEqual({});
     expect(result.npcs).toEqual({});
     expect(result.obstacles).toEqual([]);
-    expect(result).not.toHaveProperty("effects");
+    expect(result.effects).toEqual({});
     expect(result.hasLocalPlayer).toBe(false);
     expect(result.currentFacing).toBeUndefined();
     expect(result.worldConfig).toBeUndefined();
@@ -602,7 +602,7 @@ describe("applyStateSnapshot", () => {
 
     expect(result.players.alpha.facing).toBe("left");
     expect(result.npcs.goblin.facing).toBe("up");
-    expect(result).not.toHaveProperty("effects");
+    expect(result.effects).toEqual({});
     expect(result.groundItems.stack.qty).toBe(3);
     expect(result.lastTick).toBe(99);
     expect(result.worldConfig.width).toBe(800);

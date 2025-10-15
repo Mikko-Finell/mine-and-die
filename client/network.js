@@ -1,5 +1,5 @@
 import { computeRtt, createHeartbeat } from "./heartbeat.js";
-import { createPatchState, updatePatchState } from "./patches.js";
+import { cloneEffectParamsMap, createPatchState, updatePatchState } from "./patches.js";
 import {
   applyEffectLifecycleBatch,
   resetEffectLifecycleState,
@@ -928,6 +928,32 @@ function cloneGroundItemsFromMap(map) {
   return items;
 }
 
+function cloneEffectsFromMap(map) {
+  if (!map || typeof map !== "object") {
+    return {};
+  }
+  const effects = {};
+  for (const [rawId, entry] of Object.entries(map)) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const id = typeof rawId === "string" ? rawId.trim() : "";
+    if (id.length === 0) {
+      continue;
+    }
+    const x = Number(entry.x);
+    const y = Number(entry.y);
+    effects[id] = {
+      ...entry,
+      id,
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      params: cloneEffectParamsMap(entry.params),
+    };
+  }
+  return effects;
+}
+
 export function applyStateSnapshot(prev, payload, patchedState) {
   const previousState = prev && typeof prev === "object" ? prev : {};
   const snapshot = payload && typeof payload === "object" ? payload : {};
@@ -989,6 +1015,33 @@ export function applyStateSnapshot(prev, payload, patchedState) {
     groundItemsState = cloneGroundItemsFromMap(previousState.groundItems);
   }
   result.groundItems = groundItemsState;
+
+  let effectsState = {};
+  if (Array.isArray(snapshot.effects)) {
+    for (const entry of snapshot.effects) {
+      if (!entry || typeof entry !== "object" || typeof entry.id !== "string") {
+        continue;
+      }
+      const id = entry.id.trim();
+      if (id.length === 0) {
+        continue;
+      }
+      const x = Number(entry.x);
+      const y = Number(entry.y);
+      effectsState[id] = {
+        ...entry,
+        id,
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+        params: cloneEffectParamsMap(entry.params),
+      };
+    }
+  } else if (patched?.effects) {
+    effectsState = cloneEffectsFromMap(patched.effects);
+  } else if (previousState.effects && typeof previousState.effects === "object") {
+    effectsState = cloneEffectsFromMap(previousState.effects);
+  }
+  result.effects = effectsState;
 
   let lastTick = null;
   if (Object.prototype.hasOwnProperty.call(snapshot, "t")) {
