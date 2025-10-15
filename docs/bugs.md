@@ -18,7 +18,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Projectile velocity quantization corrupts replicated direction | High       | 🟢 Done  | `syncProjectileInstance` rounds velocity vectors, erasing diagonals and desyncing clients (TestSyncProjectileInstanceQuantizesDirection). |
 | Equip rollback loses gear when reinsertion fails | Critical   | 🔴 Todo  | `EquipFromInventory` drops previous gear if reinsertion fails, permanently deleting items. |
 | Join retry timer keeps running after success     | Medium     | 🟢 Done  | Retry timeout never cleared, so delayed callbacks re-run `joinGame` and duplicate players; fixed by tracking and clearing the handle. |
-| Effect trigger dedupe never forgets processed IDs | Medium     | 🔴 Todo  | Persistent trigger ID set grows forever and blocks recycled triggers from rendering. |
+| Effect trigger dedupe never forgets processed IDs | Medium     | 🟢 Done  | Persistent trigger ID set grows forever and blocks recycled triggers from rendering. |
 | Path-following emits unbounded intent vectors    | High       | 🔴 Todo  | Raw waypoint deltas feed into `SetIntent`, exceeding normalized ranges and breaking consumers. |
 | Inventory diffing ignores fungibility keys       | High       | 🟢 Done   | `inventoriesEqual` omits `FungibilityKey`, leaving clients with stale identity metadata; repro: `TestMutateInventoryEmitsPatchWhenFungibilityChanges`. |
 | Client inventory clones strip fungibility metadata | Medium     | 🟢 Done   | `cloneInventorySlots` now preserves `fungibility_key`, keeping unique stacks distinct. |
