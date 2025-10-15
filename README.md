@@ -4,12 +4,12 @@ Mine & Die is a browser-based PvP extraction prototype. A Go 1.24 server simulat
 
 ## At a Glance
 - **Server** – Go HTTP service plus Gorilla WebSocket hub, deterministic world step, finite-state AI executor, and `/diagnostics` telemetry. See [Server Architecture](docs/architecture/server.md) and [AI System](docs/architecture/ai.md).
-- **Client** – `<canvas>` renderer, intent/input handlers, latency HUD, and diagnostics drawer delivered as static ES modules. See [Client Architecture](docs/architecture/client.md).
+- **Client** – `<canvas>` renderer, intent/input handlers, latency HUD, and diagnostics drawer delivered as static ES modules. A ground-up replacement is underway; legacy details live in [Client Architecture (deprecated)](docs/old/architecture/client.md).
 - **Protocol** – `POST /join` bootstrap followed by a single `/ws?id=…` channel for intents, actions, state snapshots, and heartbeats. Message contracts live in [Networking](docs/architecture/networking.md).
 
 ## Repository Layout
 - `server/` – Authoritative simulation, hub, HTTP handlers, finite-state AI runtime, and regression tests.
-- `client/` – Canvas renderer, input + HUD logic, inventory UI, and WebSocket client.
+- `client/` – Active modules for the in-flight rewrite; the previous implementation now resides in `client/old/`.
 - `docs/` – Architecture notes, gameplay design, and troubleshooting references (start with [docs/README.md](docs/README.md)).
 - `tools/js-effects/` – React playground and build tooling for the effect library (outputs synced into `client/js-effects/`).
 - `technical_debt.md` – Ongoing cleanup backlog and investigation notes.

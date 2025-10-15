@@ -4,7 +4,7 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 
 ## Repository Layout
 - `server/` – Authoritative simulation, HTTP handlers, and WebSocket hub. See [Server Architecture](./architecture/server.md).
-- `client/` – UI, input, networking, and rendering modules served as static assets. See [Client Architecture](./architecture/client.md).
+- `client/` – UI, input, networking, and rendering modules served as static assets. The legacy implementation is archived in [Client Architecture (deprecated)](./old/architecture/client.md) while the new client takes shape.
 - `docs/` – Living documentation (this folder).
   - `architecture/` – Technical specs and engineering-focused docs.
   - `gameplay-design/` – Concept pillars, combat intentions, and progression loops.
@@ -14,7 +14,7 @@ Welcome to the documentation set for the Mine & Die prototype. The project explo
 ## Additional References
 - [Networking](./architecture/networking.md) – Join flow, message contracts, diff metadata, and heartbeat policy.
 - [Server Architecture](./architecture/server.md) – Tick loop, data structures, actions, and diagnostics.
-- [Client Architecture](./architecture/client.md) – Store layout, rendering flow, and network helpers.
+- [Client Architecture (deprecated)](./old/architecture/client.md) – Store layout, rendering flow, and network helpers from the legacy stack.
 - [Effects & Conditions](./architecture/effects.md) – How the authoritative effect pipeline maps to client visuals.
 - [Item System](./architecture/items.md) – Canonical definitions, catalog export, and fungibility-aware runtime integration.
 - [Logging](./architecture/logging.md) – Publisher/router design plus event catalog.
