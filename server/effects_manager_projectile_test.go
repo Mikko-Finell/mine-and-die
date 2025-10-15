@@ -24,7 +24,7 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 			Template:       tpl,
 			VelocityUnitX:  math.Sqrt(0.5),
 			VelocityUnitY:  math.Sqrt(0.5),
-			RemainingRange: 12.5,
+			RemainingRange: 18,
 		},
 	}
 
@@ -63,6 +63,14 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 	}
 	if diff := math.Abs(spawned.Projectile.VelocityUnitY - math.Sqrt(0.5)); diff > 0.05 {
 		t.Fatalf("expected spawned Projectile.VelocityUnitY to approximate diagonal, diff=%.4f", diff)
+	}
+
+	if math.Abs(spawned.Projectile.RemainingRange-18) > 1e-6 {
+		t.Fatalf("expected projectile remaining range to persist, got %.2f", spawned.Projectile.RemainingRange)
+	}
+
+	if val := spawned.Effect.Params["remainingRange"]; math.Abs(val-18) > 1e-6 {
+		t.Fatalf("expected effect params remainingRange to persist, got %.2f", val)
 	}
 
 	paramDX := spawned.Effect.Params["dx"]
