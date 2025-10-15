@@ -157,6 +157,7 @@ type EffectDeliveryState struct {
 type EffectBehaviorState struct {
 	TicksRemaining    int            `json:"ticksRemaining"`
 	CooldownTicks     int            `json:"cooldownTicks,omitempty"`
+	TickCadence       int            `json:"tickCadence,omitempty"`
 	AccumulatedDamage int            `json:"accumulatedDamage,omitempty"`
 	Stacks            map[string]int `json:"stacks,omitempty"`
 	Extra             map[string]int `json:"extra,omitempty"`

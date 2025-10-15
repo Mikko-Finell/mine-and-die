@@ -79,6 +79,7 @@
 ## Contract tick cadence hint is ignored
 - **Tags:** `server`, `effects`, `medium`
 - **Summary:** Although `EffectIntent` exposes `TickCadence`, the instantiation path never stores or respects it, preventing designers from throttling expensive effect updates. [docs/architecture/bugs/be7300b337.md](be7300b337.md)
+- **Status:** Fixed — cadence now persists to instances and gates tick/update emission (see `TestEffectManagerRespectsTickCadence`).
 
 ## World config normalisation drops NPC totals
 - **Tags:** `server`, `configuration`, `high`

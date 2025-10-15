@@ -210,3 +210,80 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 		})
 	}
 }
+
+func TestEffectManagerRespectsTickCadence(t *testing.T) {
+	manager := newEffectManager(nil)
+	if manager == nil {
+		t.Fatalf("expected effect manager instance")
+	}
+
+	invocationTicks := make([]Tick, 0)
+	hookID := "contract.test.tickCadence"
+	manager.hooks[hookID] = effectHookSet{
+		OnTick: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
+			invocationTicks = append(invocationTicks, tick)
+		},
+	}
+
+	definition := &EffectDefinition{
+		TypeID:        "contract-tick-cadence",
+		Delivery:      DeliveryKindArea,
+		Shape:         GeometryShapeCircle,
+		Motion:        MotionKindInstant,
+		Impact:        ImpactPolicyNone,
+		LifetimeTicks: 10,
+		Hooks: EffectHooks{
+			OnTick: hookID,
+		},
+		Client: ReplicationSpec{
+			SendSpawn:   true,
+			SendUpdates: true,
+			SendEnd:     true,
+		},
+		End: EndPolicy{Kind: EndDuration},
+	}
+
+	manager.definitions[definition.TypeID] = definition
+
+	manager.EnqueueIntent(EffectIntent{
+		TypeID:      definition.TypeID,
+		Geometry:    EffectGeometry{Shape: GeometryShapeCircle},
+		TickCadence: 3,
+	})
+
+	collector := &lifecycleCollector{}
+	start := time.Now()
+	for tick := 1; tick <= 7; tick++ {
+		manager.RunTick(Tick(tick), start.Add(time.Duration(tick-1)*time.Millisecond), collector.collect)
+	}
+
+	if len(collector.spawns) != 1 {
+		t.Fatalf("expected 1 spawn event, got %d", len(collector.spawns))
+	}
+
+	instanceID := collector.spawns[0].Instance.ID
+
+	if got := len(invocationTicks); got != 2 {
+		t.Fatalf("expected 2 OnTick invocations, got %d", got)
+	}
+
+	expectedTicks := []Tick{3, 6}
+	for idx, expected := range expectedTicks {
+		if invocationTicks[idx] != expected {
+			t.Fatalf("expected OnTick at tick %d, got %d", expected, invocationTicks[idx])
+		}
+	}
+
+	if len(collector.updates) != len(expectedTicks) {
+		t.Fatalf("expected %d update events, got %d", len(expectedTicks), len(collector.updates))
+	}
+
+	for idx, update := range collector.updates {
+		if update.ID != instanceID {
+			t.Fatalf("expected update id %q, got %q", instanceID, update.ID)
+		}
+		if update.Tick != expectedTicks[idx] {
+			t.Fatalf("expected update tick %d, got %d", expectedTicks[idx], update.Tick)
+		}
+	}
+}
