@@ -33,6 +33,10 @@ func ApplyPatches(base map[string]PlayerPatchView, patches []Patch) (map[string]
 		if patch.EntityID == "" {
 			return nil, fmt.Errorf("apply patches: missing entity id for kind %q", patch.Kind)
 		}
+		if patch.Kind == PatchPlayerRemoved {
+			delete(next, patch.EntityID)
+			continue
+		}
 		view, ok := next[patch.EntityID]
 		if !ok {
 			return nil, fmt.Errorf("apply patches: unknown entity %q for kind %q", patch.EntityID, patch.Kind)

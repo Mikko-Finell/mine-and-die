@@ -26,7 +26,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Ground item normalisation rewrites metadata      | Medium     | 🔴 Todo  | `normalizeGroundItems` defaults to gold and drops keys, misrendering new or personal loot. |
 | Effect patches filtered out of hub payloads      | Critical   | 🔴 Todo  | `Hub.marshalState` whitelist excludes effects, so incremental effect updates never broadcast. |
 | Ground item removals skip diff emission          | High       | 🟢 Done  | Deletions bypass journalling, so broadcasts omit refreshed stacks until a keyframe. |
-| Player removals suppressed between keyframes     | High       | 🔴 Todo  | Player deletions fail to emit patches, leaving ghost actors alive for clients and telemetry. |
+| Player removals suppressed between keyframes     | High       | 🟢 Done  | `World.RemovePlayer` now emits `player_removed` diffs (TestRemovePlayerEmitsRemovalPatch). |
 | Equipment patches unsupported on the client      | Critical   | 🔴 Todo  | Patch handler table lacks equipment entries; updates are logged and dropped before UI sync. |
 | Projectile rehydration restores full travel distance | High       | 🟢 Done  | `spawnContractProjectileFromInstance` ignores saved `remainingRange`, extending projectile reach. |
 | Contract projectile definitions skip damage payloads | Critical   | 🟢 Done | `TestContractProjectileDefinitionsApplyDamage` now passes after inheriting fireball damage params from the projectile template. |
