@@ -849,12 +849,12 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *EffectInstance, no
 	if w == nil || instance == nil {
 		return nil
 	}
-	extra := instance.BehaviorState.Extra
-	if len(extra) == 0 {
+	params := instance.BehaviorState.Extra
+	if len(params) == 0 {
 		return nil
 	}
-	centerXVal, okX := extra["centerX"]
-	centerYVal, okY := extra["centerY"]
+	centerXVal, okX := params["centerX"]
+	centerYVal, okY := params["centerY"]
 	if !okX || !okY {
 		return nil
 	}
@@ -880,11 +880,6 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *EffectInstance, no
 		effectType = effectTypeBloodSplatter
 	}
 	w.pruneEffects(now)
-	params := newBloodSplatterParams()
-	if len(instance.Params) > 0 {
-		params = mergeParams(params, intMapToFloat64(instance.Params))
-	}
-
 	effect := &effectState{
 		Effect: Effect{
 			ID:       instance.ID,
@@ -896,7 +891,7 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *EffectInstance, no
 			Y:        centerY - height/2,
 			Width:    width,
 			Height:   height,
-			Params:   params,
+			Params:   newBloodSplatterParams(),
 			Colors:   bloodSplatterColors(),
 		},
 		expiresAt:          now.Add(lifetime),
