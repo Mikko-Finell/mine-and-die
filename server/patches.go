@@ -773,6 +773,12 @@ func cloneEffectInstance(instance EffectInstance) EffectInstance {
 func cloneEffectDeliveryState(state EffectDeliveryState) EffectDeliveryState {
 	clone := state
 	clone.Geometry = cloneGeometry(state.Geometry)
+	if state.Motion != nil {
+		motion := *state.Motion
+		clone.Motion = &motion
+	} else {
+		clone.Motion = nil
+	}
 	return clone
 }
 

@@ -244,6 +244,12 @@ func (m *EffectManager) cloneInstanceForSpawn(instance *EffectInstance) EffectIn
 	}
 	clone := *instance
 	clone.DeliveryState.Geometry = cloneGeometry(clone.DeliveryState.Geometry)
+	if instance.DeliveryState.Motion != nil {
+		motion := *instance.DeliveryState.Motion
+		clone.DeliveryState.Motion = &motion
+	} else {
+		clone.DeliveryState.Motion = nil
+	}
 	clone.BehaviorState.Extra = copyIntMap(clone.BehaviorState.Extra)
 	clone.BehaviorState.Stacks = copyIntMap(clone.BehaviorState.Stacks)
 	clone.Params = copyIntMap(clone.Params)
@@ -257,6 +263,12 @@ func (m *EffectManager) cloneInstanceForSpawn(instance *EffectInstance) EffectIn
 func (m *EffectManager) cloneDeliveryState(state EffectDeliveryState) EffectDeliveryState {
 	clone := state
 	clone.Geometry = cloneGeometry(state.Geometry)
+	if state.Motion != nil {
+		motion := *state.Motion
+		clone.Motion = &motion
+	} else {
+		clone.Motion = nil
+	}
 	return clone
 }
 

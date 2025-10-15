@@ -147,10 +147,10 @@ type EffectMotionState struct {
 
 // EffectDeliveryState stores the runtime state required to advance an instance.
 type EffectDeliveryState struct {
-	Geometry        EffectGeometry    `json:"geometry"`
-	Motion          EffectMotionState `json:"motion"`
-	AttachedActorID string            `json:"attachedActorId,omitempty"`
-	Follow          FollowMode        `json:"follow,omitempty"`
+	Geometry        EffectGeometry     `json:"geometry"`
+	Motion          *EffectMotionState `json:"motion,omitempty"`
+	AttachedActorID string             `json:"attachedActorId,omitempty"`
+	Follow          FollowMode         `json:"follow,omitempty"`
 }
 
 // EffectBehaviorState stores cooldowns, counters, and other behavior-specific fields.

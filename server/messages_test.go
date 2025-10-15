@@ -166,7 +166,6 @@ func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
 			},
 			DeliveryState: EffectDeliveryState{
 				Geometry: EffectGeometry{Shape: GeometryShapeCircle},
-				Motion:   EffectMotionState{},
 			},
 			BehaviorState: EffectBehaviorState{TicksRemaining: 1},
 			Replication:   ReplicationSpec{SendSpawn: true, SendEnd: true},

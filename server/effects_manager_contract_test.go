@@ -211,6 +211,143 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 	}
 }
 
+func TestContractMeleeSpawnCarriesOwnerAndOffsets(t *testing.T) {
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+
+	attacker := newTestPlayerState("contract-anchor-owner")
+	attacker.X = 200
+	attacker.Y = 180
+	attacker.Facing = FacingRight
+	attacker.cooldowns = make(map[string]time.Time)
+	world.players[attacker.ID] = attacker
+
+	intent, ok := NewMeleeIntent(&attacker.actorState)
+	if !ok {
+		t.Fatalf("expected melee intent to be constructed")
+	}
+	world.effectManager.EnqueueIntent(intent)
+
+	collector := &lifecycleCollector{}
+	dt := 1.0 / float64(tickRate)
+	now := time.Unix(0, 0)
+	world.Step(1, now, dt, nil, collector.collect)
+
+	if len(collector.spawns) != 1 {
+		t.Fatalf("expected 1 spawn, got %d", len(collector.spawns))
+	}
+
+	spawn := collector.spawns[0]
+	if spawn.Instance.DeliveryState.Motion != nil {
+		t.Fatalf("expected motion to be omitted for melee spawn, got %+v", spawn.Instance.DeliveryState.Motion)
+	}
+	if spawn.Instance.OwnerActorID != attacker.ID {
+		t.Fatalf("expected ownerActorId %q, got %q", attacker.ID, spawn.Instance.OwnerActorID)
+	}
+
+	geom := spawn.Instance.DeliveryState.Geometry
+	if geom.Width == 0 || geom.Height == 0 {
+		t.Fatalf("expected spawn geometry dimensions, got width=%d height=%d", geom.Width, geom.Height)
+	}
+	expectedOffsetX := quantizeWorldCoord(playerHalf + meleeAttackReach/2)
+	if geom.OffsetX != expectedOffsetX {
+		t.Fatalf("expected offsetX %d, got %d", expectedOffsetX, geom.OffsetX)
+	}
+	if geom.OffsetY != 0 {
+		t.Fatalf("expected offsetY 0, got %d", geom.OffsetY)
+	}
+
+	batch := world.journal.DrainEffectEvents()
+	if len(batch.Spawns) != 1 {
+		t.Fatalf("expected journal to contain 1 spawn, got %d", len(batch.Spawns))
+	}
+	drained := batch.Spawns[0]
+	if drained.Instance.OwnerActorID != attacker.ID {
+		t.Fatalf("expected drained ownerActorId %q, got %q", attacker.ID, drained.Instance.OwnerActorID)
+	}
+	geom = drained.Instance.DeliveryState.Geometry
+	if geom.Width == 0 || geom.Height == 0 {
+		t.Fatalf("expected drained geometry dimensions, got width=%d height=%d", geom.Width, geom.Height)
+	}
+	if geom.OffsetX != expectedOffsetX {
+		t.Fatalf("expected drained offsetX %d, got %d", expectedOffsetX, geom.OffsetX)
+	}
+	if geom.OffsetY != 0 {
+		t.Fatalf("expected drained offsetY 0, got %d", geom.OffsetY)
+	}
+}
+
+func TestContractStatusVisualFollowsTargetAnchor(t *testing.T) {
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+
+	target := newTestPlayerState("contract-burning-target")
+	target.X = 320
+	target.Y = 280
+	world.players[target.ID] = target
+
+	lifetime := 2 * time.Second
+	intent, ok := NewStatusVisualIntent(&target.actorState, "lava-source", effectTypeBurningVisual, lifetime)
+	if !ok {
+		t.Fatalf("expected status visual intent to be constructed")
+	}
+	world.effectManager.EnqueueIntent(intent)
+
+	collector := &lifecycleCollector{}
+	dt := 1.0 / float64(tickRate)
+	now := time.Unix(0, 0)
+	world.Step(1, now, dt, nil, collector.collect)
+
+	if len(collector.spawns) != 1 {
+		t.Fatalf("expected 1 spawn, got %d", len(collector.spawns))
+	}
+
+	spawn := collector.spawns[0]
+	if spawn.Instance.FollowActorID != target.ID {
+		t.Fatalf("expected followActorId %q, got %q", target.ID, spawn.Instance.FollowActorID)
+	}
+	if spawn.Instance.DeliveryState.AttachedActorID != target.ID {
+		t.Fatalf("expected attachedActorId %q, got %q", target.ID, spawn.Instance.DeliveryState.AttachedActorID)
+	}
+	geom := spawn.Instance.DeliveryState.Geometry
+	if geom.OffsetX != 0 || geom.OffsetY != 0 {
+		t.Fatalf("expected zero offsets, got (%d,%d)", geom.OffsetX, geom.OffsetY)
+	}
+}
+
+func TestContractPipelineMeleeSpawnAnchorsOwner(t *testing.T) {
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+
+	attacker := newTestPlayerState("contract-pipeline-owner")
+	attacker.cooldowns = make(map[string]time.Time)
+	world.AddPlayer(attacker)
+
+	collector := &lifecycleCollector{}
+	dt := 1.0 / float64(tickRate)
+	now := time.Unix(0, 0)
+	commands := []Command{{
+		ActorID: attacker.ID,
+		Type:    CommandAction,
+		Action:  &ActionCommand{Name: effectTypeAttack},
+	}}
+
+	world.Step(1, now, dt, commands, collector.collect)
+
+	if len(collector.spawns) != 1 {
+		t.Fatalf("expected 1 spawn, got %d", len(collector.spawns))
+	}
+
+	spawn := collector.spawns[0]
+	if spawn.Instance.DeliveryState.Motion != nil {
+		t.Fatalf("expected motion to be omitted for static melee, got %+v", spawn.Instance.DeliveryState.Motion)
+	}
+	if spawn.Instance.OwnerActorID != attacker.ID {
+		t.Fatalf("expected ownerActorId %q, got %q", attacker.ID, spawn.Instance.OwnerActorID)
+	}
+	geom := spawn.Instance.DeliveryState.Geometry
+	if geom.OffsetX == 0 && geom.OffsetY == 0 {
+		t.Fatalf("expected melee offsets to be non-zero, got (%d,%d)", geom.OffsetX, geom.OffsetY)
+	}
+}
+
 func TestEffectManagerRespectsTickCadence(t *testing.T) {
 	manager := newEffectManager(nil)
 	if manager == nil {
