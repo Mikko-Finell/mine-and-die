@@ -1273,6 +1273,45 @@ func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
 	}
 }
 
+func TestContractMeleeSpawnPopulatesMotionCenter(t *testing.T) {
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager to be initialized")
+	}
+	world.obstacles = nil
+
+	attacker := newTestPlayerState("contract-motion-attacker")
+	attacker.X = 320
+	attacker.Y = 280
+	attacker.Facing = FacingRight
+	attacker.cooldowns = make(map[string]time.Time)
+	world.AddPlayer(attacker)
+
+	commands := []Command{{ActorID: attacker.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeAttack}}}
+	now := time.Unix(0, 0)
+
+	world.Step(1, now, 1.0/float64(tickRate), commands, nil)
+
+	batch := world.journal.SnapshotEffectEvents()
+	if len(batch.Spawns) != 1 {
+		t.Fatalf("expected exactly one effect spawn, got %d", len(batch.Spawns))
+	}
+	spawn := batch.Spawns[0]
+	motion := spawn.Instance.DeliveryState.Motion
+	if motion.PositionX == 0 || motion.PositionY == 0 {
+		t.Fatalf("expected motion center to be populated, got position=(%d,%d)", motion.PositionX, motion.PositionY)
+	}
+	geom := spawn.Instance.DeliveryState.Geometry
+	expectedCenterX := quantizeWorldCoord(attacker.X + dequantizeWorldCoord(geom.OffsetX))
+	expectedCenterY := quantizeWorldCoord(attacker.Y + dequantizeWorldCoord(geom.OffsetY))
+	if motion.PositionX != expectedCenterX {
+		t.Fatalf("expected motion positionX %d, got %d", expectedCenterX, motion.PositionX)
+	}
+	if motion.PositionY != expectedCenterY {
+		t.Fatalf("expected motion positionY %d, got %d", expectedCenterY, motion.PositionY)
+	}
+}
+
 func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
@@ -1338,6 +1377,54 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 	}
 	if victim.statusEffects == nil || victim.statusEffects[StatusEffectBurning] == nil {
 		t.Fatalf("expected fireball to apply burning status")
+	}
+}
+
+func TestContractProjectileSpawnPopulatesMotionCenter(t *testing.T) {
+	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager to be initialized")
+	}
+	world.obstacles = nil
+
+	caster := newTestPlayerState("contract-motion-caster")
+	caster.X = 360
+	caster.Y = 300
+	caster.Facing = FacingRight
+	caster.cooldowns = make(map[string]time.Time)
+	world.AddPlayer(caster)
+
+	commands := []Command{{ActorID: caster.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeFireball}}}
+	now := time.Unix(0, 0)
+
+	world.Step(1, now, 1.0/float64(tickRate), commands, nil)
+
+	batch := world.journal.SnapshotEffectEvents()
+	if len(batch.Spawns) == 0 {
+		t.Fatal("expected projectile spawn event")
+	}
+	var spawn EffectSpawnEvent
+	for _, evt := range batch.Spawns {
+		if evt.Instance.DefinitionID == effectTypeFireball {
+			spawn = evt
+			break
+		}
+	}
+	if spawn.Instance.ID == "" {
+		t.Fatal("expected projectile spawn to include instance")
+	}
+	motion := spawn.Instance.DeliveryState.Motion
+	if motion.PositionX == 0 && motion.PositionY == 0 {
+		t.Fatalf("expected projectile motion center to be populated, got position=(%d,%d)", motion.PositionX, motion.PositionY)
+	}
+	geom := spawn.Instance.DeliveryState.Geometry
+	expectedCenterX := quantizeWorldCoord(caster.X + dequantizeWorldCoord(geom.OffsetX))
+	expectedCenterY := quantizeWorldCoord(caster.Y + dequantizeWorldCoord(geom.OffsetY))
+	if motion.PositionX != expectedCenterX {
+		t.Fatalf("expected projectile positionX %d, got %d", expectedCenterX, motion.PositionX)
+	}
+	if motion.PositionY != expectedCenterY {
+		t.Fatalf("expected projectile positionY %d, got %d", expectedCenterY, motion.PositionY)
 	}
 }
 

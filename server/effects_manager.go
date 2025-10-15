@@ -617,6 +617,12 @@ func (m *EffectManager) meleeEffectForInstance(instance *EffectInstance, owner *
 	centerY := owner.Y + offsetY
 	rectX := centerX - width/2
 	rectY := centerY - height/2
+	motion := instance.DeliveryState.Motion
+	motion.PositionX = quantizeWorldCoord(centerX)
+	motion.PositionY = quantizeWorldCoord(centerY)
+	motion.VelocityX = 0
+	motion.VelocityY = 0
+	instance.DeliveryState.Motion = motion
 	params := intMapToFloat64(instance.BehaviorState.Extra)
 	if params == nil {
 		params = make(map[string]float64)
@@ -687,6 +693,18 @@ func (m *EffectManager) syncProjectileInstance(instance *EffectInstance, owner *
 		geometry.OffsetX = quantizeWorldCoord(centerX(effect) - owner.X)
 		geometry.OffsetY = quantizeWorldCoord(centerY(effect) - owner.Y)
 	}
+	motion := instance.DeliveryState.Motion
+	motion.PositionX = quantizeWorldCoord(centerX(effect))
+	motion.PositionY = quantizeWorldCoord(centerY(effect))
+	if effect.Projectile != nil {
+		speed := 0.0
+		if tpl := effect.Projectile.Template; tpl != nil {
+			speed = tpl.Speed
+		}
+		motion.VelocityX = QuantizeVelocity(effect.Projectile.VelocityUnitX * speed)
+		motion.VelocityY = QuantizeVelocity(effect.Projectile.VelocityUnitY * speed)
+	}
+	instance.DeliveryState.Motion = motion
 	instance.DeliveryState.Geometry = geometry
 }
 
@@ -709,6 +727,18 @@ func (m *EffectManager) syncStatusVisualInstance(instance *EffectInstance, actor
 		geometry.OffsetX = quantizeWorldCoord(centerX(effect) - actor.X)
 		geometry.OffsetY = quantizeWorldCoord(centerY(effect) - actor.Y)
 	}
+	centerXVal := centerX(effect)
+	centerYVal := centerY(effect)
+	if actor != nil {
+		centerXVal = actor.X
+		centerYVal = actor.Y
+	}
+	motion := instance.DeliveryState.Motion
+	motion.PositionX = quantizeWorldCoord(centerXVal)
+	motion.PositionY = quantizeWorldCoord(centerYVal)
+	motion.VelocityX = 0
+	motion.VelocityY = 0
+	instance.DeliveryState.Motion = motion
 	instance.DeliveryState.Geometry = geometry
 }
 
