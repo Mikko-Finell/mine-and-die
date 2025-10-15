@@ -7,6 +7,7 @@ import {
   PATCH_KIND_PLAYER_INTENT,
   PATCH_KIND_PLAYER_HEALTH,
   PATCH_KIND_PLAYER_INVENTORY,
+  PATCH_KIND_PLAYER_REMOVED,
   PATCH_KIND_NPC_POS,
   PATCH_KIND_NPC_FACING,
   PATCH_KIND_NPC_HEALTH,
@@ -244,6 +245,26 @@ describe("updatePatchState", () => {
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(3);
+  });
+
+  it("removes players when removal patches arrive", () => {
+    const seeded = updatePatchState(createPatchState(), deepFreeze({ t: 2, sequence: 2, players: [makePlayer()] }), {
+      source: "join",
+    });
+    freezeState(seeded);
+
+    const payload = deepFreeze({
+      t: 4,
+      sequence: 4,
+      patches: [{ kind: PATCH_KIND_PLAYER_REMOVED, entityId: "player-1" }],
+    });
+
+    const result = updatePatchState(seeded, payload, { source: "broadcast" });
+
+    expect(result.errors).toEqual([]);
+    expect(result.lastAppliedPatchCount).toBe(1);
+    expect(result.patched.players).not.toHaveProperty("player-1");
+    expect(result.baseline.players).not.toHaveProperty("player-1");
   });
 
   it("preserves fungibility metadata when applying inventory patches", () => {
