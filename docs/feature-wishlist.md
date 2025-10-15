@@ -12,6 +12,12 @@ Patrolling goblins should detect loose gold, temporarily divert to collect it, a
 ## Expanded Directional Facing
 Increase the supported facing directions from four cardinal orientations to eight, covering diagonals for characters and NPCs.
 
+**Implementation outline**
+- Update shared movement and animation enums to represent eight-direction facing and propagate through serialization.
+- Adjust character controller interpolation and rotation logic to snap or blend toward the nearest octant without jitter.
+- Extend sprite/3D asset packs and animation state machines with diagonal frames, including tooling for export and validation.
+- Audit combat hit arc calculations and pathfinding heuristics so new facings preserve gameplay balance and collision checks.
+
 ## Pursuit Facing Alignment
 While chasing the player, goblins must continuously rotate to face the player before executing melee attacks so hit directionality remains correct.
 
