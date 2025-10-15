@@ -14,6 +14,8 @@ import {
   PATCH_KIND_NPC_HEALTH,
   PATCH_KIND_NPC_INVENTORY,
   PATCH_KIND_NPC_EQUIPMENT,
+  PATCH_KIND_EFFECT_POS,
+  PATCH_KIND_EFFECT_PARAMS,
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
   applyPatchesToSnapshot,
@@ -58,6 +60,17 @@ function makeGroundItem(overrides = {}) {
     x: 8,
     y: 9,
     qty: 3,
+    ...overrides,
+  };
+}
+
+function makeEffect(overrides = {}) {
+  return {
+    id: "effect-1",
+    type: "fireball",
+    x: 1,
+    y: 2,
+    params: { range: 3 },
     ...overrides,
   };
 }
@@ -149,8 +162,8 @@ describe("updatePatchState", () => {
       x: 4,
       y: 5,
     });
-    expect(result.baseline).not.toHaveProperty("effects");
-    expect(result.patched).not.toHaveProperty("effects");
+    expect(Object.keys(result.baseline.effects)).toEqual([]);
+    expect(Object.keys(result.patched.effects)).toEqual([]);
     expect(Object.keys(result.baseline.groundItems)).toEqual(["ground-1"]);
     expect(Object.keys(result.patched.groundItems)).toEqual(["ground-1"]);
     expect(result.baseline.groundItems["ground-1"]).not.toBe(
@@ -452,6 +465,63 @@ describe("updatePatchState", () => {
     expect(result.patched.sequence).toBe(7);
   });
 
+  it("applies effect position and parameter patches", () => {
+    const base = deepFreeze({
+      players: {},
+      npcs: {},
+      groundItems: {},
+      effects: { "effect-1": makeEffect({ params: { range: 3 } }) },
+    });
+
+    const patches = [
+      { kind: PATCH_KIND_EFFECT_POS, entityId: "effect-1", payload: { x: 9.5, y: 4.25 } },
+      {
+        kind: PATCH_KIND_EFFECT_PARAMS,
+        entityId: "effect-1",
+        payload: { params: { range: 6, speed: "2" } },
+      },
+    ];
+
+    const { effects, errors, appliedCount } = applyPatchesToSnapshot(base, patches);
+
+    expect(errors).toEqual([]);
+    expect(appliedCount).toBe(2);
+    expect(effects["effect-1"]).toMatchObject({
+      x: 9.5,
+      y: 4.25,
+      params: { range: 6, speed: 2 },
+    });
+  });
+
+  it("updates effect state when patches arrive", () => {
+    const seeded = updatePatchState(
+      createPatchState(),
+      deepFreeze({ t: 8, effects: [makeEffect()] }),
+      { source: "join" },
+    );
+
+    const payload = deepFreeze({
+      t: 9,
+      patches: [
+        { kind: PATCH_KIND_EFFECT_POS, entityId: "effect-1", payload: { x: 5, y: 6 } },
+        {
+          kind: PATCH_KIND_EFFECT_PARAMS,
+          entityId: "effect-1",
+          payload: { params: { range: 10, power: 2, invalid: "noop" } },
+        },
+      ],
+    });
+
+    const result = updatePatchState(seeded, payload, { source: "state" });
+
+    expect(result.patched.effects["effect-1"]).toMatchObject({
+      x: 5,
+      y: 6,
+      params: { range: 10, power: 2 },
+    });
+    expect(result.lastAppliedPatchCount).toBe(2);
+  });
+
   it("normalizes entity identifiers when seeding baseline state", () => {
     const payload = deepFreeze({
       t: 11,
@@ -464,12 +534,42 @@ describe("updatePatchState", () => {
 
     expect(Object.keys(baseline.players)).toEqual(["player-1"]);
     expect(Object.keys(baseline.npcs)).toEqual(["npc-2"]);
-    expect(baseline).not.toHaveProperty("effects");
+    expect(Object.keys(baseline.effects)).toEqual([]);
     expect(Object.keys(baseline.groundItems)).toEqual(["ground-4"]);
     expect(baseline.players["player-1"].id).toBe("player-1");
     expect(baseline.npcs["npc-2"].id).toBe("npc-2");
     expect(baseline.groundItems["ground-4"].id).toBe("ground-4");
     expect(baseline.sequence).toBe(11);
+  });
+
+  it("hydrates effects from snapshots when present", () => {
+    const payload = deepFreeze({
+      t: 12,
+      effects: [
+        makeEffect({
+          id: "  effect-2  ",
+          x: "10.5",
+          y: "20.25",
+          width: "14",
+          height: 6,
+          params: { speed: "4", invalid: "noop" },
+          colors: ["#ff0000", "", 123],
+        }),
+      ],
+    });
+
+    const baseline = buildBaselineFromSnapshot(payload);
+
+    expect(Object.keys(baseline.effects)).toEqual(["effect-2"]);
+    expect(baseline.effects["effect-2"]).toMatchObject({
+      id: "effect-2",
+      x: 10.5,
+      y: 20.25,
+      width: 14,
+      height: 6,
+      params: { speed: 4 },
+      colors: ["#ff0000"],
+    });
   });
 
   it("normalizes patch kinds and entity identifiers before applying handlers", () => {

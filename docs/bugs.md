@@ -42,7 +42,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | World config normalisation drops NPC totals      | High       | 🟢 Done  | `worldConfig.normalized` overwrites aggregate `NPCCount`, leaving worlds without spawns. |
 | Effect ticks halt when no emitter is provided    | Medium     | 🟢 Done  | `EffectManager.RunTick` now runs hooks/end-of-life even without an emitter; added regression test. |
 | Client ignores NPC equipment patches             | High       | 🟢 Done  | Client patch handlers now accept `npc_equipment` so NPC loadouts update on the HUD. |
-| Client rejects effect_pos/effect_params patches  | Medium     | ⚪ Planned | Fireball contract projectiles still call `World.SetEffectPosition`/`SetEffectParam`, but `client/patches.js` lacks handlers so the console spams `unsupported patch kind`; repro: cast fireball and watch browser console. |
+| Client rejects effect_pos/effect_params patches  | Medium     | 🟢 Done | Added `effect_pos`/`effect_params` handlers to `client/patches.js` so fireball contract projectiles stop logging `unsupported patch kind`; repro: cast fireball and watch browser console. |
 
 (Add new rows as bugs are logged. When you start one, set 🟡 Doing; when merged and verified, set 🟢 Done. If obsolete or duplicate, strike through with a short note.)
 
