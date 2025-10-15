@@ -7,8 +7,6 @@ const PATCH_KIND_NPC_POS = "npc_pos";
 const PATCH_KIND_NPC_FACING = "npc_facing";
 const PATCH_KIND_NPC_HEALTH = "npc_health";
 const PATCH_KIND_NPC_INVENTORY = "npc_inventory";
-const PATCH_KIND_EFFECT_POS = "effect_pos";
-const PATCH_KIND_EFFECT_PARAMS = "effect_params";
 const PATCH_KIND_GROUND_ITEM_POS = "ground_item_pos";
 const PATCH_KIND_GROUND_ITEM_QTY = "ground_item_qty";
 
@@ -22,8 +20,6 @@ const KNOWN_PATCH_KINDS = new Set([
   PATCH_KIND_NPC_FACING,
   PATCH_KIND_NPC_HEALTH,
   PATCH_KIND_NPC_INVENTORY,
-  PATCH_KIND_EFFECT_POS,
-  PATCH_KIND_EFFECT_PARAMS,
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
 ]);
@@ -78,24 +74,6 @@ function cloneInventorySlots(slots) {
       slot: slotIndex,
       item: { type, quantity },
     });
-  }
-  return cloned;
-}
-
-function cloneEffectParams(params) {
-  if (!params || typeof params !== "object") {
-    return {};
-  }
-  const cloned = {};
-  for (const [key, value] of Object.entries(params)) {
-    if (typeof key !== "string" || key.length === 0) {
-      continue;
-    }
-    const numeric = toFiniteNumber(value, null);
-    if (numeric === null) {
-      continue;
-    }
-    cloned[key] = numeric;
   }
   return cloned;
 }
@@ -241,65 +219,6 @@ function cloneNPCsMap(source) {
   return next;
 }
 
-function createEffectView(effect) {
-  if (!effect || typeof effect !== "object") {
-    return null;
-  }
-  const id = normalizeEntityId(effect.id);
-  if (!id) {
-    return null;
-  }
-  return {
-    id,
-    type: typeof effect.type === "string" ? effect.type : "",
-    owner: typeof effect.owner === "string" ? effect.owner : "",
-    start: toFiniteInt(effect.start, 0),
-    duration: toFiniteInt(effect.duration, 0),
-    x: toFiniteNumber(effect.x, 0),
-    y: toFiniteNumber(effect.y, 0),
-    width: toFiniteNumber(effect.width, 0),
-    height: toFiniteNumber(effect.height, 0),
-    params: cloneEffectParams(effect.params),
-  };
-}
-
-function cloneEffectView(view) {
-  if (!view || typeof view !== "object") {
-    return null;
-  }
-  const id = normalizeEntityId(view.id);
-  if (!id) {
-    return null;
-  }
-  return {
-    id,
-    type: typeof view.type === "string" ? view.type : "",
-    owner: typeof view.owner === "string" ? view.owner : "",
-    start: toFiniteInt(view.start, 0),
-    duration: toFiniteInt(view.duration, 0),
-    x: toFiniteNumber(view.x, 0),
-    y: toFiniteNumber(view.y, 0),
-    width: toFiniteNumber(view.width, 0),
-    height: toFiniteNumber(view.height, 0),
-    params: cloneEffectParams(view.params),
-  };
-}
-
-function cloneEffectsMap(source) {
-  const next = Object.create(null);
-  if (!source || typeof source !== "object") {
-    return next;
-  }
-  for (const view of Object.values(source)) {
-    const cloned = cloneEffectView(view);
-    if (!cloned || !cloned.id) {
-      continue;
-    }
-    next[cloned.id] = cloned;
-  }
-  return next;
-}
-
 function createGroundItemView(item) {
   if (!item || typeof item !== "object") {
     return null;
@@ -370,16 +289,6 @@ function buildBaselineFromSnapshot(payload) {
       npcs[view.id] = view;
     }
   }
-  const effects = Object.create(null);
-  if (Array.isArray(payload?.effects)) {
-    for (const entry of payload.effects) {
-      const view = createEffectView(entry);
-      if (!view) {
-        continue;
-      }
-      effects[view.id] = view;
-    }
-  }
   const groundItems = Object.create(null);
   if (Array.isArray(payload?.groundItems)) {
     for (const entry of payload.groundItems) {
@@ -403,7 +312,6 @@ function buildBaselineFromSnapshot(payload) {
     sequence,
     players,
     npcs,
-    effects,
     groundItems,
   };
 }
@@ -531,7 +439,6 @@ function cloneBaselineSnapshot(baseline) {
     sequence,
     players: clonePlayersMap(baseline.players),
     npcs: cloneNPCsMap(baseline.npcs),
-    effects: cloneEffectsMap(baseline.effects),
     groundItems: cloneGroundItemsMap(baseline.groundItems),
   };
 }
@@ -585,7 +492,7 @@ function hasExplicitEntityArrays(payload) {
   if (!payload || typeof payload !== "object") {
     return false;
   }
-  const fields = ["players", "npcs", "effects", "groundItems"];
+  const fields = ["players", "npcs", "groundItems"];
   return fields.some((field) => Array.isArray(payload[field]));
 }
 
@@ -860,17 +767,6 @@ const applyNPCPosition = applyPlayerPosition;
 const applyNPCFacing = applyPlayerFacing;
 const applyNPCHealth = applyPlayerHealth;
 const applyNPCInventory = applyPlayerInventory;
-const applyEffectPosition = applyPlayerPosition;
-
-function applyEffectParams(view, payload) {
-  if (!payload || typeof payload !== "object") {
-    return { applied: false, error: "invalid effect params payload" };
-  }
-  const params = cloneEffectParams(payload.params);
-  view.params = params;
-  return { applied: true };
-}
-
 const applyGroundItemPosition = applyPlayerPosition;
 
 function applyGroundItemQuantity(view, payload) {
@@ -895,8 +791,6 @@ const PATCH_HANDLERS = {
   [PATCH_KIND_NPC_FACING]: { target: "npcs", apply: applyNPCFacing },
   [PATCH_KIND_NPC_HEALTH]: { target: "npcs", apply: applyNPCHealth },
   [PATCH_KIND_NPC_INVENTORY]: { target: "npcs", apply: applyNPCInventory },
-  [PATCH_KIND_EFFECT_POS]: { target: "effects", apply: applyEffectPosition },
-  [PATCH_KIND_EFFECT_PARAMS]: { target: "effects", apply: applyEffectParams },
   [PATCH_KIND_GROUND_ITEM_POS]: { target: "groundItems", apply: applyGroundItemPosition },
   [PATCH_KIND_GROUND_ITEM_QTY]: { target: "groundItems", apply: applyGroundItemQuantity },
 };
@@ -906,8 +800,6 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
     baseSnapshot && typeof baseSnapshot === "object" ? baseSnapshot.players : null;
   const baseNPCs =
     baseSnapshot && typeof baseSnapshot === "object" ? baseSnapshot.npcs : null;
-  const baseEffects =
-    baseSnapshot && typeof baseSnapshot === "object" ? baseSnapshot.effects : null;
   const baseGroundItems =
     baseSnapshot && typeof baseSnapshot === "object"
       ? baseSnapshot.groundItems
@@ -915,10 +807,9 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
 
   const players = clonePlayersMap(basePlayers);
   const npcs = cloneNPCsMap(baseNPCs);
-  const effects = cloneEffectsMap(baseEffects);
   const groundItems = cloneGroundItemsMap(baseGroundItems);
 
-  const viewMaps = { players, npcs, effects, groundItems };
+  const viewMaps = { players, npcs, groundItems };
   const errors = [];
   let appliedCount = 0;
   const history = options.history && typeof options.history === "object"
@@ -928,7 +819,7 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
   const batchSequence = coerceTick(options.batchSequence);
 
   if (!Array.isArray(patches) || patches.length === 0) {
-    return { players, npcs, effects, groundItems, errors, appliedCount };
+    return { players, npcs, groundItems, errors, appliedCount };
   }
 
   for (const rawPatch of patches) {
@@ -983,7 +874,7 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
     }
   }
 
-  return { players, npcs, effects, groundItems, errors, appliedCount };
+  return { players, npcs, groundItems, errors, appliedCount };
 }
 
 function trimErrors(errors, limit) {
@@ -1003,7 +894,6 @@ export function createPatchState() {
       sequence: null,
       players: Object.create(null),
       npcs: Object.create(null),
-      effects: Object.create(null),
       groundItems: Object.create(null),
     },
     patched: {
@@ -1011,7 +901,6 @@ export function createPatchState() {
       sequence: null,
       players: Object.create(null),
       npcs: Object.create(null),
-      effects: Object.create(null),
       groundItems: Object.create(null),
     },
     lastAppliedPatchCount: 0,
@@ -1339,7 +1228,6 @@ export function updatePatchState(previousState, payload, options = {}) {
         };
         mergeMaps(cumulative.players, cached.players, clonePlayerView);
         mergeMaps(cumulative.npcs, cached.npcs, cloneNPCView);
-        mergeMaps(cumulative.effects, cached.effects, cloneEffectView);
         mergeMaps(cumulative.groundItems, cached.groundItems, cloneGroundItemView);
         baseline = cumulative;
       } else {
@@ -1410,12 +1298,10 @@ export function updatePatchState(previousState, payload, options = {}) {
       if (fallbackBaseline) {
         const fallbackPlayers = fallbackBaseline.players || Object.create(null);
         const fallbackNPCs = fallbackBaseline.npcs || Object.create(null);
-        const fallbackEffects = fallbackBaseline.effects || Object.create(null);
         const fallbackGroundItems = fallbackBaseline.groundItems || Object.create(null);
         const fallbackViewMaps = {
           players: fallbackPlayers,
           npcs: fallbackNPCs,
-          effects: fallbackEffects,
           groundItems: fallbackGroundItems,
         };
 
@@ -1648,7 +1534,6 @@ export function updatePatchState(previousState, payload, options = {}) {
 
   baseline.players = clonePlayersMap(patchResult.players);
   baseline.npcs = cloneNPCsMap(patchResult.npcs);
-  baseline.effects = cloneEffectsMap(patchResult.effects);
   baseline.groundItems = cloneGroundItemsMap(patchResult.groundItems);
   if (resolvedTick !== null) {
     baseline.tick = resolvedTick;
@@ -1663,7 +1548,6 @@ export function updatePatchState(previousState, payload, options = {}) {
       sequence: baseline.sequence,
       players: baseline.players,
       npcs: baseline.npcs,
-      effects: baseline.effects,
       groundItems: baseline.groundItems,
     },
     patched: {
@@ -1671,7 +1555,6 @@ export function updatePatchState(previousState, payload, options = {}) {
       sequence: baseline.sequence,
       players: patchResult.players,
       npcs: patchResult.npcs,
-      effects: patchResult.effects,
       groundItems: patchResult.groundItems,
     },
     lastAppliedPatchCount: patchResult.appliedCount,
@@ -1705,8 +1588,6 @@ export {
   PATCH_KIND_NPC_FACING,
   PATCH_KIND_NPC_HEALTH,
   PATCH_KIND_NPC_INVENTORY,
-  PATCH_KIND_EFFECT_POS,
-  PATCH_KIND_EFFECT_PARAMS,
   PATCH_KIND_GROUND_ITEM_POS,
   PATCH_KIND_GROUND_ITEM_QTY,
   applyPatchesToSnapshot,

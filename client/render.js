@@ -358,11 +358,7 @@ function syncEffectsByType(
     options && typeof options === "object" && Number.isFinite(options.frameNow)
       ? options.frameNow
       : null;
-  const effects = Array.isArray(effectsOverride)
-    ? effectsOverride
-    : Array.isArray(store.effects)
-      ? store.effects
-      : [];
+  const effects = Array.isArray(effectsOverride) ? effectsOverride : [];
   const definitionType =
     definition && typeof definition.type === "string" && definition.type.length > 0
       ? definition.type
