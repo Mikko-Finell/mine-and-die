@@ -965,6 +965,16 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	if groundItems == nil && includeSnapshot {
 		groundItems = h.world.GroundItemsSnapshot()
 	}
+	var aliveEffectIDs []string
+	if len(h.world.effects) > 0 {
+		aliveEffectIDs = make([]string, 0, len(h.world.effects))
+		for _, eff := range h.world.effects {
+			if eff == nil || eff.ID == "" {
+				continue
+			}
+			aliveEffectIDs = append(aliveEffectIDs, eff.ID)
+		}
+	}
 	var patches []Patch
 	if drainPatches {
 		patches = h.world.drainPatchesLocked()
@@ -1000,7 +1010,8 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		alivePlayers := players
 		aliveNPCs := npcs
 		aliveItems := groundItems
-		total := len(alivePlayers) + len(aliveNPCs)
+		aliveEffects := aliveEffectIDs
+		total := len(alivePlayers) + len(aliveNPCs) + len(aliveEffects)
 		if aliveItems != nil {
 			total += len(aliveItems)
 		}
@@ -1023,6 +1034,12 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 					continue
 				}
 				alive[item.ID] = struct{}{}
+			}
+			for _, id := range aliveEffects {
+				if id == "" {
+					continue
+				}
+				alive[id] = struct{}{}
 			}
 			filtered := patches[:0]
 			for _, patch := range patches {
