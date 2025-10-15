@@ -2,6 +2,7 @@ import { LitElement, html } from "lit";
 import { classMap } from "lit/directives/class-map.js";
 
 const HEALTH_CHECK_URL = "/health";
+const JOIN_URL = "/join";
 
 type PanelKey = "telemetry" | "world" | "inventory";
 
@@ -17,9 +18,12 @@ class GameClientApp extends LitElement {
     heartbeat: { state: true },
     logs: { state: true },
     activeTab: { state: true },
+    playerId: { state: true },
   } as const;
 
   private clockInterval: number | undefined;
+
+  playerId: string | null;
 
   constructor() {
     super();
@@ -28,6 +32,7 @@ class GameClientApp extends LitElement {
     this.heartbeat = "--";
     this.logs = [] as LogEntry[];
     this.activeTab = "telemetry";
+    this.playerId = null;
     this.addLog("Booting client…");
   }
 
@@ -39,6 +44,7 @@ class GameClientApp extends LitElement {
     super.connectedCallback();
     this.updateServerTime();
     void this.fetchHealth();
+    void this.joinWorld();
     this.clockInterval = window.setInterval(() => {
       this.updateServerTime();
     }, 1000);
@@ -88,6 +94,26 @@ class GameClientApp extends LitElement {
     void this.fetchHealth();
   }
 
+  private async joinWorld(): Promise<void> {
+    this.addLog("Joining world…");
+    try {
+      const response = await fetch(JOIN_URL, {
+        method: "POST",
+        cache: "no-cache",
+      });
+      if (!response.ok) {
+        throw new Error(`join failed with ${response.status}`);
+      }
+      const data = (await response.json()) as { id: string };
+      this.playerId = data.id;
+      this.addLog(`Joined world as ${data.id}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.playerId = null;
+      this.addLog(`Failed to join world: ${message}`);
+    }
+  }
+
   private handleTabChange(event: CustomEvent<PanelKey>): void {
     this.activeTab = event.detail;
   }
@@ -115,6 +141,7 @@ class GameClientApp extends LitElement {
       <hud-network
         .serverTime=${this.serverTime}
         .heartbeat=${this.heartbeat}
+        .playerId=${this.playerId ?? ""}
       ></hud-network>
     `;
   }
@@ -540,15 +567,18 @@ class HudNetwork extends LitElement {
   static properties = {
     serverTime: { type: String },
     heartbeat: { type: String },
+    playerId: { type: String },
   } as const;
 
   serverTime!: string;
   heartbeat!: string;
+  playerId!: string;
 
   constructor() {
     super();
     this.serverTime = "--";
     this.heartbeat = "--";
+    this.playerId = "";
   }
 
   createRenderRoot(): Element | ShadowRoot {
@@ -560,6 +590,9 @@ class HudNetwork extends LitElement {
       <div class="hud-network">
         <span class="hud-network__item">Server time: ${this.serverTime}</span>
         <span class="hud-network__item">Heartbeat: ${this.heartbeat}</span>
+        <span class="hud-network__item">
+          Player: ${this.playerId ? this.playerId : "—"}
+        </span>
       </div>
     `;
   }
