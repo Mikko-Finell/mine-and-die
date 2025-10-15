@@ -6,7 +6,7 @@ _Last updated: 2025-10-10_
 
 ## 1. Executive Summary
 
-*Mine & Die* is a real-time PvP mining prototype built on an authoritative Go backend that simulates the world at ~15 Hz and streams state snapshots to a lightweight JavaScript client over WebSockets.【F:README.md†L3-L54】【F:docs/architecture/server.md†L3-L52】【F:docs/architecture/client.md†L3-41】
+*Mine & Die* is a real-time PvP mining prototype built on an authoritative Go backend that simulates the world at ~15 Hz and streams state snapshots to a lightweight JavaScript client over WebSockets.【F:README.md†L3-L54】【F:docs/architecture/server.md†L3-L52】【F:docs/old/architecture/client.md†L3-41】
 
 The foundation is strong: deterministic simulation, functional combat and mining loops, and integrated diagnostics. However, marketed features such as the **gold economy**, **safe-zone trading**, and **faction governance** remain aspirational.  
 Our short-term mission is to **stabilize the core loop**, **align messaging with current reality**, and **lay the groundwork for scalable economy and governance systems**.
@@ -18,7 +18,7 @@ Our short-term mission is to **stabilize the core loop**, **align messaging with
 | Layer | State Summary | Key References |
 |-------|----------------|----------------|
 | **Server** | Hub architecture manages sessions, ticks world state, and enforces deterministic updates via write barriers. Handles movement, combat, hazards, loot, and diagnostics endpoints. | 【F:docs/architecture/server.md†L3-114】 |
-| **Client** | Modular ES-module stack for input, rendering, networking, and telemetry. Integrates `js-effects` for visuals; diagnostics overlay assists QA. | 【F:docs/architecture/client.md†L3-73】 |
+| **Client** | Modular ES-module stack for input, rendering, networking, and telemetry. Integrates `js-effects` for visuals; diagnostics overlay assists QA. | 【F:docs/old/architecture/client.md†L3-73】 |
 | **Gameplay** | Players mine ore, fight with melee and fireballs, face hazards, and drop inventories on death. PvP and resource risk loops are functional but shallow. | 【F:README.md†L43-71】 |
 | **Tooling & Tests** | Go test coverage on hubs; Vitest suite for client modules. HTTP endpoints and integration flows remain untested. | 【F:docs/architecture/testing.md†L3-24】【F:technical_debt.md†L14-16】 |
 | **Docs & Messaging** | Documentation oversells planned systems (economy, factions), creating mismatch between shipped state and roadmap narrative. | 【F:README.md†L95-129】【F:technical_debt.md†L19-23】 |
