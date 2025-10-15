@@ -139,8 +139,8 @@ func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (EffectInte
 	if params == nil {
 		params = make(map[string]int)
 	}
-	params["dx"] = int(math.Round(dirX))
-	params["dy"] = int(math.Round(dirY))
+	params["dx"] = QuantizeCoord(dirX)
+	params["dy"] = QuantizeCoord(dirY)
 	if _, ok := params["radius"]; !ok {
 		params["radius"] = int(math.Round(spawnRadius))
 	}

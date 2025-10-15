@@ -28,6 +28,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Player removals suppressed between keyframes     | High       | 🔴 Todo  | Player deletions fail to emit patches, leaving ghost actors alive for clients and telemetry. |
 | Equipment patches unsupported on the client      | Critical   | 🔴 Todo  | Patch handler table lacks equipment entries; updates are logged and dropped before UI sync. |
 | Projectile rehydration restores full travel distance | High       | 🟢 Done  | `spawnContractProjectileFromInstance` ignores saved `remainingRange`, extending projectile reach. |
+| Contract projectile definitions skip damage application | High       | 🟢 Done   | Quantize projectile intent directions so `TestContractProjectileDefinitionsApplyDamage` applies damage again. |
 | Projectile resurrection resets lifetime ticks    | High       | 🔴 Todo  | Recreated projectiles use template lifetime instead of persisted ticks, causing overlong effects. |
 | Failed state marshals drop drained patches       | Critical   | 🔴 Todo  | `marshalState` drains buffers before encode; on failure data is lost until next keyframe. |
 | Command queue lacks flow control per client      | High       | 🔴 Todo  | `enqueueCommand` accepts unlimited commands, allowing a single client to flood the queue. |
@@ -48,3 +49,8 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 * No zombies: entities/items removed on server are removed on clients without keyframe reliance.
 * Tests with fixes: every fix lands with a failing test turned green.
 * Minimal surface area: prefer single code paths per behavior to reduce bug vectors.
+
+## Test Verification
+
+- `npm test` (Vitest): ✅ All suites passed on latest run.
+- `go test ./...` (Go): ✅ All suites passed on latest run.
