@@ -4,6 +4,11 @@ Start by reading `docs/bugs.md`
 
 Then continue the work outlined there. If you discover new bugs during your work, add them to `bugs.md` unless they are blocking for the active task.
 
+# Bug fixing guidelines
+
+* Avoid adding shims, stubs, or feature flags.
+* Prioritize correctness first, then simplicity.
+
 # Using `docs/bugs.md`
 
 This file is the single source of truth for known bugs and fixes in flight. Keep it current as you work; no other bug tracker is required.
