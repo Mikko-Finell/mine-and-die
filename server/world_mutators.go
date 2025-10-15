@@ -17,6 +17,13 @@ func (w *World) appendPatch(kind PatchKind, entityID string, payload any) {
 	w.journal.AppendPatch(Patch{Kind: kind, EntityID: entityID, Payload: payload})
 }
 
+func incrementVersion(version *uint64) {
+	if version == nil {
+		return
+	}
+	*version = *version + 1
+}
+
 func (w *World) purgeEntityPatches(entityID string) {
 	if w == nil || entityID == "" {
 		return
@@ -35,7 +42,7 @@ func (w *World) setActorPosition(actor *actorState, version *uint64, entityID st
 
 	actor.X = x
 	actor.Y = y
-	*version++
+	incrementVersion(version)
 
 	w.appendPatch(kind, entityID, PositionPayload{X: x, Y: y})
 }
@@ -54,7 +61,7 @@ func (w *World) setActorFacing(actor *actorState, version *uint64, entityID stri
 	}
 
 	actor.Facing = facing
-	*version++
+	incrementVersion(version)
 
 	w.appendPatch(kind, entityID, FacingPayload{Facing: facing})
 }
@@ -70,7 +77,7 @@ func (w *World) setActorIntent(actor *actorState, version *uint64, entityID stri
 
 	actor.intentX = dx
 	actor.intentY = dy
-	*version++
+	incrementVersion(version)
 
 	w.appendPatch(PatchPlayerIntent, entityID, PlayerIntentPayload{DX: dx, DY: dy})
 }
@@ -107,7 +114,7 @@ func (w *World) setActorHealth(actor *actorState, version *uint64, entityID stri
 
 	actor.Health = health
 	actor.MaxHealth = max
-	*version++
+	incrementVersion(version)
 
 	w.appendPatch(kind, entityID, HealthPayload{Health: health, MaxHealth: max})
 }
@@ -127,7 +134,7 @@ func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityI
 		return nil
 	}
 
-	*version++
+	incrementVersion(version)
 	w.appendPatch(kind, entityID, InventoryPayload{Slots: cloneInventorySlots(actor.Inventory.Slots)})
 	return nil
 }
@@ -147,7 +154,7 @@ func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityI
 		return nil
 	}
 
-	*version++
+	incrementVersion(version)
 	w.appendPatch(kind, entityID, EquipmentPayload{Slots: cloneEquipmentSlots(actor.Equipment.Slots)})
 	return nil
 }
