@@ -70,18 +70,6 @@ function toEntriesMap(source) {
   return Object.create(null);
 }
 
-function mapDefinitionToLegacyType(definitionId) {
-  if (typeof definitionId !== "string" || definitionId.length === 0) {
-    return null;
-  }
-  switch (definitionId) {
-    case "melee-swing":
-      return "attack";
-    default:
-      return definitionId;
-  }
-}
-
 function isLifecycleClientManaged(entry) {
   if (!entry || typeof entry !== "object") {
     return false;
@@ -151,27 +139,6 @@ function rekeyTrackedInstance(manager, instance, contractId, trackedType) {
   }
 }
 
-function resolveLifecycleEffectType(entry, convertedEffect, fallbackEffect) {
-  if (fallbackEffect && typeof fallbackEffect.type === "string") {
-    return fallbackEffect.type;
-  }
-  if (convertedEffect && typeof convertedEffect.type === "string") {
-    const definitionId =
-      entry && typeof entry.instance?.definitionId === "string"
-        ? entry.instance.definitionId
-        : null;
-    if (definitionId && convertedEffect.type !== definitionId) {
-      return convertedEffect.type;
-    }
-    return mapDefinitionToLegacyType(convertedEffect.type);
-  }
-  const definitionId =
-    entry && typeof entry.instance?.definitionId === "string"
-      ? entry.instance.definitionId
-      : null;
-  return mapDefinitionToLegacyType(definitionId);
-}
-
 function collectEffectRenderBuckets(store, renderState) {
   const buckets = new Map();
   const lifecycleEntries =
@@ -198,24 +165,38 @@ function collectEffectRenderBuckets(store, renderState) {
     if (typeof converted.id !== "string" || converted.id.length === 0) {
       converted.id = effectId;
     }
-    const legacyType = resolveLifecycleEffectType(entry, converted, null);
-    if (!legacyType) {
-      return;
-    }
-    converted.type = legacyType;
-    markHiddenMetadata(converted, "__contractDerived", true);
+    const definitionTypeId =
+      typeof entry?.instance?.definition?.typeId === "string" &&
+      entry.instance.definition.typeId.length > 0
+        ? entry.instance.definition.typeId
+        : null;
     const definitionId =
-      typeof entry.instance?.definitionId === "string"
+      typeof entry?.instance?.definitionId === "string" &&
+      entry.instance.definitionId.length > 0
         ? entry.instance.definitionId
         : null;
+    const resolvedType =
+      (typeof converted.type === "string" && converted.type.length > 0
+        ? converted.type
+        : null) ||
+      definitionTypeId ||
+      definitionId;
+    if (typeof resolvedType !== "string" || resolvedType.length === 0) {
+      return;
+    }
+    converted.type = resolvedType;
+    markHiddenMetadata(converted, "__contractDerived", true);
     if (definitionId) {
       markHiddenMetadata(converted, "__contractDefinitionId", definitionId);
+    }
+    if (definitionTypeId) {
+      markHiddenMetadata(converted, "__contractTypeId", definitionTypeId);
     }
     const managedByClient = isLifecycleClientManaged(entry);
     if (managedByClient) {
       markHiddenMetadata(converted, "__contractManagedByClient", true);
     }
-    addEffectToBucket(buckets, legacyType, converted);
+    addEffectToBucket(buckets, resolvedType, converted);
     consumedIds.add(effectId);
   };
 
@@ -388,8 +369,7 @@ function syncEffectsByType(
       : contractLifecycleToEffect(lifecycleEntry, {
           store,
           renderState,
-          fallbackEffect: effect,
-        });
+        }) ?? effect;
     if (!sourceEffect || typeof sourceEffect !== "object") {
       continue;
     }
@@ -458,9 +438,10 @@ function syncEffectsByType(
       const updatePayload = contractLifecycleToUpdatePayload(lifecycleEntry, {
         store,
         renderState,
-        fallbackEffect: sourceEffect,
       });
-      onUpdate(instance, updatePayload, store, lifecycleEntry);
+      if (updatePayload) {
+        onUpdate(instance, updatePayload, store, lifecycleEntry);
+      }
     }
   }
 
@@ -947,41 +928,42 @@ function prepareEffectPass(
 
   const effectBuckets = collectEffectRenderBuckets(store, renderState);
 
+  const meleeSwingType = MeleeSwingEffectDefinition.type;
   syncEffectsByType(
     store,
     manager,
-    "attack",
+    meleeSwingType,
     MeleeSwingEffectDefinition,
     undefined,
-    effectBuckets.get("attack") ?? [],
+    effectBuckets.get(meleeSwingType) ?? [],
     { lifecycle, renderState, frameNow: normalizedFrameNow },
   );
   syncEffectsByType(
     store,
     manager,
-    "blood-splatter",
+    BloodSplatterDefinition.type,
     BloodSplatterDefinition,
     undefined,
-    effectBuckets.get("blood-splatter") ?? [],
+    effectBuckets.get(BloodSplatterDefinition.type) ?? [],
     { lifecycle, renderState, frameNow: normalizedFrameNow },
   );
   syncEffectsByType(
     store,
     manager,
-    "fire",
+    FireEffectDefinition.type,
     FireEffectDefinition,
     updateFireInstanceTransform,
-    effectBuckets.get("fire") ?? [],
+    effectBuckets.get(FireEffectDefinition.type) ?? [],
     { lifecycle, renderState, frameNow: normalizedFrameNow },
   );
   syncEffectsByType(
     store,
     manager,
-    "fireball",
+    FireballZoneEffectDefinition.type,
     FireballZoneEffectDefinition,
     (instance, effect, state, lifecycleEntry) =>
       updateRectZoneInstance(instance, effect, state, lifecycleEntry),
-    effectBuckets.get("fireball") ?? [],
+    effectBuckets.get(FireballZoneEffectDefinition.type) ?? [],
     { lifecycle, renderState, frameNow: normalizedFrameNow },
   );
 

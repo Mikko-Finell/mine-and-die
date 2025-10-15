@@ -59,20 +59,6 @@ function normalizeColorList(source) {
   return colors;
 }
 
-function cloneEffect(fallbackEffect) {
-  if (!isPlainObject(fallbackEffect)) {
-    return {};
-  }
-  const clone = { ...fallbackEffect };
-  if (isPlainObject(fallbackEffect.params)) {
-    clone.params = { ...fallbackEffect.params };
-  }
-  if (Array.isArray(fallbackEffect.colors)) {
-    clone.colors = fallbackEffect.colors.slice();
-  }
-  return clone;
-}
-
 function findActorPosition(renderState, store, actorId) {
   if (typeof actorId !== "string" || actorId.length === 0) {
     return null;
@@ -106,14 +92,13 @@ function findActorPosition(renderState, store, actorId) {
  * @param {{
  *   store?: Record<string, any> | null,
  *   renderState?: Record<string, any> | null,
- *   fallbackEffect?: Record<string, any> | null,
  * }=} context
  * @returns {Record<string, any> | null}
  */
 export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
-  const { store = null, renderState = null, fallbackEffect = null } = context;
+  const { store = null, renderState = null } = context;
   if (!isPlainObject(lifecycleEntry) || !isPlainObject(lifecycleEntry.instance)) {
-    return cloneEffect(fallbackEffect) ?? null;
+    return null;
   }
 
   const instance = lifecycleEntry.instance;
@@ -121,15 +106,25 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   const tickRate = getTickRate(store);
   const tickDurationMs = 1000 / tickRate;
 
-  const effect = cloneEffect(fallbackEffect);
+  const effect = {};
   if (typeof instance.id === "string" && instance.id.length > 0) {
     effect.id = instance.id;
   }
-  if (typeof instance.definitionId === "string" && instance.definitionId.length > 0) {
-    effect.type = instance.definitionId;
+  const rawDefinitionId =
+    typeof instance.definitionId === "string" && instance.definitionId.length > 0
+      ? instance.definitionId
+      : null;
+  const rawTypeId =
+    typeof instance.definition?.typeId === "string" &&
+    instance.definition.typeId.length > 0
+      ? instance.definition.typeId
+      : null;
+  const resolvedType = rawTypeId || rawDefinitionId;
+  if (resolvedType) {
+    effect.type = resolvedType;
   }
 
-  const params = isPlainObject(effect.params) ? { ...effect.params } : {};
+  const params = {};
   if (isPlainObject(instance.params)) {
     copyParams(instance.params, params);
   }
@@ -148,13 +143,10 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     }
   }
 
-  const fallbackColors = normalizeColorList(effect.colors);
   const instanceColors = normalizeColorList(instance.colors);
-  const colors = instanceColors.length > 0 ? instanceColors : fallbackColors;
+  const colors = instanceColors;
   if (colors.length > 0) {
     effect.colors = colors;
-  } else if ("colors" in effect) {
-    delete effect.colors;
   }
 
   const ticksRemaining = Number(instance.behaviorState?.ticksRemaining);

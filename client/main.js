@@ -772,7 +772,6 @@ const store = {
   bytesSent: 0,
   lastPathRequestAt: null,
   lastTick: null,
-  effects: [],
   effectInstancesById: null,
   lastEffectLifecycleSummary: null,
   effectDiagnostics: createEffectDiagnosticsState(),

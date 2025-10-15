@@ -419,12 +419,6 @@ describe("updatePatchState", () => {
     expect(second.lastSequence).toBe(200);
   });
 
-  it("accepts legacy seq field for backwards compatibility", () => {
-    const payload = deepFreeze({ t: 5, seq: 75, players: [makePlayer()] });
-    const state = updatePatchState(createPatchState(), payload, { source: "state" });
-    expect(state.lastSequence).toBe(75);
-  });
-
   it("rejects out-of-order batches and leaves prior state untouched", () => {
     const seedPayload = deepFreeze({ t: 20, sequence: 300, players: [makePlayer()] });
     const seeded = updatePatchState(createPatchState(), seedPayload, { source: "state" });

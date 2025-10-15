@@ -32,12 +32,15 @@ function createTestDefinition(type) {
   };
 }
 
-function createLifecycleEntry({ id, definitionId, managedByClient }) {
+function createLifecycleEntry({ id, definitionId, typeId, managedByClient }) {
+  const resolvedTypeId =
+    typeof typeId === "string" && typeId.length > 0 ? typeId : definitionId;
   return {
     instance: {
       id,
       definitionId,
       definition: {
+        typeId: resolvedTypeId,
         client: { managedByClient: !!managedByClient },
       },
       behaviorState: {},
@@ -61,14 +64,25 @@ function createLifecycleView(entriesMap) {
   };
 }
 
-function createContractEffect(id, type, { managedByClient = false } = {}) {
+function createContractEffect(
+  id,
+  type,
+  { managedByClient = false, definitionId = type } = {},
+) {
   const effect = { id, type };
   Object.defineProperty(effect, "__contractDerived", {
     value: true,
     enumerable: false,
     configurable: true,
   });
-  Object.defineProperty(effect, "__contractDefinitionId", {
+  if (typeof definitionId === "string" && definitionId.length > 0) {
+    Object.defineProperty(effect, "__contractDefinitionId", {
+      value: definitionId,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  Object.defineProperty(effect, "__contractTypeId", {
     value: type,
     enumerable: false,
     configurable: true,
@@ -95,12 +109,14 @@ describe("syncEffectsByType contract lifecycle handling", () => {
           createLifecycleEntry({
             id: effectId,
             definitionId: "attack",
+            typeId: "melee-swing",
             managedByClient: true,
           }),
         ],
       ]),
     );
-    const effect = createContractEffect(effectId, "attack", {
+    const effect = createContractEffect(effectId, "melee-swing", {
+      definitionId: "attack",
       managedByClient: true,
     });
 
@@ -109,7 +125,7 @@ describe("syncEffectsByType contract lifecycle handling", () => {
     const expiryFrame =
       initialFrame + CLIENT_MANAGED_EFFECT_MAX_AGE_MS * 2 + 10;
 
-    syncEffectsByType({}, manager, "attack", definition, undefined, [effect], {
+    syncEffectsByType({}, manager, definition.type, definition, undefined, [effect], {
       lifecycle,
       frameNow: initialFrame,
     });
@@ -121,7 +137,7 @@ describe("syncEffectsByType contract lifecycle handling", () => {
     expect(instance.__effectLifecycleClientManaged).toBe(true);
 
     lifecycle.entries.clear();
-    syncEffectsByType({}, manager, "attack", definition, undefined, [], {
+    syncEffectsByType({}, manager, definition.type, definition, undefined, [effect], {
       lifecycle,
       frameNow: midFrame,
     });
@@ -129,7 +145,7 @@ describe("syncEffectsByType contract lifecycle handling", () => {
     tracked = manager.getTrackedInstances(definition.type);
     expect(tracked.has(effectId)).toBe(true);
 
-    syncEffectsByType({}, manager, "attack", definition, undefined, [], {
+    syncEffectsByType({}, manager, definition.type, definition, undefined, [], {
       lifecycle,
       frameNow: expiryFrame,
     });
@@ -156,13 +172,13 @@ describe("syncEffectsByType contract lifecycle handling", () => {
     );
     const effect = createContractEffect(effectId, "fireball");
 
-    syncEffectsByType({}, manager, "fireball", definition, undefined, [effect], {
+    syncEffectsByType({}, manager, definition.type, definition, undefined, [effect], {
       lifecycle,
       frameNow: 2000,
     });
 
     lifecycle.entries.clear();
-    syncEffectsByType({}, manager, "fireball", definition, undefined, [], {
+    syncEffectsByType({}, manager, definition.type, definition, undefined, [], {
       lifecycle,
       frameNow: 2010,
     });
@@ -182,16 +198,18 @@ describe("syncEffectsByType contract lifecycle handling", () => {
           createLifecycleEntry({
             id: effectId,
             definitionId: "attack",
+            typeId: "melee-swing",
             managedByClient: true,
           }),
         ],
       ]),
     );
-    const effect = createContractEffect(effectId, "attack", {
+    const effect = createContractEffect(effectId, "melee-swing", {
+      definitionId: "attack",
       managedByClient: true,
     });
 
-    syncEffectsByType({}, manager, "attack", definition, undefined, [effect], {
+    syncEffectsByType({}, manager, definition.type, definition, undefined, [effect], {
       lifecycle,
       frameNow: 3000,
     });
@@ -201,7 +219,7 @@ describe("syncEffectsByType contract lifecycle handling", () => {
     expect(instance).toBeDefined();
 
     lifecycle.entries.clear();
-    syncEffectsByType({}, manager, "attack", definition, undefined, [], {
+    syncEffectsByType({}, manager, definition.type, definition, undefined, [effect], {
       lifecycle,
       frameNow: 3000 + CLIENT_MANAGED_EFFECT_MAX_AGE_MS / 2,
     });
@@ -212,17 +230,19 @@ describe("syncEffectsByType contract lifecycle handling", () => {
       createLifecycleEntry({
         id: effectId,
         definitionId: "attack",
+        typeId: "melee-swing",
         managedByClient: true,
       }),
     );
-    const refreshedEffect = createContractEffect(effectId, "attack", {
+    const refreshedEffect = createContractEffect(effectId, "melee-swing", {
+      definitionId: "attack",
       managedByClient: true,
     });
 
     syncEffectsByType(
       {},
       manager,
-      "attack",
+      definition.type,
       definition,
       undefined,
       [refreshedEffect],

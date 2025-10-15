@@ -331,7 +331,7 @@ function readBatchSequence(payload) {
   if (!payload || typeof payload !== "object") {
     return null;
   }
-  const candidates = [payload.sequence, payload.seq, payload.sequenceNumber];
+  const candidates = [payload.sequence, payload.sequenceNumber];
   for (const candidate of candidates) {
     const seq = coerceTick(candidate);
     if (seq !== null) {
@@ -354,11 +354,9 @@ function readPatchSequence(patch) {
   const payload = patch.payload && typeof patch.payload === "object" ? patch.payload : null;
   const candidates = [
     patch.sequence,
-    patch.seq,
     patch.tick,
     patch.t,
     payload?.sequence,
-    payload?.seq,
     payload?.tick,
     payload?.t,
     payload?.version,

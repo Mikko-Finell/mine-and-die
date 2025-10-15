@@ -158,6 +158,12 @@ Statuses use the following scale:
 * :white_check_mark: **Diagnostics counters (`client/main.js`).** Retired the legacy patch map counts and surface lifecycle-backed effect totals in the HUD, unblocking the patch cache removal.【F:client/main.js†L1305-L1345】
 * :white_check_mark: **Tests covering legacy arrays (`client/__tests__/patches.test.js`, `client/__tests__/network.test.js`).** Updated fixtures and assertions to stop referencing patch cache arrays and instead confirm the lifecycle-only shape.【F:client/__tests__/patches.test.js†L139-L181】【F:client/__tests__/network.test.js†L327-L404】
 
+#### Legacy Compatibility Audit — Entry 46
+
+* :white_check_mark: `client/render.js` now keys lifecycle-derived buckets by contract type IDs, removing the legacy mapping shim from `resolveLifecycleEffectType`.【F:client/render.js†L150-L214】
+* :white_check_mark: `client/__tests__/network.test.js` snapshot and resync fixtures no longer include legacy `effects` arrays, matching the contract-only payload shape.【F:client/__tests__/network.test.js†L308-L398】
+* :white_check_mark: `client/__tests__/patches.test.js` dropped the legacy `seq` alias coverage after removing the fallback from the patch reader.【F:client/__tests__/patches.test.js†L400-L418】
+
 
 ---
 
@@ -165,6 +171,9 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 47 | Purged the remaining client-side legacy effect shims and marked the compatibility audit entry complete. | gpt-5-codex |
+| 46 | Removed the unused `store.effects` placeholder and documented the remaining client-side legacy compatibility shims. | gpt-5-codex |
+| 45 | Dropped the lifecycle translator fallback cloning so render sync now depends entirely on contract payloads, starting the final dead-code cleanup. | gpt-5-codex |
 | 44 | Removed the client patch cache `effects` maps, updated tests for the lifecycle-only shape, and closed out the final dead-code items. | gpt-5-codex |
 | 43 | Audited rollback toggles/telemetry labels, documented the remaining client-side legacy caches, and queued the final removal work. | gpt-5-codex |
 | 42 | Collapsed effect parity telemetry to a single contract stream, removed legacy source bookkeeping, and refreshed tracker guidance. | gpt-5-codex |

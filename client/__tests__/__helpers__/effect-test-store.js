@@ -79,7 +79,6 @@ export function createEffectTestStore({
     directionOrder: [],
     lastStateReceivedAt: null,
     lastTick: 0,
-    effects: [],
     effectManager,
     effectInstancesById: new Map(),
     pendingEffectTriggers: [],

@@ -7,6 +7,7 @@ describe("contractLifecycleToEffect", () => {
       instance: {
         id: "contract-1",
         definitionId: "attack",
+        definition: { typeId: "melee-swing" },
         deliveryState: {
           geometry: { shape: "rect", width: 32, height: 16 },
           motion: { positionX: 160, positionY: 200 },
@@ -15,36 +16,26 @@ describe("contractLifecycleToEffect", () => {
         params: { fadeExponent: 2 },
       },
     };
-    const fallbackEffect = {
-      id: "legacy-attack",
-      width: 48,
-      height: 60,
-      params: { fadeExponent: 1, jitter: 4 },
-    };
     const result = contractLifecycleToEffect(lifecycleEntry, {
       store: { TILE_SIZE: 40 },
-      fallbackEffect,
     });
 
     expect(result.id).toBe("contract-1");
-    expect(result.type).toBe("attack");
+    expect(result.type).toBe("melee-swing");
     expect(result.width).toBeCloseTo(80);
     expect(result.height).toBeCloseTo(40);
     expect(result.x).toBeCloseTo(360);
     expect(result.y).toBeCloseTo(480);
     expect(result.duration).toBeCloseTo((1000 / 15) * 3, 5);
-    expect(result.params).toEqual({ fadeExponent: 2, jitter: 4, damage: 12 });
+    expect(result.params).toEqual({ fadeExponent: 2, damage: 12 });
   });
 
-  test("falls back to cloning the legacy effect when lifecycle data missing", () => {
-    const fallbackEffect = { id: "legacy-fire", x: 10, y: 20, params: { size: 2 } };
+  test("returns null when lifecycle entry missing", () => {
     const result = contractLifecycleToEffect(null, {
       store: { TILE_SIZE: 40 },
-      fallbackEffect,
     });
 
-    expect(result).toEqual(fallbackEffect);
-    expect(result).not.toBe(fallbackEffect);
+    expect(result).toBeNull();
   });
 
   test("derives position from anchor offsets when motion is absent", () => {
@@ -52,6 +43,7 @@ describe("contractLifecycleToEffect", () => {
       instance: {
         id: "contract-anchor",
         definitionId: "fireball",
+        definition: { typeId: "fireball" },
         ownerActorId: "npc-1",
         deliveryState: {
           geometry: {
@@ -92,14 +84,7 @@ describe("contractLifecycleToEffect", () => {
         colors: [" #7a0e12 ", "", "#4a090b", null],
       },
     };
-    const fallbackEffect = {
-      id: "legacy-colors",
-      colors: ["#123456", "#654321"],
-    };
-
-    const result = contractLifecycleToEffect(lifecycleEntry, {
-      fallbackEffect,
-    });
+    const result = contractLifecycleToEffect(lifecycleEntry, {});
 
     expect(result.colors).toEqual(["#7a0e12", "#4a090b"]);
   });
