@@ -429,6 +429,9 @@ func inventoriesEqual(a, b Inventory) bool {
 		if as.Item.Type != bs.Item.Type {
 			return false
 		}
+		if as.Item.FungibilityKey != bs.Item.FungibilityKey {
+			return false
+		}
 		if as.Item.Quantity != bs.Item.Quantity {
 			return false
 		}
