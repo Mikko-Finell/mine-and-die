@@ -41,6 +41,9 @@ const (
 	statusBurningVisualHookID = "status.burning.visual"
 	statusBurningDamageHookID = "status.burning.tick"
 	visualBloodSplatterHookID = "visual.blood.splatter"
+
+	effectParamFloatMarkerSuffix  = "__float"
+	effectParamFloatEncodingValue = 1
 )
 
 func newEffectManager(world *World) *EffectManager {
@@ -802,6 +805,42 @@ func (m *EffectManager) syncBloodDecalInstance(instance *EffectInstance, effect 
 	instance.Params["centerX"] = centerX
 	instance.Params["centerY"] = centerY
 	instance.Colors = bloodSplatterColors()
+	if len(effect.Effect.Params) > 0 {
+		instance.Params = mirrorEffectFloatParams(instance.Params, effect.Effect.Params)
+	}
+}
+
+func mirrorEffectFloatParams(dest map[string]int, src map[string]float64) map[string]int {
+	if len(src) == 0 {
+		return dest
+	}
+	if dest == nil {
+		dest = make(map[string]int, len(src)*2)
+	}
+	for key, value := range src {
+		if key == "" {
+			continue
+		}
+		encoded, ok := encodeEffectFloatParam(value)
+		if !ok {
+			continue
+		}
+		dest[key] = encoded
+		dest[effectFloatMarkerKey(key)] = effectParamFloatEncodingValue
+	}
+	return dest
+}
+
+func encodeEffectFloatParam(value float64) (int, bool) {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, false
+	}
+	encoded := math.Float32bits(float32(value))
+	return int(int32(encoded)), true
+}
+
+func effectFloatMarkerKey(key string) string {
+	return key + effectParamFloatMarkerSuffix
 }
 
 func intMapToFloat64(src map[string]int) map[string]float64 {

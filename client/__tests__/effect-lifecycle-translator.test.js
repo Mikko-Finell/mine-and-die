@@ -121,4 +121,29 @@ describe("contractLifecycleToEffect", () => {
     expect(result.params?.centerX).toBeCloseTo(400);
     expect(result.params?.centerY).toBeCloseTo(560);
   });
+
+  test("decodes float-encoded params", () => {
+    const lifecycleEntry = {
+      instance: {
+        id: "contract-blood-params",
+        definitionId: "blood-splatter",
+        params: {
+          drag: 1064011039,
+          drag__float: 1,
+          maxBursts: 0,
+          maxBursts__float: 1,
+          maxStainRadius: 1086324736,
+          maxStainRadius__float: 1,
+        },
+      },
+    };
+
+    const result = contractLifecycleToEffect(lifecycleEntry, {});
+
+    expect(result?.params?.drag).toBeCloseTo(0.92, 5);
+    expect(result?.params?.maxBursts).toBeCloseTo(0, 5);
+    expect(result?.params?.maxStainRadius).toBeCloseTo(6, 5);
+    expect(result?.params).not.toHaveProperty("drag__float");
+    expect(result?.params).not.toHaveProperty("maxBursts__float");
+  });
 });

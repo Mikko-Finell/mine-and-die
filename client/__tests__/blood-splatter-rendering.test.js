@@ -32,9 +32,12 @@ const BLOOD_SPLATTER_STATE_MESSAGE =
   '"hooks":{"onSpawn":"visual.blood.splatter","onTick":"visual.blood.splatter"},"client":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true,"managedByClient":true},"end":{"kind":0,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}},' +
   '"startTick":2452,"deliveryState":{"geometry":{"shape":"rect","width":11,"height":11},"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"},' +
-  '"behaviorState":{"ticksRemaining":18,"extra":{"centerX":18,"centerY":71}},"params":{"drag":0.92,"dropletRadius":3,' +
-  '"maxBursts":0,"maxDroplets":33,"maxStainRadius":6,"maxStains":140,"minDroplets":4,"minStainRadius":4,' +
-  '"spawnInterval":1.1,"speed":3},"ownerActorId":"player-2",' +
+  '"behaviorState":{"ticksRemaining":18,"extra":{"centerX":18,"centerY":71}},"params":{"drag":1064011039,"drag__float":1,' +
+  '"dropletRadius":1077936128,"dropletRadius__float":1,"maxBursts":0,"maxBursts__float":1,"maxDroplets":1107558400,' +
+  '"maxDroplets__float":1,"maxStainRadius":1086324736,"maxStainRadius__float":1,"maxStains":1124859904,' +
+  '"maxStains__float":1,"minDroplets":1082130432,"minDroplets__float":1,"minStainRadius":1082130432,' +
+  '"minStainRadius__float":1,"spawnInterval":1066192077,"spawnInterval__float":1,"speed":1077936128,' +
+  '"speed__float":1},"ownerActorId":"player-2",' +
   '"colors":["#7a0e12","#4a090b"],"replication":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true,"managedByClient":true},"end":{"kind":0,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}}}],' +
   '"effect_seq_cursors":{"contract-effect-6":1},"patches":[{"kind":"npc_pos","entityId":"npc-rat-3","payload":{"x":907.2384585405665,"y":1235.7951290070935}}]}';
@@ -87,11 +90,11 @@ describe("blood-splatter visual effects", () => {
       expect(options?.colors).toEqual(["#7a0e12", "#4a090b"]);
       expect(options?.drag).toBeCloseTo(0.92, 5);
       expect(options?.dropletRadius).toBeCloseTo(3, 5);
-      expect(options?.maxBursts).toBeCloseTo(0, 5);
-      expect(options?.maxDroplets).toBeCloseTo(33, 5);
+      expect(options?.maxBursts).toBe(0);
+      expect(options?.maxDroplets).toBe(33);
       expect(options?.maxStainRadius).toBeCloseTo(6, 5);
-      expect(options?.maxStains).toBeCloseTo(140, 5);
-      expect(options?.minDroplets).toBeCloseTo(4, 5);
+      expect(options?.maxStains).toBe(140);
+      expect(options?.minDroplets).toBe(4);
       expect(options?.minStainRadius).toBeCloseTo(4, 5);
       expect(options?.spawnInterval).toBeCloseTo(1.1, 5);
       expect(options?.speed).toBeCloseTo(3, 5);

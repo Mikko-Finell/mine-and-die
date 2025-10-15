@@ -6,6 +6,12 @@ const CONTRACT_TYPE_REMAP = {
   attack: "melee-swing",
 };
 
+const FLOAT_PARAM_MARKER_SUFFIX = "__float";
+const FLOAT_PARAM_ENCODING_VERSION = 1;
+
+const FLOAT_PARAM_BUFFER = new ArrayBuffer(4);
+const FLOAT_PARAM_VIEW = new DataView(FLOAT_PARAM_BUFFER);
+
 export function normalizeContractEffectType(type) {
   if (typeof type !== "string") {
     return type ?? null;
@@ -42,6 +48,30 @@ function quantizedToWorld(value, tileSize) {
   return (numeric / COORD_SCALE) * tileSize;
 }
 
+function decodeFloatParam(bits) {
+  const numericBits = Number(bits);
+  if (!Number.isFinite(numericBits)) {
+    return null;
+  }
+  const normalizedBits = numericBits >>> 0;
+  FLOAT_PARAM_VIEW.setUint32(0, normalizedBits, false);
+  const decoded = FLOAT_PARAM_VIEW.getFloat32(0, false);
+  return Number.isFinite(decoded) ? decoded : null;
+}
+
+function decodeContractParam(source, key, rawValue) {
+  if (!key || typeof key !== "string") {
+    return null;
+  }
+  const markerKey = `${key}${FLOAT_PARAM_MARKER_SUFFIX}`;
+  const markerValue = Number(source?.[markerKey]);
+  if (Number.isFinite(markerValue) && markerValue === FLOAT_PARAM_ENCODING_VERSION) {
+    return decodeFloatParam(rawValue);
+  }
+  const numeric = Number(rawValue);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function copyParams(source, target) {
   if (!isPlainObject(source)) {
     return;
@@ -50,10 +80,14 @@ function copyParams(source, target) {
     if (!key || typeof key !== "string") {
       continue;
     }
-    const value = Number(raw);
-    if (Number.isFinite(value)) {
-      target[key] = value;
+    if (key.endsWith(FLOAT_PARAM_MARKER_SUFFIX)) {
+      continue;
     }
+    const value = decodeContractParam(source, key, raw);
+    if (value == null) {
+      continue;
+    }
+    target[key] = value;
   }
 }
 
