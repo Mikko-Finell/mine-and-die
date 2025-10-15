@@ -36,7 +36,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | NPC gold rewards bypass patch emission           | Medium     | 🟢 Done  | Routed NPC mining rewards through inventory mutators so patches broadcast (`TestNPCMiningEmitsInventoryPatch`). |
 | Blood splatter applies to attacker instead of victim | Low        | ⚪ Planned | Melee strikes paint attacker sprite; should land on victim; repro: rat bite vs. player. |
 | Blood splatter decals ignore configured sizing   | Low        | ⚪ Planned | Decal handoff yields oversized stains; should match animation params; repro: watch blood decal settle after hit. |
-| Broadcast logging leaks full state payloads      | Medium     | 🔴 Todo  | Debug path dumps complete JSON payloads, flooding logs and exposing sensitive state. |
+| Broadcast logging leaks full state payloads      | Medium     | 🟢 Done  | Debug path now summarizes markers/size instead of dumping full JSON payloads. |
 | Version counters misuse pointer increment syntax | Critical   | 🟢 Done  | Mutator helpers now call `incrementVersion` so pointer arithmetic no longer corrupts patch sequencing. |
 | Contract tick cadence hint is ignored            | Medium     | 🟢 Done  | Intent cadence now persists to instances and throttles updates (TestEffectManagerRespectsTickCadence). |
 | World config normalisation drops NPC totals      | High       | 🟢 Done  | `worldConfig.normalized` overwrites aggregate `NPCCount`, leaving worlds without spawns. |
