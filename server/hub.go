@@ -1074,6 +1074,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	} else {
 		players = nil
 		npcs = nil
+		groundItems = nil
 	}
 	if triggers == nil {
 		triggers = make([]EffectTrigger, 0)

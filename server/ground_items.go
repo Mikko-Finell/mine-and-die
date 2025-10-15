@@ -40,7 +40,7 @@ const (
 
 func (w *World) groundItemsSnapshot() []GroundItem {
 	if w == nil || len(w.groundItems) == 0 {
-		return make([]GroundItem, 0)
+		return nil
 	}
 	items := make([]GroundItem, 0, len(w.groundItems))
 	for _, item := range w.groundItems {

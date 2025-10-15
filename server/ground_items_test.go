@@ -122,3 +122,24 @@ func TestMarshalStateKeepsGroundItemRemovalPatch(t *testing.T) {
 		t.Fatalf("expected qty to equal 0, got %f", qtyFloat)
 	}
 }
+
+func TestMarshalStateOmitsGroundItemsOnDiff(t *testing.T) {
+	hub := newHub()
+	hub.world.drainPatchesLocked()
+
+	// Provide a non-nil ground item slice to ensure marshalState normalizes
+	// it away when the payload is diff-only.
+	data, _, err := hub.marshalState(nil, nil, nil, make([]GroundItem, 0), true, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg map[string]any
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state message: %v", err)
+	}
+
+	if _, exists := msg["groundItems"]; exists {
+		t.Fatalf("expected diff payload to omit groundItems field")
+	}
+}
