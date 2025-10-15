@@ -636,15 +636,18 @@ var e5 = e4(class extends i5 {
 
 // client/main.ts
 var HEALTH_CHECK_URL = "/health";
+var JOIN_URL = "/join";
 var GameClientApp = class extends i4 {
   constructor() {
     super();
     __publicField(this, "clockInterval");
+    __publicField(this, "playerId");
     this.healthStatus = "Checking\u2026";
     this.serverTime = "--";
     this.heartbeat = "--";
     this.logs = [];
     this.activeTab = "telemetry";
+    this.playerId = null;
     this.addLog("Booting client\u2026");
   }
   createRenderRoot() {
@@ -654,6 +657,7 @@ var GameClientApp = class extends i4 {
     super.connectedCallback();
     this.updateServerTime();
     void this.fetchHealth();
+    void this.joinWorld();
     this.clockInterval = window.setInterval(() => {
       this.updateServerTime();
     }, 1e3);
@@ -697,6 +701,25 @@ var GameClientApp = class extends i4 {
   handleRefreshRequested() {
     void this.fetchHealth();
   }
+  async joinWorld() {
+    this.addLog("Joining world\u2026");
+    try {
+      const response = await fetch(JOIN_URL, {
+        method: "POST",
+        cache: "no-cache"
+      });
+      if (!response.ok) {
+        throw new Error(`join failed with ${response.status}`);
+      }
+      const data = await response.json();
+      this.playerId = data.id;
+      this.addLog(`Joined world as ${data.id}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.playerId = null;
+      this.addLog(`Failed to join world: ${message}`);
+    }
+  }
   handleTabChange(event) {
     this.activeTab = event.detail;
   }
@@ -706,6 +729,7 @@ var GameClientApp = class extends i4 {
     this.addLog(`World reset requested ${seedMessage}.`);
   }
   render() {
+    var _a6;
     return x`
       <app-shell
         title="Mine &amp; Die"
@@ -722,6 +746,7 @@ var GameClientApp = class extends i4 {
       <hud-network
         .serverTime=${this.serverTime}
         .heartbeat=${this.heartbeat}
+        .playerId=${(_a6 = this.playerId) != null ? _a6 : ""}
       ></hud-network>
     `;
   }
@@ -731,7 +756,8 @@ __publicField(GameClientApp, "properties", {
   serverTime: { state: true },
   heartbeat: { state: true },
   logs: { state: true },
-  activeTab: { state: true }
+  activeTab: { state: true },
+  playerId: { state: true }
 });
 var AppShell = class extends i4 {
   constructor() {
@@ -1105,8 +1131,10 @@ var HudNetwork = class extends i4 {
     super();
     __publicField(this, "serverTime");
     __publicField(this, "heartbeat");
+    __publicField(this, "playerId");
     this.serverTime = "--";
     this.heartbeat = "--";
+    this.playerId = "";
   }
   createRenderRoot() {
     return this;
@@ -1116,13 +1144,17 @@ var HudNetwork = class extends i4 {
       <div class="hud-network">
         <span class="hud-network__item">Server time: ${this.serverTime}</span>
         <span class="hud-network__item">Heartbeat: ${this.heartbeat}</span>
+        <span class="hud-network__item">
+          Player: ${this.playerId ? this.playerId : "\u2014"}
+        </span>
       </div>
     `;
   }
 };
 __publicField(HudNetwork, "properties", {
   serverTime: { type: String },
-  heartbeat: { type: String }
+  heartbeat: { type: String },
+  playerId: { type: String }
 });
 customElements.define("game-client-app", GameClientApp);
 customElements.define("app-shell", AppShell);
