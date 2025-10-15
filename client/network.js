@@ -867,7 +867,54 @@ function normalizeGroundItems(items) {
   return Object.fromEntries(entries);
 }
 
-export { normalizeWorldConfig, normalizeGroundItems };
+function normalizeEffectParams(params) {
+  if (!params || typeof params !== "object") {
+    return {};
+  }
+  const entries = [];
+  for (const [rawKey, rawValue] of Object.entries(params)) {
+    const key = typeof rawKey === "string" ? rawKey.trim() : "";
+    if (!key) {
+      continue;
+    }
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+    entries.push([key, value]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function normalizeEffects(effects) {
+  if (!Array.isArray(effects) || effects.length === 0) {
+    return {};
+  }
+  const entries = [];
+  for (const effect of effects) {
+    if (!effect || typeof effect !== "object") {
+      continue;
+    }
+    const id = typeof effect.id === "string" ? effect.id.trim() : "";
+    if (!id) {
+      continue;
+    }
+    const x = Number(effect.x);
+    const y = Number(effect.y);
+    entries.push([
+      id,
+      {
+        id,
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+        params: normalizeEffectParams(effect.params),
+      },
+    ]);
+  }
+  return Object.fromEntries(entries);
+}
+
+export { normalizeWorldConfig, normalizeGroundItems, normalizeEffects };
 
 function clonePlayersFromMap(map) {
   if (!map || typeof map !== "object") {
@@ -926,6 +973,27 @@ function cloneGroundItemsFromMap(map) {
     };
   }
   return items;
+}
+
+function cloneEffectsFromMap(map) {
+  if (!map || typeof map !== "object") {
+    return {};
+  }
+  const effects = {};
+  for (const [id, entry] of Object.entries(map)) {
+    if (!entry || typeof entry !== "object" || typeof id !== "string") {
+      continue;
+    }
+    const x = Number(entry.x);
+    const y = Number(entry.y);
+    effects[id] = {
+      id,
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      params: normalizeEffectParams(entry.params),
+    };
+  }
+  return effects;
 }
 
 export function applyStateSnapshot(prev, payload, patchedState) {
@@ -989,6 +1057,16 @@ export function applyStateSnapshot(prev, payload, patchedState) {
     groundItemsState = cloneGroundItemsFromMap(previousState.groundItems);
   }
   result.groundItems = groundItemsState;
+
+  let effectsState = {};
+  if (Array.isArray(snapshot.effects)) {
+    effectsState = normalizeEffects(snapshot.effects);
+  } else if (patched?.effects) {
+    effectsState = cloneEffectsFromMap(patched.effects);
+  } else if (previousState.effects && typeof previousState.effects === "object") {
+    effectsState = cloneEffectsFromMap(previousState.effects);
+  }
+  result.effects = effectsState;
 
   let lastTick = null;
   if (Object.prototype.hasOwnProperty.call(snapshot, "t")) {
