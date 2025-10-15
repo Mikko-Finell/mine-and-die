@@ -839,17 +839,30 @@ function normalizeGroundItems(items) {
     const x = Number(item.x);
     const y = Number(item.y);
     const qty = Number(item.qty);
-    const type = typeof item.type === "string" ? item.type : "gold";
-    entries.push([
+    const type = typeof item.type === "string" && item.type !== "" ? item.type : null;
+    let fungibilityKey = null;
+    if (typeof item.fungibility_key === "string" && item.fungibility_key !== "") {
+      fungibilityKey = item.fungibility_key;
+    } else if (typeof item.fungibilityKey === "string" && item.fungibilityKey !== "") {
+      fungibilityKey = item.fungibilityKey;
+    }
+
+    const normalizedItem = {
       id,
-      {
-        id,
-        type,
-        x: Number.isFinite(x) ? x : 0,
-        y: Number.isFinite(y) ? y : 0,
-        qty: Number.isFinite(qty) ? qty : 0,
-      },
-    ]);
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      qty: Number.isFinite(qty) ? qty : 0,
+    };
+
+    if (type) {
+      normalizedItem.type = type;
+    }
+
+    if (fungibilityKey) {
+      normalizedItem.fungibility_key = fungibilityKey;
+    }
+
+    entries.push([id, normalizedItem]);
   }
   return Object.fromEntries(entries);
 }

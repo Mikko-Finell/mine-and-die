@@ -466,17 +466,45 @@ describe("normalizeCount", () => {
 });
 
 describe("normalizeGroundItems", () => {
-  it("builds an object of sanitized entries", () => {
+  it("builds an object of sanitized entries without clobbering metadata", () => {
     const result = normalizeGroundItems([
-      { id: "ore-1", x: "12", y: 7.5, qty: "3" },
-      { id: "ore-2", x: null, y: undefined, qty: Infinity },
+      {
+        id: "ore-1",
+        type: "iron_ore",
+        fungibility_key: "iron_ore::t1",
+        x: "12",
+        y: 7.5,
+        qty: "3",
+      },
+      {
+        id: "ore-2",
+        type: "rat_tail",
+        fungibilityKey: "rat_tail::loot",
+        x: null,
+        y: undefined,
+        qty: Infinity,
+      },
       { id: 0, x: 4, y: 5, qty: 1 },
       null,
     ]);
 
     expect(result).toEqual({
-      "ore-1": { id: "ore-1", type: "gold", x: 12, y: 7.5, qty: 3 },
-      "ore-2": { id: "ore-2", type: "gold", x: 0, y: 0, qty: 0 },
+      "ore-1": {
+        id: "ore-1",
+        type: "iron_ore",
+        fungibility_key: "iron_ore::t1",
+        x: 12,
+        y: 7.5,
+        qty: 3,
+      },
+      "ore-2": {
+        id: "ore-2",
+        type: "rat_tail",
+        fungibility_key: "rat_tail::loot",
+        x: 0,
+        y: 0,
+        qty: 0,
+      },
     });
   });
 
