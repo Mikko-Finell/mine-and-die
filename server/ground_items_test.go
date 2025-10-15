@@ -122,3 +122,48 @@ func TestMarshalStateKeepsGroundItemRemovalPatch(t *testing.T) {
 		t.Fatalf("expected qty to equal 0, got %f", qtyFloat)
 	}
 }
+
+func TestMarshalStateOmitsGroundItemsFromDiffFrames(t *testing.T) {
+	hub := newHub()
+	hub.world.drainPatchesLocked()
+
+	def, ok := ItemDefinitionFor(ItemTypeGold)
+	if !ok {
+		t.Fatalf("expected gold definition to be registered")
+	}
+
+	tile := groundTileKey{X: 3, Y: 1}
+	item := &groundItemState{
+		GroundItem: GroundItem{
+			ID:             "ground-99",
+			Type:           ItemTypeGold,
+			FungibilityKey: def.FungibilityKey,
+			Qty:            5,
+			X:              2.5,
+			Y:              6.25,
+		},
+		tile: tile,
+	}
+
+	hub.world.groundItems[item.ID] = item
+	hub.world.groundItemsByTile[tile] = map[string]*groundItemState{def.FungibilityKey: item}
+
+	snapshot := hub.world.GroundItemsSnapshot()
+	if len(snapshot) != 1 {
+		t.Fatalf("expected snapshot to contain one ground item, got %d", len(snapshot))
+	}
+
+	data, _, err := hub.marshalState(nil, nil, nil, snapshot, true, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state message: %v", err)
+	}
+
+	if msg.GroundItems != nil {
+		t.Fatalf("expected ground items to be omitted for diff frames, got %d entries", len(msg.GroundItems))
+	}
+}
