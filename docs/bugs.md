@@ -33,7 +33,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Command queue lacks flow control per client      | High       | 🔴 Todo  | `enqueueCommand` accepts unlimited commands, allowing a single client to flood the queue. |
 | NPC gold rewards bypass patch emission           | Medium     | 🔴 Todo  | NPC mining rewards mutate inventories directly, skipping patch emission for subscribers. |
 | Broadcast logging leaks full state payloads      | Medium     | 🔴 Todo  | Debug path dumps complete JSON payloads, flooding logs and exposing sensitive state. |
-| Version counters misuse pointer increment syntax | Critical   | 🔴 Todo  | Mutator helpers use `*version++`, risking corruption of patch sequencing. |
+| Version counters misuse pointer increment syntax | Critical   | 🟢 Done  | Mutator helpers now call `incrementVersion` so pointer arithmetic no longer corrupts patch sequencing. |
 | Contract tick cadence hint is ignored            | Medium     | 🔴 Todo  | `EffectIntent` exposes `TickCadence` but instantiation never persists or respects it. |
 | World config normalisation drops NPC totals      | High       | 🟢 Done  | `worldConfig.normalized` overwrites aggregate `NPCCount`, leaving worlds without spawns. |
 | Effect ticks halt when no emitter is provided    | Medium     | 🔴 Todo  | `EffectManager.RunTick` returns early on nil emitters, halting offline simulations. |
