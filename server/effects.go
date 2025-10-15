@@ -758,6 +758,24 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 		params["range"] = tpl.MaxDistance
 	}
 
+	remainingRange := tpl.MaxDistance
+	if val, ok := params["remainingRange"]; ok {
+		remainingRange = val
+	} else if raw, ok := instance.BehaviorState.Extra["remainingRange"]; ok {
+		remainingRange = float64(raw)
+		if remainingRange < 0 {
+			remainingRange = 0
+		}
+		if params == nil {
+			params = map[string]float64{"remainingRange": remainingRange}
+		} else {
+			params["remainingRange"] = remainingRange
+		}
+	}
+	if remainingRange < 0 {
+		remainingRange = 0
+	}
+
 	effect := &effectState{
 		Effect: Effect{
 			ID:       instance.ID,
@@ -776,14 +794,10 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 			Template:       tpl,
 			VelocityUnitX:  dirX,
 			VelocityUnitY:  dirY,
-			RemainingRange: tpl.MaxDistance,
+			RemainingRange: remainingRange,
 		},
 		contractManaged:    true,
 		telemetrySpawnTick: instance.StartTick,
-	}
-
-	if remaining, ok := params["range"]; ok && remaining >= 0 {
-		effect.Projectile.RemainingRange = remaining
 	}
 
 	w.pruneEffects(now)
