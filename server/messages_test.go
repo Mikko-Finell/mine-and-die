@@ -2,10 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"testing"
 	"time"
 )
+
+type failingPayload struct{}
+
+func (failingPayload) MarshalJSON() ([]byte, error) {
+	return nil, errors.New("failing payload")
+}
 
 func TestStateMessage_ContainsTick(t *testing.T) {
 	hub := newHub()
@@ -124,6 +131,96 @@ func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 		if sequences[i] <= sequences[i-1] {
 			t.Fatalf("expected sequences to strictly increase, got %d then %d", sequences[i-1], sequences[i])
 		}
+	}
+}
+
+func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
+	hub := newHub()
+	join := hub.Join()
+	if join.ID == "" {
+		t.Fatalf("expected join response to include player id")
+	}
+
+	hub.mu.Lock()
+	hub.world.drainPatchesLocked()
+	hub.mu.Unlock()
+
+	hub.mu.Lock()
+	hub.world.appendPatch(PatchPlayerPos, join.ID, failingPayload{})
+
+	spawn := EffectSpawnEvent{
+		Tick: Tick(hub.tick.Load()),
+		Instance: EffectInstance{
+			ID:           "effect-1",
+			DefinitionID: "dummy",
+			Definition: &EffectDefinition{
+				TypeID:        "dummy",
+				Delivery:      DeliveryKindVisual,
+				Motion:        MotionKindNone,
+				Impact:        ImpactPolicyNone,
+				LifetimeTicks: 1,
+				Client:        ReplicationSpec{},
+			},
+			DeliveryState: EffectDeliveryState{
+				Geometry: EffectGeometry{Shape: GeometryShapeCircle},
+				Motion:   EffectMotionState{},
+			},
+			BehaviorState: EffectBehaviorState{TicksRemaining: 1},
+			Replication:   ReplicationSpec{SendSpawn: true, SendEnd: true},
+		},
+	}
+	spawn = hub.world.journal.RecordEffectSpawn(spawn)
+	if spawn.Instance.ID == "" {
+		t.Fatalf("expected spawn event to record effect instance")
+	}
+
+	hub.world.journal.RecordEffectEnd(EffectEndEvent{Tick: Tick(hub.tick.Load()), ID: spawn.Instance.ID, Reason: EndReasonExpired})
+	hub.mu.Unlock()
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, true, true); err == nil {
+		t.Fatalf("expected marshalState to fail when payload encoding fails")
+	}
+
+	hub.mu.Lock()
+	patches := hub.world.journal.SnapshotPatches()
+	effects := hub.world.journal.SnapshotEffectEvents()
+	_, seqExists := hub.world.journal.effectSeq[spawn.Instance.ID]
+	_, recentlyEnded := hub.world.journal.recentlyEnded[spawn.Instance.ID]
+	endedCount := 0
+	for _, id := range hub.world.journal.endedIDs {
+		if id == spawn.Instance.ID {
+			endedCount++
+		}
+	}
+	hub.mu.Unlock()
+
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch after failed marshal, got %d", len(patches))
+	}
+	if _, ok := patches[0].Payload.(failingPayload); !ok {
+		t.Fatalf("expected failing payload to remain staged after error")
+	}
+
+	if len(effects.Spawns) != 1 {
+		t.Fatalf("expected spawn event to remain staged, got %d", len(effects.Spawns))
+	}
+	if len(effects.Ends) != 1 {
+		t.Fatalf("expected end event to remain staged, got %d", len(effects.Ends))
+	}
+	if len(effects.LastSeqByID) == 0 {
+		t.Fatalf("expected effect sequence cursors to remain staged")
+	}
+	if _, ok := effects.LastSeqByID[spawn.Instance.ID]; !ok {
+		t.Fatalf("expected effect sequence cursor for %s to be restored", spawn.Instance.ID)
+	}
+	if !seqExists {
+		t.Fatalf("expected journal effect sequence map to retain id after restore")
+	}
+	if endedCount != 1 {
+		t.Fatalf("expected journal endedIDs to contain restored id once, got %d", endedCount)
+	}
+	if !recentlyEnded {
+		t.Fatalf("expected journal recentlyEnded to restore tick for ended effect")
 	}
 }
 

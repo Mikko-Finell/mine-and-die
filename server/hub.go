@@ -975,9 +975,15 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 			aliveEffectIDs = append(aliveEffectIDs, eff.ID)
 		}
 	}
-	var patches []Patch
+	var (
+		patches           []Patch
+		restorablePatches []Patch
+	)
 	if drainPatches {
 		patches = h.world.drainPatchesLocked()
+		if len(patches) > 0 {
+			restorablePatches = append([]Patch(nil), patches...)
+		}
 	} else {
 		patches = h.world.snapshotPatchesLocked()
 	}
@@ -1152,7 +1158,20 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		entities += len(msg.EffectSpawns) + len(msg.EffectUpdates) + len(msg.EffectEnds)
 	}
 	data, err := json.Marshal(msg)
-	return data, entities, err
+	if err != nil {
+		if drainPatches {
+			h.mu.Lock()
+			if len(restorablePatches) > 0 {
+				h.world.journal.RestorePatches(restorablePatches)
+			}
+			if effectManagerPresent {
+				h.world.journal.RestoreEffectEvents(effectBatch)
+			}
+			h.mu.Unlock()
+		}
+		return nil, 0, err
+	}
+	return data, entities, nil
 }
 
 func (h *Hub) scheduleResyncIfNeeded() (bool, resyncSignal) {
