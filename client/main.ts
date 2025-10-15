@@ -127,7 +127,7 @@ class GameClientApp extends LitElement {
   render() {
     return html`
       <app-shell
-        title="Mine &amp; Die"
+        heading="Mine &amp; Die"
         subtitle="Multiplayer sandbox in active development."
         .healthStatus=${this.healthStatus}
         .logs=${this.logs}
@@ -149,7 +149,7 @@ class GameClientApp extends LitElement {
 
 class AppShell extends LitElement {
   static properties = {
-    title: { type: String },
+    heading: { type: String },
     subtitle: { type: String },
     healthStatus: { type: String },
     logs: { attribute: false },
@@ -158,7 +158,7 @@ class AppShell extends LitElement {
     activeTab: { attribute: false },
   } as const;
 
-  title!: string;
+  heading!: string;
   subtitle!: string;
   healthStatus!: string;
   logs!: LogEntry[];
@@ -168,7 +168,7 @@ class AppShell extends LitElement {
 
   constructor() {
     super();
-    this.title = "";
+    this.heading = "";
     this.subtitle = "";
     this.healthStatus = "--";
     this.logs = [];
@@ -195,7 +195,7 @@ class AppShell extends LitElement {
       <main class="page">
         <header class="page-header">
           <div>
-            <h1>${this.title}</h1>
+            <h1>${this.heading}</h1>
             <p class="page-header__subtitle">${this.subtitle}</p>
           </div>
           <div class="page-header__controls">
@@ -280,7 +280,7 @@ class GameCanvas extends LitElement {
     return html`
       <section class="play-area">
         <div class="play-area__main">
-          <canvas width="640" height="360" aria-label="Game viewport"></canvas>
+          <canvas width="800" height="600" aria-label="Game viewport"></canvas>
         </div>
         <tabs-nav .activeTab=${this.activeTab}></tabs-nav>
         <panel-viewport

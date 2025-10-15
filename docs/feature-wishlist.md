@@ -28,7 +28,7 @@ Increase the supported facing directions from four cardinal orientations to eigh
 **Impacted systems**
 - `server/movement.go` and `server/pathfinding.go` for adding eight-direction vector math, serialization, and movement constraint validation.
 - `server/ai_library.go` and `server/ai_executor.go` to ensure behavior nodes and locomotion commands emit the new facing metadata.
-- `client/render.js` and `client/main.js` to drive sprite orientation, animation state selection, and prediction logic for diagonal facings.
+- `client/render.js` and `client/main.ts` to drive sprite orientation, animation state selection, and prediction logic for diagonal facings.
 - `client/vendor` animation assets alongside `client/styles.css` for supplying diagonal frames and updating atlas metadata consumed at runtime.
 
 ## Pursuit Facing Alignment
@@ -74,7 +74,7 @@ Introduce a dedicated `arrow` attack type for ranged combat balancing and future
 - `server/effects.go`, `server/effects_manager.go`, and `server/effect_intents.go` to register the arrow attack type and resolve its damage pipelines.
 - `server/world_equipment.go` and `server/items.go` to tag bow-class weapons and ammo with arrow metadata for loot generation.
 - `client/effect-lifecycle-translator.js` and `client/effect-lifecycle.js` to surface arrow combat events, impact visuals, and resistances on the HUD.
-- Telemetry surfaces in `server/telemetry.go` and analytics hooks in `client/main.js` for logging arrow usage and balancing data.
+- Telemetry surfaces in `server/telemetry.go` and analytics hooks in `client/main.ts` for logging arrow usage and balancing data.
 
 ## Equipment Slots
 Add equipment slots for head, torso, gloves, boots, and accessory items to drive player progression and inventory depth.
@@ -88,7 +88,7 @@ Add equipment slots for head, torso, gloves, boots, and accessory items to drive
 **Impacted systems**
 - `server/inventory.go`, `server/equipment.go`, and `server/world_equipment.go` to add slot definitions, persistence fields, and validation rules.
 - `server/item_catalog.go` and `server/items.go` so generated loot declares compatible slots and upgrade paths.
-- `client/main.js`, `client/input.js`, and UI components in `client/styles.css` to render the expanded equipment grid and interaction affordances.
+- `client/main.ts`, `client/input.js`, and UI components in `client/styles.css` to render the expanded equipment grid and interaction affordances.
 - Save/load coverage in `server/world_mutators.go` and regression tests in `server/inventory_test.go` to protect existing characters.
 
 ## Item Equipping
