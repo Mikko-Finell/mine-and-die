@@ -46,7 +46,10 @@ func (cfg worldConfig) normalized() worldConfig {
 	if normalized.LavaCount < 0 {
 		normalized.LavaCount = 0
 	}
-	normalized.NPCCount = normalized.GoblinCount + normalized.RatCount
+	totalSpecies := normalized.GoblinCount + normalized.RatCount
+	if totalSpecies > 0 {
+		normalized.NPCCount = totalSpecies
+	}
 	if normalized.Width <= 0 {
 		normalized.Width = worldWidth
 	}
