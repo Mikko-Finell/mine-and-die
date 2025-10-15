@@ -171,6 +171,37 @@ describe("updatePatchState", () => {
     expect(result.patched.sequence).toBe(1);
   });
 
+  it("retains existing actors when snapshots only include ground items", () => {
+    const seeded = freezeState(
+      updatePatchState(
+        createPatchState(),
+        deepFreeze({ t: 10, sequence: 10, players: [makePlayer()], npcs: [makeNPC()] }),
+        { source: "join" },
+      ),
+    );
+
+    const payload = deepFreeze({
+      sequence: 11,
+      t: 11,
+      groundItems: [makeGroundItem({ id: "ground-2", qty: 5 })],
+    });
+
+    const next = updatePatchState(seeded, payload, { source: "state" });
+
+    expect(Object.keys(next.baseline.players)).toEqual(["player-1"]);
+    expect(Object.keys(next.patched.players)).toEqual(["player-1"]);
+    expect(next.baseline.players["player-1"].x).toBe(1);
+    expect(next.patched.players["player-1"].x).toBe(1);
+    expect(Object.keys(next.baseline.npcs)).toEqual(["npc-1"]);
+    expect(Object.keys(next.patched.npcs)).toEqual(["npc-1"]);
+    expect(Object.keys(next.baseline.groundItems)).toEqual(["ground-2"]);
+    expect(Object.keys(next.patched.groundItems)).toEqual(["ground-2"]);
+    expect(next.baseline.groundItems["ground-2"].qty).toBe(5);
+    expect(next.lastSequence).toBe(11);
+    expect(next.lastTick).toBe(11);
+    expect(next.errors).toEqual([]);
+  });
+
   it("preserves fungibility metadata when hydrating player inventories", () => {
     const fungibilityKey = "iron_dagger::tier1";
     const payload = deepFreeze({

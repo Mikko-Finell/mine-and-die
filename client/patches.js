@@ -1114,6 +1114,20 @@ export function updatePatchState(previousState, payload, options = {}) {
   const messageType = typeof payload?.type === "string" ? payload.type : null;
 
   let baseline = baselineFromPayload;
+  if (hasSnapshot) {
+    const fallbackSource =
+      (state.patched && typeof state.patched === "object" ? state.patched : null) ||
+      (state.baseline && typeof state.baseline === "object" ? state.baseline : null);
+    if (!Array.isArray(payload?.players)) {
+      baseline.players = clonePlayersMap(fallbackSource?.players);
+    }
+    if (!Array.isArray(payload?.npcs)) {
+      baseline.npcs = cloneNPCsMap(fallbackSource?.npcs);
+    }
+    if (!Array.isArray(payload?.groundItems)) {
+      baseline.groundItems = cloneGroundItemsMap(fallbackSource?.groundItems);
+    }
+  }
   if (hasSnapshot && keyframeSeq !== null) {
     baseline.sequence = keyframeSeq;
   } else if (baseline.sequence === null && keyframeSeq !== null) {
