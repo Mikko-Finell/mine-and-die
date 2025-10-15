@@ -101,21 +101,22 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 	if drained > 0 {
 		m.totalDrained += drained
 	}
-	if emit != nil {
-		for _, instance := range newInstances {
-			if instance == nil {
-				continue
-			}
-			if !instance.Replication.SendSpawn {
-				continue
-			}
-			spawn := EffectSpawnEvent{
-				Tick:     tick,
-				Seq:      m.nextSequenceFor(instance.ID),
-				Instance: m.cloneInstanceForSpawn(instance),
-			}
-			emit(spawn)
+	if emit == nil {
+		return
+	}
+	for _, instance := range newInstances {
+		if instance == nil {
+			continue
 		}
+		if !instance.Replication.SendSpawn {
+			continue
+		}
+		spawn := EffectSpawnEvent{
+			Tick:     tick,
+			Seq:      m.nextSequenceFor(instance.ID),
+			Instance: m.cloneInstanceForSpawn(instance),
+		}
+		emit(spawn)
 	}
 	ended := make([]string, 0)
 	for _, instance := range m.instances {
@@ -123,34 +124,30 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 			continue
 		}
 		m.invokeOnTick(instance, tick, now)
-		if emit != nil {
-			if !instance.Replication.SendUpdates {
-				// Even when updates are suppressed, lifecycle evaluation still runs.
-			} else {
-				delivery := m.cloneDeliveryState(instance.DeliveryState)
-				behavior := m.cloneBehaviorState(instance.BehaviorState)
-				update := EffectUpdateEvent{
-					Tick:          tick,
-					Seq:           m.nextSequenceFor(instance.ID),
-					ID:            instance.ID,
-					DeliveryState: &delivery,
-					BehaviorState: &behavior,
-				}
-				emit(update)
+		if !instance.Replication.SendUpdates {
+			// Even when updates are suppressed, lifecycle evaluation still runs.
+		} else {
+			delivery := m.cloneDeliveryState(instance.DeliveryState)
+			behavior := m.cloneBehaviorState(instance.BehaviorState)
+			update := EffectUpdateEvent{
+				Tick:          tick,
+				Seq:           m.nextSequenceFor(instance.ID),
+				ID:            instance.ID,
+				DeliveryState: &delivery,
+				BehaviorState: &behavior,
 			}
+			emit(update)
 		}
 		decision := m.evaluateEndPolicy(instance, tick)
 		if decision.shouldEnd {
-			if emit != nil {
-				if instance.Replication.SendEnd {
-					end := EffectEndEvent{
-						Tick:   tick,
-						Seq:    m.nextSequenceFor(instance.ID),
-						ID:     instance.ID,
-						Reason: decision.reason,
-					}
-					emit(end)
+			if instance.Replication.SendEnd {
+				end := EffectEndEvent{
+					Tick:   tick,
+					Seq:    m.nextSequenceFor(instance.ID),
+					ID:     instance.ID,
+					Reason: decision.reason,
 				}
+				emit(end)
 			}
 			ended = append(ended, instance.ID)
 		}

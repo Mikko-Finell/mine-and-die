@@ -40,7 +40,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Version counters misuse pointer increment syntax | Critical   | 🟢 Done  | Mutator helpers now call `incrementVersion` so pointer arithmetic no longer corrupts patch sequencing. |
 | Contract tick cadence hint is ignored            | Medium     | 🔴 Todo  | `EffectIntent` exposes `TickCadence` but instantiation never persists or respects it. |
 | World config normalisation drops NPC totals      | High       | 🟢 Done  | `worldConfig.normalized` overwrites aggregate `NPCCount`, leaving worlds without spawns. |
-| Effect ticks halt when no emitter is provided    | Medium     | 🟢 Done  | `EffectManager.RunTick` returns early on nil emitters, halting offline simulations. |
+| Effect ticks halt when no emitter is provided    | Medium     | 🔴 Todo  | `EffectManager.RunTick` returns early on nil emitters, halting offline simulations. |
 | Client ignores NPC equipment patches             | High       | 🟢 Done  | Client patch handlers now accept `npc_equipment` so NPC loadouts update on the HUD. |
 
 (Add new rows as bugs are logged. When you start one, set 🟡 Doing; when merged and verified, set 🟢 Done. If obsolete or duplicate, strike through with a short note.)
