@@ -922,6 +922,20 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 		if !slicesEqual(spawn.Instance.Colors, []string{"#7a0e12", "#4a090b"}) {
 			t.Fatalf("expected spawn colors %v, got %v", []string{"#7a0e12", "#4a090b"}, spawn.Instance.Colors)
 		}
+		if len(spawn.Instance.Params) == 0 {
+			t.Fatalf("expected spawn params to include blood splatter configuration")
+		}
+		for key, expected := range map[string]float64{
+			"maxBursts":      0,
+			"minStainRadius": 4,
+			"maxStainRadius": 6,
+			"drag":           0.92,
+		} {
+			quantized := quantizeEffectParam(expected)
+			if value, ok := spawn.Instance.Params[key]; !ok || value != quantized {
+				t.Fatalf("expected spawn param %s=%d, got %d (present=%t)", key, quantized, value, ok)
+			}
+		}
 	}
 	if !foundBlood {
 		t.Fatalf("expected blood splatter contract effect spawn, got %+v", msg.EffectSpawns)
@@ -1494,6 +1508,22 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	} {
 		if value, ok := effect.Params[key]; !ok || math.Abs(value-expected) > 1e-6 {
 			t.Fatalf("expected effect param %s=%.2f, got %.2f (present=%t)", key, expected, value, ok)
+		}
+	}
+
+	if len(instance.Params) == 0 {
+		t.Fatalf("expected instance params to include blood splatter configuration")
+	}
+	for key, expected := range map[string]float64{
+		"maxBursts":      0,
+		"minStainRadius": 4,
+		"maxStainRadius": 6,
+		"drag":           0.92,
+		"spawnInterval":  1.1,
+	} {
+		quantized := quantizeEffectParam(expected)
+		if value, ok := instance.Params[key]; !ok || value != quantized {
+			t.Fatalf("expected instance param %s=%d, got %d (present=%t)", key, quantized, value, ok)
 		}
 	}
 

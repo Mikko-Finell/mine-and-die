@@ -32,9 +32,9 @@ const BLOOD_SPLATTER_STATE_MESSAGE =
   '"hooks":{"onSpawn":"visual.blood.splatter","onTick":"visual.blood.splatter"},"client":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true,"managedByClient":true},"end":{"kind":0,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}},' +
   '"startTick":2452,"deliveryState":{"geometry":{"shape":"rect","width":11,"height":11},"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"},' +
-  '"behaviorState":{"ticksRemaining":18,"extra":{"centerX":18,"centerY":71}},"params":{"drag":0.92,"dropletRadius":3,' +
-  '"maxBursts":0,"maxDroplets":33,"maxStainRadius":6,"maxStains":140,"minDroplets":4,"minStainRadius":4,' +
-  '"spawnInterval":1.1,"speed":3},"ownerActorId":"player-2",' +
+  '"behaviorState":{"ticksRemaining":18,"extra":{"centerX":18,"centerY":71}},"params":{"drag":942,"dropletRadius":3072,' +
+  '"maxBursts":0,"maxDroplets":33792,"maxStainRadius":6144,"maxStains":143360,"minDroplets":4096,"minStainRadius":4096,' +
+  '"spawnInterval":1126,"speed":3072},"ownerActorId":"player-2",' +
   '"colors":["#7a0e12","#4a090b"],"replication":{"sendSpawn":true,"sendUpdates":false,"sendEnd":true,"managedByClient":true},"end":{"kind":0,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}}}],' +
   '"effect_seq_cursors":{"contract-effect-6":1},"patches":[{"kind":"npc_pos","entityId":"npc-rat-3","payload":{"x":907.2384585405665,"y":1235.7951290070935}}]}';
@@ -85,7 +85,7 @@ describe("blood-splatter visual effects", () => {
       expect(spawnSpy).toHaveBeenCalledTimes(1);
       const [, options] = spawnSpy.mock.calls[0];
       expect(options?.colors).toEqual(["#7a0e12", "#4a090b"]);
-      expect(options?.drag).toBeCloseTo(0.92, 5);
+      expect(options?.drag).toBeCloseTo(0.92, 3);
       expect(options?.dropletRadius).toBeCloseTo(3, 5);
       expect(options?.maxBursts).toBeCloseTo(0, 5);
       expect(options?.maxDroplets).toBeCloseTo(33, 5);
@@ -93,7 +93,7 @@ describe("blood-splatter visual effects", () => {
       expect(options?.maxStains).toBeCloseTo(140, 5);
       expect(options?.minDroplets).toBeCloseTo(4, 5);
       expect(options?.minStainRadius).toBeCloseTo(4, 5);
-      expect(options?.spawnInterval).toBeCloseTo(1.1, 5);
+      expect(options?.spawnInterval).toBeCloseTo(1.1, 3);
       expect(options?.speed).toBeCloseTo(3, 5);
       expect(tracked.size).toBeGreaterThanOrEqual(1);
     } finally {

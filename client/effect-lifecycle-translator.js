@@ -6,6 +6,28 @@ const CONTRACT_TYPE_REMAP = {
   attack: "melee-swing",
 };
 
+// Keep CONTRACT_PARAM_SCALE in sync with contractEffectParamScale in
+// server/effects_manager.go.
+const CONTRACT_PARAM_SCALE = 1024;
+
+const PARAM_KEYS_BY_TYPE = new Map([
+  [
+    "blood-splatter",
+    new Set([
+      "drag",
+      "dropletRadius",
+      "maxBursts",
+      "maxDroplets",
+      "maxStainRadius",
+      "maxStains",
+      "minDroplets",
+      "minStainRadius",
+      "spawnInterval",
+      "speed",
+    ]),
+  ],
+]);
+
 export function normalizeContractEffectType(type) {
   if (typeof type !== "string") {
     return type ?? null;
@@ -54,6 +76,71 @@ function copyParams(source, target) {
     if (Number.isFinite(value)) {
       target[key] = value;
     }
+  }
+}
+
+function collectTypeHints(instance, resolvedType) {
+  const hints = new Set();
+  const add = (value) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed.length > 0) {
+      hints.add(trimmed);
+    }
+  };
+
+  add(resolvedType);
+  if (instance && typeof instance === "object") {
+    add(instance.definitionId);
+    add(instance.type);
+    add(instance.typeId);
+    const definition = instance.definition && typeof instance.definition === "object"
+      ? instance.definition
+      : null;
+    if (definition) {
+      add(definition.type);
+      add(definition.typeId);
+    }
+  }
+
+  return hints;
+}
+
+function collectQuantizedParamKeys(typeHints) {
+  if (!(typeHints instanceof Set) || typeHints.size === 0) {
+    return null;
+  }
+  const collected = new Set();
+  for (const hint of typeHints) {
+    if (typeof hint !== "string" || hint.length === 0) {
+      continue;
+    }
+    const keySet = PARAM_KEYS_BY_TYPE.get(hint);
+    if (!keySet) {
+      continue;
+    }
+    for (const key of keySet) {
+      collected.add(key);
+    }
+  }
+  return collected.size > 0 ? collected : null;
+}
+
+function dequantizeContractParams(params, keySet) {
+  if (!isPlainObject(params) || !(keySet instanceof Set) || keySet.size === 0) {
+    return;
+  }
+  for (const key of keySet) {
+    if (typeof key !== "string" || key.length === 0) {
+      continue;
+    }
+    const raw = params[key];
+    if (!Number.isFinite(raw)) {
+      continue;
+    }
+    params[key] = raw / CONTRACT_PARAM_SCALE;
   }
 }
 
@@ -144,6 +231,9 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   if (isPlainObject(instance.params)) {
     copyParams(instance.params, params);
   }
+  const typeHints = collectTypeHints(instance, resolvedType ?? rawDefinitionId ?? rawTypeId);
+  const quantizedKeys = collectQuantizedParamKeys(typeHints);
+  dequantizeContractParams(params, quantizedKeys);
   const behaviorExtra = instance.behaviorState?.extra;
   if (isPlainObject(behaviorExtra)) {
     copyParams(behaviorExtra, params);

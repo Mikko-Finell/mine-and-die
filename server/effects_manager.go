@@ -41,6 +41,11 @@ const (
 	statusBurningVisualHookID = "status.burning.visual"
 	statusBurningDamageHookID = "status.burning.tick"
 	visualBloodSplatterHookID = "visual.blood.splatter"
+
+	// contractEffectParamScale quantizes floating point effect params so the
+	// transport payload stays integer-only. Keep in sync with
+	// CONTRACT_PARAM_SCALE in client/effect-lifecycle-translator.js.
+	contractEffectParamScale = 1024
 )
 
 func newEffectManager(world *World) *EffectManager {
@@ -795,6 +800,9 @@ func (m *EffectManager) syncBloodDecalInstance(instance *EffectInstance, effect 
 	if instance.Params == nil {
 		instance.Params = make(map[string]int)
 	}
+	if len(effect.Effect.Params) > 0 {
+		instance.Params = mergeFloatParams(instance.Params, effect.Effect.Params)
+	}
 	centerX := quantizeWorldCoord(centerX(effect))
 	centerY := quantizeWorldCoord(centerY(effect))
 	instance.BehaviorState.Extra["centerX"] = centerX
@@ -802,6 +810,26 @@ func (m *EffectManager) syncBloodDecalInstance(instance *EffectInstance, effect 
 	instance.Params["centerX"] = centerX
 	instance.Params["centerY"] = centerY
 	instance.Colors = bloodSplatterColors()
+}
+
+func mergeFloatParams(dst map[string]int, src map[string]float64) map[string]int {
+	if len(src) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[string]int, len(src))
+	}
+	for key, value := range src {
+		if key == "" || math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		dst[key] = quantizeEffectParam(value)
+	}
+	return dst
+}
+
+func quantizeEffectParam(value float64) int {
+	return int(math.Round(value * contractEffectParamScale))
 }
 
 func intMapToFloat64(src map[string]int) map[string]float64 {
