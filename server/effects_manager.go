@@ -626,9 +626,9 @@ func (m *EffectManager) syncProjectileInstance(instance *EffectInstance, owner *
 	if effect.Projectile != nil {
 		instance.BehaviorState.Extra["remainingRange"] = int(math.Round(effect.Projectile.RemainingRange))
 		instance.Params["remainingRange"] = instance.BehaviorState.Extra["remainingRange"]
-		instance.BehaviorState.Extra["dx"] = int(math.Round(effect.Projectile.VelocityUnitX))
+		instance.BehaviorState.Extra["dx"] = QuantizeCoord(effect.Projectile.VelocityUnitX)
 		instance.Params["dx"] = instance.BehaviorState.Extra["dx"]
-		instance.BehaviorState.Extra["dy"] = int(math.Round(effect.Projectile.VelocityUnitY))
+		instance.BehaviorState.Extra["dy"] = QuantizeCoord(effect.Projectile.VelocityUnitY)
 		instance.Params["dy"] = instance.BehaviorState.Extra["dy"]
 		if tpl := effect.Projectile.Template; tpl != nil && tpl.MaxDistance > 0 {
 			instance.BehaviorState.Extra["range"] = int(math.Round(tpl.MaxDistance))
