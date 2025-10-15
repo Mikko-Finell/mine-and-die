@@ -4,19 +4,24 @@ This document tracks the ongoing effort to simplify and stabilize the codebase b
 
 ## Roadmap
 
-| Phase | Goal                                        | Exit Criteria                                                            | Status         |
-| ----- | ------------------------------------------- | ------------------------------------------------------------------------ | -------------- |
-| 1     | Identify duplication and unnecessary checks | At least 10 simplification targets validated and documented              | 🟢 Complete    |
-| 2     |              |     | 🟡 In progress |
-| 3     |                         |  | ⚪ Planned      |
-| 4     |                    |                              | ⚪ Planned      |
+| Phase | Goal                                                   | Exit Criteria                                                                               | Status         |
+| ----- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------ | -------------- |
+| 1     | Identify duplication and unnecessary checks            | At least 10 simplification targets validated and documented                                | 🟢 Complete    |
+| 2     | Consolidate shared controllers for high-impact systems | Shared path engine, effect pipeline, and inventory helper prototypes merged into mainline | 🟡 In progress |
+| 3     | Standardise client/server payload contracts            | Unified snapshot structs adopted and defaults sourced directly from authoritative configs | ⚪ Planned      |
+| 4     | Trim residual duplication and hot-path overhead        | Generic helpers replace bespoke copies, and noisy logging paths become optional           | ⚪ Planned      |
 
 ## Active Work
 
-| Item                               | Goal                                                                  | Status    | Notes                                    |
-| ---------------------------------- | --------------------------------------------------------------------- | --------- | ---------------------------------------- |
-| Creating the roadmap     | Create the roadmap above and mark this item as complete                    | 🟡 Doing  |  |
-
+| Item                                          | Goal                                                                                                      | Status        | Notes |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------- | ----- |
+| Centralise effect spawn detection             | Replace scattered `is*Spawn` helpers with a single matcher in `client/network.js`                          | 🟡 In progress | Keeps future transport schema changes in sync |
+| Build shared actor path engine                | Merge player and NPC path-following into one configurable controller                                       | ⚪ Planned     | Covers waypoint progression and stall detection |
+| Unify inventory and equipment mutation flows  | Collapse the per-actor helpers into a clone/mutate/patch routine used by every actor                       | ⚪ Planned     | Ensures consistent versioning and patch emission |
+| Standardise snapshot payloads and defaults    | Define shared structs for `joinResponse`, `stateMessage`, and `keyframeMessage` with server-owned defaults | ⚪ Planned     | Prevents schema drift between bootstrap and runtime |
+| Remove redundant camelCase lifecycle fallbacks| Strip legacy casing branches now that the server emits snake_case arrays                                   | 🟡 In progress | Simplifies client payload readers |
+| Replace bespoke map copy helpers              | Swap ad-hoc map copy utilities for a shared implementation or `maps.Clone`                                 | ⚪ Planned     | Reduces duplication across the server |
+| Gate or remove always-on spawn logging        | Delete or flag the per-tick spawn substring scans in `server/hub.go`                                       | ⚪ Planned     | Cuts unnecessary hot-path work |
 
 ## Program Goals
 
@@ -26,3 +31,6 @@ This document tracks the ongoing effort to simplify and stabilize the codebase b
 * Logs and debug checks exist only where they serve a real diagnostic purpose.
 * Prefer deterministic data-driven behavior over flag-driven branches.
 * Simplification work should reduce total code volume without altering semantics.
+
+## Suggested Next Task
+
