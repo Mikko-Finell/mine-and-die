@@ -123,10 +123,13 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 		if instance == nil {
 			continue
 		}
-		m.invokeOnTick(instance, tick, now)
+		shouldTick := m.shouldInvokeOnTick(instance)
+		if shouldTick {
+			m.invokeOnTick(instance, tick, now)
+		}
 		if !instance.Replication.SendUpdates {
 			// Even when updates are suppressed, lifecycle evaluation still runs.
-		} else {
+		} else if shouldTick {
 			delivery := m.cloneDeliveryState(instance.DeliveryState)
 			behavior := m.cloneBehaviorState(instance.BehaviorState)
 			update := EffectUpdateEvent{
@@ -190,6 +193,11 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 	}
 	params := copyIntMap(intent.Params)
 	extra := copyIntMap(intent.Params)
+	cadence := normalizedTickCadence(intent.TickCadence)
+	cooldown := 0
+	if cadence > 1 {
+		cooldown = cadence
+	}
 	instance := &EffectInstance{
 		ID:           id,
 		DefinitionID: intent.TypeID,
@@ -202,6 +210,8 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 		},
 		BehaviorState: EffectBehaviorState{
 			TicksRemaining: ticksRemaining,
+			CooldownTicks:  cooldown,
+			TickCadence:    cadence,
 			Extra:          extra,
 		},
 		Params:        params,
@@ -211,6 +221,13 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 		End:           endPolicy,
 	}
 	return instance
+}
+
+func normalizedTickCadence(raw int) int {
+	if raw <= 0 {
+		return 1
+	}
+	return raw
 }
 
 func (m *EffectManager) nextSequenceFor(id string) Seq {
@@ -249,6 +266,26 @@ func (m *EffectManager) cloneBehaviorState(state EffectBehaviorState) EffectBeha
 	clone.Extra = copyIntMap(state.Extra)
 	clone.Stacks = copyIntMap(state.Stacks)
 	return clone
+}
+
+func (m *EffectManager) shouldInvokeOnTick(instance *EffectInstance) bool {
+	if m == nil || instance == nil {
+		return false
+	}
+	cadence := instance.BehaviorState.TickCadence
+	if cadence <= 1 {
+		if cadence <= 0 {
+			instance.BehaviorState.TickCadence = 1
+		}
+		instance.BehaviorState.CooldownTicks = 0
+		return true
+	}
+	if instance.BehaviorState.CooldownTicks <= 1 {
+		instance.BehaviorState.CooldownTicks = cadence
+		return true
+	}
+	instance.BehaviorState.CooldownTicks--
+	return false
 }
 
 func (m *EffectManager) invokeOnSpawn(instance *EffectInstance, tick Tick, now time.Time) {

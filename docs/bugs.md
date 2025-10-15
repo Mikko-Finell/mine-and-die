@@ -38,7 +38,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Blood splatter decals ignore configured sizing   | Low        | ⚪ Planned | Decal handoff yields oversized stains; should match animation params; repro: watch blood decal settle after hit. |
 | Broadcast logging leaks full state payloads      | Medium     | 🔴 Todo  | Debug path dumps complete JSON payloads, flooding logs and exposing sensitive state. |
 | Version counters misuse pointer increment syntax | Critical   | 🟢 Done  | Mutator helpers now call `incrementVersion` so pointer arithmetic no longer corrupts patch sequencing. |
-| Contract tick cadence hint is ignored            | Medium     | 🔴 Todo  | `EffectIntent` exposes `TickCadence` but instantiation never persists or respects it. |
+| Contract tick cadence hint is ignored            | Medium     | 🟢 Done  | Intent cadence now persists to instances and throttles updates (TestEffectManagerRespectsTickCadence). |
 | World config normalisation drops NPC totals      | High       | 🟢 Done  | `worldConfig.normalized` overwrites aggregate `NPCCount`, leaving worlds without spawns. |
 | Effect ticks halt when no emitter is provided    | Medium     | 🔴 Todo  | `EffectManager.RunTick` returns early on nil emitters, halting offline simulations. |
 | Client ignores NPC equipment patches             | High       | 🟢 Done  | Client patch handlers now accept `npc_equipment` so NPC loadouts update on the HUD. |
