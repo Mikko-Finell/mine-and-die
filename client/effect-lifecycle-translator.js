@@ -120,6 +120,7 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   const tileSize = getTileSize(store);
   const tickRate = getTickRate(store);
   const tickDurationMs = 1000 / tickRate;
+  const quantToWorld = (value) => quantizedToWorld(value, tileSize);
 
   const effect = {};
   if (typeof instance.id === "string" && instance.id.length > 0) {
@@ -143,8 +144,18 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   if (isPlainObject(instance.params)) {
     copyParams(instance.params, params);
   }
-  if (isPlainObject(instance.behaviorState?.extra)) {
-    copyParams(instance.behaviorState.extra, params);
+  const behaviorExtra = instance.behaviorState?.extra;
+  if (isPlainObject(behaviorExtra)) {
+    copyParams(behaviorExtra, params);
+  }
+
+  const centerFromExtraX = quantToWorld(behaviorExtra?.centerX);
+  const centerFromExtraY = quantToWorld(behaviorExtra?.centerY);
+  if (centerFromExtraX !== null) {
+    params.centerX = centerFromExtraX;
+  }
+  if (centerFromExtraY !== null) {
+    params.centerY = centerFromExtraY;
   }
   effect.params = Object.keys(params).length > 0 ? params : undefined;
   if (effect.params) {
@@ -171,8 +182,6 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
 
   const geometry = instance.deliveryState?.geometry ?? null;
   const motion = instance.deliveryState?.motion ?? null;
-
-  const quantToWorld = (value) => quantizedToWorld(value, tileSize);
 
   let width = quantToWorld(geometry?.width);
   let height = quantToWorld(geometry?.height);
@@ -205,8 +214,14 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     effect.height = height;
   }
 
-  let centerX = quantToWorld(motion?.positionX);
-  let centerY = quantToWorld(motion?.positionY);
+  let centerX = centerFromExtraX;
+  let centerY = centerFromExtraY;
+  if (centerX == null) {
+    centerX = quantToWorld(motion?.positionX);
+  }
+  if (centerY == null) {
+    centerY = quantToWorld(motion?.positionY);
+  }
 
   const offsetX = quantToWorld(geometry?.offsetX);
   const offsetY = quantToWorld(geometry?.offsetY);
@@ -218,31 +233,31 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   if (anchor) {
     if (offsetX !== null) {
       centerX = anchor.x + offsetX;
-    } else if (centerX === null || centerX === 0) {
+    } else if (centerX == null) {
       centerX = anchor.x;
     }
     if (offsetY !== null) {
       centerY = anchor.y + offsetY;
-    } else if (centerY === null || centerY === 0) {
+    } else if (centerY == null) {
       centerY = anchor.y;
     }
   } else {
-    if (centerX === null && offsetX !== null) {
+    if (centerX == null && offsetX !== null) {
       centerX = offsetX;
     }
-    if (centerY === null && offsetY !== null) {
+    if (centerY == null && offsetY !== null) {
       centerY = offsetY;
     }
   }
 
-  if (centerX !== null) {
+  if (centerX != null) {
     if (Number.isFinite(effect.width)) {
       effect.x = centerX - effect.width / 2;
     } else {
       effect.x = centerX;
     }
   }
-  if (centerY !== null) {
+  if (centerY != null) {
     if (Number.isFinite(effect.height)) {
       effect.y = centerY - effect.height / 2;
     } else {
