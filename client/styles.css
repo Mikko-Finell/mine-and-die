@@ -4,12 +4,55 @@
   color: #f8fafc;
 }
 
+game-client-app,
+app-shell,
+game-canvas,
+tabs-nav,
+panel-viewport,
+debug-panel,
+world-controls,
+inventory-panel,
+hud-network {
+  display: block;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   display: flex;
   align-items: stretch;
   justify-content: center;
+}
+
+game-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+tabs-nav,
+panel-viewport {
+  width: 100%;
+  max-width: 800px;
+}
+
+.tabs-nav .interface-tabs__list {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.panel-viewport {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+debug-panel[hidden],
+world-controls[hidden],
+inventory-panel[hidden] {
+  display: none !important;
 }
 
 main {
@@ -276,6 +319,65 @@ canvas {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #cbd5f5;
+}
+
+.world-controls__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.world-controls__label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.world-controls__input {
+  padding: 0.75rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.65);
+  color: inherit;
+  font: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.world-controls__input::placeholder {
+  color: #64748b;
+}
+
+.world-controls__input:focus-visible {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+.world-controls__submit {
+  align-self: flex-start;
+  padding: 0.75rem 1.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.35), rgba(14, 165, 233, 0.25));
+  color: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.45);
+}
+
+.world-controls__submit:hover,
+.world-controls__submit:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(148, 163, 184, 0.45);
+  box-shadow: 0 20px 36px rgba(15, 23, 42, 0.5);
+  outline: none;
 }
 
 .debug-panel {
