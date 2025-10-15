@@ -54,27 +54,80 @@ func (w *World) EquipFromInventory(playerID string, inventorySlot int) (EquipSlo
 
 	slotKey := stats.SourceKey{Kind: stats.SourceKindEquipment, ID: string(def.EquipSlot)}
 
-	if current, ok := player.Equipment.Get(def.EquipSlot); ok && current.Type != "" {
-		player.stats.Apply(stats.CommandStatChange{Layer: stats.LayerEquipment, Source: slotKey, Remove: true})
-		_ = w.MutateEquipment(playerID, func(eq *Equipment) error {
-			_, _ = eq.Remove(def.EquipSlot)
-			return nil
-		})
+	restoreRemoved := func() {
 		_ = w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
-			_, addErr := inv.AddStack(current)
+			_, addErr := inv.AddStack(removed)
 			return addErr
 		})
+	}
+
+	var (
+		reinsertionSlot   int
+		reinsertionQty    int
+		reinsertionActive bool
+		previous          ItemStack
+	)
+
+	if current, ok := player.Equipment.Get(def.EquipSlot); ok && current.Type != "" {
+		previous = current
+		if previous.Quantity <= 0 {
+			previous.Quantity = 1
+		}
+		reinsertionQty = previous.Quantity
+		if prevDef, ok := ItemDefinitionFor(previous.Type); ok {
+			if previous.FungibilityKey == "" {
+				previous.FungibilityKey = prevDef.FungibilityKey
+			}
+		}
+
+		if err := w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+			var addErr error
+			reinsertionSlot, addErr = inv.AddStack(previous)
+			return addErr
+		}); err != nil {
+			restoreRemoved()
+			return "", err
+		}
+		reinsertionActive = true
+
+		if err := w.MutateEquipment(playerID, func(eq *Equipment) error {
+			if _, ok := eq.Remove(def.EquipSlot); !ok {
+				return fmt.Errorf("slot %s empty during equip", def.EquipSlot)
+			}
+			return nil
+		}); err != nil {
+			if reinsertionActive {
+				_ = w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+					_, remErr := inv.RemoveQuantity(reinsertionSlot, reinsertionQty)
+					return remErr
+				})
+			}
+			restoreRemoved()
+			return "", err
+		}
+
 	}
 
 	if err := w.MutateEquipment(playerID, func(eq *Equipment) error {
 		eq.Set(def.EquipSlot, removed)
 		return nil
 	}); err != nil {
-		_ = w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
-			_, addErr := inv.AddStack(removed)
-			return addErr
-		})
+		restoreRemoved()
+		if reinsertionActive {
+			_ = w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+				_, remErr := inv.RemoveQuantity(reinsertionSlot, reinsertionQty)
+				return remErr
+			})
+			_ = w.MutateEquipment(playerID, func(eq *Equipment) error {
+				eq.Set(def.EquipSlot, previous)
+				return nil
+			})
+		}
 		return "", err
+	}
+
+	if reinsertionActive {
+		player.stats.Apply(stats.CommandStatChange{Layer: stats.LayerEquipment, Source: slotKey, Remove: true})
 	}
 
 	delta, err := equipmentDeltaForDefinition(def)

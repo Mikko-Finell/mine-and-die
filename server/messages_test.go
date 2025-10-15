@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	stdlog "log"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -258,6 +261,40 @@ func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
 		case PatchPlayerPos, PatchPlayerFacing, PatchPlayerIntent, PatchPlayerHealth, PatchPlayerInventory:
 			t.Fatalf("expected no player patches in empty state, saw kind %q", patch.Kind)
 		}
+	}
+}
+
+func TestBroadcastLoggingRedactsPayload(t *testing.T) {
+	hub := newHub()
+	groundItems := []GroundItem{{
+		ID:   "ground-fireball",
+		Type: ItemType("fireball"),
+		X:    1,
+		Y:    2,
+		Qty:  1,
+	}}
+
+	var buf bytes.Buffer
+	originalOutput := stdlog.Writer()
+	originalFlags := stdlog.Flags()
+	originalPrefix := stdlog.Prefix()
+	stdlog.SetOutput(&buf)
+	stdlog.SetFlags(0)
+	stdlog.SetPrefix("")
+	t.Cleanup(func() {
+		stdlog.SetOutput(originalOutput)
+		stdlog.SetFlags(originalFlags)
+		stdlog.SetPrefix(originalPrefix)
+	})
+
+	hub.broadcastState(nil, nil, nil, groundItems)
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "fireball") {
+		t.Fatalf("expected broadcast log to mention fireball marker, got %q", logOutput)
+	}
+	if strings.Contains(logOutput, "\"type\":\"fireball\"") {
+		t.Fatalf("expected broadcast log to redact payload contents, got %q", logOutput)
 	}
 }
 

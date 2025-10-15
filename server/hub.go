@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	stdlog "log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1307,6 +1308,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 		return
 	}
 
+	matched := make([]string, 0, 4)
 	for _, marker := range []struct {
 		label  string
 		needle []byte
@@ -1318,8 +1320,17 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 		{label: "melee-swing", needle: []byte("melee-swing")},
 	} {
 		if bytes.Contains(data, marker.needle) {
-			stdlog.Printf("[network] broadcasting payload containing %s: %s", marker.label, data)
+			matched = append(matched, marker.label)
 		}
+	}
+	if len(matched) > 0 {
+		stdlog.Printf(
+			"[network] broadcasting payload markers=%s bytes=%d entities=%d snapshot=%t",
+			strings.Join(matched, ","),
+			len(data),
+			entities,
+			includeSnapshot,
+		)
 	}
 
 	h.mu.Lock()
