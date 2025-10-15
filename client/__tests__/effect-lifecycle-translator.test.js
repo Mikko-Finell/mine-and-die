@@ -88,4 +88,37 @@ describe("contractLifecycleToEffect", () => {
 
     expect(result.colors).toEqual(["#7a0e12", "#4a090b"]);
   });
+
+  test("uses quantized center coordinates when owner anchor differs", () => {
+    const tileSize = 40;
+    const quantize = (world) => Math.round((world / tileSize) * 16);
+    const lifecycleEntry = {
+      instance: {
+        id: "contract-blood", 
+        definitionId: "blood-splatter",
+        ownerActorId: "player-1",
+        deliveryState: {
+          geometry: { shape: "rect", width: quantize(40), height: quantize(40) },
+          motion: { positionX: 0, positionY: 0 },
+        },
+        behaviorState: {
+          ticksRemaining: 10,
+          extra: { centerX: quantize(400), centerY: quantize(560) },
+        },
+      },
+    };
+    const store = {
+      TILE_SIZE: tileSize,
+      players: { "player-1": { x: 1000, y: 1200 } },
+    };
+
+    const result = contractLifecycleToEffect(lifecycleEntry, { store });
+
+    expect(result.width).toBeCloseTo(40);
+    expect(result.height).toBeCloseTo(40);
+    expect(result.x).toBeCloseTo(380);
+    expect(result.y).toBeCloseTo(540);
+    expect(result.params?.centerX).toBeCloseTo(400);
+    expect(result.params?.centerY).toBeCloseTo(560);
+  });
 });
