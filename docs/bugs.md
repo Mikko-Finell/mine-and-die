@@ -20,7 +20,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Join retry timer keeps running after success     | Medium     | 🔴 Todo  | Retry timeout never cleared, so delayed callbacks re-run `joinGame` and duplicate players. |
 | Effect trigger dedupe never forgets processed IDs | Medium     | 🔴 Todo  | Persistent trigger ID set grows forever and blocks recycled triggers from rendering. |
 | Path-following emits unbounded intent vectors    | High       | 🔴 Todo  | Raw waypoint deltas feed into `SetIntent`, exceeding normalized ranges and breaking consumers. |
-| Inventory diffing ignores fungibility keys       | High       | 🔴 Todo  | `inventoriesEqual` omits `FungibilityKey`, leaving clients with stale identity metadata. |
+| Inventory diffing ignores fungibility keys       | High       | 🟢 Done   | `inventoriesEqual` omits `FungibilityKey`, leaving clients with stale identity metadata; repro: `TestMutateInventoryEmitsPatchWhenFungibilityChanges`. |
 | Client inventory clones strip fungibility metadata | Medium     | 🔴 Todo  | `cloneInventorySlots` rebuilds stacks without `fungibility_key`, merging distinct items. |
 | Ground item normalisation rewrites metadata      | Medium     | 🔴 Todo  | `normalizeGroundItems` defaults to gold and drops keys, misrendering new or personal loot. |
 | Effect patches filtered out of hub payloads      | Critical   | 🔴 Todo  | `Hub.marshalState` whitelist excludes effects, so incremental effect updates never broadcast. |

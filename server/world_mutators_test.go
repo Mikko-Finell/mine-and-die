@@ -386,6 +386,68 @@ func TestMutateInventoryRecordsPatch(t *testing.T) {
 	}
 }
 
+func TestMutateInventoryEmitsPatchWhenFungibilityChanges(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+
+	daggerDef, ok := ItemDefinitionFor(ItemTypeIronDagger)
+	if !ok {
+		t.Fatalf("expected definition for %q", ItemTypeIronDagger)
+	}
+
+	initialInventory := Inventory{Slots: []InventorySlot{{
+		Slot: 0,
+		Item: ItemStack{Type: ItemTypeIronDagger, FungibilityKey: daggerDef.FungibilityKey, Quantity: 1},
+	}}}
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-9-fungibility", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: initialInventory}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	if patches := w.snapshotPatchesLocked(); len(patches) != 0 {
+		t.Fatalf("expected no patches after adding player, got %d", len(patches))
+	}
+
+	newKey := daggerDef.FungibilityKey + "::unique"
+
+	if err := w.MutateInventory("player-9-fungibility", func(inv *Inventory) error {
+		if len(inv.Slots) != 1 {
+			t.Fatalf("expected inventory to contain 1 slot, got %d", len(inv.Slots))
+		}
+		inv.Slots[0].Item.FungibilityKey = newKey
+		return nil
+	}); err != nil {
+		t.Fatalf("expected mutate to succeed, got %v", err)
+	}
+
+	if player.version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchPlayerInventory {
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerInventory, patch.Kind)
+	}
+	if patch.EntityID != "player-9-fungibility" {
+		t.Fatalf("expected patch entity player-9-fungibility, got %q", patch.EntityID)
+	}
+
+	payload, ok := patch.Payload.(PlayerInventoryPayload)
+	if !ok {
+		t.Fatalf("expected payload to be PlayerInventoryPayload, got %T", patch.Payload)
+	}
+	if len(payload.Slots) != 1 {
+		t.Fatalf("expected payload to contain 1 slot, got %d", len(payload.Slots))
+	}
+	slot := payload.Slots[0]
+	if slot.Item.FungibilityKey != newKey {
+		t.Fatalf("expected payload fungibility key %q, got %q", newKey, slot.Item.FungibilityKey)
+	}
+}
+
 func TestMutateInventoryErrorRestoresState(t *testing.T) {
 	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-10", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
