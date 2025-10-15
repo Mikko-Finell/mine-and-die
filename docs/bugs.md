@@ -36,7 +36,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Command queue lacks flow control per client      | High       | 🟢 Done  | `enqueueCommand` accepts unlimited commands, allowing a single client to flood the queue; fixed with per-actor limits and drop telemetry. |
 | NPC gold rewards bypass patch emission           | Medium     | 🟢 Done  | Routed NPC mining rewards through inventory mutators so patches broadcast (`TestNPCMiningEmitsInventoryPatch`). |
 | Blood splatter applies to attacker instead of victim | Low        | 🟢 Done   | Contract translator now uses quantized center coords so decals stick to the victim; repro: rat bite vs. player. |
-| Blood splatter decals ignore configured sizing   | Low        | ⚪ Planned | Decal handoff yields oversized stains; should match animation params; repro: watch blood decal settle after hit. |
+| Blood splatter decals ignore configured sizing   | Low        | 🟢 Done   | Decal handoff yields oversized stains; should match animation params; repro: watch blood decal settle after hit; fix: world spawn now merges instance params so sizing persists. |
 | Broadcast logging leaks full state payloads      | Medium     | 🟢 Done  | Debug path now summarizes markers/size instead of dumping full JSON payloads. |
 | Version counters misuse pointer increment syntax | Critical   | 🟢 Done  | Mutator helpers now call `incrementVersion` so pointer arithmetic no longer corrupts patch sequencing. |
 | Contract tick cadence hint is ignored            | Medium     | 🟢 Done  | Intent cadence now persists to instances and throttles updates (TestEffectManagerRespectsTickCadence). |
