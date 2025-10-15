@@ -74,3 +74,55 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 		t.Fatalf("expected effect params dy to approximate diagonal, got %.4f", paramDY)
 	}
 }
+
+func TestSpawnContractProjectileFromInstanceRestoresRemainingRangeAndLifetime(t *testing.T) {
+	now := time.Unix(120, 0)
+	owner := &actorState{Actor: Actor{ID: "owner", X: 3, Y: 5, Facing: FacingRight}}
+	instance := &EffectInstance{
+		ID:           "rehydrate-1",
+		OwnerActorID: owner.ID,
+		BehaviorState: EffectBehaviorState{
+			TicksRemaining: tickRate,
+			Extra: map[string]int{
+				"remainingRange": 15,
+				"range":          90,
+				"dx":             QuantizeCoord(1),
+				"dy":             QuantizeCoord(0),
+			},
+		},
+		DeliveryState: EffectDeliveryState{
+			Geometry: EffectGeometry{
+				OffsetX: quantizeWorldCoord(1),
+				OffsetY: quantizeWorldCoord(0),
+			},
+		},
+	}
+	tpl := &ProjectileTemplate{Type: effectTypeFireball, MaxDistance: 90, Speed: 30}
+	world := &World{effectsByID: make(map[string]*effectState)}
+
+	spawned := world.spawnContractProjectileFromInstance(instance, owner, tpl, now)
+	if spawned == nil {
+		t.Fatalf("expected projectile to spawn")
+	}
+
+	expectedLifetime := ticksToDuration(instance.BehaviorState.TicksRemaining)
+	if expectedLifetime <= 0 {
+		t.Fatalf("expected positive lifetime for test")
+	}
+	if spawned.Duration != expectedLifetime.Milliseconds() {
+		t.Fatalf("expected duration %dms, got %dms", expectedLifetime.Milliseconds(), spawned.Duration)
+	}
+	if spawned.expiresAt.Sub(now) != expectedLifetime {
+		t.Fatalf("expected expiresAt to be %s after now, got %s", expectedLifetime, spawned.expiresAt.Sub(now))
+	}
+
+	if spawned.Projectile == nil {
+		t.Fatalf("expected projectile state to be populated")
+	}
+	if math.Abs(spawned.Projectile.RemainingRange-15) > 1e-9 {
+		t.Fatalf("expected remaining range to be restored, got %.4f", spawned.Projectile.RemainingRange)
+	}
+	if val := spawned.Params["remainingRange"]; math.Abs(val-15) > 1e-9 {
+		t.Fatalf("expected params remainingRange to be 15, got %.4f", val)
+	}
+}
