@@ -16,7 +16,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Bug                                              | Impact     | Status    | Notes |
 | ------------------------------------------------ | ---------- | --------- | ----- |
 | Projectile velocity quantization corrupts replicated direction | High       | 🟢 Done  | `syncProjectileInstance` rounds velocity vectors, erasing diagonals and desyncing clients (TestSyncProjectileInstanceQuantizesDirection). |
-| Equip rollback loses gear when reinsertion fails | Critical   | 🔴 Todo  | `EquipFromInventory` drops previous gear if reinsertion fails, permanently deleting items. |
+| Equip rollback loses gear when reinsertion fails | Critical   | 🟢 Done  | `EquipFromInventory` drops previous gear if reinsertion fails, permanently deleting items; repro: `TestEquipFromInventoryRollsBackWhenReinsertionFails`. |
 | Join retry timer keeps running after success     | Medium     | 🟢 Done  | Retry timeout never cleared, so delayed callbacks re-run `joinGame` and duplicate players; fixed by tracking and clearing the handle. |
 | Effect trigger dedupe never forgets processed IDs | Medium     | 🟢 Done  | Persistent trigger ID set grows forever and blocks recycled triggers from rendering. |
 | Path-following emits unbounded intent vectors    | High       | 🟢 Done  | Raw waypoint deltas feed into `SetIntent`, exceeding normalized ranges and breaking consumers. |
