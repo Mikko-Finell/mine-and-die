@@ -1706,8 +1706,8 @@ export function updatePatchState(previousState, payload, options = {}) {
     }
   }
 
-  const nextTick = baseline.tick;
-  const nextSequence = baseline.sequence;
+  let nextTick = baseline.tick;
+  let nextSequence = baseline.sequence;
 
   const appendError = (kind, entityId, message, tickValue, sequenceValue) => {
     const entry = {
@@ -1752,36 +1752,54 @@ export function updatePatchState(previousState, payload, options = {}) {
   }
 
   if (!shouldResetHistory && previousSequence !== null && nextSequence !== null && nextSequence < previousSequence) {
-    appendError(
-      null,
-      null,
-      `out-of-order patch sequence ${nextSequence} < ${previousSequence}`,
-      nextTick,
-      nextSequence,
-    );
-    const trimmedErrors = trimErrors(historyEntries, errorLimit);
-    const trimmedRecoveries = trimRecoveryLog(recoveryLog);
-    return {
-      baseline: state.baseline,
-      patched: state.patched,
-      lastAppliedPatchCount: 0,
-      lastError,
-      errors: trimmedErrors,
-      lastUpdateSource: source,
-      lastTick: previousTick,
-      lastSequence: previousSequence,
-      patchHistory: history,
-      keyframes,
-      pendingKeyframeRequests: pendingRequests,
-      pendingReplays,
-      lastRecovery,
-      recoveryLog: trimmedRecoveries,
-      keyframeNackCounts: nackCounts,
-      resyncRequested,
-      deferredPatchCount: deferredPatchCountForUpdate,
-      totalDeferredPatchCount: totalDeferredPatches,
-      lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
-    };
+    const canClampSequence =
+      !hasSnapshot &&
+      Array.isArray(patchList) &&
+      patchList.length > 0 &&
+      source !== "join";
+
+    if (canClampSequence) {
+      appendError(
+        null,
+        null,
+        `out-of-order patch sequence ${nextSequence} < ${previousSequence} (clamped)`,
+        nextTick,
+        nextSequence,
+      );
+      baseline.sequence = previousSequence;
+      nextSequence = previousSequence;
+    } else {
+      appendError(
+        null,
+        null,
+        `out-of-order patch sequence ${nextSequence} < ${previousSequence}`,
+        nextTick,
+        nextSequence,
+      );
+      const trimmedErrors = trimErrors(historyEntries, errorLimit);
+      const trimmedRecoveries = trimRecoveryLog(recoveryLog);
+      return {
+        baseline: state.baseline,
+        patched: state.patched,
+        lastAppliedPatchCount: 0,
+        lastError,
+        errors: trimmedErrors,
+        lastUpdateSource: source,
+        lastTick: previousTick,
+        lastSequence: previousSequence,
+        patchHistory: history,
+        keyframes,
+        pendingKeyframeRequests: pendingRequests,
+        pendingReplays,
+        lastRecovery,
+        recoveryLog: trimmedRecoveries,
+        keyframeNackCounts: nackCounts,
+        resyncRequested,
+        deferredPatchCount: deferredPatchCountForUpdate,
+        totalDeferredPatchCount: totalDeferredPatches,
+        lastDeferredReplayLatencyMs: deferredReplayLatencyMs,
+      };
+    }
   }
 
   const patchResult = applyPatchesToSnapshot(baseline, patchList, {

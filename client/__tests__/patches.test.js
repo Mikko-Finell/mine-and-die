@@ -528,6 +528,38 @@ describe("updatePatchState", () => {
     expect(result.errors).toEqual([]);
   });
 
+  it("clamps regressing patch sequences for incremental effect updates", () => {
+    const previousTick = 50;
+    const seeded = updatePatchState(
+      createPatchState(),
+      deepFreeze({ t: previousTick, sequence: 218, players: [makePlayer()] }),
+      { source: "join" },
+    );
+    freezeState(seeded);
+
+    const payload = deepFreeze({
+      t: previousTick + 1,
+      sequence: 209,
+      patches: [
+        {
+          kind: PATCH_KIND_EFFECT_PARAMS,
+          entityId: "effect-regressed",
+          payload: { params: { width: 7, height: 9 } },
+        },
+      ],
+    });
+
+    const result = updatePatchState(seeded, payload, { source: "state" });
+
+    expect(result.lastAppliedPatchCount).toBe(1);
+    expect(result.lastSequence).toBe(218);
+    expect(result.lastTick).toBeGreaterThanOrEqual(previousTick);
+    const effect = result.patched.effects["effect-regressed"];
+    expect(effect).toBeDefined();
+    expect(effect.params).toEqual({ width: 7, height: 9 });
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
   it("normalizes entity identifiers when seeding baseline state", () => {
     const payload = deepFreeze({
       t: 11,
