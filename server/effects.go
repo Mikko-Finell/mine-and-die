@@ -707,6 +707,14 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 
 	dirX := params["dx"]
 	dirY := params["dy"]
+	if raw, ok := instance.BehaviorState.Extra["dx"]; ok {
+		dirX = DequantizeCoord(raw)
+		params["dx"] = dirX
+	}
+	if raw, ok := instance.BehaviorState.Extra["dy"]; ok {
+		dirY = DequantizeCoord(raw)
+		params["dy"] = dirY
+	}
 	if dirX == 0 && dirY == 0 {
 		facing := owner.Facing
 		if facing == "" {
