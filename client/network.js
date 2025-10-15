@@ -1136,11 +1136,19 @@ function ensureEffectTriggerState(store) {
  */
 export function enqueueEffectTriggers(prev, triggers) {
   const sourcePending = Array.isArray(prev && prev.pending) ? prev.pending : [];
-  const sourceProcessed =
-    prev && prev.processedIds instanceof Set ? prev.processedIds : new Set();
 
   const pending = sourcePending.slice();
-  const processedIds = new Set(sourceProcessed);
+  const processedIds = new Set();
+
+  for (const queued of pending) {
+    if (!queued || typeof queued !== "object") {
+      continue;
+    }
+    const id = typeof queued.id === "string" ? queued.id : null;
+    if (id) {
+      processedIds.add(id);
+    }
+  }
 
   if (!Array.isArray(triggers) || triggers.length === 0) {
     return { pending, processedIds };

@@ -880,6 +880,16 @@ describe("enqueueEffectTriggers", () => {
     expect(result.pending).toEqual(triggers.slice(0, 500));
     expect(result.processedIds.size).toBe(500);
   });
+
+  it("does not persist processed ids after the queue is drained", () => {
+    const prev = { pending: [], processedIds: new Set(["legacy"]) };
+    const triggers = [{ id: "legacy", effect: "flame" }];
+
+    const result = enqueueEffectTriggers(prev, triggers);
+
+    expect(result.pending).toEqual(triggers);
+    expect([...result.processedIds]).toEqual(["legacy"]);
+  });
 });
 
 describe("message payload builders", () => {
