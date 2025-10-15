@@ -30,6 +30,7 @@ This document tracks the ongoing effort to simplify and stabilize the codebase b
 * Patches and keyframes follow one consistent schema.
 * Logs and debug checks exist only where they serve a real diagnostic purpose.
 * Prefer deterministic data-driven behavior over flag-driven branches.
+* If you discover new bugs during your work, add them to `bugs.md` unless they are blocking for the current task.
 * Simplification work should reduce total code volume without altering semantics.
 
 ## Suggested Next Task
