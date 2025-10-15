@@ -7,40 +7,7 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main id="app" class="page">
-      <header class="page-header">
-        <div>
-          <h1>Mine &amp; Die</h1>
-          <p class="page-header__subtitle">Multiplayer sandbox in active development.</p>
-        </div>
-        <div class="page-header__controls">
-          <button id="refresh-health" type="button" class="interface-tabs__tab interface-tabs__tab--active">
-            Refresh status
-          </button>
-          <span id="health-status" class="hud-network__item">Checking…</span>
-        </div>
-      </header>
-      <section class="play-area">
-        <div class="play-area__main">
-          <canvas id="viewport" width="640" height="360" aria-label="Game viewport"></canvas>
-          <p class="hud-network">
-            <span class="hud-network__item">Server time: <span id="server-time">--</span></span>
-            <span class="hud-network__item">Heartbeat: <span id="heartbeat">--</span></span>
-          </p>
-        </div>
-        <aside class="interface-tabs">
-          <div class="interface-tabs__list">
-            <button class="interface-tabs__tab interface-tabs__tab--active" type="button">Overview</button>
-            <button class="interface-tabs__tab" type="button">Players</button>
-            <button class="interface-tabs__tab" type="button">World</button>
-          </div>
-          <article class="interface-tabs__panel" id="console">
-            <h2 class="sr-only">Console output</h2>
-            <pre id="console-output" class="console-output">Booting client…</pre>
-          </article>
-        </aside>
-      </section>
-    </main>
+    <game-client-app></game-client-app>
     <script type="module" src="/main.js"></script>
   </body>
 </html>
