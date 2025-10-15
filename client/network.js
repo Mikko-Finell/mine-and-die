@@ -892,20 +892,6 @@ function cloneNPCsFromMap(map) {
   return npcs;
 }
 
-function collectEffectsFromMap(map) {
-  if (!map || typeof map !== "object") {
-    return [];
-  }
-  const effects = [];
-  for (const entry of Object.values(map)) {
-    if (!entry || typeof entry !== "object") {
-      continue;
-    }
-    effects.push(entry);
-  }
-  return effects;
-}
-
 function cloneGroundItemsFromMap(map) {
   if (!map || typeof map !== "object") {
     return {};
@@ -973,24 +959,10 @@ export function applyStateSnapshot(prev, payload, patchedState) {
     : Array.isArray(previousState.obstacles)
       ? previousState.obstacles.slice()
       : [];
-  let effects = null;
-  if (Array.isArray(snapshot.effects)) {
-    effects = snapshot.effects;
-  } else if (Array.isArray(patched?.effects)) {
-    effects = patched.effects;
-  } else if (patched?.effects) {
-    effects = collectEffectsFromMap(patched.effects);
-  } else if (Array.isArray(previousState.effects)) {
-    effects = previousState.effects;
-  } else {
-    effects = [];
-  }
-
   const result = {
     players,
     npcs,
     obstacles,
-    effects,
     hasLocalPlayer: false,
     keyframeInterval: null,
   };
@@ -1480,7 +1452,6 @@ export async function joinGame(store) {
         : []
     );
     store.obstacles = Array.isArray(payload.obstacles) ? payload.obstacles : [];
-    store.effects = Array.isArray(payload.effects) ? payload.effects : [];
     store.groundItems = normalizeGroundItems(payload.groundItems);
     store.pendingEffectTriggers = [];
     store.processedEffectTriggerIds = new Set();
@@ -1621,7 +1592,6 @@ export function connectEvents(store) {
         store.players = snapshot.players;
         store.npcs = snapshot.npcs;
         store.obstacles = snapshot.obstacles;
-        store.effects = snapshot.effects;
         store.groundItems = snapshot.groundItems || {};
         queueEffectTriggers(store, payload.effectTriggers);
         const lifecycleSummary = applyEffectLifecycleBatch(store, payload, {

@@ -13,7 +13,6 @@ export function ingestStateMessage(store, rawMessage) {
   store.players = snapshot.players;
   store.npcs = snapshot.npcs;
   store.obstacles = snapshot.obstacles;
-  store.effects = snapshot.effects;
   store.groundItems = snapshot.groundItems;
   store.lastTick = snapshot.lastTick;
 

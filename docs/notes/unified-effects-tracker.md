@@ -42,7 +42,7 @@ Statuses use the following scale:
 | Phase 3 – Client Ingestion & Visual Manager | Complete | Client ingestion, render sync, and diagnostics now source the contract batches with dual-write suppression removed. | Monitor unknown-update diagnostics while planning legacy array cleanup on the client. |
 | Phase 4 – Producer Migration | Complete | Gameplay producers now execute through contract-backed definitions with parity gates, including melee, projectiles, burning, and blood decals (legacy compat shim removed in Phase 6). | Monitor rollout telemetry while planning Phase 5 determinism and performance hardening. |
 | Phase 5 – Determinism & Performance Hardening | Complete | Stress testing and budgets for the new system. | Keep budget alarms wired while monitoring rollout metrics. |
-| Phase 6 – Cutover, Verification & Docs | Complete | Legacy transports are disabled, contract definitions default on, and rollout docs are refreshed. | Audit lingering rollback toggles/telemetry labels and scope the final dead-code removals. |
+| Phase 6 – Cutover, Verification & Docs | Complete | Legacy transports are disabled, contract definitions default on, and rollout docs are refreshed. | Track removal of the legacy `effects` patch caches and diagnostics that still mirror the pre-contract snapshot. |
 
 ---
 
@@ -126,13 +126,13 @@ Statuses use the following scale:
 | Table-driven contract tests | Complete | :white_check_mark: Added table-driven lifecycle tests covering area/target/visual deliveries in `server/effects_manager_contract_test.go`. | Keep fixtures versioned with contract spec. |
 | Client join/resync tests | Complete | :white_check_mark: Added join/resync integration tests that exercise the two-pass patch pipeline in `client/__tests__/network.test.js`. | Integrate with existing test harness if possible. |
 | Docs refresh | Complete | :white_check_mark: Refreshed the architecture overview, client module guide, playground authoring instructions, and testing/troubleshooting notes to document the contract transport. | Legacy doc references now point to contract lifecycle batches, client two-pass replay, and diagnostics surfaces. |
-| Deprecation switch | Complete | :white_check_mark: Disabled legacy effect snapshots, removed the compat shim, and defaulted contract definitions to on. | Continue monitoring adoption/resync telemetry and keep rollback toggles documented for emergency use. |
+| Deprecation switch | Complete | :white_check_mark: Disabled legacy effect snapshots, removed the compat shim, and defaulted contract definitions to on. | Continue monitoring adoption/resync telemetry; rollback toggles were audited and removed, so focus on retiring the remaining client patch caches. |
 
 #### Cutover Verification Notes
 
 * Confirmed the contract manager, transport, and all migrated definition flags now default to enabled in [`server/constants.go`](../../server/constants.go), keeping the unified pipeline authoritative without manual toggles. *(Superseded by Entry 41 — toggles removed entirely.)*
 * Join/resync/state payloads no longer populate the legacy `effects` array when the contract transport is active, so clients consume the replicated lifecycle batches shipped from [`server/hub.go`](../../server/hub.go).
-* Client lifecycle ingestion and rendering now rely solely on `effect_spawned`/`effect_update`/`effect_ended` batches after the compat shim removal, leaving legacy arrays as defensive fallbacks for targeted rollbacks.
+* Client lifecycle ingestion and rendering now rely solely on `effect_spawned`/`effect_update`/`effect_ended` batches after the compat shim removal, with legacy patch caches retained only until the Final Dead-Code Removal Targets land.
 
 #### Post-Cutover Cleanup Opportunities
 
@@ -151,6 +151,13 @@ Statuses use the following scale:
   * :white_check_mark: Removed legacy telemetry source bookkeeping from `server/effects.go`/`server/status_effects.go` and updated metrics/tests for the single-stream output.
   * :white_check_mark: Refreshed diagnostics notes in this tracker to call out the contract-only telemetry surface.
 
+#### Final Dead-Code Removal Targets
+
+* :white_check_mark: **Client patch caches (`client/patches.js`, `client/network.js`).** Patch state now clones only players, NPCs, and ground items so the legacy `effects` maps no longer exist, keeping snapshot ingestion aligned with lifecycle batches.【F:client/patches.js†L890-L905】【F:client/patches.js†L1545-L1558】【F:client/network.js†L940-L978】
+* :white_check_mark: **Renderer fallbacks (`client/render.js`).** Removed the `store.effects` fallback so `syncEffectsByType` now consumes only lifecycle-derived buckets, keeping the store free of legacy effect arrays.【F:client/render.js†L344-L392】
+* :white_check_mark: **Diagnostics counters (`client/main.js`).** Retired the legacy patch map counts and surface lifecycle-backed effect totals in the HUD, unblocking the patch cache removal.【F:client/main.js†L1305-L1345】
+* :white_check_mark: **Tests covering legacy arrays (`client/__tests__/patches.test.js`, `client/__tests__/network.test.js`).** Updated fixtures and assertions to stop referencing patch cache arrays and instead confirm the lifecycle-only shape.【F:client/__tests__/patches.test.js†L139-L181】【F:client/__tests__/network.test.js†L327-L404】
+
 
 ---
 
@@ -158,6 +165,8 @@ Statuses use the following scale:
 
 | Entry | Update | Author |
 | --- | --- | --- |
+| 44 | Removed the client patch cache `effects` maps, updated tests for the lifecycle-only shape, and closed out the final dead-code items. | gpt-5-codex |
+| 43 | Audited rollback toggles/telemetry labels, documented the remaining client-side legacy caches, and queued the final removal work. | gpt-5-codex |
 | 42 | Collapsed effect parity telemetry to a single contract stream, removed legacy source bookkeeping, and refreshed tracker guidance. | gpt-5-codex |
 | 41 | Retired the contract rollout toggles, removed legacy melee/projectile/burning/blood branches, refreshed docs/tests, and locked gameplay to the contract manager. | gpt-5-codex |
 | 40 | Removed the legacy `state.effects` payload, rewired joins/resets/broadcasts to rely on lifecycle batches, refreshed tests, and updated docs. | gpt-5-codex |

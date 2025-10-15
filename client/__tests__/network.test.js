@@ -327,8 +327,7 @@ describe("applyStateSnapshot", () => {
     expect(result.npcs["npc-2"].facing).toBe("up");
     expect(result.obstacles).toEqual(payload.obstacles);
     expect(result.obstacles).not.toBe(payload.obstacles);
-    expect(result.effects).toEqual(payload.effects);
-    expect(result.effects).toBe(payload.effects);
+    expect(result).not.toHaveProperty("effects");
     expect(result.worldConfig.width).toBe(1200);
     expect(result.worldConfig.height).toBe(900);
     expect(result.hasLocalPlayer).toBe(true);
@@ -348,7 +347,7 @@ describe("applyStateSnapshot", () => {
     expect(result.players).toEqual({});
     expect(result.npcs).toEqual({});
     expect(result.obstacles).toEqual([]);
-    expect(result.effects).toEqual([]);
+    expect(result).not.toHaveProperty("effects");
     expect(result.hasLocalPlayer).toBe(false);
     expect(result.currentFacing).toBeUndefined();
     expect(result.worldConfig).toBeUndefined();
@@ -397,7 +396,7 @@ describe("applyStateSnapshot", () => {
 
     expect(result.players.alpha.facing).toBe("left");
     expect(result.npcs.goblin.facing).toBe("up");
-    expect(result.effects).toEqual([{ id: "spark", ttl: 5 }]);
+    expect(result).not.toHaveProperty("effects");
     expect(result.groundItems.stack.qty).toBe(3);
     expect(result.lastTick).toBe(99);
     expect(result.worldConfig.width).toBe(800);

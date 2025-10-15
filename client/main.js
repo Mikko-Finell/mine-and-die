@@ -10,6 +10,7 @@ import {
   DEFAULT_WORLD_HEIGHT,
 } from "./network.js";
 import { createPatchState } from "./patches.js";
+import { peekEffectLifecycleState } from "./effect-lifecycle.js";
 import {
   createEffectDiagnosticsState,
   recordUnknownEffectUpdate,
@@ -1305,13 +1306,11 @@ function updateDiagnostics() {
       const baselineCounts = {
         players: countEntries(patchState.baseline?.players),
         npcs: countEntries(patchState.baseline?.npcs),
-        effects: countEntries(patchState.baseline?.effects),
         groundItems: countEntries(patchState.baseline?.groundItems),
       };
       const patchedCounts = {
         players: countEntries(patchState.patched?.players),
         npcs: countEntries(patchState.patched?.npcs),
-        effects: countEntries(patchState.patched?.effects),
         groundItems: countEntries(patchState.patched?.groundItems),
       };
 
@@ -1327,9 +1326,14 @@ function updateDiagnostics() {
       const entityParts = [
         formatCountLabel("Players", baselineCounts.players, patchedCounts.players),
         formatCountLabel("NPCs", baselineCounts.npcs, patchedCounts.npcs),
-        formatCountLabel("Effects", baselineCounts.effects, patchedCounts.effects),
         formatCountLabel("Items", baselineCounts.groundItems, patchedCounts.groundItems),
       ];
+      const lifecycleState = peekEffectLifecycleState(store);
+      const lifecycleCount =
+        lifecycleState && lifecycleState.instances instanceof Map
+          ? lifecycleState.instances.size
+          : 0;
+      entityParts.push(`Effects ${lifecycleCount} (lifecycle)`);
 
       entitiesText = entityParts.filter(Boolean).join(" · ");
 
