@@ -1030,6 +1030,11 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 					continue
 				}
 				if _, ok := alive[patch.EntityID]; !ok {
+					if patch.Kind == PatchGroundItemQty {
+						if payload, ok := patch.Payload.(GroundItemQtyPayload); ok && payload.Qty <= 0 {
+							filtered = append(filtered, patch)
+						}
+					}
 					continue
 				}
 				filtered = append(filtered, patch)
@@ -1054,8 +1059,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	}
 	if includeSnapshot && groundItems == nil {
 		groundItems = make([]GroundItem, 0)
-	} else if !includeSnapshot {
-		groundItems = nil
 	}
 	if obstacles == nil {
 		obstacles = make([]Obstacle, 0)

@@ -40,7 +40,7 @@ const (
 
 func (w *World) groundItemsSnapshot() []GroundItem {
 	if w == nil || len(w.groundItems) == 0 {
-		return nil
+		return make([]GroundItem, 0)
 	}
 	items := make([]GroundItem, 0, len(w.groundItems))
 	for _, item := range w.groundItems {
@@ -154,6 +154,9 @@ func clampFloat(value, min, max float64) float64 {
 func (w *World) removeGroundItem(item *groundItemState) {
 	if w == nil || item == nil {
 		return
+	}
+	if item.Qty > 0 {
+		w.SetGroundItemQuantity(item, 0)
 	}
 	delete(w.groundItems, item.ID)
 	if itemsByType, ok := w.groundItemsByTile[item.tile]; ok {

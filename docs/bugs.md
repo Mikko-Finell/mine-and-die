@@ -24,7 +24,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Client inventory clones strip fungibility metadata | Medium     | 🟢 Done   | `cloneInventorySlots` now preserves `fungibility_key`, keeping unique stacks distinct. |
 | Ground item normalisation rewrites metadata      | Medium     | 🔴 Todo  | `normalizeGroundItems` defaults to gold and drops keys, misrendering new or personal loot. |
 | Effect patches filtered out of hub payloads      | Critical   | 🔴 Todo  | `Hub.marshalState` whitelist excludes effects, so incremental effect updates never broadcast. |
-| Ground item removals skip diff emission          | High       | 🔴 Todo  | Deletions bypass journalling, so broadcasts omit refreshed stacks until a keyframe. |
+| Ground item removals skip diff emission          | High       | 🟢 Done  | Deletions bypass journalling, so broadcasts omit refreshed stacks until a keyframe. |
 | Player removals suppressed between keyframes     | High       | 🔴 Todo  | Player deletions fail to emit patches, leaving ghost actors alive for clients and telemetry. |
 | Equipment patches unsupported on the client      | Critical   | 🔴 Todo  | Patch handler table lacks equipment entries; updates are logged and dropped before UI sync. |
 | Projectile rehydration restores full travel distance | High       | 🟢 Done  | `spawnContractProjectileFromInstance` ignores saved `remainingRange`, extending projectile reach. |
