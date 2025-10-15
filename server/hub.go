@@ -44,8 +44,10 @@ type Hub struct {
 	forceKeyframeNext        atomic.Bool
 	tickBudgetAlarmTriggered atomic.Bool
 
-	commandsMu      sync.Mutex // protects pendingCommands between network handlers and the tick loop
-	pendingCommands []Command  // staged commands applied in order at the next simulation step
+	commandsMu             sync.Mutex // protects pendingCommands between network handlers and the tick loop
+	pendingCommands        []Command  // staged commands applied in order at the next simulation step
+	pendingCommandsByActor map[string]int
+	droppedCommandsByActor map[string]uint64
 }
 
 type subscriber struct {
@@ -59,7 +61,8 @@ const (
 	keyframeLimiterCapacity  = 3
 	keyframeLimiterRefillPer = 2.0 // tokens per second
 
-	commandQueueWarningStep = 256
+	commandQueueWarningStep   = 256
+	commandQueuePerActorLimit = 32
 
 	tickBudgetCatchupMaxTicks = 2
 	tickBudgetAlarmMinStreak  = 3
@@ -147,6 +150,8 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 		world:                   newWorld(cfg, pub),
 		subscribers:             make(map[string]*subscriber),
 		pendingCommands:         make([]Command, 0),
+		pendingCommandsByActor:  make(map[string]int),
+		droppedCommandsByActor:  make(map[string]uint64),
 		config:                  cfg,
 		publisher:               pub,
 		telemetry:               newTelemetryCounters(),
@@ -1367,13 +1372,57 @@ func (h *Hub) TelemetrySnapshot() telemetrySnapshot {
 }
 
 func (h *Hub) enqueueCommand(cmd Command) {
+	var queueLen int
+	var dropped bool
+	var dropCount uint64
 	h.commandsMu.Lock()
-	h.pendingCommands = append(h.pendingCommands, cmd)
-	queueLen := len(h.pendingCommands)
+	if commandQueuePerActorLimit > 0 && cmd.ActorID != "" {
+		if h.pendingCommandsByActor == nil {
+			h.pendingCommandsByActor = make(map[string]int)
+		}
+		count := h.pendingCommandsByActor[cmd.ActorID]
+		if count >= commandQueuePerActorLimit {
+			if h.droppedCommandsByActor == nil {
+				h.droppedCommandsByActor = make(map[string]uint64)
+			}
+			dropped = true
+			dropCount = h.droppedCommandsByActor[cmd.ActorID] + 1
+			h.droppedCommandsByActor[cmd.ActorID] = dropCount
+		} else {
+			h.pendingCommandsByActor[cmd.ActorID] = count + 1
+			h.pendingCommands = append(h.pendingCommands, cmd)
+			queueLen = len(h.pendingCommands)
+		}
+	} else {
+		h.pendingCommands = append(h.pendingCommands, cmd)
+		if commandQueuePerActorLimit > 0 && cmd.ActorID != "" {
+			if h.pendingCommandsByActor == nil {
+				h.pendingCommandsByActor = make(map[string]int)
+			}
+			h.pendingCommandsByActor[cmd.ActorID]++
+		}
+		queueLen = len(h.pendingCommands)
+	}
 	h.commandsMu.Unlock()
 
+	if dropped {
+		if h.telemetry != nil {
+			h.telemetry.RecordCommandDropped("limit_exceeded", cmd.Type)
+		}
+		if dropCount > 0 && dropCount&(dropCount-1) == 0 {
+			stdlog.Printf(
+				"[backpressure] dropping command actor=%s type=%s count=%d limit=%d",
+				cmd.ActorID,
+				cmd.Type,
+				dropCount,
+				commandQueuePerActorLimit,
+			)
+		}
+		return
+	}
+
 	if commandQueueWarningStep > 0 && queueLen >= commandQueueWarningStep && queueLen%commandQueueWarningStep == 0 {
-		stdlog.Printf("[backpressure] pendingCommands=%d with no guardrails; add queue limits before wider testing", queueLen)
+		stdlog.Printf("[backpressure] pendingCommands=%d; investigate tick latency or raise throttle thresholds", queueLen)
 	}
 }
 
@@ -1381,6 +1430,9 @@ func (h *Hub) drainCommands() []Command {
 	h.commandsMu.Lock()
 	cmds := h.pendingCommands
 	h.pendingCommands = nil
+	if len(h.pendingCommandsByActor) > 0 {
+		h.pendingCommandsByActor = make(map[string]int)
+	}
 	h.commandsMu.Unlock()
 	if len(cmds) == 0 {
 		return nil

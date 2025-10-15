@@ -33,7 +33,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Contract projectile definitions skip damage payloads | Critical   | 🟢 Done | `TestContractProjectileDefinitionsApplyDamage` now passes after inheriting fireball damage params from the projectile template. |
 | Projectile resurrection resets lifetime ticks    | High       | 🟢 Done  | Recreated projectiles use template lifetime instead of persisted ticks, causing overlong effects. |
 | Failed state marshals drop drained patches       | Critical   | 🟢 Done  | `marshalState` restores drained patch/effect buffers when encoding fails, preserving data until retry. |
-| Command queue lacks flow control per client      | High       | 🔴 Todo  | `enqueueCommand` accepts unlimited commands, allowing a single client to flood the queue. |
+| Command queue lacks flow control per client      | High       | 🟢 Done  | `enqueueCommand` accepts unlimited commands, allowing a single client to flood the queue; fixed with per-actor limits and drop telemetry. |
 | NPC gold rewards bypass patch emission           | Medium     | 🟢 Done  | Routed NPC mining rewards through inventory mutators so patches broadcast (`TestNPCMiningEmitsInventoryPatch`). |
 | Blood splatter applies to attacker instead of victim | Low        | 🟢 Done   | Contract translator now uses quantized center coords so decals stick to the victim; repro: rat bite vs. player. |
 | Blood splatter decals ignore configured sizing   | Low        | ⚪ Planned | Decal handoff yields oversized stains; should match animation params; repro: watch blood decal settle after hit. |

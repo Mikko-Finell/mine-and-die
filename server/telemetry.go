@@ -268,6 +268,8 @@ type telemetryCounters struct {
 	triggerEnqueued        simpleCounter
 	journalDrops           simpleCounter
 
+	commandDrops layeredCounter
+
 	tickBudgetOverruns               simpleCounter
 	tickBudgetLastOverrunMillis      atomic.Int64
 	tickBudgetConsecutiveOverruns    atomic.Uint64
@@ -294,6 +296,7 @@ type telemetrySnapshot struct {
 	Effects                  telemetryEffectsSnapshot        `json:"effects"`
 	EffectTriggers           telemetryEffectTriggersSnapshot `json:"effectTriggers"`
 	JournalDrops             map[string]uint64               `json:"journalDrops,omitempty"`
+	CommandDrops             map[string]map[string]uint64    `json:"commandDrops,omitempty"`
 	EffectParity             telemetryEffectParitySnapshot   `json:"effectParity"`
 	TickBudget               telemetryTickBudgetSnapshot     `json:"tickBudget"`
 }
@@ -506,6 +509,20 @@ func (t *telemetryCounters) RecordJournalDrop(reason string) {
 	t.journalDrops.add(reason, 1)
 }
 
+func (t *telemetryCounters) RecordCommandDropped(reason string, cmdType CommandType) {
+	if t == nil {
+		return
+	}
+	if reason == "" {
+		reason = "unknown"
+	}
+	secondary := string(cmdType)
+	if secondary == "" {
+		secondary = "unknown"
+	}
+	t.commandDrops.add(reason, secondary, 1)
+}
+
 func (t *telemetryCounters) RecordEffectParity(summary effectParitySummary) {
 	if t == nil {
 		return
@@ -542,6 +559,7 @@ func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 			EnqueuedTotal: t.triggerEnqueued.snapshot(),
 		},
 		JournalDrops: t.journalDrops.snapshot(),
+		CommandDrops: t.commandDrops.snapshot(),
 		EffectParity: telemetryEffectParitySnapshot{
 			TotalTicks: totalTicks,
 			Entries:    t.effectParity.snapshot(totalTicks),
