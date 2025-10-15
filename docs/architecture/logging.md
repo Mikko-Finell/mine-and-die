@@ -13,7 +13,7 @@ configured sinks, preserving tick order without stalling the hub.
   pluggable clock interface used for timestamping.
 - `server/logging/sinks/` – output adapters (`console`, `json`, `memory`).
 - `server/logging/combat/helpers.go` – combat event helpers.
-- `server/logging/status_effects/helpers.go`, `.../economy/helpers.go`, `.../lifecycle/helpers.go`, and `.../network/helpers.go` – additional domain packages covering status effects, item flow, session lifecycle, and acknowledgement telemetry.【F:server/logging/status_effects/helpers.go†L1-L32】【F:server/logging/economy/helpers.go†L9-L106】【F:server/logging/lifecycle/helpers.go†L1-L40】【F:server/logging/network/helpers.go†L1-L54】 New domains should add their own packages under `server/logging/` with similar patterns.
+- `server/logging/status_effects/helpers.go`, `.../economy/helpers.go`, `.../lifecycle/helpers.go`, and `.../network/helpers.go` – additional domain packages covering status effects, item flow, session lifecycle, and acknowledgement telemetry. [server/logging/status_effects/helpers.go](../../server/logging/status_effects/helpers.go) [server/logging/economy/helpers.go](../../server/logging/economy/helpers.go) [server/logging/lifecycle/helpers.go](../../server/logging/lifecycle/helpers.go) [server/logging/network/helpers.go](../../server/logging/network/helpers.go) New domains should add their own packages under `server/logging/` with similar patterns.
 
 Simulation code imports **only** domain helper packages (e.g. `logging/combat`) and the
 `logging.Publisher` interface. The router and sink wiring happens at process startup in
@@ -107,11 +107,11 @@ All event types must be documented to keep downstream sinks stable. Current cove
 | `lifecycle.player_joined` | `lifecycle.PlayerJoined` | `PlayerJoinedPayload` (`spawnX`, `spawnY`) | Signals that a new player has joined the shard along with their spawn coordinates. |
 | `lifecycle.player_disconnected` | `lifecycle.PlayerDisconnected` | `PlayerDisconnectedPayload` (`reason`) | Signals that a player left the world. `reason` differentiates manual disconnects from heartbeat timeouts. |
 | `economy.item_grant_failed` | `economy.ItemGrantFailed` | `ItemGrantFailedPayload` (`itemType`, `quantity`, `reason`) | Warn-level event emitted when inventories reject a grant (player seeding, NPC rewards, mining, etc.). The error string is attached via `Event.Extra`. |
-| `economy.gold_dropped` | `economy.GoldDropped` | `GoldDroppedPayload` (`quantity`, `reason`) | Records gold piles spawned on the ground along with the reason (death, manual drop, etc.). 【F:server/logging/economy/helpers.go†L57-L72】 |
-| `economy.gold_picked_up` | `economy.GoldPickedUp` | `GoldPickedUpPayload` (`quantity`) | Captures successful pickups of ground gold stacks. 【F:server/logging/economy/helpers.go†L74-L88】 |
-| `economy.gold_pickup_failed` | `economy.GoldPickupFailed` | `GoldPickupFailedPayload` (`reason`) | Warns when a pickup attempt fails (out of range, not found). 【F:server/logging/economy/helpers.go†L90-L105】 |
-| `network.ack_regression` | `network.AckRegression` | `AckPayload` (`previous`, `ack`) | Emitted when a client reports an acknowledgement lower than its prior value. 【F:server/logging/network/helpers.go†L9-L54】【F:server/hub.go†L253-L283】 |
-| `network.ack_advanced` | `network.AckAdvanced` | `AckPayload` (`previous`, `ack`) | Debug event defined for acknowledgement progress (currently unused but available for future instrumentation). 【F:server/logging/network/helpers.go†L9-L37】 |
+| `economy.gold_dropped` | `economy.GoldDropped` | `GoldDroppedPayload` (`quantity`, `reason`) | Records gold piles spawned on the ground along with the reason (death, manual drop, etc.). [server/logging/economy/helpers.go](../../server/logging/economy/helpers.go) |
+| `economy.gold_picked_up` | `economy.GoldPickedUp` | `GoldPickedUpPayload` (`quantity`) | Captures successful pickups of ground gold stacks. [server/logging/economy/helpers.go](../../server/logging/economy/helpers.go) |
+| `economy.gold_pickup_failed` | `economy.GoldPickupFailed` | `GoldPickupFailedPayload` (`reason`) | Warns when a pickup attempt fails (out of range, not found). [server/logging/economy/helpers.go](../../server/logging/economy/helpers.go) |
+| `network.ack_regression` | `network.AckRegression` | `AckPayload` (`previous`, `ack`) | Emitted when a client reports an acknowledgement lower than its prior value. [server/logging/network/helpers.go](../../server/logging/network/helpers.go) [server/hub.go](../../server/hub.go) |
+| `network.ack_advanced` | `network.AckAdvanced` | `AckPayload` (`previous`, `ack`) | Debug event defined for acknowledgement progress (currently unused but available for future instrumentation). [server/logging/network/helpers.go](../../server/logging/network/helpers.go) |
 
 Extend this table whenever new helpers are added.
 

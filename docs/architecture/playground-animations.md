@@ -40,7 +40,7 @@ Animations implement the `EffectDefinition<TOptions>` contract. The definition
 is a factory that produces `EffectInstance` objects responsible for simulation
 and drawing, and in the unified pipeline it also exposes a
 `fromEffect` helper so contract payloads from the server can be converted into
-spawn options automatically.【F:client/render.js†L320-L378】【F:client/js-effects/effects/meleeSwing.js†L90-L137】
+spawn options automatically. [client/render.js](../../client/render.js) [client/js-effects/effects/meleeSwing.js](../../client/js-effects/effects/meleeSwing.js)
 
 ```ts
 export interface EffectDefinition<TOptions> {
@@ -67,7 +67,7 @@ playground only requires `type`, `defaults`, and `create`. When an animation is
 used inside the game client, `render.syncEffectsByType` will invoke
 `fromEffect` (when provided) with the authoritative contract payload so the
 definition can translate quantized geometry, durations, and custom params into
-runtime-friendly options.【F:client/render.js†L340-L401】
+runtime-friendly options. [client/render.js](../../client/render.js)
 
 The instance returned by `create` must implement the `EffectInstance`
 interface:

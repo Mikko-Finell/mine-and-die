@@ -106,6 +106,7 @@ func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 			playerPatchKinds = append(playerPatchKinds, patch.Kind)
 		}
 	}
+
 	if len(playerPatchKinds) == 0 {
 		t.Fatalf("expected player patch to survive filtering")
 	}
@@ -116,6 +117,52 @@ func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 	for i, kind := range playerPatchKinds {
 		if kind != wantKinds[i] {
 			t.Fatalf("expected player patch order %v, got %v", wantKinds, playerPatchKinds)
+		}
+	}
+}
+
+func TestMarshalStateRetainsEffectPatches(t *testing.T) {
+	hub := newHub()
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-anchor", Facing: FacingDown, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	now := time.Now()
+	effect := &effectState{Effect: Effect{ID: "effect-patch", Type: effectTypeFireball}, expiresAt: now.Add(time.Minute)}
+
+	hub.mu.Lock()
+	hub.world.AddPlayer(player)
+	hub.world.registerEffect(effect)
+	hub.world.SetEffectPosition(effect, 5, 6)
+	hub.world.SetEffectParam(effect, "radius", 1.5)
+	hub.mu.Unlock()
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state message: %v", err)
+	}
+
+	var effectPatchKinds []PatchKind
+	for _, patch := range msg.Patches {
+		if patch.EntityID == effect.ID {
+			effectPatchKinds = append(effectPatchKinds, patch.Kind)
+		}
+	}
+
+	if len(effectPatchKinds) == 0 {
+		t.Fatalf("expected effect patches to survive filtering")
+	}
+
+	wantKinds := []PatchKind{PatchEffectPos, PatchEffectParams}
+	if len(effectPatchKinds) != len(wantKinds) {
+		t.Fatalf("expected %d effect patches after filtering, got %d", len(wantKinds), len(effectPatchKinds))
+	}
+	for i, kind := range effectPatchKinds {
+		if wantKinds[i] != kind {
+			t.Fatalf("expected effect patch order %v, got %v", wantKinds, effectPatchKinds)
 		}
 	}
 }

@@ -100,7 +100,7 @@ Expose getters returning cached values to avoid mid-tick recomputation, while st
 Define explicit command structs in `server/messages.go` and handlers in `simulation.go`:
 - `CommandConsumeBooster` — removes the item via `Inventory.RemoveQuantity`, invokes `stats.ApplyPermanent` with a stable `SourceKey`, publishes combat log events.
 - `CommandEquipItem` / `CommandUnequipItem` — update equipment layer by inserting/removing the specific `SourceKey` so identical items stack predictably.
-- Equipment console commands now leverage `World.EquipFromInventory` / `World.UnequipToInventory` to update `stats.LayerEquipment`, emit patches, and clamp health immediately after gear changes.【F:server/world_equipment.go†L19-L112】【F:server/hub.go†L438-L520】
+- Equipment console commands now leverage `World.EquipFromInventory` / `World.UnequipToInventory` to update `stats.LayerEquipment`, emit patches, and clamp health immediately after gear changes. [server/world_equipment.go](../../server/world_equipment.go) [server/hub.go](../../server/hub.go)
 - `CommandStatusEffectApplied` / `CommandStatusEffectExpired` — integrate with `actorState.statusEffects` for on-tick buffs/debuffs, storing their `ExpiresAtTick` and removing the matching source during cleanup.
 - `CommandResetStats` — used by death handling to wipe layers except archetype defaults.
 These commands follow the existing queueing pattern handled in `Hub.advance`, preserving deterministic processing order.

@@ -13,11 +13,13 @@ This document reflects the current implementation in `server/` and
    seeds world state, forces the next broadcast to be a keyframe, and returns
    the authoritative snapshot. The payload includes `ver`, the allocated `id`,
    arrays for `players`, `npcs`, `obstacles`, any `groundItems`, the normalized
-   world `config`, `resync: true`, and the active `keyframeInterval`. 【F:server/hub.go†L206-L244】【F:server/messages.go†L3-L16】
+   world `config`, `resync: true`, and the active `keyframeInterval`. The flow
+   runs through `Hub.Join` and `hub.marshalState`. [server/hub.go](../../server/hub.go) [server/messages.go](../../server/messages.go)
 2. **WebSocket upgrade (`GET /ws?id=…`)** – The browser opens a socket using the
-   join response `id`. The server validates the ID, registers the subscriber,
-   and immediately writes a `state` message with `resync: true` so late joiners
-   start from the latest tick. 【F:server/main.go†L210-L266】【F:server/main.go†L223-L256】
+   join response `id`. The `http.HandleFunc("/ws", …)` handler validates the ID,
+   `Hub.Subscribe` registers the subscriber, and the server immediately writes a
+   `state` message flagged with `resync: true` so late joiners start from the
+   latest tick. [server/main.go](../../server/main.go) [server/hub.go](../../server/hub.go)
 3. **Steady state** – `Hub.RunSimulation` advances the world at 15 ticks per
    second, drains player commands, and calls `broadcastState`. Patches are
    journaled every tick; full snapshots are emitted when
@@ -25,49 +27,50 @@ This document reflects the current implementation in `server/` and
    adjustable at runtime). Every outbound message carries a monotonically
    increasing `sequence`, the current tick (`t`), and `keyframeSeq`. Clients
    append their latest acknowledged tick as `ack`; the server tracks it for
-   diagnostics. 【F:server/constants.go†L6-L17】【F:server/hub.go†L745-L807】【F:server/hub.go†L954-L1135】【F:server/hub.go†L311-L342】【F:client/network.js†L1070-L1099】
+   diagnostics via `recordAck`. [server/constants.go](../../server/constants.go) [server/hub.go](../../server/hub.go) [client/network.js](../../client/network.js)
 
 If the socket closes or the patch pipeline requests a resync, the client tears
-down local state and schedules a fresh join after one second. 【F:client/network.js†L1555-L1598】【F:client/network.js†L1546-L1552】
+down local state and schedules a fresh join after one second through
+`scheduleReconnect`. [client/network.js](../../client/network.js)
 
 ## HTTP API Surface
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/health` | `GET` | Returns `ok` for container liveness checks. 【F:server/main.go†L50-L53】 |
-| `/join` | `POST` | Allocates a player and responds with the snapshot described above. No request body is required. 【F:server/main.go†L186-L200】 |
-| `/ws` | `GET` | Upgrades to the WebSocket stream when given a valid `id` query parameter. Unknown IDs receive a policy-violation close frame. 【F:server/main.go†L210-L229】 |
-| `/world/reset` | `POST` | Accepts a JSON body toggling obstacles, gold mines, NPC composition, lava, counts, and `seed`. The hub normalizes the request, rebuilds the world, forces the next keyframe, broadcasts a fresh state, and echoes the new config. 【F:server/main.go†L82-L174】 |
-| `/diagnostics` | `GET` | Emits `status`, `serverTime`, the current tick rate and heartbeat interval, per-player heartbeat/RTT/ack data, and aggregated telemetry (bytes sent, keyframe statistics, effect metrics, tick budget alarms, etc.). 【F:server/main.go†L55-L80】【F:server/hub.go†L873-L892】【F:server/telemetry.go†L299-L339】 |
+| `/health` | `GET` | Returns `ok` for container liveness checks. [server/main.go](../../server/main.go) |
+| `/join` | `POST` | Allocates a player and responds with the snapshot described above. No request body is required. [server/main.go](../../server/main.go) |
+| `/ws` | `GET` | Upgrades to the WebSocket stream when given a valid `id` query parameter. Unknown IDs receive a policy-violation close frame. [server/main.go](../../server/main.go) |
+| `/world/reset` | `POST` | Accepts a JSON body toggling obstacles, gold mines, NPC composition, lava, counts, and `seed`. The hub normalizes the request, rebuilds the world, forces the next keyframe, broadcasts a fresh state, and echoes the new config. [server/main.go](../../server/main.go) |
+| `/diagnostics` | `GET` | Emits `status`, `serverTime`, the current tick rate and heartbeat interval, per-player heartbeat/RTT/ack data, and aggregated telemetry (bytes sent, keyframe statistics, effect metrics, tick budget alarms, etc.). [server/main.go](../../server/main.go) [server/hub.go](../../server/hub.go) [server/telemetry.go](../../server/telemetry.go) |
 
 ## Server → Client Messages
 
 | Type | Fields | Notes |
 | --- | --- | --- |
-| `state` | `ver`, `type`, `t`, `sequence`, `keyframeSeq`, `serverTime`, `config`, `keyframeInterval`, `patches`, optional `resync` flag, plus optional `players`, `npcs`, `obstacles`, `groundItems`, `effectTriggers`, `effect_spawned`, `effect_update`, `effect_ended`, `effect_seq_cursors`, and (legacy) `effects`. | Generated by `hub.marshalState`. When a full snapshot is required the entity arrays are populated; patch-only ticks omit them to save bandwidth. Patches are filtered to entities that still exist. Effect lifecycle batches are only attached when the contract `EffectManager` and transport flags are enabled; they contain per-effect spawn/update/end envelopes plus cursor hints so clients can drop duplicates deterministically. 【F:server/messages.go†L18-L38】【F:server/hub.go†L954-L1135】【F:server/hub.go†L1121-L1135】【F:server/constants.go†L35-L62】【F:client/network.js†L1270-L1346】【F:client/network.js†L1285-L1289】【F:client/effect-lifecycle.js†L120-L168】 |
-| `heartbeat` | `ver`, `type`, `serverTime`, `clientTime`, `rtt`. | Reply to a client heartbeat message, reporting the round-trip latency derived server-side. 【F:server/messages.go†L89-L95】【F:server/main.go†L299-L333】 |
-| `console_ack` | `ver`, `type`, `cmd`, `status`, optional `reason`, `qty`, `stackId`, `slot`. | Acknowledges debug console commands such as `drop_gold`, `pickup_gold`, `equip_slot`, and `unequip_slot`, including contextual metadata. 【F:server/messages.go†L78-L87】【F:server/hub.go†L469-L566】 |
-| `keyframe` | `ver`, `type`, `sequence`, `t`, `players`, `npcs`, `obstacles`, `groundItems`, `config`. | Retrieved from the keyframe journal in response to client recovery requests. 【F:server/messages.go†L41-L52】【F:server/hub.go†L1169-L1239】 |
-| `keyframeNack` | `ver`, `type`, `sequence`, `reason`. | Indicates a keyframe request was rate-limited or the frame expired. 【F:server/messages.go†L54-L58】【F:server/hub.go†L1215-L1252】 |
+| `state` | `ver`, `type`, `t`, `sequence`, `keyframeSeq`, `serverTime`, `config`, `keyframeInterval`, `patches`, optional `resync` flag, plus optional `players`, `npcs`, `obstacles`, `groundItems`, `effectTriggers`, `effect_spawned`, `effect_update`, `effect_ended`, `effect_seq_cursors`, and (legacy) `effects`. | Generated by `hub.marshalState` and streamed via `broadcastState`. Full snapshots embed entity arrays; patch-only ticks omit them to save bandwidth. Patches are filtered to entities that still exist. Effect lifecycle batches are only attached when the contract `EffectManager` and transport flags are enabled; they contain per-effect spawn/update/end envelopes plus cursor hints so clients can drop duplicates deterministically through `applyEffectLifecycleBatch`. [server/messages.go](../../server/messages.go) [server/hub.go](../../server/hub.go) [server/constants.go](../../server/constants.go) [client/network.js](../../client/network.js) [client/effect-lifecycle.js](../../client/effect-lifecycle.js) |
+| `heartbeat` | `ver`, `type`, `serverTime`, `clientTime`, `rtt`. | Reply to a client heartbeat message, reporting the round-trip latency derived server-side. [server/messages.go](../../server/messages.go) [server/main.go](../../server/main.go) |
+| `console_ack` | `ver`, `type`, `cmd`, `status`, optional `reason`, `qty`, `stackId`, `slot`. | Acknowledges debug console commands such as `drop_gold`, `pickup_gold`, `equip_slot`, and `unequip_slot`, including contextual metadata. [server/messages.go](../../server/messages.go) [server/hub.go](../../server/hub.go) |
+| `keyframe` | `ver`, `type`, `sequence`, `t`, `players`, `npcs`, `obstacles`, `groundItems`, `config`. | Retrieved from the keyframe journal in response to client recovery requests. [server/messages.go](../../server/messages.go) [server/hub.go](../../server/hub.go) |
+| `keyframeNack` | `ver`, `type`, `sequence`, `reason`. | Indicates a keyframe request was rate-limited or the frame expired. [server/messages.go](../../server/messages.go) [server/hub.go](../../server/hub.go) |
 
 Legacy one-shot `effectTriggers` continue to ship alongside the unified
-lifecycle batches; the client deduplicates them before dispatch. 【F:client/network.js†L1285-L1289】【F:client/network.js†L820-L870】
+lifecycle batches; `processEffectTriggers` deduplicates them before dispatch. [client/network.js](../../client/network.js)
 
 ## Client → Server Messages
 
 All payloads are JSON objects that include `ver` (protocol version 1) and, when
-known, the latest applied tick as `ack`. 【F:client/network.js†L8-L35】【F:client/network.js†L1070-L1087】
+known, the latest applied tick as `ack` via `sendMessage`. [client/network.js](../../client/network.js)
 
 | Type | Fields | Purpose |
 | --- | --- | --- |
-| `input` | `dx`, `dy`, `facing` | Movement vector and facing override; processed every tick. 【F:server/messages.go†L61-L75】【F:server/main.go†L279-L298】 |
-| `path` | `x`, `y` | Requests server-driven navigation toward the clamped world coordinate. 【F:server/main.go†L284-L287】 |
-| `cancelPath` | _(none)_ | Cancels server pathing. 【F:server/main.go†L288-L291】 |
-| `action` | `action` | Fires an ability; the hub currently accepts `attack` and `fireball`. 【F:server/main.go†L292-L298】【F:server/hub.go†L445-L464】 |
-| `heartbeat` | `sentAt` | Keeps the session alive and lets the server compute RTT. 【F:server/main.go†L299-L333】【F:client/network.js†L1457-L1490】 |
-| `console` | `cmd`, optional `qty` | Drives debug commands for item drops, pickups, and equipment management. 【F:server/messages.go†L78-L87】【F:server/hub.go†L469-L566】 |
-| `keyframeRequest` | `keyframeSeq`, optional `keyframeTick` | Asks for a cached keyframe; retries are rate limited server-side and orchestrated client-side with exponential backoff (200 ms base, max 2 s, three attempts). 【F:server/main.go†L354-L384】【F:server/hub.go†L1215-L1252】【F:client/network.js†L21-L35】【F:client/network.js†L900-L1004】 |
-| `keyframeCadence` | `keyframeInterval` | Requests a new keyframe interval. The hub normalizes the value, updates the cadence, forces a keyframe, and logs the applied interval. 【F:server/messages.go†L61-L75】【F:server/main.go†L385-L392】【F:server/hub.go†L900-L919】【F:client/network.js†L1100-L1113】 |
+| `input` | `dx`, `dy`, `facing` | Movement vector and facing override; processed every tick. [server/messages.go](../../server/messages.go) [server/main.go](../../server/main.go) |
+| `path` | `x`, `y` | Requests server-driven navigation toward the clamped world coordinate. [server/main.go](../../server/main.go) |
+| `cancelPath` | _(none)_ | Cancels server pathing. [server/main.go](../../server/main.go) |
+| `action` | `action` | Fires an ability; the hub currently accepts `attack` and `fireball`. [server/main.go](../../server/main.go) [server/hub.go](../../server/hub.go) |
+| `heartbeat` | `sentAt` | Keeps the session alive and lets the server compute RTT. [server/main.go](../../server/main.go) [client/network.js](../../client/network.js) |
+| `console` | `cmd`, optional `qty` | Drives debug commands for item drops, pickups, and equipment management. [server/messages.go](../../server/messages.go) [server/hub.go](../../server/hub.go) |
+| `keyframeRequest` | `keyframeSeq`, optional `keyframeTick` | Asks for a cached keyframe; retries are rate limited server-side and orchestrated client-side with exponential backoff (200 ms base, max 2 s, three attempts) through `updateKeyframeRetryLoop`. [server/main.go](../../server/main.go) [server/hub.go](../../server/hub.go) [client/network.js](../../client/network.js) |
+| `keyframeCadence` | `keyframeInterval` | Requests a new keyframe interval. The hub normalizes the value, updates the cadence, forces a keyframe, and logs the applied interval. [server/messages.go](../../server/messages.go) [server/main.go](../../server/main.go) [server/hub.go](../../server/hub.go) [client/network.js](../../client/network.js) |
 
 ## Patch, Snapshot, and Keyframe Pipeline
 
@@ -75,53 +78,53 @@ known, the latest applied tick as `ack`. 【F:client/network.js†L8-L35】【F:
 entities that still exist, and chooses when to embed full entity arrays based on
 `shouldIncludeSnapshot`. When a snapshot is included, the hub records a new
 keyframe in the rolling journal and updates `keyframeSeq`. The current cadence is
-broadcast as `keyframeInterval` so clients can match server intent. 【F:server/hub.go†L954-L1107】
+broadcast as `keyframeInterval` so clients can match server intent. [server/hub.go](../../server/hub.go)
 
 The client keeps a `patchState` object that mirrors every `state`, `join`,
 `keyframe`, or `keyframeNack` envelope. On errors or resync requests it stops the
 retry loop, triggers a reconnect, and starts requesting keyframes using the
-backoff schedule above. 【F:client/network.js†L1006-L1068】【F:client/network.js†L1270-L1339】
+backoff schedule above. [client/network.js](../../client/network.js)
 
 Players can adjust cadence at runtime with `keyframeCadence`; the server clamps
 invalid intervals back to the default and forces the next broadcast to be a
-keyframe. 【F:server/hub.go†L900-L919】【F:server/main.go†L385-L392】
+keyframe. [server/hub.go](../../server/hub.go) [server/main.go](../../server/main.go)
 
 ## Effect Transport
 
 The unified effect pipeline now runs unconditionally. Every state broadcast
 streams `effect_spawned`, `effect_update`, and `effect_ended` arrays alongside
 the main payload and tracks `effect_seq_cursors` to help clients discard stale
-updates. 【F:server/hub.go†L960-L1126】
+updates. [server/hub.go](../../server/hub.go)
 
 Each event is strongly typed: spawns include the replicated `EffectInstance`,
 updates carry delivery/behaviour state deltas, and ends record the terminal
-reason. 【F:server/effects_contract.go†L215-L235】 The client funnels these through
+reason. [server/effects_contract.go](../../server/effects_contract.go) The client funnels these through
 `applyEffectLifecycleBatch`, merging them into local effect instances, and keeps
-per-effect diagnostics. 【F:client/network.js†L1285-L1289】【F:client/effect-lifecycle.js†L120-L176】
+per-effect diagnostics. [client/network.js](../../client/network.js) [client/effect-lifecycle.js](../../client/effect-lifecycle.js)
 
 Legacy `effectTriggers` remain enabled for visual one-shots; the client tracks a
-processed-ID set to avoid duplicate playback. 【F:client/network.js†L820-L870】
+processed-ID set to avoid duplicate playback. [client/network.js](../../client/network.js)
 
 ## Heartbeats, Timeouts, and Reconnects
 
 The browser emits a heartbeat immediately after the socket opens and every
 2,000 ms thereafter. Each message records `sentAt`; the server enqueues a
 heartbeat command, calculates RTT (ignoring timestamps more than five seconds in
-the past), and replies with a `heartbeat` envelope. 【F:client/network.js†L1457-L1524】【F:server/hub.go†L685-L716】【F:server/main.go†L299-L333】
+the past), and replies with a `heartbeat` envelope. [client/network.js](../../client/network.js) [server/hub.go](../../server/hub.go) [server/main.go](../../server/main.go)
 
 Server-side player records keep the latest heartbeat time. The simulation loop
 removes actors whose heartbeats are older than `disconnectAfter` (three missed
-intervals, ~6 seconds) and logs the timeout. 【F:server/constants.go†L16-L17】【F:server/simulation.go†L483-L507】
+intervals, ~6 seconds) and logs the timeout. [server/constants.go](../../server/constants.go) [server/simulation.go](../../server/simulation.go)
 
 On any disconnect the client clears movement, heartbeats, patch state, and
-lifecycle caches before scheduling a reconnect one second later. 【F:client/network.js†L1555-L1598】
+lifecycle caches before scheduling a reconnect one second later. [client/network.js](../../client/network.js)
 
 ## World Configuration Broadcasts
 
 World toggles cover obstacles, gold mines, NPC counts (with explicit goblin/rat
 splits), lava, dimensions, and the procedural `seed`. Configs are normalized on
 every reset and included in both join and state payloads so the client can update
-UI and movement bounds immediately. 【F:server/world_config.go†L7-L56】【F:client/network.js†L1160-L1197】【F:client/network.js†L1291-L1299】
+UI and movement bounds immediately. [server/world_config.go](../../server/world_config.go) [client/network.js](../../client/network.js)
 
 ## Diagnostics and Telemetry
 
@@ -129,4 +132,4 @@ UI and movement bounds immediately. 【F:server/world_config.go†L7-L56】【F:
 latest `ack`) plus the snapshot of telemetry counters. These counters track bytes
 and entities broadcast, keyframe request rates, effect lifecycle totals, trigger
 queues, and tick budget overruns/alarms. This endpoint is the canonical source
-for external dashboards and load testing instrumentation. 【F:server/main.go†L55-L80】【F:server/hub.go†L873-L892】【F:server/telemetry.go†L299-L339】
+for external dashboards and load testing instrumentation. [server/main.go](../../server/main.go) [server/hub.go](../../server/hub.go) [server/telemetry.go](../../server/telemetry.go)

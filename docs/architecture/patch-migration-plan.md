@@ -16,64 +16,64 @@ required before the patch pipeline can replace the legacy snapshot flow.
 
 * **Position (`Actor.X`, `Actor.Y`)** – committed via `World.SetPosition`, which
   verifies that the coordinates changed, bumps the per-player version, and emits
-  a position patch for clients.【F:server/world_mutators.go†L16-L140】 The main
+  a position patch for clients. [server/world_mutators.go](../../server/world_mutators.go) The main
   simulation resolves movement against scratch copies and then calls
   `applyPlayerPositionMutations` to publish the final coordinates through the
-  setter so the journal stays authoritative.【F:server/simulation.go†L321-L361】【F:server/simulation.go†L424-L447】
+  setter so the journal stays authoritative. [server/simulation.go](../../server/simulation.go)
 * **Facing (`Actor.Facing`)** – updated with `World.SetFacing`, which clamps the
-  direction, increments the version, and records a facing patch.【F:server/world_mutators.go†L32-L156】
+  direction, increments the version, and records a facing patch. [server/world_mutators.go](../../server/world_mutators.go)
   Both direct player input handling and the path follower invoke this helper so
-  facing changes continue to produce patches.【F:server/simulation.go†L233-L258】【F:server/player_path.go†L81-L83】
+  facing changes continue to produce patches. [server/simulation.go](../../server/simulation.go) [server/player_path.go](../../server/player_path.go)
 * **Intent vectors (`playerState.intentX`, `playerState.intentY`)** – updated via
   `World.SetIntent`, which skips invalid vectors, bumps the version, and records
-  an intent patch for the journal.【F:server/world_mutators.go†L51-L176】 Player
+  an intent patch for the journal. [server/world_mutators.go](../../server/world_mutators.go) Player
   command handling routes through this setter so intent changes stay journaled
-  alongside facing and position.【F:server/simulation.go†L233-L315】 The path
+  alongside facing and position. [server/simulation.go](../../server/simulation.go) The path
   follower likewise normalizes its movement updates through the write barrier so
-  server-driven navigation emits consistent patches.【F:server/player_path.go†L7-L158】
+  server-driven navigation emits consistent patches. [server/player_path.go](../../server/player_path.go)
 * **Health (`Actor.Health`)** – adjusted through `World.SetHealth`, which clamps
   to `[0, MaxHealth]`, increments the version, and appends a health patch that
-  mirrors the new hit points and max health.【F:server/world_mutators.go†L67-L192】
+  mirrors the new hit points and max health. [server/world_mutators.go](../../server/world_mutators.go)
   Damage and healing effects call this setter whenever the target is a tracked
-  player so write barriers capture the change.【F:server/effects.go†L206-L245】
+  player so write barriers capture the change. [server/effects.go](../../server/effects.go)
 * **Inventory (`Actor.Inventory`)** – wrapped by `World.MutateInventory`, which
   clones the inventory, executes the provided mutation, rolls back on error, and
-  appends an inventory patch if anything actually changed.【F:server/world_mutators.go†L101-L208】
+  appends an inventory patch if anything actually changed. [server/world_mutators.go](../../server/world_mutators.go)
   Hub flows such as `drop_gold` and `pickup_gold` mutate player inventories via
-  this helper.【F:server/hub.go†L360-L495】
+  this helper. [server/hub.go](../../server/hub.go)
 * **Version counter (`playerState.version`)** – only incremented inside the
   setters above, ensuring authoritative snapshots line up with the mutation
-  journal.【F:server/world_mutators.go†L16-L208】
+  journal. [server/world_mutators.go](../../server/world_mutators.go)
 
 ### NPC write barrier coverage
 
 * **Position (`NPC.Actor.X`, `NPC.Actor.Y`)** – committed via `World.SetNPCPosition` so every movement pass funnels through the
   journal. The simulation mirrors the player pipeline by staging NPC positions on scratch copies and then calling
-  `applyNPCPositionMutations` to write the results back through the barrier.【F:server/world_mutators.go†L210-L264】【F:server/simulation.go†L321-L372】
+  `applyNPCPositionMutations` to write the results back through the barrier. [server/world_mutators.go](../../server/world_mutators.go) [server/simulation.go](../../server/simulation.go)
 * **Facing (`NPC.Actor.Facing`)** – updated with `World.SetNPCFacing`. Command processing, AI actions, and the path follower all call
-  this helper so server-driven rotations emit patches instead of mutating struct fields in place.【F:server/world_mutators.go†L224-L236】【F:server/simulation.go†L239-L276】【F:server/ai_executor.go†L417-L421】【F:server/npc_path.go†L70-L95】
+  this helper so server-driven rotations emit patches instead of mutating struct fields in place. [server/world_mutators.go](../../server/world_mutators.go) [server/simulation.go](../../server/simulation.go) [server/ai_executor.go](../../server/ai_executor.go) [server/npc_path.go](../../server/npc_path.go)
 * **Health (`NPC.Actor.Health`)** – routed through `World.SetNPCHealth`, which shares the clamping and patch emission used for
-  players. Combat behaviours now detect NPC targets and publish their damage via the write barrier.【F:server/world_mutators.go†L238-L264】【F:server/effects.go†L206-L245】
+  players. Combat behaviours now detect NPC targets and publish their damage via the write barrier. [server/world_mutators.go](../../server/world_mutators.go) [server/effects.go](../../server/effects.go)
 * **Inventory (`NPC.Actor.Inventory`)** – mutated through `World.MutateNPCInventory`. Drops now clone-and-commit via the helper
-  so looting and death drops stay journaled.【F:server/world_mutators.go†L252-L264】【F:server/ground_items.go†L64-L180】
+  so looting and death drops stay journaled. [server/world_mutators.go](../../server/world_mutators.go) [server/ground_items.go](../../server/ground_items.go)
 
 ### Effect write barrier coverage
 
 * **Effect transforms (`Effect.X`, `Effect.Y`)** – wrapped by `World.SetEffectPosition`. Projectile advancement, follow effects,
-  and collision handlers call this helper when moving hitboxes so patches capture the authoritative coordinates.【F:server/world_mutators.go†L266-L301】【F:server/effects.go†L659-L713】【F:server/effects.go†L826-L858】
+  and collision handlers call this helper when moving hitboxes so patches capture the authoritative coordinates. [server/world_mutators.go](../../server/world_mutators.go) [server/effects.go](../../server/effects.go)
 * **Dynamic parameters (`Effect.Params`)** – funnelled through `World.SetEffectParam`. Remaining range, expiry bookkeeping, and
-  other per-tick adjustments now bump the effect version and snapshot the merged parameter map for patches.【F:server/world_mutators.go†L283-L301】【F:server/effects.go†L704-L713】【F:server/effects.go†L873-L882】
+  other per-tick adjustments now bump the effect version and snapshot the merged parameter map for patches. [server/world_mutators.go](../../server/world_mutators.go) [server/effects.go](../../server/effects.go)
 
 ### Ground item write barrier coverage
 
 * **Stacks (`GroundItem.Qty`, `GroundItem.X`, `GroundItem.Y`)** – updated by `World.SetGroundItemQuantity`/`World.SetGroundItemPosition`.
   Merge logic, console commands, and death drops route through these helpers so ground loot changes emit patches and bump
-  per-stack versions.【F:server/world_mutators.go†L303-L338】【F:server/ground_items.go†L64-L166】
+  per-stack versions. [server/world_mutators.go](../../server/world_mutators.go) [server/ground_items.go](../../server/ground_items.go)
 
 ### Write barrier regression tests
 
 Dedicated unit tests cover the new helpers for every entity type. They assert version increments and patch emission for NPCs,
-effects, and ground items alongside the existing player coverage so future refactors can’t silently bypass the journal.【F:server/world_mutators_test.go†L372-L574】
+effects, and ground items alongside the existing player coverage so future refactors can’t silently bypass the journal. [server/world_mutators_test.go](../../server/world_mutators_test.go)
 
 > **Important:** Any server code that mutates broadcast state must call the appropriate `World` setter or mutation helper.
 > Writing directly to struct fields will skip version bumps and patch emission; reviewers should reject changes that bypass
@@ -87,21 +87,21 @@ patches or version bumps:
 
 * **Path tracking (`playerState.path` fields)** – recalculation and completion
   logic rewrites the struct directly when managing goals, indices, and arrival
-  radius.【F:server/player_path.go†L89-L169】
+  radius. [server/player_path.go](../../server/player_path.go)
 * **Input timestamps (`playerState.lastInput`)** – assigned whenever a movement
-  or path command is processed so diagnostics can show recent activity.【F:server/simulation.go†L233-L315】
+  or path command is processed so diagnostics can show recent activity. [server/simulation.go](../../server/simulation.go)
 * **Heartbeat metadata (`playerState.lastHeartbeat`, `playerState.lastRTT`)** –
   recorded directly on heartbeat commands and when a subscriber reconnects to a
-  player slot.【F:server/simulation.go†L288-L313】【F:server/hub.go†L169-L190】
+  player slot. [server/simulation.go](../../server/simulation.go) [server/hub.go](../../server/hub.go)
 * **Cooldown timers (`playerState.cooldowns`)** – lazily populated and updated
-  in the ability helpers to enforce ability reuse delays.【F:server/effects.go†L338-L377】
+  in the ability helpers to enforce ability reuse delays. [server/effects.go](../../server/effects.go)
 * **Status effect map (`actorState.statusEffects`)** – populated, refreshed, and cleaned
-  up by the status effect system when effects apply or expire.【F:server/status_effects.go†L87-L158】
+  up by the status effect system when effects apply or expire. [server/status_effects.go](../../server/status_effects.go)
 * **Scratch movement (`actorState.X`, `actorState.Y`)** – movement integration
   still adjusts actor copies directly while resolving collisions before the
   results are written back through `SetPosition`. These adjustments never touch
   the authoritative map entries directly but are worth noting when auditing the
-  pipeline.【F:server/movement.go†L6-L102】【F:server/simulation.go†L321-L361】
+  pipeline. [server/movement.go](../../server/movement.go) [server/simulation.go](../../server/simulation.go)
 
 ## Client instrumentation
 
@@ -112,17 +112,17 @@ snapshot path:
 * A new `createPatchState`/`updatePatchState` pair normalises player snapshots,
   enforces monotonic ticks, deduplicates recent patch keys with an LRU cache,
   clamps invalid coordinates, and records replay errors for inspection while
-  preserving prior patched values across duplicate batches.【F:client/patches.js†L1-L380】
+  preserving prior patched values across duplicate batches. [client/patches.js](../../client/patches.js)
 * The main store instantiates this background state during bootstrap, and the
   network layer refreshes it on `/join` and every `state` broadcast while logging
   new patch replay issues to the console for debugging and resetting the dedupe
-  history whenever the server announces a resynchronisation.【F:client/main.js†L9-L110】【F:client/network.js†L1-L214】【F:client/network.js†L702-L744】【F:client/network.js†L804-L851】
+  history whenever the server announces a resynchronisation. [client/main.js](../../client/main.js) [client/network.js](../../client/network.js)
 * The diagnostics drawer now surfaces the patch baseline tick, replay batch
   summary, and entity counts so QA can compare snapshot and diff pipelines at a
-  glance without opening the console.【F:client/index.html†L288-L315】【F:client/main.js†L420-L620】
+  glance without opening the console. [client/index.html](../../client/index.html) [client/main.js](../../client/main.js)
 * NPC, effect, and ground item patches now replay alongside player diffs in the
   background state container, eliminating the temporary unsupported patch
-  warnings while exercising dedupe logic for every entity type.【F:client/patches.js†L1-L828】
+  warnings while exercising dedupe logic for every entity type. [client/patches.js](../../client/patches.js)
 * Keyframe recovery maintains an on-client cache of recent snapshots, requests
   server keyframes when diffs reference unknown entities, replays deferred
   batches once the baseline arrives, and surfaces recovery status in the
@@ -131,14 +131,14 @@ snapshot path:
   variables, publishes `keyframe` and `keyframeNack` responses (`expired` / `rate_limited`),
   rate-limits recovery RPCs, emits telemetry on journal size and NACK counts, and the
   client escalates to a resync or schedules retries with jittered backoff while tracking
-  diagnostics counters.【F:server/patches.go†L1-L218】【F:server/hub.go†L600-L820】【F:server/main.go†L320-L360】【F:client/patches.js†L900-L1320】【F:client/network.js†L640-L1240】【F:client/main.js†L560-L700】
+  diagnostics counters. [server/patches.go](../../server/patches.go) [server/hub.go](../../server/hub.go) [server/main.go](../../server/main.go) [client/patches.js](../../client/patches.js) [client/network.js](../../client/network.js) [client/main.js](../../client/main.js)
 * Vitest coverage now freezes inputs to guard against mutation, asserts
   idempotent replay counts, validates monotonic tick handling, and exercises the
   resync pathway so future patch types can extend the pipeline with
-  confidence.【F:client/__tests__/patches.test.js†L1-L328】
+  confidence. [client/__tests__/patches.test.js](../../client/__tests__/patches.test.js)
 * Patch batches now carry authoritative `sequence` counters and explicit `resync`
   markers so the client can reset history and deduplicate against the server's
-  metadata instead of inferring behaviour from tick values.【F:server/hub.go†L617-L664】【F:server/messages.go†L13-L35】【F:client/patches.js†L720-L964】【F:client/__tests__/patches.test.js†L1-L520】
+  metadata instead of inferring behaviour from tick values. [server/hub.go](../../server/hub.go) [server/messages.go](../../server/messages.go) [client/patches.js](../../client/patches.js) [client/__tests__/patches.test.js](../../client/__tests__/patches.test.js)
   `sequence` is the globally monotonic message counter for state broadcasts;
   clients now require this canonical field instead of tolerating legacy aliases
   such as `seq` or `sequenceNumber`. The `resync` flag continues to delineate
@@ -148,27 +148,27 @@ snapshot path:
 
 * ✅ **Expand patch coverage** – client-side NPC, effect, and ground item patch
   handlers mirror the server journals so replay validation covers every
-  broadcast entity without console noise.【F:client/patches.js†L1-L828】【F:client/__tests__/patches.test.js†L1-L328】
+  broadcast entity without console noise. [client/patches.js](../../client/patches.js) [client/__tests__/patches.test.js](../../client/__tests__/patches.test.js)
 * ✅ **Patch sequence plumbing** – state broadcasts now include monotonic
   sequence numbers plus a `resync` flag, and the client dedupe cache consumes
   those fields to discard duplicates and protect against out-of-order batches
-  without guessing from tick counters.【F:server/hub.go†L617-L664】【F:server/messages.go†L13-L35】【F:client/patches.js†L720-L964】【F:client/__tests__/patches.test.js†L1-L520】
+  without guessing from tick counters. [server/hub.go](../../server/hub.go) [server/messages.go](../../server/messages.go) [client/patches.js](../../client/patches.js) [client/__tests__/patches.test.js](../../client/__tests__/patches.test.js)
 * ✅ **Replay validation tooling** – the diagnostics drawer surfaces patch
   baseline ticks, applied patch counts, error summaries, and entity totals by
   reading from the background patch state, letting QA compare snapshot and diff
-  pipelines without inspecting the console.【F:client/index.html†L288-L341】【F:client/main.js†L401-L620】
+  pipelines without inspecting the console. [client/index.html](../../client/index.html) [client/main.js](../../client/main.js)
 * ✅ **Keyframe recovery** – the server journals recent snapshots alongside patch
   batches, exposes them via `keyframeSeq` references plus a `keyframeRequest`
   websocket flow, and the client consumes those frames to heal missing-entity
-  diffs without console noise.【F:server/hub.go†L600-L720】【F:server/main.go†L200-L360】【F:client/patches.js†L900-L1158】【F:client/network.js†L640-L820】
+  diffs without console noise. [server/hub.go](../../server/hub.go) [server/main.go](../../server/main.go) [client/patches.js](../../client/patches.js) [client/network.js](../../client/network.js)
 * ✅ **Switch-over rehearsal** – the render loop can now target either the
   authoritative snapshots or the patch-driven state. Console helpers
   (`debugSetRenderMode`, `debugToggleRenderMode`, or `store.setRenderMode`)
   flip the mode at runtime, share a centralised enum so diagnostics stay in sync,
   and the renderer reads from the patch container for players, NPCs, effects,
   and ground items when patch mode is active so QA can smoke test the diff
-  pipeline without code edits.【F:client/main.js†L13-L314】【F:client/render.js†L1-L618】【F:client/render-modes.js†L1-L24】
-* ✅ **Patch-first broadcasts** – steady-state `state` messages now rely on journalled diffs with configurable keyframe intervals, and the client mirrors patch baselines when snapshots are omitted. 【F:server/main.go†L35-L122】【F:server/hub.go†L707-L1078】【F:client/network.js†L557-L1218】
+  pipeline without code edits. [client/main.js](../../client/main.js) [client/render.js](../../client/render.js) [client/render-modes.js](../../client/render-modes.js)
+* ✅ **Patch-first broadcasts** – steady-state `state` messages now rely on journalled diffs with configurable keyframe intervals, and the client mirrors patch baselines when snapshots are omitted. [server/main.go](../../server/main.go) [server/hub.go](../../server/hub.go) [client/network.js](../../client/network.js)
 
 ## Suggested next steps
 
@@ -191,7 +191,7 @@ Early patch-mode builds reused the cached keyframe referenced by each broadcast
 as the working baseline. That static snapshot carried the keyframe’s
 coordinates and `sequence` value forward, so facing-only or effect-only diffs
 would roll entities back to the cached position until a positional patch or new
-keyframe arrived.【F:client/network.js†L1221-L1259】 The server stream itself was
+keyframe arrived. [client/network.js](../../client/network.js) The server stream itself was
 sound—the rewind came entirely from the client’s replay model.
 
 ### Resolution
@@ -200,13 +200,13 @@ The client now keeps an entity-scoped baseline that survives between broadcasts:
 
 * `updatePatchState` prefers the cumulative baseline stored on `state.baseline`
   when applying new patches, only seeding missing entities from the cached
-  keyframe instead of replacing the entire snapshot.【F:client/patches.js†L1317-L1344】
+  keyframe instead of replacing the entire snapshot. [client/patches.js](../../client/patches.js)
 * After each replay the patched view is cloned back into the baseline and its
   tick/sequence counters advance so deduplication keys compare against the
-  latest state rather than the original keyframe metadata.【F:client/patches.js†L1649-L1675】
+  latest state rather than the original keyframe metadata. [client/patches.js](../../client/patches.js)
 * When hydrating from a cached keyframe the client now preserves the broadcast’s
   sequence and tick hints, keeping recovery semantics intact without freezing
-  the baseline metadata.【F:client/patches.js†L1348-L1361】
+  the baseline metadata. [client/patches.js](../../client/patches.js)
 
 Together these adjustments eliminate the rewind-return artefact while preserving
 keyframe recovery behaviour.
@@ -216,7 +216,7 @@ keyframe recovery behaviour.
 `client/__tests__/patches.test.js` now locks in the forward-only behaviour with
 `it("maintains forward motion between sparse keyframes", …)` and updates the
 cadence regression scenario to confirm that facing-only patches keep cumulative
-coordinates instead of snapping back to the cached keyframe.【F:client/__tests__/patches.test.js†L1181-L1235】【F:client/__tests__/patches.test.js†L842-L902】
+coordinates instead of snapping back to the cached keyframe. [client/__tests__/patches.test.js](../../client/__tests__/patches.test.js)
 
 ### Outstanding issue: effect patches that precede their keyframe
 
@@ -224,7 +224,7 @@ Sparse keyframes expose a second gap that remains unfixed: effect parameter
 patches can arrive before the client has ever seen the matching effect entity.
 `updatePatchState` currently logs an `unknown entity for patch` error and drops
 the payload, leaving the effect invisible until a later keyframe repopulates
-the baseline.【F:client/__tests__/patches.test.js†L772-L816】 This behaviour is
+the baseline. [client/__tests__/patches.test.js](../../client/__tests__/patches.test.js) This behaviour is
 intentional for the moment—the new regression test ensures we can reliably
 reproduce the condition while iterating on a fix.
 
