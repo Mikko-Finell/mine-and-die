@@ -40,7 +40,7 @@ const (
 
 func (w *World) groundItemsSnapshot() []GroundItem {
 	if w == nil || len(w.groundItems) == 0 {
-		return make([]GroundItem, 0)
+		return nil
 	}
 	items := make([]GroundItem, 0, len(w.groundItems))
 	for _, item := range w.groundItems {
@@ -156,7 +156,11 @@ func (w *World) removeGroundItem(item *groundItemState) {
 		return
 	}
 	if item.Qty > 0 {
-		w.SetGroundItemQuantity(item, 0)
+		item.Qty = 0
+		incrementVersion(&item.version)
+		if item.ID != "" {
+			w.appendPatch(PatchGroundItemQty, item.ID, GroundItemQtyPayload{Qty: 0})
+		}
 	}
 	delete(w.groundItems, item.ID)
 	if itemsByType, ok := w.groundItemsByTile[item.tile]; ok {
