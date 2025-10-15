@@ -700,7 +700,10 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 		return nil
 	}
 
-	params := intMapToFloat64(instance.BehaviorState.Extra)
+	params := mergeParams(tpl.Params, intMapToFloat64(instance.BehaviorState.Extra))
+	if len(instance.Params) > 0 {
+		params = mergeParams(params, intMapToFloat64(instance.Params))
+	}
 	if params == nil {
 		params = make(map[string]float64)
 	}
@@ -708,11 +711,29 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 	dirX := params["dx"]
 	dirY := params["dy"]
 	if raw, ok := instance.BehaviorState.Extra["dx"]; ok {
-		dirX = DequantizeCoord(raw)
+		dirX = float64(raw)
+		if math.Abs(dirX) > 1 {
+			dirX = DequantizeCoord(raw)
+		}
+		params["dx"] = dirX
+	} else if raw, ok := instance.Params["dx"]; ok {
+		dirX = float64(raw)
+		if math.Abs(dirX) > 1 {
+			dirX = DequantizeCoord(raw)
+		}
 		params["dx"] = dirX
 	}
 	if raw, ok := instance.BehaviorState.Extra["dy"]; ok {
-		dirY = DequantizeCoord(raw)
+		dirY = float64(raw)
+		if math.Abs(dirY) > 1 {
+			dirY = DequantizeCoord(raw)
+		}
+		params["dy"] = dirY
+	} else if raw, ok := instance.Params["dy"]; ok {
+		dirY = float64(raw)
+		if math.Abs(dirY) > 1 {
+			dirY = DequantizeCoord(raw)
+		}
 		params["dy"] = dirY
 	}
 	if dirX == 0 && dirY == 0 {
