@@ -19,4 +19,4 @@
 - Enable verbose logging by adding `log.Printf` calls around simulation branches you are modifying; remember to remove or gate them before committing.
 - If lifecycle events appear out of order, inspect `store.lastEffectLifecycleSummary` and the lifecycle state helpers (`peekEffectLifecycleState`) to confirm the client received a spawn before each update. [client/network.js](../../client/network.js) [client/effect-lifecycle.js](../../client/effect-lifecycle.js)
 - Connection drops usually mean missed heartbeats—check `store.lastHeartbeatSentAt`/`AckAt` values in the diagnostics panel.
-- For reproducible obstacle layouts during debugging, use the debug panel's world reset seed input (or POST `/world/reset` with a `seed`) instead of modifying Go code. [client/main.js](../../client/main.js) [server/main.go](../../server/main.go)
+- For reproducible obstacle layouts during debugging, use the debug panel's world reset seed input (or POST `/world/reset` with a `seed`) instead of modifying Go code. [client/main.ts](../../client/main.ts) [server/main.go](../../server/main.go)
