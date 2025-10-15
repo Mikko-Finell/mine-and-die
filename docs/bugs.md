@@ -21,7 +21,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Effect trigger dedupe never forgets processed IDs | Medium     | 🔴 Todo  | Persistent trigger ID set grows forever and blocks recycled triggers from rendering. |
 | Path-following emits unbounded intent vectors    | High       | 🔴 Todo  | Raw waypoint deltas feed into `SetIntent`, exceeding normalized ranges and breaking consumers. |
 | Inventory diffing ignores fungibility keys       | High       | 🟢 Done   | `inventoriesEqual` omits `FungibilityKey`, leaving clients with stale identity metadata; repro: `TestMutateInventoryEmitsPatchWhenFungibilityChanges`. |
-| Client inventory clones strip fungibility metadata | Medium     | 🔴 Todo  | `cloneInventorySlots` rebuilds stacks without `fungibility_key`, merging distinct items. |
+| Client inventory clones strip fungibility metadata | Medium     | 🟢 Done   | `cloneInventorySlots` now preserves `fungibility_key`, keeping unique stacks distinct. |
 | Ground item normalisation rewrites metadata      | Medium     | 🔴 Todo  | `normalizeGroundItems` defaults to gold and drops keys, misrendering new or personal loot. |
 | Effect patches filtered out of hub payloads      | Critical   | 🔴 Todo  | `Hub.marshalState` whitelist excludes effects, so incremental effect updates never broadcast. |
 | Ground item removals skip diff emission          | High       | 🔴 Todo  | Deletions bypass journalling, so broadcasts omit refreshed stacks until a keyframe. |

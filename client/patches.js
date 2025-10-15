@@ -54,6 +54,21 @@ function normalizeFacingValue(value) {
   return DEFAULT_FACING;
 }
 
+function readFungibilityKey(itemSource) {
+  if (!itemSource || typeof itemSource !== "object") {
+    return null;
+  }
+  if (Object.hasOwn(itemSource, "fungibility_key")) {
+    const value = itemSource.fungibility_key;
+    return typeof value === "string" ? value : "";
+  }
+  if (Object.hasOwn(itemSource, "fungibilityKey")) {
+    const value = itemSource.fungibilityKey;
+    return typeof value === "string" ? value : "";
+  }
+  return null;
+}
+
 function cloneInventorySlots(slots) {
   if (!Array.isArray(slots) || slots.length === 0) {
     return [];
@@ -70,9 +85,14 @@ function cloneInventorySlots(slots) {
     const itemSource = slot.item && typeof slot.item === "object" ? slot.item : {};
     const type = typeof itemSource.type === "string" ? itemSource.type : "";
     const quantity = toFiniteInt(itemSource.quantity, 0);
+    const fungibilityKey = readFungibilityKey(itemSource);
+    const item = { type, quantity };
+    if (fungibilityKey !== null) {
+      item.fungibility_key = fungibilityKey;
+    }
     cloned.push({
       slot: slotIndex,
-      item: { type, quantity },
+      item,
     });
   }
   return cloned;
