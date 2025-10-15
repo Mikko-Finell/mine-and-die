@@ -64,6 +64,23 @@ function quantizedToWorld(value, tileSize) {
   return (numeric / COORD_SCALE) * tileSize;
 }
 
+function contractMotionAppearsZeroed(motion) {
+  if (!isPlainObject(motion)) {
+    return true;
+  }
+  const positionX = Number(motion.positionX);
+  const positionY = Number(motion.positionY);
+  const velocityX = Number(motion.velocityX);
+  const velocityY = Number(motion.velocityY);
+  const positionZero =
+    (!Number.isFinite(positionX) || positionX === 0) &&
+    (!Number.isFinite(positionY) || positionY === 0);
+  const velocityZero =
+    (!Number.isFinite(velocityX) || velocityX === 0) &&
+    (!Number.isFinite(velocityY) || velocityY === 0);
+  return positionZero && velocityZero;
+}
+
 function copyParams(source, target) {
   if (!isPlainObject(source)) {
     return;
@@ -304,13 +321,19 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     effect.height = height;
   }
 
+  const motionCenterX = quantToWorld(motion?.positionX);
+  const motionCenterY = quantToWorld(motion?.positionY);
+  const motionLooksZeroed = contractMotionAppearsZeroed(motion);
+
   let centerX = centerFromExtraX;
   let centerY = centerFromExtraY;
-  if (centerX == null) {
-    centerX = quantToWorld(motion?.positionX);
+  const derivedFromMotionX = centerX == null && motionCenterX !== null;
+  const derivedFromMotionY = centerY == null && motionCenterY !== null;
+  if (derivedFromMotionX) {
+    centerX = motionCenterX;
   }
-  if (centerY == null) {
-    centerY = quantToWorld(motion?.positionY);
+  if (derivedFromMotionY) {
+    centerY = motionCenterY;
   }
 
   const offsetX = quantToWorld(geometry?.offsetX);
@@ -323,12 +346,18 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   if (anchor) {
     if (offsetX !== null) {
       centerX = anchor.x + offsetX;
-    } else if (centerX == null) {
+    } else if (
+      centerX == null ||
+      (derivedFromMotionX && motionLooksZeroed)
+    ) {
       centerX = anchor.x;
     }
     if (offsetY !== null) {
       centerY = anchor.y + offsetY;
-    } else if (centerY == null) {
+    } else if (
+      centerY == null ||
+      (derivedFromMotionY && motionLooksZeroed)
+    ) {
       centerY = anchor.y;
     }
   } else {

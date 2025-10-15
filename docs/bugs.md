@@ -21,7 +21,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Effect trigger dedupe never forgets processed IDs | Medium     | 🟢 Done  | Persistent trigger ID set grows forever and blocks recycled triggers from rendering. |
 | Path-following emits unbounded intent vectors    | High       | 🟢 Done  | Raw waypoint deltas feed into `SetIntent`, exceeding normalized ranges and breaking consumers. |
 | Effect attachments jump back to caster on target death | Medium     | ⚪ Planned | Burning effect snaps to player when rat dies; should stay on dead target; repro: cast fireball at sewer rat. |
-| Effect anchors offset to screen corners | Medium     | ⚪ Planned | Fireball, fire, and melee-swing effects spawn at screen edges after 52eab83; repro: trigger any of those effects. |
+| Effect anchors offset to screen corners | Medium     | 🟢 Done   | Fireball, fire, and melee-swing effects spawn at screen edges after 52eab83; repro: trigger any of those effects. |
 | Inventory diffing ignores fungibility keys       | High       | 🟢 Done   | `inventoriesEqual` omits `FungibilityKey`, leaving clients with stale identity metadata; repro: `TestMutateInventoryEmitsPatchWhenFungibilityChanges`. |
 | Client inventory clones strip fungibility metadata | Medium     | 🟢 Done   | `cloneInventorySlots` now preserves `fungibility_key`, keeping unique stacks distinct. |
 | Ground item normalisation rewrites metadata      | Medium     | 🟢 Done  | `normalizeGroundItems` preserves type/fungibility metadata so new loot renders correctly. |
