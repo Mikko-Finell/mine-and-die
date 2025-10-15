@@ -78,8 +78,15 @@ func (w *World) followPlayerPath(player *playerState, tick uint64) {
 			return
 		}
 
-		w.SetIntent(player.ID, dx, dy)
-		w.SetFacing(player.ID, deriveFacing(dx, dy, player.Facing))
+		moveDX := dx
+		moveDY := dy
+		if dist > 1 {
+			moveDX = dx / dist
+			moveDY = dy / dist
+		}
+
+		w.SetIntent(player.ID, moveDX, moveDY)
+		w.SetFacing(player.ID, deriveFacing(moveDX, moveDY, player.Facing))
 		return
 	}
 
