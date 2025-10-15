@@ -1264,6 +1264,26 @@ export function updatePatchState(previousState, payload, options = {}) {
   const messageType = typeof payload?.type === "string" ? payload.type : null;
 
   let baseline = baselineFromPayload;
+  const shouldSeedFromPrevious =
+    !hasSnapshot &&
+    !payloadResetFlag &&
+    source !== "join";
+  if (shouldSeedFromPrevious) {
+    const fallback =
+      cloneBaselineSnapshot(state.patched) || cloneBaselineSnapshot(state.baseline);
+    if (fallback) {
+      baseline.players = clonePlayersMap(fallback.players);
+      baseline.npcs = cloneNPCsMap(fallback.npcs);
+      baseline.groundItems = cloneGroundItemsMap(fallback.groundItems);
+      baseline.effects = cloneEffectsMap(fallback.effects);
+      if (baseline.tick === null) {
+        baseline.tick = fallback.tick ?? null;
+      }
+      if (baseline.sequence === null) {
+        baseline.sequence = fallback.sequence ?? null;
+      }
+    }
+  }
   if (hasSnapshot && keyframeSeq !== null) {
     baseline.sequence = keyframeSeq;
   } else if (baseline.sequence === null && keyframeSeq !== null) {

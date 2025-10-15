@@ -528,6 +528,56 @@ describe("updatePatchState", () => {
     expect(result.errors).toEqual([]);
   });
 
+  it("seeds incremental payloads from the previous baseline when snapshots omit entities", () => {
+    const initial = updatePatchState(
+      createPatchState(),
+      deepFreeze({
+        t: 12,
+        sequence: 12,
+        players: [makePlayer()],
+        npcs: [makeNPC()],
+        effects: [makeEffect({ id: "effect-keep", params: { width: 3 } })],
+      }),
+      { source: "join" },
+    );
+    freezeState(initial);
+
+    const withEffect = updatePatchState(
+      initial,
+      deepFreeze({
+        t: 13,
+        sequence: 13,
+        patches: [
+          { kind: PATCH_KIND_EFFECT_POS, entityId: "effect-keep", payload: { x: 4, y: 6 } },
+        ],
+      }),
+      { source: "state" },
+    );
+    freezeState(withEffect);
+
+    const payload = deepFreeze({
+      t: 14,
+      sequence: 14,
+      patches: [
+        { kind: PATCH_KIND_NPC_POS, entityId: "npc-1", payload: { x: 21, y: 34 } },
+        {
+          kind: PATCH_KIND_EFFECT_PARAMS,
+          entityId: "effect-keep",
+          payload: { params: { width: 9, height: 2 } },
+        },
+      ],
+    });
+
+    const result = updatePatchState(withEffect, payload, { source: "state" });
+
+    expect(result.errors).toEqual([]);
+    expect(result.lastAppliedPatchCount).toBe(2);
+    expect(result.patched.npcs["npc-1"]).toMatchObject({ x: 21, y: 34 });
+    expect(result.baseline.npcs["npc-1"]).toMatchObject({ x: 21, y: 34 });
+    expect(result.patched.effects["effect-keep"].params).toEqual({ width: 9, height: 2 });
+    expect(result.baseline.effects["effect-keep"].params).toEqual({ width: 9, height: 2 });
+  });
+
   it("normalizes entity identifiers when seeding baseline state", () => {
     const payload = deepFreeze({
       t: 11,
