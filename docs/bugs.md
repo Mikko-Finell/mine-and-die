@@ -30,7 +30,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Player removals suppressed between keyframes     | High       | 🟢 Done  | `World.RemovePlayer` now emits `player_removed` diffs (TestRemovePlayerEmitsRemovalPatch). |
 | Projectile rehydration restores full travel distance | High       | 🟢 Done  | `spawnContractProjectileFromInstance` ignores saved `remainingRange`, extending projectile reach. |
 | Contract projectile definitions skip damage payloads | Critical   | 🟢 Done | `TestContractProjectileDefinitionsApplyDamage` now passes after inheriting fireball damage params from the projectile template. |
-| Projectile resurrection resets lifetime ticks    | High       | 🔴 Todo  | Recreated projectiles use template lifetime instead of persisted ticks, causing overlong effects. |
+| Projectile resurrection resets lifetime ticks    | High       | 🟢 Done  | Recreated projectiles use template lifetime instead of persisted ticks, causing overlong effects. |
 | Failed state marshals drop drained patches       | Critical   | 🔴 Todo  | `marshalState` drains buffers before encode; on failure data is lost until next keyframe. |
 | Command queue lacks flow control per client      | High       | 🔴 Todo  | `enqueueCommand` accepts unlimited commands, allowing a single client to flood the queue. |
 | NPC gold rewards bypass patch emission           | Medium     | 🔴 Todo  | NPC mining rewards mutate inventories directly, skipping patch emission for subscribers. |

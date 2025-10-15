@@ -82,3 +82,44 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 		t.Fatalf("expected effect params dy to approximate diagonal, got %.4f", paramDY)
 	}
 }
+
+func TestSpawnContractProjectileFromInstancePreservesLifetime(t *testing.T) {
+	owner := &actorState{Actor: Actor{ID: "owner", Facing: FacingRight}}
+	instance := &EffectInstance{
+		ID:           "projectile-life",
+		OwnerActorID: owner.ID,
+		DefinitionID: effectTypeFireball,
+		BehaviorState: EffectBehaviorState{
+			TicksRemaining: 5,
+			Extra:          make(map[string]int),
+		},
+	}
+	tpl := &ProjectileTemplate{
+		Type:        effectTypeFireball,
+		Speed:       12,
+		MaxDistance: 30,
+		Lifetime:    3 * time.Second,
+	}
+
+	world := &World{effectsByID: make(map[string]*effectState)}
+	now := time.Unix(0, 0)
+
+	spawned := world.spawnContractProjectileFromInstance(instance, owner, tpl, now)
+	if spawned == nil {
+		t.Fatalf("expected projectile to spawn")
+	}
+
+	expectedLifetime := ticksToDuration(instance.BehaviorState.TicksRemaining)
+	if expectedLifetime <= 0 {
+		t.Fatalf("expected positive lifetime from ticks, got %v", expectedLifetime)
+	}
+
+	if spawned.Duration != expectedLifetime.Milliseconds() {
+		t.Fatalf("expected duration %dms, got %dms", expectedLifetime.Milliseconds(), spawned.Duration)
+	}
+
+	actualLifetime := spawned.expiresAt.Sub(now)
+	if actualLifetime != expectedLifetime {
+		t.Fatalf("expected expiresAt lifetime %v, got %v", expectedLifetime, actualLifetime)
+	}
+}

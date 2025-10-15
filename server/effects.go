@@ -769,6 +769,11 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 	}
 
 	lifetime := effectLifetime(tpl)
+	if ticks := instance.BehaviorState.TicksRemaining; ticks > 0 {
+		if persisted := ticksToDuration(ticks); persisted > 0 {
+			lifetime = persisted
+		}
+	}
 	params = mergeParams(params, map[string]float64{
 		"speed":  tpl.Speed,
 		"radius": radius,
