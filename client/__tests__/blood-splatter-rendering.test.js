@@ -10,7 +10,7 @@ const ATTACK_STATE_MESSAGE =
   '"config":{"width":2400,"height":1800},"players":[{"id":"player-2","x":904,"y":1238,"facing":"right","maxHealth":100,"health":100}],' +
   '"displayPlayers":{"player-2":{"x":904,"y":1238}},"npcs":[{"id":"npc-rat-3","x":898.8969594381456,"y":1242.443619937173,"facing":"left","type":"rat","maxHealth":60,"health":60}],' +
   '"displayNPCs":{"npc-rat-3":{"x":898.8969594381456,"y":1242.443619937173}},"effect_spawned":[{"tick":2451,"seq":1,' +
-  '"instance":{"id":"contract-effect-5","definitionId":"attack","definition":{"typeId":"attack","delivery":"area","shape":"rect","motion":"instant","impact":"first-hit","lifetimeTicks":1,' +
+  '"instance":{"id":"contract-effect-5","definitionId":"attack","definition":{"typeId":"melee-swing","delivery":"area","shape":"rect","motion":"instant","impact":"first-hit","lifetimeTicks":1,' +
   '"hooks":{"onSpawn":"melee.spawn"},"client":{"sendSpawn":true,"sendUpdates":true,"sendEnd":true,"managedByClient":true},"end":{"kind":1,' +
   '"conditions":{"onUnequip":false,"onOwnerDeath":false,"onOwnerLost":false,"onZoneChange":false,"onExplicitCancel":false}}},' +
   '"startTick":2451,"deliveryState":{"geometry":{"shape":"rect","offsetX":-17,"width":22,"height":16},"motion":{"positionX":0,"positionY":0,"velocityX":0,"velocityY":0},"follow":"none"},' +

@@ -315,7 +315,6 @@ describe("applyStateSnapshot", () => {
         { id: "npc-2", x: 70, y: 80, facing: "up" },
       ],
       obstacles: [{ id: "rock" }],
-      effects: [{ id: "beam" }],
       config: { width: 1200, height: 900 },
     };
 
@@ -341,7 +340,6 @@ describe("applyStateSnapshot", () => {
       players: null,
       npcs: undefined,
       obstacles: "invalid",
-      effects: 42,
     }, null);
 
     expect(result.players).toEqual({});
@@ -378,9 +376,6 @@ describe("applyStateSnapshot", () => {
       npcs: {
         goblin: { id: "goblin", x: 3, y: 4, facing: "up" },
       },
-      effects: {
-        spark: { id: "spark", ttl: 5 },
-      },
       groundItems: {
         stack: { id: "stack", x: 10, y: 20, qty: 3 },
       },
@@ -415,7 +410,6 @@ describe("join and resync integration", () => {
         keyframeSeq: 5,
         players: [makePlayer({ x: 1, y: 2 })],
         npcs: [],
-        effects: [],
         groundItems: [],
       }),
       { source: "state" },
@@ -446,7 +440,6 @@ describe("join and resync integration", () => {
       keyframeSeq: 12,
       players: [makePlayer({ x: 4, y: 6 })],
       npcs: [],
-      effects: [],
       groundItems: [],
     });
 
@@ -485,7 +478,6 @@ describe("join and resync integration", () => {
         keyframeSeq: 8,
         players: [makePlayer({ x: 2, y: 3 })],
         npcs: [],
-        effects: [],
         groundItems: [],
       }),
       { source: "join" },
@@ -499,7 +491,6 @@ describe("join and resync integration", () => {
       keyframeSeq: 20,
       players: [makePlayer({ x: 5, y: 7 })],
       npcs: [],
-      effects: [],
       groundItems: [],
     });
 

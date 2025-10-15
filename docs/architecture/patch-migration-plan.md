@@ -140,8 +140,8 @@ snapshot path:
   markers so the client can reset history and deduplicate against the server's
   metadata instead of inferring behaviour from tick values.【F:server/hub.go†L617-L664】【F:server/messages.go†L13-L35】【F:client/patches.js†L720-L964】【F:client/__tests__/patches.test.js†L1-L520】
   `sequence` is the globally monotonic message counter for state broadcasts;
-  clients still tolerate legacy aliases such as `seq`/`sequenceNumber`, but the
-  canonical field is now `sequence`. The `resync` flag continues to delineate
+  clients now require this canonical field instead of tolerating legacy aliases
+  such as `seq` or `sequenceNumber`. The `resync` flag continues to delineate
   authoritative snapshot boundaries like initial joins and world resets.
 
 ## Completed steps
