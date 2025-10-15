@@ -101,22 +101,21 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 	if drained > 0 {
 		m.totalDrained += drained
 	}
-	if emit == nil {
-		return
-	}
-	for _, instance := range newInstances {
-		if instance == nil {
-			continue
+	if emit != nil {
+		for _, instance := range newInstances {
+			if instance == nil {
+				continue
+			}
+			if !instance.Replication.SendSpawn {
+				continue
+			}
+			spawn := EffectSpawnEvent{
+				Tick:     tick,
+				Seq:      m.nextSequenceFor(instance.ID),
+				Instance: m.cloneInstanceForSpawn(instance),
+			}
+			emit(spawn)
 		}
-		if !instance.Replication.SendSpawn {
-			continue
-		}
-		spawn := EffectSpawnEvent{
-			Tick:     tick,
-			Seq:      m.nextSequenceFor(instance.ID),
-			Instance: m.cloneInstanceForSpawn(instance),
-		}
-		emit(spawn)
 	}
 	ended := make([]string, 0)
 	for _, instance := range m.instances {
@@ -129,7 +128,7 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 		}
 		if !instance.Replication.SendUpdates {
 			// Even when updates are suppressed, lifecycle evaluation still runs.
-		} else if shouldTick {
+		} else if shouldTick && emit != nil {
 			delivery := m.cloneDeliveryState(instance.DeliveryState)
 			behavior := m.cloneBehaviorState(instance.BehaviorState)
 			update := EffectUpdateEvent{
@@ -143,7 +142,7 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 		}
 		decision := m.evaluateEndPolicy(instance, tick)
 		if decision.shouldEnd {
-			if instance.Replication.SendEnd {
+			if instance.Replication.SendEnd && emit != nil {
 				end := EffectEndEvent{
 					Tick:   tick,
 					Seq:    m.nextSequenceFor(instance.ID),
