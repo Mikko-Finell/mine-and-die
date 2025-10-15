@@ -31,6 +31,7 @@ import {
   splitNpcCounts,
   __networkInternals,
 } from "../network.js";
+import * as networkModule from "../network.js";
 
 const DEFAULT_COUNTS = {
   goblinCount: 2,
@@ -57,6 +58,77 @@ function makePlayer(overrides = {}) {
     health: 10,
     maxHealth: 10,
     ...overrides,
+  };
+}
+
+function createJoinStore(overrides = {}) {
+  const base = {
+    isJoining: false,
+    reconnectTimeout: null,
+    setStatusBase: vi.fn(),
+    setLatency: vi.fn(),
+    updateDiagnostics: vi.fn(),
+    renderInventory: vi.fn(),
+    effectManager: { clear: vi.fn() },
+    resetEffectLifecycleDiagnostics: vi.fn(),
+    pendingEffectTriggers: [],
+    processedEffectTriggerIds: new Set(),
+    players: {},
+    npcs: {},
+    displayPlayers: {},
+    displayNPCs: {},
+    obstacles: [],
+    groundItems: [],
+    directionOrder: [],
+    currentIntent: { dx: 0, dy: 0 },
+    isPathActive: false,
+    activePathTarget: null,
+    lastPathRequestAt: null,
+    WORLD_WIDTH: null,
+    WORLD_HEIGHT: null,
+    keyframeInterval: null,
+    defaultKeyframeInterval: null,
+    lastEffectLifecycleSummary: null,
+    updateWorldConfigUI: vi.fn(),
+    updateRenderModeUI: vi.fn(),
+  };
+  return { ...base, ...overrides };
+}
+
+function createJoinPayload(overrides = {}) {
+  const base = {
+    id: "player-1",
+    players: [
+      {
+        id: "player-1",
+        x: 10,
+        y: 20,
+        facing: "down",
+        health: 10,
+        maxHealth: 10,
+      },
+    ],
+    npcs: [],
+    obstacles: [],
+    groundItems: [],
+    effectTriggers: [],
+    config: {
+      width: 1024,
+      height: 768,
+      npcCount: 0,
+      goblinCount: 0,
+      ratCount: 0,
+      goldMines: false,
+      obstacles: false,
+      lava: false,
+    },
+    keyframeInterval: 5,
+  };
+  const { config: overrideConfig, ...rest } = overrides;
+  return {
+    ...base,
+    ...rest,
+    config: { ...base.config, ...(overrideConfig || {}) },
   };
 }
 
@@ -138,6 +210,117 @@ describe("splitNpcCounts", () => {
     const result = splitNpcCounts(input, DEFAULT_COUNTS);
     expect(result).toEqual(expected);
     expect(result.npcCount).toBe(result.goblinCount + result.ratCount);
+  });
+});
+
+describe("joinGame", () => {
+  it("clears a pending reconnect timeout when join succeeds", async () => {
+    vi.useFakeTimers();
+    const existingTimeout = setTimeout(() => {}, 5000);
+    const store = createJoinStore({ reconnectTimeout: existingTimeout });
+    const payload = createJoinPayload();
+    const originalFetch = globalThis.fetch;
+    const originalWindow = globalThis.window;
+    const originalWebSocket = globalThis.WebSocket;
+    class MockWebSocket {
+      constructor(url) {
+        this.url = url;
+        this.readyState = MockWebSocket.OPEN;
+        this.send = vi.fn();
+        this.close = vi.fn();
+        this.onopen = null;
+        this.onmessage = null;
+        this.onclose = null;
+        this.onerror = null;
+      }
+    }
+    MockWebSocket.OPEN = 1;
+    globalThis.window = { location: { protocol: "http:", host: "example.test" } };
+    globalThis.WebSocket = MockWebSocket;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    globalThis.fetch = fetchMock;
+
+    try {
+      await networkModule.joinGame(store);
+
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(existingTimeout);
+      expect(store.reconnectTimeout).toBeNull();
+      expect(store.playerId).toBe(payload.id);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalWindow === undefined) {
+        delete globalThis.window;
+      } else {
+        globalThis.window = originalWindow;
+      }
+      if (originalWebSocket === undefined) {
+        delete globalThis.WebSocket;
+      } else {
+        globalThis.WebSocket = originalWebSocket;
+      }
+      clearTimeoutSpy.mockRestore();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("stores and consumes a retry timeout after join failure", async () => {
+    vi.useFakeTimers();
+    const payload = createJoinPayload();
+    const originalFetch = globalThis.fetch;
+    const originalWindow = globalThis.window;
+    const originalWebSocket = globalThis.WebSocket;
+    class MockWebSocket {
+      constructor(url) {
+        this.url = url;
+        this.readyState = MockWebSocket.OPEN;
+        this.send = vi.fn();
+        this.close = vi.fn();
+        this.onopen = null;
+        this.onmessage = null;
+        this.onclose = null;
+        this.onerror = null;
+      }
+    }
+    MockWebSocket.OPEN = 1;
+    globalThis.window = { location: { protocol: "http:", host: "example.test" } };
+    globalThis.WebSocket = MockWebSocket;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(payload) });
+    globalThis.fetch = fetchMock;
+
+    const store = createJoinStore();
+
+    try {
+      await networkModule.joinGame(store);
+      expect(store.reconnectTimeout).not.toBeNull();
+      const scheduledTimeout = store.reconnectTimeout;
+
+      await vi.advanceTimersByTimeAsync(1500);
+
+      expect(store.reconnectTimeout).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(scheduledTimeout).not.toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalWindow === undefined) {
+        delete globalThis.window;
+      } else {
+        globalThis.window = originalWindow;
+      }
+      if (originalWebSocket === undefined) {
+        delete globalThis.WebSocket;
+      } else {
+        globalThis.WebSocket = originalWebSocket;
+      }
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });
 

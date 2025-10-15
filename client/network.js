@@ -1528,7 +1528,13 @@ export async function joinGame(store) {
   } catch (err) {
     store.setLatency(null);
     store.setStatusBase(`Unable to join: ${err.message}`);
-    setTimeout(() => joinGame(store), 1500);
+    if (store.reconnectTimeout !== null) {
+      clearTimeout(store.reconnectTimeout);
+    }
+    store.reconnectTimeout = setTimeout(() => {
+      store.reconnectTimeout = null;
+      joinGame(store);
+    }, 1500);
   } finally {
     store.isJoining = false;
   }
