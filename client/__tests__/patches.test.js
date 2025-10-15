@@ -166,6 +166,31 @@ describe("updatePatchState", () => {
     expect(result.patched.sequence).toBe(1);
   });
 
+  it("preserves fungibility metadata when hydrating player inventories", () => {
+    const fungibilityKey = "iron_dagger::tier1";
+    const payload = deepFreeze({
+      t: 2,
+      players: [
+        makePlayer({
+          inventory: {
+            slots: [
+              {
+                slot: 0,
+                item: { type: "iron_dagger", quantity: 1, fungibility_key: fungibilityKey },
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const baseline = buildBaselineFromSnapshot(payload);
+
+    expect(baseline.players["player-1"].inventory.slots).toEqual([
+      { slot: 0, item: { type: "iron_dagger", quantity: 1, fungibility_key: fungibilityKey } },
+    ]);
+  });
+
   it("applies player patches onto the baseline snapshot", () => {
     const seeded = updatePatchState(createPatchState(), deepFreeze({ t: 2, players: [makePlayer()] }), {
       source: "join",
@@ -219,6 +244,36 @@ describe("updatePatchState", () => {
     expect(result.errors).toEqual([]);
     expect(result.lastUpdateSource).toBe("state");
     expect(result.lastTick).toBe(3);
+  });
+
+  it("preserves fungibility metadata when applying inventory patches", () => {
+    const base = buildBaselineFromSnapshot(
+      deepFreeze({
+        t: 4,
+        players: [makePlayer()],
+      }),
+    );
+    const patchKey = "iron_dagger::unique";
+
+    const { players, errors } = applyPatchesToSnapshot(base, [
+      {
+        kind: PATCH_KIND_PLAYER_INVENTORY,
+        entityId: "player-1",
+        payload: {
+          slots: [
+            {
+              slot: 0,
+              item: { type: "iron_dagger", quantity: 1, fungibilityKey: patchKey },
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(players["player-1"].inventory.slots).toEqual([
+      { slot: 0, item: { type: "iron_dagger", quantity: 1, fungibility_key: patchKey } },
+    ]);
   });
 
   it("applies NPC and ground item patches onto the baseline snapshot", () => {
