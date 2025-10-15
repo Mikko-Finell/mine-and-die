@@ -35,7 +35,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Broadcast logging leaks full state payloads      | Medium     | 🔴 Todo  | Debug path dumps complete JSON payloads, flooding logs and exposing sensitive state. |
 | Version counters misuse pointer increment syntax | Critical   | 🔴 Todo  | Mutator helpers use `*version++`, risking corruption of patch sequencing. |
 | Contract tick cadence hint is ignored            | Medium     | 🔴 Todo  | `EffectIntent` exposes `TickCadence` but instantiation never persists or respects it. |
-| World config normalisation drops NPC totals      | High       | 🔴 Todo  | `worldConfig.normalized` overwrites aggregate `NPCCount`, leaving worlds without spawns. |
+| World config normalisation drops NPC totals      | High       | 🟢 Done  | `worldConfig.normalized` overwrites aggregate `NPCCount`, leaving worlds without spawns. |
 | Effect ticks halt when no emitter is provided    | Medium     | 🔴 Todo  | `EffectManager.RunTick` returns early on nil emitters, halting offline simulations. |
 | Client ignores NPC equipment patches             | High       | 🔴 Todo  | Patch handler table lacks `npc_equipment`, so NPC gear updates are discarded. |
 
