@@ -148,6 +148,14 @@ func (w *World) resolveMeleeImpact(effect *effectState, owner *actorState, actor
 				_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
 				return err
 			})
+		} else if _, ok := w.npcs[actorID]; ok {
+			addErr = w.MutateNPCInventory(actorID, func(inv *Inventory) error {
+				if inv == nil {
+					return nil
+				}
+				_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+				return err
+			})
 		} else if owner != nil {
 			_, addErr = owner.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
 		}
