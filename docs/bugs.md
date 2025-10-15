@@ -20,19 +20,22 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Join retry timer keeps running after success     | Medium     | 🟢 Done  | Retry timeout never cleared, so delayed callbacks re-run `joinGame` and duplicate players; fixed by tracking and clearing the handle. |
 | Effect trigger dedupe never forgets processed IDs | Medium     | 🟢 Done  | Persistent trigger ID set grows forever and blocks recycled triggers from rendering. |
 | Path-following emits unbounded intent vectors    | High       | 🔴 Todo  | Raw waypoint deltas feed into `SetIntent`, exceeding normalized ranges and breaking consumers. |
+| Effect attachments jump back to caster on target death | Medium     | ⚪ Planned | Burning effect snaps to player when rat dies; should stay on dead target; repro: cast fireball at sewer rat. |
 | Inventory diffing ignores fungibility keys       | High       | 🟢 Done   | `inventoriesEqual` omits `FungibilityKey`, leaving clients with stale identity metadata; repro: `TestMutateInventoryEmitsPatchWhenFungibilityChanges`. |
 | Client inventory clones strip fungibility metadata | Medium     | 🟢 Done   | `cloneInventorySlots` now preserves `fungibility_key`, keeping unique stacks distinct. |
 | Ground item normalisation rewrites metadata      | Medium     | 🔴 Todo  | `normalizeGroundItems` defaults to gold and drops keys, misrendering new or personal loot. |
 | Effect patches filtered out of hub payloads      | Critical   | 🔴 Todo  | `Hub.marshalState` whitelist excludes effects, so incremental effect updates never broadcast. |
 | Ground item removals skip diff emission          | High       | 🟢 Done  | Deletions bypass journalling, so broadcasts omit refreshed stacks until a keyframe. |
-| Player removals suppressed between keyframes     | High       | 🔴 Todo  | Player deletions fail to emit patches, leaving ghost actors alive for clients and telemetry. |
 | Equipment patches unsupported on the client      | Critical   | 🟢 Done  | Patch handlers now hydrate `player_equipment`/`npc_equipment` payloads so loadouts reach the UI. |
+| Player removals suppressed between keyframes     | High       | 🟢 Done  | `World.RemovePlayer` now emits `player_removed` diffs (TestRemovePlayerEmitsRemovalPatch). |
 | Projectile rehydration restores full travel distance | High       | 🟢 Done  | `spawnContractProjectileFromInstance` ignores saved `remainingRange`, extending projectile reach. |
 | Contract projectile definitions skip damage payloads | Critical   | 🟢 Done | `TestContractProjectileDefinitionsApplyDamage` now passes after inheriting fireball damage params from the projectile template. |
 | Projectile resurrection resets lifetime ticks    | High       | 🔴 Todo  | Recreated projectiles use template lifetime instead of persisted ticks, causing overlong effects. |
 | Failed state marshals drop drained patches       | Critical   | 🔴 Todo  | `marshalState` drains buffers before encode; on failure data is lost until next keyframe. |
 | Command queue lacks flow control per client      | High       | 🔴 Todo  | `enqueueCommand` accepts unlimited commands, allowing a single client to flood the queue. |
 | NPC gold rewards bypass patch emission           | Medium     | 🔴 Todo  | NPC mining rewards mutate inventories directly, skipping patch emission for subscribers. |
+| Blood splatter applies to attacker instead of victim | Low        | ⚪ Planned | Melee strikes paint attacker sprite; should land on victim; repro: rat bite vs. player. |
+| Blood splatter decals ignore configured sizing   | Low        | ⚪ Planned | Decal handoff yields oversized stains; should match animation params; repro: watch blood decal settle after hit. |
 | Broadcast logging leaks full state payloads      | Medium     | 🔴 Todo  | Debug path dumps complete JSON payloads, flooding logs and exposing sensitive state. |
 | Version counters misuse pointer increment syntax | Critical   | 🟢 Done  | Mutator helpers now call `incrementVersion` so pointer arithmetic no longer corrupts patch sequencing. |
 | Contract tick cadence hint is ignored            | Medium     | 🔴 Todo  | `EffectIntent` exposes `TickCadence` but instantiation never persists or respects it. |

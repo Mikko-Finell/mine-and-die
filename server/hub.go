@@ -1030,6 +1030,10 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 					continue
 				}
 				if _, ok := alive[patch.EntityID]; !ok {
+					if patch.Kind == PatchPlayerRemoved {
+						filtered = append(filtered, patch)
+						continue
+					}
 					if patch.Kind == PatchGroundItemQty {
 						if payload, ok := patch.Payload.(GroundItemQtyPayload); ok && payload.Qty <= 0 {
 							filtered = append(filtered, patch)

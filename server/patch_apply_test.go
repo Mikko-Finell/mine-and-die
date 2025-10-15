@@ -212,6 +212,33 @@ func TestApplyPatchesNoop(t *testing.T) {
 	}
 }
 
+func TestApplyPatchesRemovesPlayer(t *testing.T) {
+	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+
+	player := newTestPlayerState("player-remove")
+	w.AddPlayer(player)
+
+	base := capturePlayerViews(w)
+	if _, ok := base[player.ID]; !ok {
+		t.Fatalf("expected base snapshot to include %s", player.ID)
+	}
+
+	patches := []Patch{{Kind: PatchPlayerRemoved, EntityID: player.ID}}
+
+	replayed, err := ApplyPatches(base, patches)
+	if err != nil {
+		t.Fatalf("apply patches failed: %v", err)
+	}
+
+	if _, ok := replayed[player.ID]; ok {
+		t.Fatalf("expected player %s to be removed from replayed snapshot", player.ID)
+	}
+
+	if _, stillPresent := base[player.ID]; !stillPresent {
+		t.Fatalf("expected original snapshot to retain player %s", player.ID)
+	}
+}
+
 func TestApplyPatchesUnknownEntity(t *testing.T) {
 	base := map[string]PlayerPatchView{
 		"player-1": {

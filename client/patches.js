@@ -4,6 +4,7 @@ const PATCH_KIND_PLAYER_INTENT = "player_intent";
 const PATCH_KIND_PLAYER_HEALTH = "player_health";
 const PATCH_KIND_PLAYER_INVENTORY = "player_inventory";
 const PATCH_KIND_PLAYER_EQUIPMENT = "player_equipment";
+const PATCH_KIND_PLAYER_REMOVED = "player_removed";
 const PATCH_KIND_NPC_POS = "npc_pos";
 const PATCH_KIND_NPC_FACING = "npc_facing";
 const PATCH_KIND_NPC_HEALTH = "npc_health";
@@ -19,6 +20,7 @@ const KNOWN_PATCH_KINDS = new Set([
   PATCH_KIND_PLAYER_HEALTH,
   PATCH_KIND_PLAYER_INVENTORY,
   PATCH_KIND_PLAYER_EQUIPMENT,
+  PATCH_KIND_PLAYER_REMOVED,
   PATCH_KIND_NPC_POS,
   PATCH_KIND_NPC_FACING,
   PATCH_KIND_NPC_HEALTH,
@@ -885,6 +887,7 @@ const PATCH_HANDLERS = {
   [PATCH_KIND_PLAYER_HEALTH]: { target: "players", apply: applyPlayerHealth },
   [PATCH_KIND_PLAYER_INVENTORY]: { target: "players", apply: applyPlayerInventory },
   [PATCH_KIND_PLAYER_EQUIPMENT]: { target: "players", apply: applyPlayerEquipment },
+  [PATCH_KIND_PLAYER_REMOVED]: { target: "players", remove: true },
   [PATCH_KIND_NPC_POS]: { target: "npcs", apply: applyNPCPosition },
   [PATCH_KIND_NPC_FACING]: { target: "npcs", apply: applyNPCFacing },
   [PATCH_KIND_NPC_HEALTH]: { target: "npcs", apply: applyNPCHealth },
@@ -945,6 +948,26 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
       );
       continue;
     }
+    const patchTick = readPatchSequence(rawPatch);
+    const dedupeValue =
+      patchTick !== null
+        ? patchTick
+        : batchSequence !== null
+            ? batchSequence
+            : batchTick;
+    const dedupeKey = `${patch.kind}:${patch.entityId}`;
+    const isDuplicate = shouldSkipPatch(history, dedupeKey, dedupeValue);
+    if (handlerEntry.remove === true) {
+      const existed = Object.prototype.hasOwnProperty.call(viewMap, patch.entityId);
+      delete viewMap[patch.entityId];
+      if (!isDuplicate) {
+        rememberPatch(history, dedupeKey, dedupeValue);
+        if (existed) {
+          appliedCount += 1;
+        }
+      }
+      continue;
+    }
     const view = viewMap[patch.entityId];
     if (!view) {
       errors.push(
@@ -952,15 +975,6 @@ function applyPatchesToSnapshot(baseSnapshot, patches, options = {}) {
       );
       continue;
     }
-    const patchTick = readPatchSequence(rawPatch);
-    const dedupeValue =
-      patchTick !== null
-        ? patchTick
-        : batchSequence !== null
-          ? batchSequence
-          : batchTick;
-    const dedupeKey = `${patch.kind}:${patch.entityId}`;
-    const isDuplicate = shouldSkipPatch(history, dedupeKey, dedupeValue);
     const result = handlerEntry.apply(view, patch.payload);
     if (!result || result.applied !== true) {
       const message = result?.error || "failed to apply patch";
@@ -1684,6 +1698,7 @@ export {
   PATCH_KIND_PLAYER_HEALTH,
   PATCH_KIND_PLAYER_INVENTORY,
   PATCH_KIND_PLAYER_EQUIPMENT,
+  PATCH_KIND_PLAYER_REMOVED,
   PATCH_KIND_NPC_POS,
   PATCH_KIND_NPC_FACING,
   PATCH_KIND_NPC_HEALTH,

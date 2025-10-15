@@ -225,6 +225,8 @@ func (w *World) RemovePlayer(id string) bool {
 	if _, ok := w.players[id]; !ok {
 		return false
 	}
+	w.purgeEntityPatches(id)
+	w.appendPatch(PatchPlayerRemoved, id, nil)
 	delete(w.players, id)
 	return true
 }

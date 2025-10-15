@@ -31,6 +31,8 @@ const (
 	PatchPlayerInventory PatchKind = "player_inventory"
 	// PatchPlayerEquipment updates a player's equipment loadout.
 	PatchPlayerEquipment PatchKind = "player_equipment"
+	// PatchPlayerRemoved signals that a player has been removed from the world.
+	PatchPlayerRemoved PatchKind = "player_removed"
 
 	// PatchNPCPos updates an NPC's position.
 	PatchNPCPos PatchKind = "npc_pos"
