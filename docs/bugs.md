@@ -23,7 +23,7 @@ This document tracks the ongoing effort to reduce defects and keep the game reli
 | Effect attachments jump back to caster on target death | Medium     | ⚪ Planned | Burning effect snaps to player when rat dies; should stay on dead target; repro: cast fireball at sewer rat. |
 | Inventory diffing ignores fungibility keys       | High       | 🟢 Done   | `inventoriesEqual` omits `FungibilityKey`, leaving clients with stale identity metadata; repro: `TestMutateInventoryEmitsPatchWhenFungibilityChanges`. |
 | Client inventory clones strip fungibility metadata | Medium     | 🟢 Done   | `cloneInventorySlots` now preserves `fungibility_key`, keeping unique stacks distinct. |
-| Ground item normalisation rewrites metadata      | Medium     | 🔴 Todo  | `normalizeGroundItems` defaults to gold and drops keys, misrendering new or personal loot. |
+| Ground item normalisation rewrites metadata      | Medium     | 🟢 Done  | `normalizeGroundItems` defaults to gold and drops keys, misrendering new or personal loot. |
 | Effect patches filtered out of hub payloads      | Critical   | 🔴 Todo  | `Hub.marshalState` whitelist excludes effects, so incremental effect updates never broadcast. |
 | Ground item removals skip diff emission          | High       | 🟢 Done  | Deletions bypass journalling, so broadcasts omit refreshed stacks until a keyframe. |
 | Equipment patches unsupported on the client      | Critical   | 🟢 Done  | Patch handlers now hydrate `player_equipment`/`npc_equipment` payloads so loadouts reach the UI. |
