@@ -116,10 +116,10 @@ snapshot path:
 * The main store instantiates this background state during bootstrap, and the
   network layer refreshes it on `/join` and every `state` broadcast while logging
   new patch replay issues to the console for debugging and resetting the dedupe
-  history whenever the server announces a resynchronisation. [client/main.js](../../client/main.js) [client/network.js](../../client/network.js)
+  history whenever the server announces a resynchronisation. [client/main.ts](../../client/main.ts) [client/network.js](../../client/network.js)
 * The diagnostics drawer now surfaces the patch baseline tick, replay batch
   summary, and entity counts so QA can compare snapshot and diff pipelines at a
-  glance without opening the console. [client/index.html](../../client/index.html) [client/main.js](../../client/main.js)
+  glance without opening the console. [client/index.html](../../client/index.html) [client/main.ts](../../client/main.ts)
 * NPC, effect, and ground item patches now replay alongside player diffs in the
   background state container, eliminating the temporary unsupported patch
   warnings while exercising dedupe logic for every entity type. [client/patches.js](../../client/patches.js)
@@ -131,7 +131,7 @@ snapshot path:
   variables, publishes `keyframe` and `keyframeNack` responses (`expired` / `rate_limited`),
   rate-limits recovery RPCs, emits telemetry on journal size and NACK counts, and the
   client escalates to a resync or schedules retries with jittered backoff while tracking
-  diagnostics counters. [server/patches.go](../../server/patches.go) [server/hub.go](../../server/hub.go) [server/main.go](../../server/main.go) [client/patches.js](../../client/patches.js) [client/network.js](../../client/network.js) [client/main.js](../../client/main.js)
+  diagnostics counters. [server/patches.go](../../server/patches.go) [server/hub.go](../../server/hub.go) [server/main.go](../../server/main.go) [client/patches.js](../../client/patches.js) [client/network.js](../../client/network.js) [client/main.ts](../../client/main.ts)
 * Vitest coverage now freezes inputs to guard against mutation, asserts
   idempotent replay counts, validates monotonic tick handling, and exercises the
   resync pathway so future patch types can extend the pipeline with
@@ -156,7 +156,7 @@ snapshot path:
 * ✅ **Replay validation tooling** – the diagnostics drawer surfaces patch
   baseline ticks, applied patch counts, error summaries, and entity totals by
   reading from the background patch state, letting QA compare snapshot and diff
-  pipelines without inspecting the console. [client/index.html](../../client/index.html) [client/main.js](../../client/main.js)
+  pipelines without inspecting the console. [client/index.html](../../client/index.html) [client/main.ts](../../client/main.ts)
 * ✅ **Keyframe recovery** – the server journals recent snapshots alongside patch
   batches, exposes them via `keyframeSeq` references plus a `keyframeRequest`
   websocket flow, and the client consumes those frames to heal missing-entity
@@ -167,7 +167,7 @@ snapshot path:
   flip the mode at runtime, share a centralised enum so diagnostics stay in sync,
   and the renderer reads from the patch container for players, NPCs, effects,
   and ground items when patch mode is active so QA can smoke test the diff
-  pipeline without code edits. [client/main.js](../../client/main.js) [client/render.js](../../client/render.js) [client/render-modes.js](../../client/render-modes.js)
+  pipeline without code edits. [client/main.ts](../../client/main.ts) [client/render.js](../../client/render.js) [client/render-modes.js](../../client/render-modes.js)
 * ✅ **Patch-first broadcasts** – steady-state `state` messages now rely on journalled diffs with configurable keyframe intervals, and the client mirrors patch baselines when snapshots are omitted. [server/main.go](../../server/main.go) [server/hub.go](../../server/hub.go) [client/network.js](../../client/network.js)
 
 ## Suggested next steps

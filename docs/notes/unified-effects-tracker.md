@@ -155,7 +155,7 @@ Statuses use the following scale:
 
 * :white_check_mark: **Client patch caches (`client/patches.js`, `client/network.js`).** Patch state now clones only players, NPCs, and ground items so the legacy `effects` maps no longer exist, keeping snapshot ingestion aligned with lifecycle batches.【F:client/patches.js†L890-L905】【F:client/patches.js†L1545-L1558】【F:client/network.js†L940-L978】
 * :white_check_mark: **Renderer fallbacks (`client/render.js`).** Removed the `store.effects` fallback so `syncEffectsByType` now consumes only lifecycle-derived buckets, keeping the store free of legacy effect arrays.【F:client/render.js†L344-L392】
-* :white_check_mark: **Diagnostics counters (`client/main.js`).** Retired the legacy patch map counts and surface lifecycle-backed effect totals in the HUD, unblocking the patch cache removal.【F:client/main.js†L1305-L1345】
+* :white_check_mark: **Diagnostics counters (`client/main.ts`).** Retired the legacy patch map counts and surface lifecycle-backed effect totals in the HUD, unblocking the patch cache removal.
 * :white_check_mark: **Tests covering legacy arrays (`client/__tests__/patches.test.js`, `client/__tests__/network.test.js`).** Updated fixtures and assertions to stop referencing patch cache arrays and instead confirm the lifecycle-only shape.【F:client/__tests__/patches.test.js†L139-L181】【F:client/__tests__/network.test.js†L327-L404】
 
 #### Legacy Compatibility Audit — Entry 46

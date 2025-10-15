@@ -732,7 +732,7 @@ var GameClientApp = class extends i4 {
     var _a6;
     return x`
       <app-shell
-        title="Mine &amp; Die"
+        heading="Mine &amp; Die"
         subtitle="Multiplayer sandbox in active development."
         .healthStatus=${this.healthStatus}
         .logs=${this.logs}
@@ -762,14 +762,14 @@ __publicField(GameClientApp, "properties", {
 var AppShell = class extends i4 {
   constructor() {
     super();
-    __publicField(this, "title");
+    __publicField(this, "heading");
     __publicField(this, "subtitle");
     __publicField(this, "healthStatus");
     __publicField(this, "logs");
     __publicField(this, "serverTime");
     __publicField(this, "heartbeat");
     __publicField(this, "activeTab");
-    this.title = "";
+    this.heading = "";
     this.subtitle = "";
     this.healthStatus = "--";
     this.logs = [];
@@ -793,7 +793,7 @@ var AppShell = class extends i4 {
       <main class="page">
         <header class="page-header">
           <div>
-            <h1>${this.title}</h1>
+            <h1>${this.heading}</h1>
             <p class="page-header__subtitle">${this.subtitle}</p>
           </div>
           <div class="page-header__controls">
@@ -819,7 +819,7 @@ var AppShell = class extends i4 {
   }
 };
 __publicField(AppShell, "properties", {
-  title: { type: String },
+  heading: { type: String },
   subtitle: { type: String },
   healthStatus: { type: String },
   logs: { attribute: false },
@@ -871,7 +871,7 @@ var GameCanvas = class extends i4 {
     return x`
       <section class="play-area">
         <div class="play-area__main">
-          <canvas width="640" height="360" aria-label="Game viewport"></canvas>
+          <canvas width="800" height="600" aria-label="Game viewport"></canvas>
         </div>
         <tabs-nav .activeTab=${this.activeTab}></tabs-nav>
         <panel-viewport
