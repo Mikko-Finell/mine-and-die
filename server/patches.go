@@ -402,6 +402,21 @@ func (j *Journal) SnapshotPatches() []Patch {
 	return snapshot
 }
 
+// RestorePatches prepends the provided patches back into the journal. It is
+// used when a caller drains the journal but later needs to roll the operation
+// back (for example, if encoding fails and the state message cannot be sent).
+func (j *Journal) RestorePatches(p []Patch) {
+	if len(p) == 0 {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	restored := make([]Patch, 0, len(p)+len(j.patches))
+	restored = append(restored, p...)
+	restored = append(restored, j.patches...)
+	j.patches = restored
+}
+
 // DrainEffectEvents returns the recorded lifecycle envelopes for the journal
 // window along with the current per-effect sequence cursors. Slices are copied
 // so callers can mutate the results without impacting the journal. After the
@@ -445,6 +460,75 @@ func (j *Journal) SnapshotEffectEvents() EffectEventBatch {
 		Updates:     cloneUpdateEvents(j.effects.updates),
 		Ends:        cloneEndEvents(j.effects.ends),
 		LastSeqByID: copySeqMap(j.effectSeq),
+	}
+}
+
+// RestoreEffectEvents reinserts a drained lifecycle batch. It keeps the
+// journal consistent when callers encounter an error after draining and need to
+// retry without losing events.
+func (j *Journal) RestoreEffectEvents(batch EffectEventBatch) {
+	if len(batch.Spawns) == 0 && len(batch.Updates) == 0 && len(batch.Ends) == 0 && len(batch.LastSeqByID) == 0 {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if len(batch.Spawns) > 0 {
+		restored := make([]EffectSpawnEvent, 0, len(batch.Spawns)+len(j.effects.spawns))
+		restored = append(restored, batch.Spawns...)
+		restored = append(restored, j.effects.spawns...)
+		j.effects.spawns = restored
+	}
+	if len(batch.Updates) > 0 {
+		restored := make([]EffectUpdateEvent, 0, len(batch.Updates)+len(j.effects.updates))
+		restored = append(restored, batch.Updates...)
+		restored = append(restored, j.effects.updates...)
+		j.effects.updates = restored
+	}
+	if len(batch.Ends) > 0 {
+		restored := make([]EffectEndEvent, 0, len(batch.Ends)+len(j.effects.ends))
+		restored = append(restored, batch.Ends...)
+		restored = append(restored, j.effects.ends...)
+		j.effects.ends = restored
+
+		if j.recentlyEnded == nil {
+			j.recentlyEnded = make(map[string]Tick)
+		}
+
+		seen := make(map[string]struct{}, len(batch.Ends))
+		ended := make([]string, 0, len(batch.Ends)+len(j.endedIDs))
+		for _, evt := range batch.Ends {
+			if evt.ID == "" {
+				continue
+			}
+			seen[evt.ID] = struct{}{}
+			j.recentlyEnded[evt.ID] = evt.Tick
+			ended = append(ended, evt.ID)
+		}
+		for _, id := range j.endedIDs {
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			ended = append(ended, id)
+		}
+		j.endedIDs = ended
+	}
+	if len(batch.LastSeqByID) > 0 {
+		if j.effectSeq == nil {
+			j.effectSeq = make(map[string]Seq, len(batch.LastSeqByID))
+		}
+		for id, seq := range batch.LastSeqByID {
+			if id == "" {
+				continue
+			}
+			if current, ok := j.effectSeq[id]; ok && current > seq {
+				continue
+			}
+			j.effectSeq[id] = seq
+		}
 	}
 }
 
