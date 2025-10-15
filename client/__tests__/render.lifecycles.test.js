@@ -2,7 +2,11 @@ import { describe, expect, test } from "vitest";
 import { EffectManager } from "../js-effects/manager.js";
 import { __testing__ } from "../render.js";
 
-const { syncEffectsByType, CLIENT_MANAGED_EFFECT_MAX_AGE_MS } = __testing__;
+const {
+  syncEffectsByType,
+  CLIENT_MANAGED_EFFECT_MAX_AGE_MS,
+  collectEffectRenderBuckets,
+} = __testing__;
 
 function createTestDefinition(type) {
   return {
@@ -98,6 +102,31 @@ function createContractEffect(
 }
 
 describe("syncEffectsByType contract lifecycle handling", () => {
+  test("contract attack lifecycles map to melee-swing render bucket", () => {
+    const effectId = "contract-effect-attack";
+    const lifecycle = createLifecycleView(
+      new Map([
+        [
+          effectId,
+          createLifecycleEntry({
+            id: effectId,
+            definitionId: "attack",
+            typeId: "attack",
+          }),
+        ],
+      ]),
+    );
+    const buckets = collectEffectRenderBuckets({}, { lifecycle });
+    expect(buckets.has("melee-swing")).toBe(true);
+    const meleeBucket = buckets.get("melee-swing");
+    expect(Array.isArray(meleeBucket)).toBe(true);
+    const [effect] = meleeBucket;
+    expect(effect).toBeDefined();
+    expect(effect.id).toBe(effectId);
+    expect(effect.type).toBe("melee-swing");
+    expect(buckets.has("attack")).toBe(false);
+  });
+
   test("client-managed contract effects persist after contract end until GC cap", () => {
     const manager = new EffectManager();
     const definition = createTestDefinition("melee-swing");

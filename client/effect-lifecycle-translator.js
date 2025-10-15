@@ -2,6 +2,21 @@ const COORD_SCALE = 16;
 const DEFAULT_TICK_RATE = 15;
 const DEFAULT_TILE_SIZE = 40;
 
+const CONTRACT_TYPE_REMAP = {
+  attack: "melee-swing",
+};
+
+export function normalizeContractEffectType(type) {
+  if (typeof type !== "string") {
+    return type ?? null;
+  }
+  const trimmed = type.trim();
+  if (trimmed.length === 0) {
+    return trimmed;
+  }
+  return CONTRACT_TYPE_REMAP[trimmed] || trimmed;
+}
+
 function isPlainObject(value) {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
@@ -119,7 +134,7 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
     instance.definition.typeId.length > 0
       ? instance.definition.typeId
       : null;
-  const resolvedType = rawTypeId || rawDefinitionId;
+  const resolvedType = normalizeContractEffectType(rawTypeId || rawDefinitionId);
   if (resolvedType) {
     effect.type = resolvedType;
   }

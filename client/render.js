@@ -14,6 +14,7 @@ import {
 import {
   contractLifecycleToEffect,
   contractLifecycleToUpdatePayload,
+  normalizeContractEffectType,
 } from "./effect-lifecycle-translator.js";
 import { peekEffectLifecycleState } from "./effect-lifecycle.js";
 import {
@@ -175,12 +176,13 @@ function collectEffectRenderBuckets(store, renderState) {
       entry.instance.definitionId.length > 0
         ? entry.instance.definitionId
         : null;
-    const resolvedType =
+    const resolvedTypeSource =
       (typeof converted.type === "string" && converted.type.length > 0
         ? converted.type
         : null) ||
       definitionTypeId ||
       definitionId;
+    const resolvedType = normalizeContractEffectType(resolvedTypeSource);
     if (typeof resolvedType !== "string" || resolvedType.length === 0) {
       return;
     }
@@ -191,6 +193,17 @@ function collectEffectRenderBuckets(store, renderState) {
     }
     if (definitionTypeId) {
       markHiddenMetadata(converted, "__contractTypeId", definitionTypeId);
+    }
+    if (
+      typeof resolvedTypeSource === "string" &&
+      resolvedTypeSource.length > 0 &&
+      resolvedTypeSource !== resolvedType
+    ) {
+      markHiddenMetadata(
+        converted,
+        "__contractOriginalType",
+        resolvedTypeSource,
+      );
     }
     const managedByClient = isLifecycleClientManaged(entry);
     if (managedByClient) {
@@ -633,6 +646,7 @@ export function startRenderLoop(store) {
 export const __testing__ = {
   syncEffectsByType,
   CLIENT_MANAGED_EFFECT_MAX_AGE_MS,
+  collectEffectRenderBuckets,
 };
 
 // drawScene paints the background, obstacles, effects, and players.
