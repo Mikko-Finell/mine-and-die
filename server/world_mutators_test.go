@@ -10,7 +10,7 @@ import (
 )
 
 func TestSetPositionNoopDoesNotEmitPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-1", X: 10, Y: 20, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -26,7 +26,7 @@ func TestSetPositionNoopDoesNotEmitPatch(t *testing.T) {
 }
 
 func TestSetPositionRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-2", X: 5, Y: 6, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -64,7 +64,7 @@ func TestSetPositionRecordsPatch(t *testing.T) {
 }
 
 func TestSetFacingNoopDoesNotEmitPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-3", Facing: FacingRight, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -80,7 +80,7 @@ func TestSetFacingNoopDoesNotEmitPatch(t *testing.T) {
 }
 
 func TestSetFacingRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-4", Facing: FacingUp, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -118,7 +118,7 @@ func TestSetFacingRecordsPatch(t *testing.T) {
 }
 
 func TestSetIntentNoopDoesNotEmitPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent-noop", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	player.intentX = 0.25
 	player.intentY = -0.5
@@ -136,7 +136,7 @@ func TestSetIntentNoopDoesNotEmitPatch(t *testing.T) {
 }
 
 func TestSetIntentRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -174,7 +174,7 @@ func TestSetIntentRecordsPatch(t *testing.T) {
 }
 
 func TestSetHealthNoopDoesNotEmitPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-5", Health: 75, MaxHealth: 100}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -190,7 +190,7 @@ func TestSetHealthNoopDoesNotEmitPatch(t *testing.T) {
 }
 
 func TestSetHealthRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-6", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -231,7 +231,7 @@ func TestSetHealthRecordsPatch(t *testing.T) {
 }
 
 func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-max-sync", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -280,7 +280,7 @@ func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
 }
 
 func TestApplyEffectHitPlayerEmitsHealthPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-7", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -321,7 +321,7 @@ func TestApplyEffectHitPlayerEmitsHealthPatch(t *testing.T) {
 }
 
 func TestMutateInventoryNoopDoesNotEmitPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-8", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -339,7 +339,7 @@ func TestMutateInventoryNoopDoesNotEmitPatch(t *testing.T) {
 }
 
 func TestMutateInventoryRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-9", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -387,7 +387,7 @@ func TestMutateInventoryRecordsPatch(t *testing.T) {
 }
 
 func TestMutateInventoryEmitsPatchWhenFungibilityChanges(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	daggerDef, ok := ItemDefinitionFor(ItemTypeIronDagger)
 	if !ok {
@@ -449,7 +449,7 @@ func TestMutateInventoryEmitsPatchWhenFungibilityChanges(t *testing.T) {
 }
 
 func TestMutateInventoryErrorRestoresState(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-10", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
@@ -482,7 +482,7 @@ func TestMutateInventoryErrorRestoresState(t *testing.T) {
 }
 
 func TestSetNPCPositionRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-1", X: 1, Y: 2}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-1": npc}
 
@@ -511,7 +511,7 @@ func TestSetNPCPositionRecordsPatch(t *testing.T) {
 }
 
 func TestSetNPCFacingRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-2", Facing: FacingUp}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-2": npc}
 
@@ -539,7 +539,7 @@ func TestSetNPCFacingRecordsPatch(t *testing.T) {
 }
 
 func TestSetNPCHealthRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-3", Health: 50, MaxHealth: 100}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-3": npc}
 
@@ -570,7 +570,7 @@ func TestSetNPCHealthRecordsPatch(t *testing.T) {
 }
 
 func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-4", Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-4": npc}
 
@@ -606,7 +606,7 @@ func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
 }
 
 func TestSetEffectPositionRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	eff := &effectState{Effect: Effect{ID: "effect-1", X: 1, Y: 2}}
 
 	w.SetEffectPosition(eff, 5, 7)
@@ -633,7 +633,7 @@ func TestSetEffectPositionRecordsPatch(t *testing.T) {
 }
 
 func TestSetEffectParamRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	eff := &effectState{Effect: Effect{ID: "effect-2"}}
 
 	w.SetEffectParam(eff, "remainingRange", 3.5)
@@ -660,7 +660,7 @@ func TestSetEffectParamRecordsPatch(t *testing.T) {
 }
 
 func TestSetGroundItemQuantityRecordsPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	item := &groundItemState{GroundItem: GroundItem{ID: "ground-1", Qty: 1, X: 0, Y: 0}}
 
 	w.SetGroundItemQuantity(item, 5)

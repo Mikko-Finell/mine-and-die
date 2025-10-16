@@ -62,15 +62,15 @@ func (cfg worldConfig) normalized() worldConfig {
 // defaultWorldConfig enables every world feature and the default seed.
 func defaultWorldConfig() worldConfig {
 	return worldConfig{
-		Obstacles:      true,
+		Obstacles:      false,
 		ObstaclesCount: defaultObstacleCount,
-		GoldMines:      true,
+		GoldMines:      false,
 		GoldMineCount:  defaultGoldMineCount,
-		NPCs:           true,
+		NPCs:           false,
 		GoblinCount:    defaultGoblinCount,
 		RatCount:       defaultRatCount,
 		NPCCount:       defaultNPCCount,
-		Lava:           true,
+		Lava:           false,
 		LavaCount:      defaultLavaCount,
 		Seed:           defaultWorldSeed,
 		Width:          worldWidth,

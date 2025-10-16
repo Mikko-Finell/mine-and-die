@@ -15,7 +15,7 @@ func floatsEqual(a, b float64) bool {
 }
 
 func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	basePlayer := &playerState{actorState: actorState{Actor: Actor{
 		ID:        "player-1",
@@ -176,7 +176,7 @@ func inventoriesSlotEqual(a, b Inventory) bool {
 }
 
 func TestApplyPatchesNoop(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	player := &playerState{actorState: actorState{Actor: Actor{
 		ID:        "player-1",
@@ -213,7 +213,7 @@ func TestApplyPatchesNoop(t *testing.T) {
 }
 
 func TestApplyPatchesRemovesPlayer(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	player := newTestPlayerState("player-remove")
 	w.AddPlayer(player)
