@@ -1,8 +1,16 @@
 import { LitElement, html } from "lit";
 import { classMap } from "lit/directives/class-map.js";
+import {
+  WebSocketNetworkClient,
+  type NetworkClient,
+  type NetworkMessageEnvelope,
+} from "./network";
 
 const HEALTH_CHECK_URL = "/health";
 const JOIN_URL = "/join";
+const WEBSOCKET_URL = "/ws";
+const HEARTBEAT_INTERVAL_MS = 2000;
+const PROTOCOL_VERSION = 1;
 
 type PanelKey = "telemetry" | "world" | "inventory";
 
@@ -22,11 +30,18 @@ class GameClientApp extends LitElement {
   } as const;
 
   private clockInterval: number | undefined;
+  private networkClient: NetworkClient | null;
+  private hasLoggedInitialNetworkMessage: boolean;
+  private suppressNextDisconnectLog: boolean;
 
   playerId: string | null;
 
   constructor() {
     super();
+    this.clockInterval = undefined;
+    this.networkClient = null;
+    this.hasLoggedInitialNetworkMessage = false;
+    this.suppressNextDisconnectLog = false;
     this.healthStatus = "Checking…";
     this.serverTime = "--";
     this.heartbeat = "--";
@@ -56,6 +71,15 @@ class GameClientApp extends LitElement {
       window.clearInterval(this.clockInterval);
       this.clockInterval = undefined;
     }
+    if (this.networkClient) {
+      this.suppressNextDisconnectLog = true;
+      const disconnectPromise = this.networkClient.disconnect();
+      void Promise.resolve(disconnectPromise).finally(() => {
+        this.suppressNextDisconnectLog = false;
+      });
+      this.networkClient = null;
+    }
+    this.hasLoggedInitialNetworkMessage = false;
   }
 
   private addLog(message: string): void {
@@ -87,7 +111,6 @@ class GameClientApp extends LitElement {
   private updateServerTime(): void {
     const now = new Date();
     this.serverTime = now.toLocaleTimeString();
-    this.heartbeat = `${Math.round(Math.random() * 1000)} ms`;
   }
 
   private handleRefreshRequested(): void {
@@ -96,21 +119,72 @@ class GameClientApp extends LitElement {
 
   private async joinWorld(): Promise<void> {
     this.addLog("Joining world…");
+    this.heartbeat = "Connecting…";
+    this.hasLoggedInitialNetworkMessage = false;
+
+    if (this.networkClient) {
+      this.suppressNextDisconnectLog = true;
+      await this.networkClient.disconnect();
+      this.suppressNextDisconnectLog = false;
+    }
+
+    const networkClient = new WebSocketNetworkClient({
+      joinUrl: JOIN_URL,
+      websocketUrl: WEBSOCKET_URL,
+      heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+
+    this.networkClient = networkClient;
+
     try {
-      const response = await fetch(JOIN_URL, {
-        method: "POST",
-        cache: "no-cache",
+      const joinResponse = await networkClient.join();
+      this.playerId = joinResponse.id;
+      this.addLog(`Joined world as ${joinResponse.id}.`);
+
+      await networkClient.connect({
+        onJoin: () => {
+          this.addLog("Connected to world stream.");
+          this.heartbeat = "Connected";
+        },
+        onMessage: (message) => {
+          this.handleNetworkMessage(message);
+        },
+        onDisconnect: (code, reason) => {
+          const shouldLog = !this.suppressNextDisconnectLog;
+          this.suppressNextDisconnectLog = false;
+          if (shouldLog) {
+            const reasonText = reason ? ` (${reason})` : "";
+            this.addLog(`Disconnected from server${reasonText}.`);
+          }
+          if (this.networkClient === networkClient) {
+            this.networkClient = null;
+            this.playerId = null;
+          }
+          this.hasLoggedInitialNetworkMessage = false;
+          const displayStatus = code === 1000 ? "Disconnected" : `Closed (${code ?? "--"})`;
+          this.heartbeat = displayStatus;
+        },
+        onError: (error) => {
+          this.addLog(`Network error: ${error.message}`);
+        },
       });
-      if (!response.ok) {
-        throw new Error(`join failed with ${response.status}`);
-      }
-      const data = (await response.json()) as { id: string };
-      this.playerId = data.id;
-      this.addLog(`Joined world as ${data.id}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.playerId = null;
+      this.heartbeat = "offline";
+      this.networkClient = null;
+      this.suppressNextDisconnectLog = false;
       this.addLog(`Failed to join world: ${message}`);
+    }
+  }
+
+  private handleNetworkMessage(message: NetworkMessageEnvelope): void {
+    const timestamp = new Date(message.receivedAt).toLocaleTimeString();
+    this.heartbeat = `${message.type || "unknown"} @ ${timestamp}`;
+    if (!this.hasLoggedInitialNetworkMessage) {
+      this.hasLoggedInitialNetworkMessage = true;
+      this.addLog(`Receiving ${message.type || "unknown"} messages from server.`);
     }
   }
 
