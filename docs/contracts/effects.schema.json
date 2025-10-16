@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/FileDefinitions",
+  "$defs": {
+    "EffectDefinition": {
+      "properties": {
+        "typeId": {
+          "type": "string"
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "area",
+            "target",
+            "visual"
+          ],
+          "description": "How the effect is delivered in the world"
+        },
+        "shape": {
+          "type": "string",
+          "enum": [
+            "circle",
+            "rect",
+            "arc",
+            "segment",
+            "capsule"
+          ],
+          "description": "Collision volume used for delivery"
+        },
+        "motion": {
+          "type": "string",
+          "enum": [
+            "none",
+            "instant",
+            "linear",
+            "parabolic",
+            "follow"
+          ],
+          "description": "Movement profile applied by the effect"
+        },
+        "impact": {
+          "type": "string",
+          "enum": [
+            "first-hit",
+            "all-in-path",
+            "pierce",
+            "none"
+          ],
+          "description": "Collision resolution behaviour"
+        },
+        "lifetimeTicks": {
+          "type": "integer",
+          "description": "Authoritative lifetime measured in simulation ticks"
+        },
+        "pierceCount": {
+          "type": "integer",
+          "description": "Number of additional targets the effect can pierce"
+        },
+        "params": {
+          "patternProperties": {
+            ".*": {
+              "type": "integer"
+            }
+          },
+          "type": "object",
+          "description": "Server tunables referenced by hooks and behaviors"
+        },
+        "hooks": {
+          "$ref": "#/$defs/EffectHooks",
+          "description": "Server hook names invoked during the lifecycle"
+        },
+        "client": {
+          "$ref": "#/$defs/ReplicationSpec",
+          "description": "Replication behaviour for network payloads"
+        },
+        "end": {
+          "$ref": "#/$defs/EndPolicy",
+          "description": "Lifecycle termination configuration"
+        }
+      },
+      "type": "object",
+      "required": [
+        "typeId",
+        "delivery",
+        "shape",
+        "motion",
+        "impact",
+        "lifetimeTicks",
+        "hooks",
+        "client",
+        "end"
+      ]
+    },
+    "EffectHooks": {
+      "properties": {
+        "onSpawn": {
+          "type": "string",
+          "description": "Hook invoked when an instance spawns"
+        },
+        "onTick": {
+          "type": "string",
+          "description": "Hook invoked on each simulation tick"
+        },
+        "onHit": {
+          "type": "string",
+          "description": "Hook invoked when the effect collides with a target"
+        },
+        "onExpire": {
+          "type": "string",
+          "description": "Hook invoked when the instance ends naturally"
+        }
+      },
+      "type": "object"
+    },
+    "EndConditions": {
+      "properties": {
+        "onUnequip": {
+          "type": "boolean",
+          "description": "End when the owner unequips the source item"
+        },
+        "onOwnerDeath": {
+          "type": "boolean",
+          "description": "End when the owner dies"
+        },
+        "onOwnerLost": {
+          "type": "boolean",
+          "description": "End when the instance loses its owner"
+        },
+        "onZoneChange": {
+          "type": "boolean",
+          "description": "End when the owner changes zones"
+        },
+        "onExplicitCancel": {
+          "type": "boolean",
+          "description": "End when a scripted cancel request is received"
+        }
+      },
+      "type": "object",
+      "required": [
+        "onUnequip",
+        "onOwnerDeath",
+        "onOwnerLost",
+        "onZoneChange",
+        "onExplicitCancel"
+      ]
+    },
+    "EndPolicy": {
+      "properties": {
+        "kind": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "title": "End policy kind",
+          "description": "Controls when the effect instance ends"
+        },
+        "conditions": {
+          "$ref": "#/$defs/EndConditions",
+          "description": "Optional condition flags evaluated when Kind is EndCondition"
+        }
+      },
+      "type": "object",
+      "required": [
+        "kind"
+      ]
+    },
+    "EntryDefinition": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "definition": {
+          "$ref": "#/$defs/EffectDefinition",
+          "description": "Authoritative contract definition resolved at runtime"
+        },
+        "jsEffect": {
+          "type": "string",
+          "description": "Path to the client visual implementation"
+        },
+        "parameters": {
+          "patternProperties": {
+            ".*": {
+              "type": "integer"
+            }
+          },
+          "type": "object",
+          "description": "Designer tunables forwarded to hooks and visuals"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "contractId",
+        "definition"
+      ]
+    },
+    "FileDefinitions": {
+      "items": {
+        "$ref": "#/$defs/EntryDefinition"
+      },
+      "type": "array"
+    },
+    "ReplicationSpec": {
+      "properties": {
+        "sendSpawn": {
+          "type": "boolean",
+          "description": "Whether the server emits spawn payloads"
+        },
+        "sendUpdates": {
+          "type": "boolean",
+          "description": "Whether the server emits update payloads"
+        },
+        "sendEnd": {
+          "type": "boolean",
+          "description": "Whether the server emits end payloads"
+        },
+        "managedByClient": {
+          "type": "boolean",
+          "description": "Marks visuals managed entirely by the client"
+        },
+        "updateFields": {
+          "patternProperties": {
+            ".*": {
+              "type": "boolean"
+            }
+          },
+          "type": "object",
+          "description": "Whitelist of lifecycle fields included in updates"
+        }
+      },
+      "type": "object",
+      "required": [
+        "sendSpawn",
+        "sendUpdates",
+        "sendEnd"
+      ]
+    }
+  },
+  "title": "Mine \u0026 Die Effect Catalog",
+  "description": "Validates designer-authored entries in config/effects/definitions.json"
+}
