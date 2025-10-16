@@ -11,6 +11,9 @@ import (
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
+// LEGACY: Effect represents the pre-contract gameplay snapshot that will be retired once
+// effectsgen drives all lifecycle transport. The contract pipeline mirrors these fields
+// today, but removal is planned after downstream consumers migrate.
 // Effect represents a time-limited gameplay artifact (attack swing, projectile, etc.).
 type Effect struct {
 	ID       string             `json:"id"`
@@ -26,6 +29,9 @@ type Effect struct {
 	Colors   []string           `json:"colors,omitempty"`
 }
 
+// LEGACY: EffectTrigger mirrors the legacy fire-and-forget payloads. The
+// effectsgen roadmap tracks folding these into contract lifecycle events so
+// this struct can be removed alongside the legacy pipeline.
 // EffectTrigger represents a one-shot visual instruction that the client may
 // execute without additional server updates.
 type EffectTrigger struct {
@@ -41,6 +47,9 @@ type EffectTrigger struct {
 	Colors   []string           `json:"colors,omitempty"`
 }
 
+// LEGACY: effectState powers the legacy world bookkeeping for gameplay and
+// projectile resolution. The contract manager still hydrates it as a shim, but
+// effectsgen will remove this struct when contract-native behaviors land.
 type effectState struct {
 	Effect
 	expiresAt             time.Time
@@ -57,6 +66,9 @@ type effectState struct {
 	telemetryDamage       float64
 }
 
+// LEGACY: ProjectileTemplate feeds the legacy projectile factory. Future
+// effectsgen catalogs will replace these ad-hoc templates with contract
+// definitions.
 type ProjectileTemplate struct {
 	Type           string
 	Speed          float64
@@ -71,16 +83,22 @@ type ProjectileTemplate struct {
 	Cooldown       time.Duration
 }
 
+// LEGACY: CollisionShapeConfig belongs to the legacy projectile template
+// system and will be superseded by effectsgen schema components.
 type CollisionShapeConfig struct {
 	RectWidth  float64
 	RectHeight float64
 	UseRect    bool
 }
 
+// LEGACY: TravelModeConfig belongs to the legacy projectile motion pipeline
+// slated for removal once effectsgen definitions cover movement semantics.
 type TravelModeConfig struct {
 	StraightLine bool
 }
 
+// LEGACY: ImpactRuleConfig encodes legacy projectile impact policies. The
+// effectsgen contract will supply this metadata so the struct can be removed.
 type ImpactRuleConfig struct {
 	StopOnHit          bool
 	MaxTargets         int
@@ -90,6 +108,9 @@ type ImpactRuleConfig struct {
 	ExpiryOnlyIfNoHits bool
 }
 
+// LEGACY: ExplosionSpec is part of the legacy projectile explosion flow and
+// will disappear once the effectsgen catalog exposes reusable explosion
+// components.
 type ExplosionSpec struct {
 	EffectType string
 	Radius     float64
@@ -97,6 +118,9 @@ type ExplosionSpec struct {
 	Params     map[string]float64
 }
 
+// LEGACY: ProjectileState tracks runtime state for legacy projectiles. The
+// contract manager maintains it only to bridge existing mechanics until
+// effectsgen definitions own motion and collision.
 type ProjectileState struct {
 	Template       *ProjectileTemplate
 	VelocityUnitX  float64
@@ -1018,6 +1042,8 @@ func meleeAttackRectangle(x, y float64, facing FacingDirection) (float64, float6
 }
 
 // advanceEffects moves active projectiles and expires ones that collide or run out of range.
+// LEGACY: advanceEffects updates the legacy projectile loop. When effectsgen
+// definitions handle motion and expiry directly, this shim will be deleted.
 func (w *World) advanceEffects(now time.Time, dt float64) {
 	if len(w.effects) == 0 {
 		return
@@ -1026,6 +1052,9 @@ func (w *World) advanceEffects(now time.Time, dt float64) {
 	w.advanceNonProjectiles(now, dt)
 }
 
+// LEGACY: advanceProjectiles exists solely for the legacy projectile runtime.
+// Contract-managed instances bypass most of this code today and will replace it
+// entirely after the effectsgen rollout.
 func (w *World) advanceProjectiles(now time.Time, dt float64) {
 	if len(w.effects) == 0 {
 		return
@@ -1049,6 +1078,9 @@ func (w *World) advanceProjectiles(now time.Time, dt float64) {
 	}
 }
 
+// LEGACY: advanceProjectile is the legacy physics step. Contract lifecycle
+// hooks call it for parity, but it will be removed once the effectsgen engine
+// owns projectile motion.
 func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) bool {
 	if eff == nil || eff.Projectile == nil {
 		return false
