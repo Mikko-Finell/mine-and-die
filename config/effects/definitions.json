@@ -15,8 +15,7 @@
       "client": {
         "sendSpawn": true,
         "sendUpdates": false,
-        "sendEnd": false,
-        "managedByClient": true
+        "sendEnd": false
       }
     },
     "jsEffect": "melee/swing",
@@ -127,8 +126,7 @@
       "client": {
         "sendSpawn": true,
         "sendUpdates": false,
-        "sendEnd": false,
-        "managedByClient": true
+        "sendEnd": false
       }
     },
     "jsEffect": "visual/blood-splatter",

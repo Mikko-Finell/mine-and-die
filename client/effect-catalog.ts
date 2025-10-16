@@ -1,5 +1,6 @@
 export interface EffectCatalogEntryMetadata {
   readonly contractId: string;
+  readonly managedByClient: boolean;
   readonly blocks: Readonly<Record<string, unknown>>;
 }
 
@@ -30,12 +31,16 @@ export const normalizeEffectCatalog = (input: unknown): EffectCatalogSnapshot =>
     if (!isRecord(entryValue)) {
       throw new Error(`Effect catalog entry ${entryId} must be an object.`);
     }
-    const { contractId, blocks } = entryValue as {
+    const { contractId, managedByClient, blocks } = entryValue as {
       readonly contractId?: unknown;
+      readonly managedByClient?: unknown;
       readonly blocks?: unknown;
     };
     if (typeof contractId !== "string" || contractId.length === 0) {
       throw new Error(`Effect catalog entry ${entryId} missing contractId.`);
+    }
+    if (typeof managedByClient !== "boolean") {
+      throw new Error(`Effect catalog entry ${entryId} missing managedByClient flag.`);
     }
     let normalizedBlocks: Record<string, unknown> | undefined;
     if (blocks !== undefined) {
@@ -46,6 +51,7 @@ export const normalizeEffectCatalog = (input: unknown): EffectCatalogSnapshot =>
     }
     result[entryId] = {
       contractId,
+      managedByClient,
       blocks: Object.freeze(normalizedBlocks ?? {}),
     };
   }
@@ -92,6 +98,10 @@ export const getEffectCatalogBlock = <T = unknown>(
   const blockValue = entry.blocks[blockKey];
   return blockValue as T | undefined;
 };
+
+export const isClientManaged = (
+  entry: EffectCatalogEntryMetadata | null | undefined,
+): boolean => entry?.managedByClient === true;
 
 export const subscribeEffectCatalog = (
   listener: (catalog: EffectCatalogSnapshot) => void,

@@ -125,10 +125,6 @@
                     "type": "boolean",
                     "description": "Whether the server emits end payloads."
                   },
-                  "managedByClient": {
-                    "type": "boolean",
-                    "description": "Marks effects that transition to client-side ownership after spawn."
-                  },
                   "updateFields": {
                     "additionalProperties": {
                       "type": "boolean"
@@ -348,10 +344,6 @@
                   "sendEnd": {
                     "type": "boolean",
                     "description": "Whether the server emits end payloads."
-                  },
-                  "managedByClient": {
-                    "type": "boolean",
-                    "description": "Marks effects that transition to client-side ownership after spawn."
                   },
                   "updateFields": {
                     "additionalProperties": {

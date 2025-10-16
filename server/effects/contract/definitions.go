@@ -19,6 +19,7 @@ var BuiltInRegistry = Registry{
 		Spawn:  (*AttackSpawnPayload)(nil),
 		Update: (*AttackUpdatePayload)(nil),
 		End:    (*AttackEndPayload)(nil),
+		Owner:  LifecycleOwnerClient,
 	},
 	{
 		ID:     EffectIDFireball,
@@ -43,5 +44,6 @@ var BuiltInRegistry = Registry{
 		Spawn:  (*BloodSplatterSpawnPayload)(nil),
 		Update: (*BloodSplatterUpdatePayload)(nil),
 		End:    (*BloodSplatterEndPayload)(nil),
+		Owner:  LifecycleOwnerClient,
 	},
 }

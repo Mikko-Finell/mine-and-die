@@ -42,10 +42,9 @@ func TestResolverLoadArray(t *testing.T) {
 			"lifetimeTicks": 1,
 			"hooks":         map[string]any{"onSpawn": "swing"},
 			"client": map[string]any{
-				"sendSpawn":       true,
-				"sendUpdates":     false,
-				"sendEnd":         false,
-				"managedByClient": true,
+				"sendSpawn":   true,
+				"sendUpdates": false,
+				"sendEnd":     false,
 			},
 			"end": map[string]any{"kind": 1},
 		},
@@ -83,6 +82,12 @@ func TestResolverLoadArray(t *testing.T) {
 	}
 	if _, ok := entrySnapshot.Blocks["jsEffect"]; !ok {
 		t.Fatalf("expected jsEffect metadata block")
+	}
+	if entrySnapshot.Contract == nil || entrySnapshot.Contract.Owner != contract.LifecycleOwnerClient {
+		t.Fatalf("expected entry contract owner to be client-managed")
+	}
+	if entrySnapshot.Definition == nil || !entrySnapshot.Definition.Client.ManagedByClient {
+		t.Fatalf("expected managedByClient to be derived from contract ownership")
 	}
 }
 
@@ -200,9 +205,9 @@ func TestResolverReloadOverrides(t *testing.T) {
 	}
 }
 
-func TestResolverValidatesManagedByClient(t *testing.T) {
+func TestResolverEnforcesClientOwnershipInvariants(t *testing.T) {
 	reg := contract.Registry{
-		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload, Owner: contract.LifecycleOwnerClient},
 	}
 	base := map[string]any{
 		"id":         "attack",
@@ -216,10 +221,9 @@ func TestResolverValidatesManagedByClient(t *testing.T) {
 			"lifetimeTicks": 1,
 			"hooks":         map[string]any{"onSpawn": "swing"},
 			"client": map[string]any{
-				"sendSpawn":       true,
-				"sendUpdates":     false,
-				"sendEnd":         false,
-				"managedByClient": true,
+				"sendSpawn":   true,
+				"sendUpdates": false,
+				"sendEnd":     false,
 			},
 			"end": map[string]any{"kind": 1},
 		},
@@ -236,7 +240,7 @@ func TestResolverValidatesManagedByClient(t *testing.T) {
 				client := def["client"].(map[string]any)
 				client["sendUpdates"] = true
 			},
-			want: "sendUpdates is enabled",
+			want: "enables sendUpdates",
 		},
 		{
 			name: "end-enabled",
@@ -244,14 +248,14 @@ func TestResolverValidatesManagedByClient(t *testing.T) {
 				client := def["client"].(map[string]any)
 				client["sendEnd"] = true
 			},
-			want: "sendEnd is enabled",
+			want: "enables sendEnd",
 		},
 		{
 			name: "lifetime-not-one",
 			mutate: func(def map[string]any) {
 				def["lifetimeTicks"] = 2
 			},
-			want: "lifetimeTicks is 2",
+			want: "lifetimeTicks to 2",
 		},
 	}
 
@@ -276,6 +280,44 @@ func TestResolverValidatesManagedByClient(t *testing.T) {
 				t.Fatalf("expected resolver to be nil when validation fails")
 			}
 		})
+	}
+}
+
+func TestResolverRejectsManagedByClientField(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+
+	entry := map[string]any{
+		"id":         "attack",
+		"contractId": "attack",
+		"definition": map[string]any{
+			"typeId":        "attack",
+			"delivery":      "area",
+			"shape":         "rect",
+			"motion":        "instant",
+			"impact":        "all-in-path",
+			"lifetimeTicks": 1,
+			"client": map[string]any{
+				"sendSpawn":       true,
+				"sendUpdates":     false,
+				"sendEnd":         false,
+				"managedByClient": true,
+			},
+		},
+	}
+
+	data := mustMarshal([]map[string]any{entry})
+
+	resolver, err := NewResolver(reg, memorySource{path: "managed.json", data: data})
+	if err == nil {
+		t.Fatalf("expected NewResolver to fail when managedByClient is declared explicitly")
+	}
+	if !strings.Contains(err.Error(), "must not set definition.client.managedByClient") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolver != nil {
+		t.Fatalf("expected resolver to be nil on error")
 	}
 }
 

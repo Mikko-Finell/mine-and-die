@@ -79,6 +79,7 @@ func generateEffectCatalogModule(definitions []contractDefinition, decls tsDecla
 
 	builder.WriteString("export type EffectCatalogEntry = {\n")
 	builder.WriteString("  readonly contractId: string;\n")
+	builder.WriteString("  readonly managedByClient: boolean;\n")
 	builder.WriteString("  readonly definition: Readonly<Record<string, unknown>>;\n")
 	builder.WriteString("  readonly blocks: Readonly<Record<string, unknown>>;\n")
 	builder.WriteString("};\n\n")
@@ -106,6 +107,12 @@ func writeCatalogEntry(builder *strings.Builder, entry catalogEntry) error {
 	builder.WriteString(strconv.Quote("contractId"))
 	builder.WriteString(": ")
 	builder.WriteString(strconv.Quote(entry.ContractID))
+	builder.WriteString(",\n")
+
+	builder.WriteString(indent)
+	builder.WriteString(strconv.Quote("managedByClient"))
+	builder.WriteString(": ")
+	builder.WriteString(strconv.FormatBool(entry.ManagedByClient))
 	builder.WriteString(",\n")
 
 	builder.WriteString(indent)
