@@ -73,6 +73,14 @@ const (
 	EndDuration  = effectcontract.EndDuration
 	EndInstant   = effectcontract.EndInstant
 	EndCondition = effectcontract.EndCondition
+
+	EffectIDAttack        = effectcontract.EffectIDAttack
+	EffectIDFireball      = effectcontract.EffectIDFireball
+	EffectIDBloodSplatter = effectcontract.EffectIDBloodSplatter
+	EffectIDBurningTick   = effectcontract.EffectIDBurningTick
+	EffectIDBurningVisual = effectcontract.EffectIDBurningVisual
 )
 
 var NoPayload = effectcontract.NoPayload
+
+var BuiltInRegistry = effectcontract.BuiltInRegistry

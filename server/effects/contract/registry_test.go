@@ -86,3 +86,9 @@ func TestRegistryIndex_BuildsMap(t *testing.T) {
 		t.Fatalf("expected entry for id 'ok'")
 	}
 }
+
+func TestBuiltInRegistry_Validates(t *testing.T) {
+	if err := BuiltInRegistry.Validate(); err != nil {
+		t.Fatalf("expected built-in registry to validate, got %v", err)
+	}
+}
