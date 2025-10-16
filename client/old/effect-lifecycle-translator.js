@@ -239,28 +239,31 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
 
   const offsetX = quantToWorld(geometry?.offsetX);
   const offsetY = quantToWorld(geometry?.offsetY);
-  const zeroMotionX =
-    centerFromExtraX == null &&
-    offsetX === null &&
-    isZeroMotionAxis(motion?.positionX, motion?.velocityX);
-  const zeroMotionY =
-    centerFromExtraY == null &&
-    offsetY === null &&
-    isZeroMotionAxis(motion?.positionY, motion?.velocityY);
+  const motionPositionX = Number(motion?.positionX);
+  const motionPositionY = Number(motion?.positionY);
+  const hasMotionOffsetX = Number.isFinite(motionPositionX) && motionPositionX !== 0;
+  const hasMotionOffsetY = Number.isFinite(motionPositionY) && motionPositionY !== 0;
 
   const anchor =
     findActorPosition(renderState, store, instance.followActorId) ??
     findActorPosition(renderState, store, instance.ownerActorId);
 
   if (anchor) {
+    const shouldAnchorX =
+      centerX == null ||
+      (!hasMotionOffsetX && offsetX === null && centerFromExtraX == null);
+    const shouldAnchorY =
+      centerY == null ||
+      (!hasMotionOffsetY && offsetY === null && centerFromExtraY == null);
+
     if (offsetX !== null) {
       centerX = anchor.x + offsetX;
-    } else if (centerX == null || zeroMotionX) {
+    } else if (shouldAnchorX) {
       centerX = anchor.x;
     }
     if (offsetY !== null) {
       centerY = anchor.y + offsetY;
-    } else if (centerY == null || zeroMotionY) {
+    } else if (shouldAnchorY) {
       centerY = anchor.y;
     }
   } else {

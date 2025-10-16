@@ -53,9 +53,23 @@ export const normalizeEffectCatalog = (input: unknown): EffectCatalogSnapshot =>
 };
 
 let currentCatalog: EffectCatalogSnapshot = EMPTY_CATALOG;
+const catalogListeners = new Set<(catalog: EffectCatalogSnapshot) => void>();
+
+const notifyCatalogListeners = (): void => {
+  for (const listener of catalogListeners) {
+    try {
+      listener(currentCatalog);
+    } catch (error) {
+      // Listeners are third-party callbacks; swallow errors to avoid
+      // interrupting other subscribers.
+      void error;
+    }
+  }
+};
 
 export const setEffectCatalog = (catalog: EffectCatalogSnapshot | null | undefined): void => {
   currentCatalog = catalog ? Object.freeze({ ...catalog }) : EMPTY_CATALOG;
+  notifyCatalogListeners();
 };
 
 export const getEffectCatalog = (): EffectCatalogSnapshot => currentCatalog;
@@ -77,4 +91,18 @@ export const getEffectCatalogBlock = <T = unknown>(
   }
   const blockValue = entry.blocks[blockKey];
   return blockValue as T | undefined;
+};
+
+export const subscribeEffectCatalog = (
+  listener: (catalog: EffectCatalogSnapshot) => void,
+): (() => void) => {
+  if (typeof listener !== "function") {
+    throw new Error("Effect catalog listener must be a function.");
+  }
+  catalogListeners.add(listener);
+  // Emit current snapshot immediately so subscribers can hydrate.
+  listener(currentCatalog);
+  return () => {
+    catalogListeners.delete(listener);
+  };
 };
