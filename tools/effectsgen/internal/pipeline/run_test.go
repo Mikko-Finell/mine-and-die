@@ -56,11 +56,13 @@ func TestRunGeneratesEffectCatalogModule(t *testing.T) {
 export interface AttackEndPayload {
   readonly reason: string;
   readonly notes?: string;
+  readonly result: EndResult;
 }
 
 export interface AttackSpawnPayload {
   readonly instanceId: string;
   readonly location: Coordinates;
+  readonly delivery: DeliveryKind;
 }
 
 export interface AttackUpdatePayload {
@@ -73,6 +75,10 @@ export interface Coordinates {
   readonly x: number;
   readonly y: number;
 }
+
+export type DeliveryKind = "melee" | "ranged";
+
+export type EndResult = 0 | 1;
 
 export type FireballEndPayload = AttackEndPayload;
 
