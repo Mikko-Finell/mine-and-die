@@ -9,7 +9,7 @@ import (
 )
 
 func TestFollowPlayerPathNormalizesIntentVectors(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{
 		actorState: actorState{Actor: Actor{
 			ID:        "path-player",

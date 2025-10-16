@@ -9,7 +9,7 @@ import (
 )
 
 func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
-	w := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	w.players = make(map[string]*playerState)
 	w.npcs = make(map[string]*npcState)
 	w.obstacles = []Obstacle{{
