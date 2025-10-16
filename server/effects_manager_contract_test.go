@@ -61,7 +61,7 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 				End: EndPolicy{Kind: EndDuration},
 			},
 			intent: EffectIntent{
-				TypeID:   "contract-case-area",
+				EntryID:  "contract-case-area",
 				Delivery: DeliveryKindArea,
 				Geometry: EffectGeometry{Shape: GeometryShapeCircle},
 			},
@@ -92,7 +92,7 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 				End: EndPolicy{Kind: EndDuration},
 			},
 			intent: EffectIntent{
-				TypeID:        "contract-case-target",
+				EntryID:       "contract-case-target",
 				Delivery:      DeliveryKindTarget,
 				SourceActorID: "target-owner",
 				TargetActorID: "attached-target",
@@ -125,7 +125,7 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 				End: EndPolicy{Kind: EndDuration},
 			},
 			intent: EffectIntent{
-				TypeID:   "contract-case-visual",
+				EntryID:  "contract-case-visual",
 				Delivery: DeliveryKindVisual,
 				Geometry: EffectGeometry{Shape: GeometryShapeRect},
 			},
@@ -168,6 +168,9 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 			}
 
 			spawn := collector.spawns[0]
+			if spawn.Instance.EntryID != tc.intent.EntryID {
+				t.Fatalf("expected instance entry id %q, got %q", tc.intent.EntryID, spawn.Instance.EntryID)
+			}
 			if spawn.Instance.Definition == nil {
 				t.Fatalf("expected spawn to include definition metadata")
 			}
@@ -246,6 +249,7 @@ func TestEffectManagerRespectsTickCadence(t *testing.T) {
 	manager.definitions[definition.TypeID] = definition
 
 	manager.EnqueueIntent(EffectIntent{
+		EntryID:     definition.TypeID,
 		TypeID:      definition.TypeID,
 		Geometry:    EffectGeometry{Shape: GeometryShapeCircle},
 		TickCadence: 3,
