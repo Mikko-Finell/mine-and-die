@@ -12,10 +12,11 @@ import (
 )
 
 type catalogEntry struct {
-	ID         string
-	ContractID string
-	Definition json.RawMessage
-	Blocks     map[string]json.RawMessage
+	ID              string
+	ContractID      string
+	Definition      json.RawMessage
+	Blocks          map[string]json.RawMessage
+	ManagedByClient bool
 }
 
 func loadCatalogEntries(path string) ([]catalogEntry, error) {

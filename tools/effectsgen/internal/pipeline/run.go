@@ -37,6 +37,19 @@ func Run(opts Options) error {
 		return err
 	}
 
+	defIndex := make(map[string]contractDefinition, len(definitions))
+	for _, def := range definitions {
+		defIndex[def.ID] = def
+	}
+	for i := range entries {
+		entry := &entries[i]
+		def, ok := defIndex[entry.ContractID]
+		if !ok {
+			return fmt.Errorf("effectsgen: catalog entry %s references unknown contractId %s", entry.ID, entry.ContractID)
+		}
+		entry.ManagedByClient = def.ClientOwned
+	}
+
 	module, err := generateEffectCatalogModule(definitions, decls, entries)
 	if err != nil {
 		return err

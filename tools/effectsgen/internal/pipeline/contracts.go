@@ -19,10 +19,11 @@ import (
 )
 
 type contractDefinition struct {
-	ID     string
-	Spawn  payloadBinding
-	Update payloadBinding
-	End    payloadBinding
+	ID          string
+	Spawn       payloadBinding
+	Update      payloadBinding
+	End         payloadBinding
+	ClientOwned bool
 }
 
 type payloadBinding struct {
@@ -295,6 +296,12 @@ func decodeRegistryEntries(pkg *packages.Package, lit *ast.CompositeLit, transla
 					return nil, err
 				}
 				def.End = binding
+			case "Owner":
+				owned, err := resolveLifecycleOwner(pkg, kv.Value)
+				if err != nil {
+					return nil, err
+				}
+				def.ClientOwned = owned
 			}
 		}
 
@@ -356,6 +363,38 @@ func resolveTypeName(pkg *packages.Package, expr ast.Expr) (*types.TypeName, err
 	default:
 		return nil, fmt.Errorf("effectsgen: unsupported payload expression %T", expr)
 	}
+}
+
+func resolveLifecycleOwner(pkg *packages.Package, expr ast.Expr) (bool, error) {
+	if expr == nil {
+		return false, nil
+	}
+	if tv, ok := pkg.TypesInfo.Types[expr]; ok && tv.Value != nil {
+		if tv.Value.Kind() != constant.Int {
+			return false, fmt.Errorf("effectsgen: owner expression must resolve to an integer constant")
+		}
+		value, ok := constant.Int64Val(tv.Value)
+		if !ok {
+			return false, fmt.Errorf("effectsgen: unable to evaluate owner constant")
+		}
+		switch value {
+		case 0:
+			return false, nil
+		case 1:
+			return true, nil
+		default:
+			return false, fmt.Errorf("effectsgen: unknown lifecycle owner value %d", value)
+		}
+	}
+
+	switch v := expr.(type) {
+	case *ast.Ident:
+		return v.Name == "LifecycleOwnerClient", nil
+	case *ast.SelectorExpr:
+		return v.Sel.Name == "LifecycleOwnerClient", nil
+	}
+
+	return false, fmt.Errorf("effectsgen: unsupported lifecycle owner expression %T", expr)
 }
 
 type typeTranslator struct {

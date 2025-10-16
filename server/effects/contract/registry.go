@@ -30,15 +30,30 @@ var (
 	errNilPayload        = errors.New("payload must not be nil")
 	errNonPointer        = errors.New("payload must be a pointer")
 	errNonStructPointer  = errors.New("payload must point to a struct")
+	errInvalidOwner      = errors.New("definition owner must be LifecycleOwnerServer or LifecycleOwnerClient")
+)
+
+// LifecycleOwner specifies which runtime controls an effect instance after it
+// has spawned.
+type LifecycleOwner int
+
+const (
+	// LifecycleOwnerServer indicates the server manages the full lifecycle.
+	LifecycleOwnerServer LifecycleOwner = iota
+	// LifecycleOwnerClient hands lifecycle management to the client once the
+	// spawn payload has been delivered.
+	LifecycleOwnerClient
 )
 
 // Definition associates an effect contract ID with the payload types emitted during
-// spawn, update, and end lifecycle phases.
+// spawn, update, and end lifecycle phases. Ownership defaults to
+// LifecycleOwnerServer unless explicitly set.
 type Definition struct {
 	ID     string
 	Spawn  Payload
 	Update Payload
 	End    Payload
+	Owner  LifecycleOwner
 }
 
 // Registry is a collection of effect contract definitions. Callers should Validate before use.
@@ -62,6 +77,9 @@ func (r Registry) Validate() error {
 func (d Definition) validate() error {
 	if strings.TrimSpace(d.ID) == "" {
 		return errEmptyDefinitionID
+	}
+	if d.Owner < LifecycleOwnerServer || d.Owner > LifecycleOwnerClient {
+		return errInvalidOwner
 	}
 	if err := validatePayload(d.Spawn); err != nil {
 		return fmt.Errorf("spawn: %w", err)

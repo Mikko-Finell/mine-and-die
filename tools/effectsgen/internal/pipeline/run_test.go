@@ -103,6 +103,7 @@ export type EffectContractID = keyof EffectContractMap;
 
 export type EffectCatalogEntry = {
   readonly contractId: string;
+  readonly managedByClient: boolean;
   readonly definition: Readonly<Record<string, unknown>>;
   readonly blocks: Readonly<Record<string, unknown>>;
 };
@@ -110,6 +111,7 @@ export type EffectCatalogEntry = {
 export const effectCatalog = {
   "attack": {
     "contractId": "attack",
+    "managedByClient": true,
     "definition": {
         "typeId": "attack"
       },
@@ -117,6 +119,7 @@ export const effectCatalog = {
   },
   "fireball": {
     "contractId": "fireball",
+    "managedByClient": false,
     "definition": {
         "typeId": "fireball",
         "client": {
