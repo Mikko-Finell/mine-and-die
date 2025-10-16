@@ -1,0 +1,139 @@
+[
+  {
+    "id": "attack",
+    "contractId": "attack",
+    "definition": {
+      "typeId": "attack",
+      "delivery": "area",
+      "shape": "rect",
+      "motion": "instant",
+      "impact": "all-in-path",
+      "lifetimeTicks": 1,
+      "hooks": {
+        "onSpawn": "melee.spawn"
+      },
+      "client": {
+        "sendSpawn": true,
+        "sendUpdates": false,
+        "sendEnd": false,
+        "managedByClient": true
+      }
+    },
+    "jsEffect": "melee/swing",
+    "parameters": {
+      "damage": 10,
+      "reach": 56,
+      "width": 40
+    }
+  },
+  {
+    "id": "fireball",
+    "contractId": "fireball",
+    "definition": {
+      "typeId": "fireball",
+      "delivery": "area",
+      "shape": "circle",
+      "motion": "linear",
+      "impact": "first-hit",
+      "lifetimeTicks": 45,
+      "hooks": {
+        "onSpawn": "projectile.fireball.lifecycle",
+        "onTick": "projectile.fireball.lifecycle"
+      },
+      "client": {
+        "sendSpawn": true,
+        "sendUpdates": true,
+        "sendEnd": true
+      },
+      "end": {
+        "kind": 0
+      }
+    },
+    "jsEffect": "projectile/fireball",
+    "parameters": {
+      "speed": 320,
+      "range": 200,
+      "radius": 12
+    }
+  },
+  {
+    "id": "burning-tick",
+    "contractId": "burning-tick",
+    "definition": {
+      "typeId": "burning-tick",
+      "delivery": "target",
+      "shape": "rect",
+      "motion": "instant",
+      "impact": "first-hit",
+      "lifetimeTicks": 1,
+      "hooks": {
+        "onSpawn": "status.burning.tick"
+      },
+      "client": {
+        "sendSpawn": true,
+        "sendUpdates": false,
+        "sendEnd": true
+      },
+      "end": {
+        "kind": 1
+      }
+    },
+    "jsEffect": "status/burning-tick",
+    "parameters": {
+      "damage": 4
+    }
+  },
+  {
+    "id": "fire",
+    "contractId": "fire",
+    "definition": {
+      "typeId": "fire",
+      "delivery": "target",
+      "shape": "rect",
+      "motion": "follow",
+      "impact": "first-hit",
+      "lifetimeTicks": 45,
+      "hooks": {
+        "onSpawn": "status.burning.visual",
+        "onTick": "status.burning.visual"
+      },
+      "client": {
+        "sendSpawn": true,
+        "sendUpdates": true,
+        "sendEnd": true
+      },
+      "end": {
+        "kind": 0
+      }
+    },
+    "jsEffect": "status/burning-visual",
+    "parameters": {
+      "tint": 1
+    }
+  },
+  {
+    "id": "blood-splatter",
+    "contractId": "blood-splatter",
+    "definition": {
+      "typeId": "blood-splatter",
+      "delivery": "visual",
+      "shape": "rect",
+      "motion": "none",
+      "impact": "none",
+      "lifetimeTicks": 1,
+      "hooks": {
+        "onSpawn": "visual.blood.splatter"
+      },
+      "client": {
+        "sendSpawn": true,
+        "sendUpdates": false,
+        "sendEnd": false,
+        "managedByClient": true
+      }
+    },
+    "jsEffect": "visual/blood-splatter",
+    "parameters": {
+      "drops": 33
+    }
+  }
+]
