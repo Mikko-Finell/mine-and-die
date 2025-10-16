@@ -27,6 +27,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | Lift Go enums into TypeScript unions | Translate `server/effects/contract` enum constants into literal-union aliases so client code narrows on contract fields. | 🟢 Done | `tools/effectsgen/internal/pipeline/contracts.go` now collects typed constants and emits literal-union aliases with coverage in `internal/pipeline/run_test.go`. |
 | Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | 🟢 Done | Loader now rejects duplicate IDs/unknown contracts and survives missing sources. |
 | Enforce managed-by-client invariants | Extend `server/effects/catalog` validation so client-managed entries disable updates/end events and use single-tick lifetimes. | 🟢 Done | `server/effects/catalog/resolver.go` now rejects managed entries that enable updates/end payloads or exceed one tick. |
+| Build contract lifecycle store | Ingest spawn/update/end batches into a typed client store that retains client-managed lifecycles. | 🟢 Done | `client/effect-lifecycle-store.ts` stores authoritative batches, exposes renderer views, and relies on catalog metadata for retention. |
 
 ## Program Goals
 
@@ -38,4 +39,4 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 
 ## Suggested Next Task
 
-Implement the contract lifecycle store that ingests spawn/update/end batches and exposes a typed view for the renderer, using `isLifecycleClientManaged` to retain client-owned entries.
+Integrate the contract lifecycle store into the new renderer pipeline so render scheduling consumes `client/effect-lifecycle-store.ts` instead of legacy lifecycle state.
