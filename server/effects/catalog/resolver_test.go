@@ -3,6 +3,7 @@ package catalog
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"mine-and-die/server/effects/contract"
@@ -42,8 +43,8 @@ func TestResolverLoadArray(t *testing.T) {
 			"hooks":         map[string]any{"onSpawn": "swing"},
 			"client": map[string]any{
 				"sendSpawn":       true,
-				"sendUpdates":     true,
-				"sendEnd":         true,
+				"sendUpdates":     false,
+				"sendEnd":         false,
 				"managedByClient": true,
 			},
 			"end": map[string]any{"kind": 1},
@@ -196,6 +197,85 @@ func TestResolverReloadOverrides(t *testing.T) {
 	}
 	if resolver.DefinitionsByContractID()["burning"].LifetimeTicks != 6 {
 		t.Fatalf("expected lifetime 6 after reload")
+	}
+}
+
+func TestResolverValidatesManagedByClient(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+	base := map[string]any{
+		"id":         "attack",
+		"contractId": "attack",
+		"definition": map[string]any{
+			"typeId":        "attack",
+			"delivery":      "area",
+			"shape":         "rect",
+			"motion":        "instant",
+			"impact":        "all-in-path",
+			"lifetimeTicks": 1,
+			"hooks":         map[string]any{"onSpawn": "swing"},
+			"client": map[string]any{
+				"sendSpawn":       true,
+				"sendUpdates":     false,
+				"sendEnd":         false,
+				"managedByClient": true,
+			},
+			"end": map[string]any{"kind": 1},
+		},
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(map[string]any)
+		want   string
+	}{
+		{
+			name: "updates-enabled",
+			mutate: func(def map[string]any) {
+				client := def["client"].(map[string]any)
+				client["sendUpdates"] = true
+			},
+			want: "sendUpdates is enabled",
+		},
+		{
+			name: "end-enabled",
+			mutate: func(def map[string]any) {
+				client := def["client"].(map[string]any)
+				client["sendEnd"] = true
+			},
+			want: "sendEnd is enabled",
+		},
+		{
+			name: "lifetime-not-one",
+			mutate: func(def map[string]any) {
+				def["lifetimeTicks"] = 2
+			},
+			want: "lifetimeTicks is 2",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var entry map[string]any
+			if err := json.Unmarshal(mustMarshal(base), &entry); err != nil {
+				t.Fatalf("failed cloning entry: %v", err)
+			}
+			definition := entry["definition"].(map[string]any)
+			tc.mutate(definition)
+			data := mustMarshal([]map[string]any{entry})
+
+			resolver, err := NewResolver(reg, memorySource{path: "managed.json", data: data})
+			if err == nil {
+				t.Fatalf("expected NewResolver to fail validation")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error to contain %q, got %v", tc.want, err)
+			}
+			if resolver != nil {
+				t.Fatalf("expected resolver to be nil when validation fails")
+			}
+		})
 	}
 }
 

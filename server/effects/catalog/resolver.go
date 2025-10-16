@@ -178,6 +178,18 @@ func (r *Resolver) Reload() error {
 				def.TypeID = contractID
 			}
 
+			if def.Client.ManagedByClient {
+				if def.Client.SendUpdates {
+					return fmt.Errorf("catalog: entry %q marks managedByClient but sendUpdates is enabled", id)
+				}
+				if def.Client.SendEnd {
+					return fmt.Errorf("catalog: entry %q marks managedByClient but sendEnd is enabled", id)
+				}
+				if def.LifetimeTicks != 1 {
+					return fmt.Errorf("catalog: entry %q marks managedByClient but lifetimeTicks is %d (expected 1)", id, def.LifetimeTicks)
+				}
+			}
+
 			entry := Entry{
 				ID:         id,
 				ContractID: contractID,
