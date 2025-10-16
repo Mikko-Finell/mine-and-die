@@ -20,7 +20,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | Draft JSON schema | Use `jsonschema` tags on Go structs and export schema to `docs/contracts/effects.schema.json`. | ⚪ Planned | Schema will validate designer-authored catalogs. |
 | Build catalog loader | Add runtime loader that merges static JSON compositions, validates contract IDs, and exposes catalog entry lookups to gameplay. | 🟢 Done | `server/effects/catalog` now reads `config/effects/definitions.json`, validates against the Go registry, and feeds `EffectManager` with runtime contract lookups. |
 | Align runtime effect queue with catalog IDs | Update `server/effects_manager.go` and related callers so gameplay code enqueues catalog entry IDs while the runtime resolves the linked contract before serialization. | 🟢 Done | Gameplay intents now propagate designer entry IDs through the manager while resolving contracts. |
-| Surface catalog entry metadata to client runtime | Ensure generated bindings feed catalog metadata into `client/js-effects` so the effect runner can resolve compositions by entry ID without manual mirrors. | ⚪ Planned | Replace handwritten lookups with generator output. |
+| Surface catalog entry metadata to client runtime | Ensure generated bindings feed catalog metadata into `client/js-effects` so the effect runner can resolve compositions by entry ID without manual mirrors. | 🟢 Done | Join/config payloads now ship catalog metadata and the client stores it for runtime lookups. |
 | Scaffold code generator | Parse Go registry, map to TS AST, and emit modules under `client/generated/effects`. | 🟡 In progress | Workspace skeleton added in `tools/effectsgen`; CLI currently returns "not implemented". |
 | Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | ⚪ Planned | Guard against accidental contract drift. |
 | Enforce managed-by-client invariants | Extend `server/effects/catalog` validation so client-managed entries disable updates/end events and use single-tick lifetimes. | ⚪ Planned | Catch catalog mistakes like `attack`/`blood-splatter` before they ship. |
@@ -35,4 +35,4 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 
 ## Suggested Next Task
 
-Surface catalog entry metadata to the client runtime so renderer code can fetch compositions by entry ID without handwritten mirrors.
+Draft JSON schema for designer-authored catalogs so tooling can validate `config/effects/definitions.json` locally.
