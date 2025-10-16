@@ -8,7 +8,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | ----- | ---- | ------------- | ------ |
 | 1 | Finalise Go contract registry | All effect contracts registered through a central Go package with validation helpers and unit coverage. | 🟡 In progress |
 | 2 | Author JSON schema and catalog resolver | Machine-validated JSON schema covers catalog entries keyed by designer IDs and validates referenced contract IDs; loader in `server/effects` caches entry → contract mappings. | 🟢 Done |
-| 3 | Implement `tools/effectgen` TypeScript emitter | CLI reads Go registry and catalog resolver output to generate deterministic bindings that expose both contract payloads and catalog entry metadata with golden-file tests. | ⚪ Planned |
+| 3 | Implement `tools/effectgen` TypeScript emitter | CLI reads Go registry and catalog resolver output to generate deterministic bindings that expose both contract payloads and catalog entry metadata with golden-file tests. | 🟡 In progress |
 | 4 | Integrate generated bindings into client build | Client imports generated module, gameplay enqueues catalog entry IDs, runtime resolves contract payloads via the loader, and CI enforces regeneration drift checks. | ⚪ Planned |
 
 ## Active Work
@@ -20,8 +20,8 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | Draft JSON schema | Use `jsonschema` tags on Go structs and export schema to `docs/contracts/effects.schema.json`. | 🟢 Done | `go generate` now emits `docs/contracts/effects.schema.json` from `catalog.EntryDocument`. |
 | Build catalog loader | Add runtime loader that merges static JSON compositions, validates contract IDs, and exposes catalog entry lookups to gameplay. | 🟢 Done | `server/effects/catalog` now reads `config/effects/definitions.json`, validates against the Go registry, and feeds `EffectManager` with runtime contract lookups. |
 | Align runtime effect queue with catalog IDs | Update `server/effects_manager.go` and related callers so gameplay code enqueues catalog entry IDs while the runtime resolves the linked contract before serialization. | 🟢 Done | Gameplay intents now propagate designer entry IDs through the manager while resolving contracts. |
-| Surface catalog entry metadata to client runtime | Ensure generated bindings feed catalog metadata into `client/js-effects` so the effect runner can resolve compositions by entry ID without manual mirrors. | 🟡 In progress | Server now exposes catalog snapshot via `/join` and `/effects/catalog`; client now normalizes the snapshot and exposes a subscription API for orchestrators, generator output still pending. |
-| Scaffold code generator | Parse Go registry, map to TS AST, and emit modules under `client/generated/effects`. | 🟡 In progress | Workspace skeleton added in `tools/effectsgen`; CLI currently returns "not implemented". |
+| Surface catalog entry metadata to client runtime | Ensure generated bindings feed catalog metadata into `client/js-effects` so the effect runner can resolve compositions by entry ID without manual mirrors. | 🟡 In progress | Server now exposes catalog snapshot via `/join` and `/effects/catalog`; client now normalizes the snapshot and exposes a subscription API for orchestrators, with generator-emitted catalog constants ready for wiring. |
+| Scaffold code generator | Parse Go registry, map to TS AST, and emit modules under `client/generated/effects`. | 🟡 In progress | Pipeline now validates inputs and emits a typed effect catalog snapshot to `client/generated/effect-contracts.ts`; contract payload typing still pending. |
 | Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | 🟢 Done | Loader now rejects duplicate IDs/unknown contracts and survives missing sources. |
 | Enforce managed-by-client invariants | Extend `server/effects/catalog` validation so client-managed entries disable updates/end events and use single-tick lifetimes. | ⚪ Planned | Catch catalog mistakes like `attack`/`blood-splatter` before they ship. |
 
@@ -35,4 +35,4 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 
 ## Suggested Next Task
 
-Add regression tests for the catalog loader and schema generation to guard against drift in future changes.
+Map Go payload structs to TypeScript interfaces in the generated module so client builds receive contract typings alongside the catalog snapshot.
