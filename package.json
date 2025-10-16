@@ -6,11 +6,12 @@
     "dev": "npm --prefix tools/js-effects run dev",
     "client:build": "esbuild client/main.ts --bundle --sourcemap --target=es2018 --format=esm --outfile=client/dist/main.js",
     "client:dev": "esbuild client/main.ts --bundle --sourcemap --target=es2018 --format=esm --outfile=client/dist/main.js --watch",
-    "build": "npm run client:build && npm --prefix tools/js-effects run build && node tools/js-effects/scripts/sync-dist-to-client.mjs",
+    "build": "npm run client:build && npm --prefix tools/js-effects run build",
     "test": "vitest",
     "effects:map": "./tools/effects/build_producer_map"
   },
   "dependencies": {
+    "@js-effects/effects-lib": "file:tools/js-effects/packages/effects-lib",
     "lit": "^3.2.0"
   },
   "devDependencies": {

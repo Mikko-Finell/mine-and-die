@@ -11,7 +11,7 @@ Mine & Die is a browser-based PvP extraction prototype. A Go 1.24 server simulat
 - `server/` – Authoritative simulation, hub, HTTP handlers, finite-state AI runtime, and regression tests.
 - `client/` – Active modules for the in-flight rewrite; the previous implementation now resides in `client/old/`.
 - `docs/` – Architecture notes, gameplay design, and troubleshooting references (start with [docs/README.md](docs/README.md)).
-- `tools/js-effects/` – React playground and build tooling for the effect library (outputs synced into `client/js-effects/`).
+- `tools/js-effects/` – React playground and build tooling for the effect library (published locally as `@js-effects/effects-lib`).
 - `technical_debt.md` – Ongoing cleanup backlog and investigation notes.
 
 ## Setup
@@ -47,7 +47,7 @@ For deeper coverage of systems, see [Effects & Conditions](docs/architecture/eff
 
 ## Tooling Notes
 - `npm run dev` runs the effects playground in `tools/js-effects/` for iterating on combat visuals.
-- `npm run build` rebuilds the effects workspace and syncs the distributable into `client/js-effects/`.
+- `npm run build` rebuilds the effects workspace before bundling the client.
 
 ## Roadmap
 High-level milestone tracking lives here for quick reference. Dive into

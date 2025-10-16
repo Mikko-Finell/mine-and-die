@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { BloodSplatterDefinition } from "../js-effects/effects/bloodSplatter.js";
+import { BloodSplatterDefinition } from "@js-effects/effects-lib";
 import { createEffectTestStore } from "./__helpers__/effect-test-store.js";
 
 function createCanvasContextStub() {
