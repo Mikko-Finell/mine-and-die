@@ -1,254 +1,78 @@
 package main
 
-// This file mirrors the canonical contract described in docs/architecture/effect-system-unification.md
-// so the server and documentation remain synchronized as the unified effect system is implemented.
+import effectcontract "mine-and-die/server/effects/contract"
 
-// -----------------------------
-// Determinism & Quantization
-// -----------------------------
-// All effect geometry and motion use fixed-timestep integer math.
-// COORD_SCALE defines the number of sub-units per tile (e.g., 16 => 1/16 tile precision).
-const COORD_SCALE = 16
+// The legacy server package historically hosted the contract types while the
+// pipeline matured. These aliases keep existing code compiling while the
+// canonical definitions live in server/effects/contract.
 
-// Seq is a monotonic sequence id used for idempotency in transport events.
-// Tick is the authoritative simulation tick number.
-type Seq int64
-type Tick int64
+const COORD_SCALE = effectcontract.CoordScale
 
-// Facing/Arc are expressed in quantized degrees (0..359) unless otherwise stated.
-
-// DeliveryKind enumerates how an effect is delivered in the world simulation.
-type DeliveryKind string
-
-const (
-	// DeliveryKindArea represents spatial effects resolved via geometry queries.
-	DeliveryKindArea DeliveryKind = "area"
-	// DeliveryKindTarget represents effects anchored to a specific actor.
-	DeliveryKindTarget DeliveryKind = "target"
-	// DeliveryKindVisual represents cosmetic-only effects with no gameplay impact.
-	DeliveryKindVisual DeliveryKind = "visual"
+type (
+	Seq                  = effectcontract.Seq
+	Tick                 = effectcontract.Tick
+	DeliveryKind         = effectcontract.DeliveryKind
+	FollowMode           = effectcontract.FollowMode
+	GeometryShape        = effectcontract.GeometryShape
+	MotionKind           = effectcontract.MotionKind
+	ImpactPolicy         = effectcontract.ImpactPolicy
+	EndReason            = effectcontract.EndReason
+	EndPolicyKind        = effectcontract.EndPolicyKind
+	EndConditions        = effectcontract.EndConditions
+	EndPolicy            = effectcontract.EndPolicy
+	EffectGeometry       = effectcontract.EffectGeometry
+	EffectIntent         = effectcontract.EffectIntent
+	EffectMotionState    = effectcontract.EffectMotionState
+	EffectDeliveryState  = effectcontract.EffectDeliveryState
+	EffectBehaviorState  = effectcontract.EffectBehaviorState
+	ReplicationSpec      = effectcontract.ReplicationSpec
+	EffectInstance       = effectcontract.EffectInstance
+	EffectHooks          = effectcontract.EffectHooks
+	EffectDefinition     = effectcontract.EffectDefinition
+	EffectSpawnEvent     = effectcontract.EffectSpawnEvent
+	EffectUpdateEvent    = effectcontract.EffectUpdateEvent
+	EffectEndEvent       = effectcontract.EffectEndEvent
+	EffectLifecycleEvent = effectcontract.EffectLifecycleEvent
+	Payload              = effectcontract.Payload
+	ContractPayload      = effectcontract.ContractPayload
+	Definition           = effectcontract.Definition
+	Registry             = effectcontract.Registry
 )
 
-// FollowMode decouples "is Target delivery" from how an instance anchors/updates its transform.
-type FollowMode string
-
 const (
-	FollowNone   FollowMode = "none"
-	FollowOwner  FollowMode = "owner"
-	FollowTarget FollowMode = "target"
+	DeliveryKindArea   = effectcontract.DeliveryKindArea
+	DeliveryKindTarget = effectcontract.DeliveryKindTarget
+	DeliveryKindVisual = effectcontract.DeliveryKindVisual
+
+	FollowNone   = effectcontract.FollowNone
+	FollowOwner  = effectcontract.FollowOwner
+	FollowTarget = effectcontract.FollowTarget
+
+	GeometryShapeCircle  = effectcontract.GeometryShapeCircle
+	GeometryShapeRect    = effectcontract.GeometryShapeRect
+	GeometryShapeArc     = effectcontract.GeometryShapeArc
+	GeometryShapeSegment = effectcontract.GeometryShapeSegment
+	GeometryShapeCapsule = effectcontract.GeometryShapeCapsule
+
+	MotionKindNone      = effectcontract.MotionKindNone
+	MotionKindInstant   = effectcontract.MotionKindInstant
+	MotionKindLinear    = effectcontract.MotionKindLinear
+	MotionKindParabolic = effectcontract.MotionKindParabolic
+	MotionKindFollow    = effectcontract.MotionKindFollow
+
+	ImpactPolicyFirstHit   = effectcontract.ImpactPolicyFirstHit
+	ImpactPolicyAllInPath  = effectcontract.ImpactPolicyAllInPath
+	ImpactPolicyPierceMany = effectcontract.ImpactPolicyPierceMany
+	ImpactPolicyNone       = effectcontract.ImpactPolicyNone
+
+	EndReasonExpired   = effectcontract.EndReasonExpired
+	EndReasonOwnerLost = effectcontract.EndReasonOwnerLost
+	EndReasonCancelled = effectcontract.EndReasonCancelled
+	EndReasonMapChange = effectcontract.EndReasonMapChange
+
+	EndDuration  = effectcontract.EndDuration
+	EndInstant   = effectcontract.EndInstant
+	EndCondition = effectcontract.EndCondition
 )
 
-// GeometryShape enumerates the supported collision volumes for effects.
-type GeometryShape string
-
-const (
-	GeometryShapeCircle  GeometryShape = "circle"
-	GeometryShapeRect    GeometryShape = "rect"
-	GeometryShapeArc     GeometryShape = "arc"
-	GeometryShapeSegment GeometryShape = "segment"
-	GeometryShapeCapsule GeometryShape = "capsule"
-)
-
-// MotionKind enumerates movement profiles applied to effect instances.
-type MotionKind string
-
-const (
-	MotionKindNone      MotionKind = "none"
-	MotionKindInstant   MotionKind = "instant"
-	MotionKindLinear    MotionKind = "linear"
-	MotionKindParabolic MotionKind = "parabolic"
-	MotionKindFollow    MotionKind = "follow"
-)
-
-// ImpactPolicy controls how an effect resolves collisions.
-type ImpactPolicy string
-
-const (
-	ImpactPolicyFirstHit   ImpactPolicy = "first-hit"
-	ImpactPolicyAllInPath  ImpactPolicy = "all-in-path"
-	ImpactPolicyPierceMany ImpactPolicy = "pierce"
-	ImpactPolicyNone       ImpactPolicy = "none"
-)
-
-// EndReason qualifies why an effect ended; used in EffectEndEvent and for analytics.
-type EndReason string
-
-const (
-	EndReasonExpired   EndReason = "expired"
-	EndReasonOwnerLost EndReason = "ownerLost"
-	EndReasonCancelled EndReason = "cancelled"
-	EndReasonMapChange EndReason = "mapChange"
-)
-
-// EndPolicyKind describes how an effect instance determines when it ends.
-type EndPolicyKind uint8
-
-const (
-	// EndDuration ends an instance after its configured lifetime elapses.
-	EndDuration EndPolicyKind = iota
-	// EndInstant ends an instance in the same tick after it applies once.
-	EndInstant
-	// EndCondition ends when runtime conditions evaluate to true.
-	EndCondition
-)
-
-// EndConditions enumerates the runtime checks an EndCondition policy can perform.
-type EndConditions struct {
-	OnUnequip        bool `json:"onUnequip"`
-	OnOwnerDeath     bool `json:"onOwnerDeath"`
-	OnOwnerLost      bool `json:"onOwnerLost"`
-	OnZoneChange     bool `json:"onZoneChange"`
-	OnExplicitCancel bool `json:"onExplicitCancel"`
-}
-
-// EndPolicy captures the configured lifecycle policy for an effect definition.
-type EndPolicy struct {
-	Kind       EndPolicyKind `json:"kind"`
-	Conditions EndConditions `json:"conditions,omitempty"`
-}
-
-// EffectGeometry captures the spatial payload carried by intents and instances.
-type EffectGeometry struct {
-	Shape    GeometryShape  `json:"shape"`
-	OffsetX  int            `json:"offsetX,omitempty"`
-	OffsetY  int            `json:"offsetY,omitempty"`
-	Facing   int            `json:"facing,omitempty"`
-	Arc      int            `json:"arc,omitempty"`
-	Length   int            `json:"length,omitempty"`
-	Width    int            `json:"width,omitempty"`
-	Height   int            `json:"height,omitempty"`
-	Radius   int            `json:"radius,omitempty"`
-	Extent   int            `json:"extent,omitempty"`
-	Variants map[string]int `json:"variants,omitempty"`
-}
-
-// EffectIntent represents an authoritative request to spawn an effect.
-type EffectIntent struct {
-	TypeID        string         `json:"typeId"`
-	Delivery      DeliveryKind   `json:"delivery"`
-	SourceActorID string         `json:"sourceActorId"`
-	TargetActorID string         `json:"targetActorId,omitempty"`
-	Geometry      EffectGeometry `json:"geometry"`
-	DurationTicks int            `json:"durationTicks,omitempty"`
-	TickCadence   int            `json:"tickCadence,omitempty"`
-	// Parameters are small numeric knobs (damage, speed, tint indexes, etc.).
-	Params map[string]int `json:"params,omitempty"`
-}
-
-// EffectMotionState tracks the in-flight motion of an instance.
-type EffectMotionState struct {
-	PositionX       int `json:"positionX"`
-	PositionY       int `json:"positionY"`
-	VelocityX       int `json:"velocityX"`
-	VelocityY       int `json:"velocityY"`
-	RangeRemaining  int `json:"rangeRemaining,omitempty"`
-	TravelledLength int `json:"travelledLength,omitempty"`
-}
-
-// EffectDeliveryState stores the runtime state required to advance an instance.
-type EffectDeliveryState struct {
-	Geometry        EffectGeometry    `json:"geometry"`
-	Motion          EffectMotionState `json:"motion"`
-	AttachedActorID string            `json:"attachedActorId,omitempty"`
-	Follow          FollowMode        `json:"follow,omitempty"`
-}
-
-// EffectBehaviorState stores cooldowns, counters, and other behavior-specific fields.
-type EffectBehaviorState struct {
-	TicksRemaining    int            `json:"ticksRemaining"`
-	CooldownTicks     int            `json:"cooldownTicks,omitempty"`
-	TickCadence       int            `json:"tickCadence,omitempty"`
-	AccumulatedDamage int            `json:"accumulatedDamage,omitempty"`
-	Stacks            map[string]int `json:"stacks,omitempty"`
-	Extra             map[string]int `json:"extra,omitempty"`
-}
-
-// ReplicationSpec describes which lifecycle payloads the server emits for an effect,
-// (optionally) a whitelist of fields included in updates, and who manages the
-// visual lifecycle once the contract signals completion.
-type ReplicationSpec struct {
-	SendSpawn       bool            `json:"sendSpawn"`
-	SendUpdates     bool            `json:"sendUpdates"`
-	SendEnd         bool            `json:"sendEnd"`
-	ManagedByClient bool            `json:"managedByClient,omitempty"`
-	UpdateFields    map[string]bool `json:"updateFields,omitempty"`
-}
-
-// EffectInstance represents a server-owned effect with live state tracked by the simulation.
-type EffectInstance struct {
-	ID            string              `json:"id"`
-	DefinitionID  string              `json:"definitionId"`
-	Definition    *EffectDefinition   `json:"definition,omitempty"`
-	StartTick     Tick                `json:"startTick"`
-	DeliveryState EffectDeliveryState `json:"deliveryState"`
-	BehaviorState EffectBehaviorState `json:"behaviorState"`
-	Params        map[string]int      `json:"params,omitempty"`
-	Colors        []string            `json:"colors,omitempty"`
-	FollowActorID string              `json:"followActorId,omitempty"`
-	OwnerActorID  string              `json:"ownerActorId,omitempty"`
-	Replication   ReplicationSpec     `json:"replication"`
-	End           EndPolicy           `json:"end"`
-}
-
-// EffectHooks reference behavior callbacks associated with a definition.
-type EffectHooks struct {
-	OnSpawn  string `json:"onSpawn,omitempty"`
-	OnTick   string `json:"onTick,omitempty"`
-	OnHit    string `json:"onHit,omitempty"`
-	OnExpire string `json:"onExpire,omitempty"`
-}
-
-// EffectDefinition describes the canonical behaviour for an effect type.
-type EffectDefinition struct {
-	TypeID        string          `json:"typeId"`
-	Delivery      DeliveryKind    `json:"delivery"`
-	Shape         GeometryShape   `json:"shape"`
-	Motion        MotionKind      `json:"motion"`
-	Impact        ImpactPolicy    `json:"impact"`
-	LifetimeTicks int             `json:"lifetimeTicks"`
-	PierceCount   int             `json:"pierceCount,omitempty"`
-	Params        map[string]int  `json:"params,omitempty"`
-	Hooks         EffectHooks     `json:"hooks"`
-	Client        ReplicationSpec `json:"client"`
-	End           EndPolicy       `json:"end"`
-}
-
-// -----------------------------
-// Transport Events (Contract)
-// -----------------------------
-// These are journaled and broadcast. Ordering: spawn -> update -> end (per effect id).
-
-type EffectSpawnEvent struct {
-	Tick     Tick           `json:"tick"`
-	Seq      Seq            `json:"seq"`
-	Instance EffectInstance `json:"instance"` // baseline payload (may be a subset if UpdateFields used)
-}
-
-type EffectUpdateEvent struct {
-	Tick          Tick                 `json:"tick"`
-	Seq           Seq                  `json:"seq"`
-	ID            string               `json:"id"`
-	DeliveryState *EffectDeliveryState `json:"deliveryState,omitempty"`
-	BehaviorState *EffectBehaviorState `json:"behaviorState,omitempty"`
-	Params        map[string]int       `json:"params,omitempty"`
-}
-
-type EffectEndEvent struct {
-	Tick   Tick      `json:"tick"`
-	Seq    Seq       `json:"seq"`
-	ID     string    `json:"id"`
-	Reason EndReason `json:"reason"`
-}
-
-// EffectLifecycleEvent provides a shared type for callbacks that need to handle
-// any of the lifecycle payloads emitted by the contract-driven manager.
-type EffectLifecycleEvent interface {
-	isEffectLifecycleEvent()
-}
-
-func (EffectSpawnEvent) isEffectLifecycleEvent()  {}
-func (EffectUpdateEvent) isEffectLifecycleEvent() {}
-func (EffectEndEvent) isEffectLifecycleEvent()    {}
-
-// TODO: integrate these contract types with a future EffectManager implementation so the simulation
-// can migrate from legacy Effect/EffectTrigger models to the unified system described in the docs.
+var NoPayload = effectcontract.NoPayload
