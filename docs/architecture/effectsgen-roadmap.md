@@ -18,7 +18,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | Consolidate contract declarations | Move scattered struct definitions into `server/effects/contracts` with compile-time registration. | 🟡 In progress | Need to replace ad-hoc copies in combat and map packages. |
 | Draft JSON schema | Use `jsonschema` tags on Go structs and export schema to `docs/contracts/effects.schema.json`. | ⚪ Planned | Schema will validate designer-authored catalogs. |
 | Build catalog loader | Add runtime loader that merges static JSON compositions and ensures referenced contracts exist. | ⚪ Planned | Loader must support hot reload in dev. |
-| Scaffold code generator | Parse Go registry, map to TS AST, and emit modules under `client/generated/effects`. | ⚪ Planned | Should reuse existing `tools/genutil` helpers if possible. |
+| Scaffold code generator | Parse Go registry, map to TS AST, and emit modules under `client/generated/effects`. | 🟡 In progress | Workspace skeleton added in `tools/effectsgen`; CLI currently returns "not implemented". |
 | Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | ⚪ Planned | Guard against accidental contract drift. |
 
 ## Program Goals
