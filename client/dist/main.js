@@ -634,14 +634,208 @@ var e5 = e4(class extends i5 {
   }
 });
 
+// client/network.ts
+var WebSocketNetworkClient = class {
+  constructor(configuration) {
+    this.configuration = configuration;
+    __publicField(this, "socket", null);
+    __publicField(this, "joinResponse", null);
+    __publicField(this, "handlers", null);
+  }
+  async join() {
+    await this.disconnect();
+    this.joinResponse = null;
+    const response = await fetch(this.configuration.joinUrl, {
+      method: "POST",
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      throw new Error(`Join request failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Join response payload is not an object.");
+    }
+    const joinPayload = payload;
+    if (typeof joinPayload.id !== "string" || joinPayload.id.length === 0) {
+      throw new Error("Join response missing player identifier.");
+    }
+    if (!joinPayload.config || typeof joinPayload.config !== "object") {
+      throw new Error("Join response missing world configuration.");
+    }
+    const config = joinPayload.config;
+    if (typeof config.seed !== "string" || config.seed.length === 0) {
+      throw new Error("Join response missing world seed.");
+    }
+    if (typeof joinPayload.ver !== "number") {
+      throw new Error("Join response missing protocol version.");
+    }
+    if (joinPayload.ver !== this.configuration.protocolVersion) {
+      throw new Error(
+        `Protocol mismatch: expected ${this.configuration.protocolVersion}, received ${joinPayload.ver}`
+      );
+    }
+    const joinResponse = {
+      id: joinPayload.id,
+      seed: config.seed,
+      protocolVersion: joinPayload.ver
+    };
+    this.joinResponse = joinResponse;
+    return joinResponse;
+  }
+  async connect(handlers) {
+    if (!this.joinResponse) {
+      throw new Error("Cannot connect before joining the world.");
+    }
+    await this.disconnect();
+    this.handlers = handlers;
+    const socketUrl = this.createWebSocketUrl(this.joinResponse.id);
+    const socket = new WebSocket(socketUrl);
+    this.socket = socket;
+    await new Promise((resolve, reject) => {
+      let resolved = false;
+      const handleOpen = () => {
+        var _a6;
+        resolved = true;
+        socket.removeEventListener("open", handleOpen);
+        (_a6 = handlers.onJoin) == null ? void 0 : _a6.call(handlers, this.joinResponse);
+        resolve();
+      };
+      const handleMessage = (event) => {
+        var _a6;
+        let messagePayload = event.data;
+        let messageType = "unknown";
+        if (typeof event.data === "string") {
+          try {
+            const parsed = JSON.parse(event.data);
+            messagePayload = parsed;
+            if (parsed && typeof parsed === "object" && "type" in parsed) {
+              const candidate = parsed.type;
+              if (typeof candidate === "string" && candidate.length > 0) {
+                messageType = candidate;
+              }
+            }
+          } catch (error) {
+            messagePayload = event.data;
+            if (handlers.onError) {
+              const cause = error instanceof Error ? error : new Error(String(error));
+              handlers.onError(cause);
+            }
+          }
+        }
+        const envelope = {
+          type: messageType,
+          payload: messagePayload,
+          receivedAt: Date.now()
+        };
+        (_a6 = handlers.onMessage) == null ? void 0 : _a6.call(handlers, envelope);
+      };
+      const handleClose = (event) => {
+        var _a6;
+        socket.removeEventListener("message", handleMessage);
+        socket.removeEventListener("close", handleClose);
+        socket.removeEventListener("error", handleError);
+        if (this.socket === socket) {
+          this.socket = null;
+        }
+        if (!resolved) {
+          resolved = true;
+          const reasonText = event.reason ? `, reason ${event.reason}` : "";
+          reject(
+            new Error(
+              `WebSocket closed before establishing session (code ${event.code}${reasonText})`
+            )
+          );
+          return;
+        }
+        (_a6 = handlers.onDisconnect) == null ? void 0 : _a6.call(handlers, event.code, event.reason);
+        if (this.handlers === handlers) {
+          this.handlers = null;
+        }
+      };
+      const handleError = (event) => {
+        var _a6;
+        const error = event instanceof ErrorEvent && event.error instanceof Error ? event.error : new Error("WebSocket connection error.");
+        if (!resolved) {
+          resolved = true;
+          socket.removeEventListener("open", handleOpen);
+          socket.removeEventListener("message", handleMessage);
+          socket.removeEventListener("close", handleClose);
+          socket.removeEventListener("error", handleError);
+          if (this.socket === socket) {
+            this.socket = null;
+          }
+          reject(error);
+          return;
+        }
+        (_a6 = handlers.onError) == null ? void 0 : _a6.call(handlers, error);
+      };
+      socket.addEventListener("open", handleOpen);
+      socket.addEventListener("message", handleMessage);
+      socket.addEventListener("close", handleClose);
+      socket.addEventListener("error", handleError);
+    });
+  }
+  async disconnect() {
+    const socket = this.socket;
+    if (!socket) {
+      this.handlers = null;
+      return;
+    }
+    await new Promise((resolve) => {
+      const handleClose = () => {
+        socket.removeEventListener("close", handleClose);
+        resolve();
+      };
+      if (socket.readyState === WebSocket.CLOSED) {
+        resolve();
+        return;
+      }
+      socket.addEventListener("close", handleClose);
+      socket.close();
+    });
+    if (this.socket === socket) {
+      this.socket = null;
+    }
+    this.handlers = null;
+  }
+  send(data) {
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      throw new Error("Cannot send message: WebSocket is not connected.");
+    }
+    const payload = typeof data === "string" ? data : JSON.stringify(data);
+    socket.send(payload);
+  }
+  createWebSocketUrl(playerId) {
+    const { websocketUrl } = this.configuration;
+    const url = websocketUrl.startsWith("ws:") || websocketUrl.startsWith("wss:") ? new URL(websocketUrl) : new URL(websocketUrl, window.location.origin);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    }
+    url.searchParams.set("id", playerId);
+    return url.toString();
+  }
+};
+
 // client/main.ts
 var HEALTH_CHECK_URL = "/health";
 var JOIN_URL = "/join";
+var WEBSOCKET_URL = "/ws";
+var HEARTBEAT_INTERVAL_MS = 2e3;
+var PROTOCOL_VERSION = 1;
 var GameClientApp = class extends i4 {
   constructor() {
     super();
     __publicField(this, "clockInterval");
+    __publicField(this, "networkClient");
+    __publicField(this, "hasLoggedInitialNetworkMessage");
+    __publicField(this, "suppressNextDisconnectLog");
     __publicField(this, "playerId");
+    this.clockInterval = void 0;
+    this.networkClient = null;
+    this.hasLoggedInitialNetworkMessage = false;
+    this.suppressNextDisconnectLog = false;
     this.healthStatus = "Checking\u2026";
     this.serverTime = "--";
     this.heartbeat = "--";
@@ -668,6 +862,15 @@ var GameClientApp = class extends i4 {
       window.clearInterval(this.clockInterval);
       this.clockInterval = void 0;
     }
+    if (this.networkClient) {
+      this.suppressNextDisconnectLog = true;
+      const disconnectPromise = this.networkClient.disconnect();
+      void Promise.resolve(disconnectPromise).finally(() => {
+        this.suppressNextDisconnectLog = false;
+      });
+      this.networkClient = null;
+    }
+    this.hasLoggedInitialNetworkMessage = false;
   }
   addLog(message) {
     const entry = {
@@ -696,28 +899,72 @@ var GameClientApp = class extends i4 {
   updateServerTime() {
     const now = /* @__PURE__ */ new Date();
     this.serverTime = now.toLocaleTimeString();
-    this.heartbeat = `${Math.round(Math.random() * 1e3)} ms`;
   }
   handleRefreshRequested() {
     void this.fetchHealth();
   }
   async joinWorld() {
     this.addLog("Joining world\u2026");
+    this.heartbeat = "Connecting\u2026";
+    this.hasLoggedInitialNetworkMessage = false;
+    if (this.networkClient) {
+      this.suppressNextDisconnectLog = true;
+      await this.networkClient.disconnect();
+      this.suppressNextDisconnectLog = false;
+    }
+    const networkClient = new WebSocketNetworkClient({
+      joinUrl: JOIN_URL,
+      websocketUrl: WEBSOCKET_URL,
+      heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+      protocolVersion: PROTOCOL_VERSION
+    });
+    this.networkClient = networkClient;
     try {
-      const response = await fetch(JOIN_URL, {
-        method: "POST",
-        cache: "no-cache"
+      const joinResponse = await networkClient.join();
+      this.playerId = joinResponse.id;
+      this.addLog(`Joined world as ${joinResponse.id}.`);
+      await networkClient.connect({
+        onJoin: () => {
+          this.addLog("Connected to world stream.");
+          this.heartbeat = "Connected";
+        },
+        onMessage: (message) => {
+          this.handleNetworkMessage(message);
+        },
+        onDisconnect: (code, reason) => {
+          const shouldLog = !this.suppressNextDisconnectLog;
+          this.suppressNextDisconnectLog = false;
+          if (shouldLog) {
+            const reasonText = reason ? ` (${reason})` : "";
+            this.addLog(`Disconnected from server${reasonText}.`);
+          }
+          if (this.networkClient === networkClient) {
+            this.networkClient = null;
+            this.playerId = null;
+          }
+          this.hasLoggedInitialNetworkMessage = false;
+          const displayStatus = code === 1e3 ? "Disconnected" : `Closed (${code != null ? code : "--"})`;
+          this.heartbeat = displayStatus;
+        },
+        onError: (error) => {
+          this.addLog(`Network error: ${error.message}`);
+        }
       });
-      if (!response.ok) {
-        throw new Error(`join failed with ${response.status}`);
-      }
-      const data = await response.json();
-      this.playerId = data.id;
-      this.addLog(`Joined world as ${data.id}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.playerId = null;
+      this.heartbeat = "offline";
+      this.networkClient = null;
+      this.suppressNextDisconnectLog = false;
       this.addLog(`Failed to join world: ${message}`);
+    }
+  }
+  handleNetworkMessage(message) {
+    const timestamp = new Date(message.receivedAt).toLocaleTimeString();
+    this.heartbeat = `${message.type || "unknown"} @ ${timestamp}`;
+    if (!this.hasLoggedInitialNetworkMessage) {
+      this.hasLoggedInitialNetworkMessage = true;
+      this.addLog(`Receiving ${message.type || "unknown"} messages from server.`);
     }
   }
   handleTabChange(event) {
