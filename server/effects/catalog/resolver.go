@@ -43,6 +43,16 @@ type Entry struct {
 	Blocks     map[string]json.RawMessage
 }
 
+// EntryDocument represents a single catalog entry as it appears on disk. The
+// struct is exported so tooling (e.g. schema generators) can reflect over the
+// configuration contract shared with designers.
+type EntryDocument struct {
+	ID         string                     `json:"id" jsonschema:"title=Catalog Entry ID,description=Designer-facing identifier that maps to gameplay intents.,pattern=^[a-z0-9-]+$,minLength=1,required"`
+	ContractID string                     `json:"contractId" jsonschema:"title=Contract ID,description=Identifier from the Go contract registry this entry references.,pattern=^[a-z0-9-]+$,minLength=1,required"`
+	Definition contract.EffectDefinition  `json:"definition" jsonschema:"title=Effect Definition,description=Canonical gameplay configuration resolved by the runtime.,required"`
+	Blocks     map[string]json.RawMessage `json:"-" jsonschema:"-"`
+}
+
 func (e Entry) clone() Entry {
 	clone := Entry{
 		ID:         e.ID,
@@ -139,12 +149,12 @@ func (r *Resolver) Reload() error {
 			}
 			return fmt.Errorf("catalog: failed loading %s: %w", src.Path(), err)
 		}
-		fileEntries, err := decodeEntries(data)
+		documents, err := decodeEntries(data)
 		if err != nil {
 			return fmt.Errorf("catalog: failed parsing %s: %w", src.Path(), err)
 		}
-		seen := make(map[string]struct{}, len(fileEntries))
-		for _, fe := range fileEntries {
+		seen := make(map[string]struct{}, len(documents))
+		for _, fe := range documents {
 			id := strings.TrimSpace(fe.ID)
 			if id == "" {
 				return fmt.Errorf("catalog: entry missing id in %s", src.Path())
@@ -248,15 +258,8 @@ func (r *Resolver) Entries() map[string]Entry {
 	return out
 }
 
-type fileEntry struct {
-	ID         string                     `json:"id"`
-	ContractID string                     `json:"contractId"`
-	Definition contract.EffectDefinition  `json:"definition"`
-	Blocks     map[string]json.RawMessage `json:"-"`
-}
-
-func (e *fileEntry) UnmarshalJSON(data []byte) error {
-	type rawEntry fileEntry
+func (e *EntryDocument) UnmarshalJSON(data []byte) error {
+	type rawEntry EntryDocument
 	var alias rawEntry
 	if err := json.Unmarshal(data, &alias); err != nil {
 		return err
@@ -269,18 +272,18 @@ func (e *fileEntry) UnmarshalJSON(data []byte) error {
 	delete(blocks, "contractId")
 	delete(blocks, "definition")
 	alias.Blocks = blocks
-	*e = fileEntry(alias)
+	*e = EntryDocument(alias)
 	return nil
 }
 
-func decodeEntries(data []byte) ([]fileEntry, error) {
+func decodeEntries(data []byte) ([]EntryDocument, error) {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {
 		return nil, nil
 	}
 	switch trimmed[0] {
 	case '[':
-		var entries []fileEntry
+		var entries []EntryDocument
 		if err := json.Unmarshal(trimmed, &entries); err != nil {
 			return nil, err
 		}
@@ -295,9 +298,9 @@ func decodeEntries(data []byte) ([]fileEntry, error) {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
-		entries := make([]fileEntry, 0, len(ids))
+		entries := make([]EntryDocument, 0, len(ids))
 		for _, id := range ids {
-			var entry fileEntry
+			var entry EntryDocument
 			if err := json.Unmarshal(object[id], &entry); err != nil {
 				return nil, fmt.Errorf("entry %q: %w", id, err)
 			}

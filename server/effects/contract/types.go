@@ -85,32 +85,32 @@ const (
 
 // EndConditions enumerates the runtime checks an EndCondition policy can perform.
 type EndConditions struct {
-	OnUnequip        bool `json:"onUnequip"`
-	OnOwnerDeath     bool `json:"onOwnerDeath"`
-	OnOwnerLost      bool `json:"onOwnerLost"`
-	OnZoneChange     bool `json:"onZoneChange"`
-	OnExplicitCancel bool `json:"onExplicitCancel"`
+	OnUnequip        bool `json:"onUnequip" jsonschema:"description=End when the owning actor unequips the source item."`
+	OnOwnerDeath     bool `json:"onOwnerDeath" jsonschema:"description=End when the owning actor dies."`
+	OnOwnerLost      bool `json:"onOwnerLost" jsonschema:"description=End when the effect loses its owning actor (e.g. despawn)."`
+	OnZoneChange     bool `json:"onZoneChange" jsonschema:"description=End when the owning actor changes zones."`
+	OnExplicitCancel bool `json:"onExplicitCancel" jsonschema:"description=End when gameplay explicitly cancels the effect."`
 }
 
 // EndPolicy captures the configured lifecycle policy for an effect definition.
 type EndPolicy struct {
-	Kind       EndPolicyKind `json:"kind"`
-	Conditions EndConditions `json:"conditions,omitempty"`
+	Kind       EndPolicyKind `json:"kind" jsonschema:"title=Termination Policy,description=Determines how the effect instance decides to stop.,enum=0,enum=1,enum=2,required"`
+	Conditions EndConditions `json:"conditions,omitempty" jsonschema:"description=Conditional checks evaluated when Kind is set to EndCondition."`
 }
 
 // EffectGeometry captures the spatial payload carried by intents and instances.
 type EffectGeometry struct {
-	Shape    GeometryShape  `json:"shape"`
-	OffsetX  int            `json:"offsetX,omitempty"`
-	OffsetY  int            `json:"offsetY,omitempty"`
-	Facing   int            `json:"facing,omitempty"`
-	Arc      int            `json:"arc,omitempty"`
-	Length   int            `json:"length,omitempty"`
-	Width    int            `json:"width,omitempty"`
-	Height   int            `json:"height,omitempty"`
-	Radius   int            `json:"radius,omitempty"`
-	Extent   int            `json:"extent,omitempty"`
-	Variants map[string]int `json:"variants,omitempty"`
+	Shape    GeometryShape  `json:"shape" jsonschema:"title=Collision Shape,description=Defines the geometry used for collision tests.,enum=circle,enum=rect,enum=arc,enum=segment,enum=capsule,required"`
+	OffsetX  int            `json:"offsetX,omitempty" jsonschema:"description=Horizontal offset from the source position."`
+	OffsetY  int            `json:"offsetY,omitempty" jsonschema:"description=Vertical offset from the source position."`
+	Facing   int            `json:"facing,omitempty" jsonschema:"description=Facing override when the geometry has orientation."`
+	Arc      int            `json:"arc,omitempty" jsonschema:"description=Arc angle in degrees for arc shapes."`
+	Length   int            `json:"length,omitempty" jsonschema:"description=Length of the geometry in world units."`
+	Width    int            `json:"width,omitempty" jsonschema:"description=Width of the geometry in world units."`
+	Height   int            `json:"height,omitempty" jsonschema:"description=Height of the geometry in world units."`
+	Radius   int            `json:"radius,omitempty" jsonschema:"description=Radius used by circular and capsule geometries."`
+	Extent   int            `json:"extent,omitempty" jsonschema:"description=Additional extent used by segment shapes."`
+	Variants map[string]int `json:"variants,omitempty" jsonschema:"description=Named geometry presets keyed by designer-defined identifiers."`
 }
 
 // EffectIntent represents an authoritative request to spawn an effect.
@@ -159,11 +159,11 @@ type EffectBehaviorState struct {
 // (optionally) a whitelist of fields included in updates, and who manages the
 // visual lifecycle once the contract signals completion.
 type ReplicationSpec struct {
-	SendSpawn       bool            `json:"sendSpawn"`
-	SendUpdates     bool            `json:"sendUpdates"`
-	SendEnd         bool            `json:"sendEnd"`
-	ManagedByClient bool            `json:"managedByClient,omitempty"`
-	UpdateFields    map[string]bool `json:"updateFields,omitempty"`
+	SendSpawn       bool            `json:"sendSpawn" jsonschema:"description=Whether the server emits spawn payloads to clients.,required"`
+	SendUpdates     bool            `json:"sendUpdates" jsonschema:"description=Whether the server emits incremental update payloads.,required"`
+	SendEnd         bool            `json:"sendEnd" jsonschema:"description=Whether the server emits end payloads.,required"`
+	ManagedByClient bool            `json:"managedByClient,omitempty" jsonschema:"description=Marks effects that transition to client-side ownership after spawn."`
+	UpdateFields    map[string]bool `json:"updateFields,omitempty" jsonschema:"description=Optional whitelist of fields sent during updates."`
 }
 
 // EffectInstance represents a server-owned effect with live state tracked by the simulation.
@@ -185,25 +185,25 @@ type EffectInstance struct {
 
 // EffectHooks reference behavior callbacks associated with a definition.
 type EffectHooks struct {
-	OnSpawn  string `json:"onSpawn,omitempty"`
-	OnTick   string `json:"onTick,omitempty"`
-	OnHit    string `json:"onHit,omitempty"`
-	OnExpire string `json:"onExpire,omitempty"`
+	OnSpawn  string `json:"onSpawn,omitempty" jsonschema:"description=Callback invoked when the effect instance spawns."`
+	OnTick   string `json:"onTick,omitempty" jsonschema:"description=Callback invoked on each simulation tick."`
+	OnHit    string `json:"onHit,omitempty" jsonschema:"description=Callback invoked when the effect collides with a target."`
+	OnExpire string `json:"onExpire,omitempty" jsonschema:"description=Callback invoked when the effect expires naturally."`
 }
 
 // EffectDefinition describes the canonical behaviour for an effect type.
 type EffectDefinition struct {
-	TypeID        string          `json:"typeId"`
-	Delivery      DeliveryKind    `json:"delivery"`
-	Shape         GeometryShape   `json:"shape"`
-	Motion        MotionKind      `json:"motion"`
-	Impact        ImpactPolicy    `json:"impact"`
-	LifetimeTicks int             `json:"lifetimeTicks"`
-	PierceCount   int             `json:"pierceCount,omitempty"`
-	Params        map[string]int  `json:"params,omitempty"`
-	Hooks         EffectHooks     `json:"hooks"`
-	Client        ReplicationSpec `json:"client"`
-	End           EndPolicy       `json:"end"`
+	TypeID        string          `json:"typeId" jsonschema:"title=Effect Type ID,description=Canonical identifier for the gameplay effect.,pattern=^[a-z0-9-]+$,minLength=1,required"`
+	Delivery      DeliveryKind    `json:"delivery" jsonschema:"title=Delivery Mode,description=How the effect is delivered in the world.,enum=area,enum=target,enum=visual,required"`
+	Shape         GeometryShape   `json:"shape" jsonschema:"title=Primary Shape,description=Default geometry used by the effect.,enum=circle,enum=rect,enum=arc,enum=segment,enum=capsule,required"`
+	Motion        MotionKind      `json:"motion" jsonschema:"title=Motion Profile,description=Movement behaviour applied to the instance.,enum=none,enum=instant,enum=linear,enum=parabolic,enum=follow,required"`
+	Impact        ImpactPolicy    `json:"impact" jsonschema:"title=Impact Policy,description=Collision resolution policy.,enum=first-hit,enum=all-in-path,enum=pierce,enum=none,required"`
+	LifetimeTicks int             `json:"lifetimeTicks" jsonschema:"title=Lifetime Ticks,description=Duration in simulation ticks before expiry.,minimum=0,required"`
+	PierceCount   int             `json:"pierceCount,omitempty" jsonschema:"description=Number of additional targets an instance may pierce.,minimum=0"`
+	Params        map[string]int  `json:"params,omitempty" jsonschema:"description=Optional numeric designer parameters exposed to gameplay."`
+	Hooks         EffectHooks     `json:"hooks" jsonschema:"description=Lifecycle callbacks executed by the server runtime.,required"`
+	Client        ReplicationSpec `json:"client" jsonschema:"description=Authoritative replication contract for clients.,required"`
+	End           EndPolicy       `json:"end" jsonschema:"description=Termination behaviour configuration.,required"`
 }
 
 // EffectSpawnEvent represents the authoritative spawn payload broadcast to clients.
