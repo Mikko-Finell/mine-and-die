@@ -1,15 +1,6 @@
 package main
 
-import (
-	"encoding/json"
-
-	effectcatalog "mine-and-die/server/effects/catalog"
-)
-
-type effectCatalogMetadata struct {
-	ContractID string                     `json:"contractId"`
-	Blocks     map[string]json.RawMessage `json:"blocks,omitempty"`
-}
+import effectcatalog "mine-and-die/server/effects/catalog"
 
 func snapshotEffectCatalog(resolver *effectcatalog.Resolver) map[string]effectCatalogMetadata {
 	if resolver == nil {
@@ -25,19 +16,7 @@ func snapshotEffectCatalog(resolver *effectcatalog.Resolver) map[string]effectCa
 			continue
 		}
 		meta := effectCatalogMetadata{ContractID: entry.ContractID}
-		if len(entry.Blocks) > 0 {
-			blocks := make(map[string]json.RawMessage, len(entry.Blocks))
-			for key, value := range entry.Blocks {
-				if len(value) == 0 {
-					blocks[key] = nil
-					continue
-				}
-				copied := make(json.RawMessage, len(value))
-				copy(copied, value)
-				blocks[key] = copied
-			}
-			meta.Blocks = blocks
-		}
+		meta.Blocks = cloneRawMessageMap(entry.Blocks)
 		snapshot[id] = meta
 	}
 	if len(snapshot) == 0 {
