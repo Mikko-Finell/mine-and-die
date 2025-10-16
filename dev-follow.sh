@@ -120,11 +120,25 @@ build_swap_run() {
 }
 
 cleanup() {
+  local reason="${1:-EXIT}"
+
+  if [[ "$reason" == "SIGINT" ]]; then
+    local pid="${SRV_PID:-}"
+    if [[ -z "$pid" ]] && [[ -f "$PID_FILE" ]]; then
+      pid="$(cat "$PID_FILE" || true)"
+    fi
+    if [[ -n "$pid" ]] && ps -p "$pid" >/dev/null 2>&1; then
+      kill -INT "$pid" 2>/dev/null || true
+    fi
+  fi
+
   stop_server
   rm -f "$PID_FILE" || true
   echo "🧹 cleaned up"
 }
-trap cleanup INT TERM EXIT
+trap 'cleanup SIGINT' INT
+trap 'cleanup SIGTERM' TERM
+trap 'cleanup EXIT' EXIT
 
 if [[ "$SYNC_MODE" == "1" ]]; then
   git -C "$ROOT_DIR" fetch origin
