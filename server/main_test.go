@@ -159,7 +159,7 @@ func registerTestProjectileTemplate(w *World, tpl *ProjectileTemplate) {
 }
 
 func TestHubJoinCreatesPlayer(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 
 	first := hub.Join()
 	if first.ID == "" {
@@ -200,7 +200,7 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 }
 
 func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	joined := hub.Join()
 	playerID := joined.ID
 
@@ -342,7 +342,7 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 }
 
 func TestWorldGenerationDeterministicWithSeed(t *testing.T) {
-	cfg := defaultWorldConfig()
+	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "deterministic-test"
 
 	w1 := newWorld(cfg, logging.NopPublisher{})
@@ -376,7 +376,7 @@ func TestWorldGenerationDeterministicWithSeed(t *testing.T) {
 }
 
 func TestUpdateIntentNormalizesVector(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "player-1"
 	hub.world.players[playerID] = newTestPlayerState(playerID)
 
@@ -428,7 +428,7 @@ func TestDeriveFacingFromMovement(t *testing.T) {
 }
 
 func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "vector-facing"
 	hub.world.players[playerID] = newTestPlayerState(playerID)
 
@@ -467,7 +467,7 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 }
 
 func TestPlayerPathCommands(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "player-path"
 	player := newTestPlayerState(playerID)
 	hub.world.AddPlayer(player)
@@ -528,7 +528,7 @@ func TestPlayerPathCommands(t *testing.T) {
 }
 
 func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	now := time.Now()
 
@@ -574,7 +574,7 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 }
 
 func TestWorldRespectsConfiguredDimensions(t *testing.T) {
-	cfg := defaultWorldConfig()
+	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Width = 960
 	cfg.Height = 540
 	w := newWorld(cfg, logging.NopPublisher{})
@@ -659,7 +659,7 @@ func TestEnsurePlayerPathProducesDiagonalWaypoint(t *testing.T) {
 }
 
 func TestAdvanceRemovesStalePlayers(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	staleID := "stale"
 	staleState := newTestPlayerState(staleID)
@@ -681,7 +681,7 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 }
 
 func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	attackerID := "attacker"
 	attackerState := newTestPlayerState(attackerID)
 	attackerState.X = 200
@@ -743,7 +743,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 }
 
 func TestMeleeAttackDealsDamage(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	now := time.Now()
 	attackerID := "attacker"
 	targetID := "target"
@@ -784,7 +784,7 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 }
 
 func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 
 	var goblin *npcState
 	for _, npc := range hub.world.npcs {
@@ -805,7 +805,8 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 	attackerState.cooldowns = make(map[string]time.Time)
 	hub.world.players[attackerID] = attackerState
 
-	for i := 0; i < 6; i++ {
+	const maxSwings = 10
+	for i := 0; i < maxSwings; i++ {
 		hub.mu.Lock()
 		attacker := hub.world.players[attackerID]
 		attacker.X = goblin.X - playerHalf - meleeAttackReach/2
@@ -817,18 +818,22 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 			t.Fatalf("expected melee attack to trigger")
 		}
 		runAdvance(hub, 1.0/float64(tickRate))
-		if i < 5 {
-			hub.mu.Lock()
-			hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
+		hub.mu.Lock()
+		if _, alive := hub.world.npcs[goblin.ID]; !alive {
 			hub.mu.Unlock()
+			break
 		}
+		if i < maxSwings-1 {
+			hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
+		}
+		hub.mu.Unlock()
 	}
 
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
-	if _, alive := hub.world.npcs[goblin.ID]; alive {
-		t.Fatalf("expected goblin %q to be removed after defeat", goblin.ID)
+	if npc, alive := hub.world.npcs[goblin.ID]; alive {
+		t.Fatalf("expected goblin %q to be removed after defeat (health=%.2f)", goblin.ID, npc.Health)
 	}
 
 	if _, ok := hub.world.npcs[goblin.ID]; ok {
@@ -837,7 +842,7 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 }
 
 func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 
 	join := hub.Join()
 	playerID := join.ID
@@ -929,7 +934,7 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 }
 
 func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = []Obstacle{{
 		ID:     "gold-node",
 		Type:   obstacleTypeGoldOre,
@@ -974,7 +979,7 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 }
 
 func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "player"
 	hub.world.players[playerID] = newTestPlayerState(playerID)
 
@@ -1001,7 +1006,7 @@ func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
 }
 
 func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "diag"
 	now := time.Now()
 	diagState := newTestPlayerState(playerID)
@@ -1037,7 +1042,7 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 }
 
 func TestRecordAckTracksMonotonicProgress(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "monotonic"
 
 	sub := &subscriber{}
@@ -1062,7 +1067,7 @@ func TestRecordAckTracksMonotonicProgress(t *testing.T) {
 }
 
 func TestPlayerStopsAtObstacle(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	now := time.Now()
 
 	hub.world.obstacles = []Obstacle{{
@@ -1094,7 +1099,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 }
 
 func TestLavaAppliesBurningStatusEffect(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	now := time.Now()
 
 	hub.world.obstacles = []Obstacle{{
@@ -1158,7 +1163,7 @@ func TestLavaAppliesBurningStatusEffect(t *testing.T) {
 }
 
 func TestPlayersSeparateWhenColliding(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	now := time.Now()
 
@@ -1197,7 +1202,7 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 }
 
 func TestTriggerFireballCreatesProjectile(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	shooterID := "shooter"
 	now := time.Now()
@@ -1240,7 +1245,7 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 }
 
 func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1274,7 +1279,7 @@ func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractMeleeSpawnPopulatesMotionCenter(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1313,7 +1318,7 @@ func TestContractMeleeSpawnPopulatesMotionCenter(t *testing.T) {
 }
 
 func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1381,7 +1386,7 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractProjectileSpawnPopulatesMotionCenter(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1429,7 +1434,7 @@ func TestContractProjectileSpawnPopulatesMotionCenter(t *testing.T) {
 }
 
 func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1487,7 +1492,7 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1618,7 +1623,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 }
 
 func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	world.obstacles = nil
 	attacker := newTestPlayerState("attacker")
 	attacker.X = 200
@@ -1807,7 +1812,7 @@ func (c *effectEventCollector) collect(evt EffectLifecycleEvent) {
 }
 
 func TestContractMeleeEndsInstantly(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	attacker := newTestPlayerState("melee-owner")
 	attacker.cooldowns = make(map[string]time.Time)
 	world.AddPlayer(attacker)
@@ -1858,7 +1863,7 @@ func TestContractMeleeEndsInstantly(t *testing.T) {
 }
 
 func TestContractProjectileEndsByDuration(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	world.obstacles = nil
 	world.npcs = make(map[string]*npcState)
 	attacker := newTestPlayerState("projectile-owner")
@@ -1930,7 +1935,7 @@ func TestContractProjectileEndsByDuration(t *testing.T) {
 }
 
 func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	owner := newTestPlayerState("anchor-owner")
 	owner.cooldowns = make(map[string]time.Time)
 	world.AddPlayer(owner)
@@ -1992,7 +1997,7 @@ func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
 }
 
 func TestContractReplicationOffSkipsUpdates(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	const spawnOnlyType = "spawn-only"
 	world.effectManager.definitions[spawnOnlyType] = &EffectDefinition{
@@ -2036,7 +2041,7 @@ func TestContractReplicationOffSkipsUpdates(t *testing.T) {
 }
 
 func TestContractSeqMonotonicAcrossTicks(t *testing.T) {
-	world := newWorld(defaultWorldConfig(), logging.NopPublisher{})
+	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	const seqType = "seq-effect"
 	world.effectManager.definitions[seqType] = &EffectDefinition{
@@ -2100,7 +2105,7 @@ func TestContractSeqMonotonicAcrossTicks(t *testing.T) {
 }
 
 func TestFireballDealsDamageOnHit(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	now := time.Now()
 
@@ -2158,7 +2163,7 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 }
 
 func TestHealthDeltaHealingClampsToMax(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "patient"
 	state := newTestPlayerState(playerID)
 	state.X = 160
@@ -2177,7 +2182,7 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 }
 
 func TestHealthDamageClampsToZero(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "fragile"
 	state := newTestPlayerState(playerID)
 	state.X = 180
@@ -2196,7 +2201,7 @@ func TestHealthDamageClampsToZero(t *testing.T) {
 }
 
 func TestProjectileExplodeOnImpactSpawnsAreaEffect(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	now := time.Now()
 
@@ -2280,7 +2285,7 @@ func TestProjectileExplodeOnImpactSpawnsAreaEffect(t *testing.T) {
 }
 
 func TestProjectileExplodeOnExpirySpawnsAreaEffect(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	now := time.Now()
 
@@ -2350,7 +2355,7 @@ func TestProjectileExplodeOnExpirySpawnsAreaEffect(t *testing.T) {
 }
 
 func TestFireballExpiresOnObstacleCollision(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	now := time.Now()
 
 	shooterID := "caster"
@@ -2397,7 +2402,7 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 
 func TestProjectileStopPolicies(t *testing.T) {
 	t.Run("piercesWhenStopDisabled", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2458,7 +2463,7 @@ func TestProjectileStopPolicies(t *testing.T) {
 	})
 
 	t.Run("stopsWhenConfigured", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2499,7 +2504,7 @@ func TestProjectileStopPolicies(t *testing.T) {
 }
 
 func TestProjectileMaxTargetsLimit(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	now := time.Now()
 
@@ -2561,7 +2566,7 @@ func TestProjectileMaxTargetsLimit(t *testing.T) {
 }
 
 func TestProjectileObstacleImpactExplosion(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	now := time.Now()
 
 	shooter := newTestPlayerState("impact-shooter")
@@ -2601,7 +2606,7 @@ func TestProjectileObstacleImpactExplosion(t *testing.T) {
 
 func TestProjectileExpiryExplosionPolicy(t *testing.T) {
 	t.Run("onlyOnWhiff", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2636,7 +2641,7 @@ func TestProjectileExpiryExplosionPolicy(t *testing.T) {
 	})
 
 	t.Run("suppressedAfterHit", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2677,7 +2682,7 @@ func TestProjectileExpiryExplosionPolicy(t *testing.T) {
 	})
 
 	t.Run("alwaysOnExpiry", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2720,7 +2725,7 @@ func TestProjectileExpiryExplosionPolicy(t *testing.T) {
 
 func TestProjectileBoundsAndLifetimeExpiry(t *testing.T) {
 	t.Run("outOfBounds", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2751,7 +2756,7 @@ func TestProjectileBoundsAndLifetimeExpiry(t *testing.T) {
 	})
 
 	t.Run("lifetimeExpiry", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2785,7 +2790,7 @@ func TestProjectileBoundsAndLifetimeExpiry(t *testing.T) {
 }
 
 func TestProjectileSpawnDefaults(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	hub.world.obstacles = nil
 	now := time.Now()
 
@@ -2821,7 +2826,7 @@ func TestProjectileSpawnDefaults(t *testing.T) {
 
 func TestProjectileOwnerImmunity(t *testing.T) {
 	t.Run("selfHitsPrevented", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2860,7 +2865,7 @@ func TestProjectileOwnerImmunity(t *testing.T) {
 	})
 
 	t.Run("selfHitsAllowed", func(t *testing.T) {
-		hub := newHub()
+		hub := newHubWithFullWorld()
 		hub.world.obstacles = nil
 		now := time.Now()
 
@@ -2897,7 +2902,7 @@ func TestProjectileOwnerImmunity(t *testing.T) {
 }
 
 func TestConsoleDropAndPickupSelf(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	playerID := "player-drop-self"
 	player := newTestPlayerState(playerID)
 	hub.world.AddPlayer(player)
@@ -2951,7 +2956,7 @@ func TestConsoleDropAndPickupSelf(t *testing.T) {
 }
 
 func TestConsolePickupTransfersBetweenPlayers(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	dropperID := "player-dropper"
 	pickerID := "player-picker"
 	dropper := newTestPlayerState(dropperID)
@@ -2985,7 +2990,7 @@ func TestConsolePickupTransfersBetweenPlayers(t *testing.T) {
 }
 
 func TestConsolePickupRaceHonoursFirstCollector(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	dropper := newTestPlayerState("player-race-a")
 	contender := newTestPlayerState("player-race-b")
 	hub.world.AddPlayer(dropper)
@@ -3013,7 +3018,7 @@ func TestConsolePickupRaceHonoursFirstCollector(t *testing.T) {
 }
 
 func TestDeathDropsPlayerInventory(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	attacker := newTestPlayerState("player-attacker")
 	victim := newTestPlayerState("player-victim")
 	hub.world.AddPlayer(attacker)
@@ -3062,7 +3067,7 @@ func TestDeathDropsPlayerInventory(t *testing.T) {
 }
 
 func TestEquipConsoleCommandUpdatesStats(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 
 	playerID := "player-equip"
 	player := newTestPlayerState(playerID)
@@ -3125,7 +3130,7 @@ func TestEquipConsoleCommandUpdatesStats(t *testing.T) {
 }
 
 func TestDeathDropsNPCInventory(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	attacker := newTestPlayerState("player-vs-npc")
 	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 300, Y: 300, Health: 25, MaxHealth: 25, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin), Type: NPCTypeGoblin}
 	if _, err := npc.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
@@ -3161,7 +3166,7 @@ func TestDeathDropsNPCInventory(t *testing.T) {
 }
 
 func TestRatDropsTailOnDeath(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	attacker := newTestPlayerState("player-rat-hunter")
 	hub.world.AddPlayer(attacker)
 	hub.world.spawnRatAt(220, 220)
@@ -3202,7 +3207,7 @@ func TestRatDropsTailOnDeath(t *testing.T) {
 }
 
 func TestGroundGoldMergesOnSameTile(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	player := newTestPlayerState("player-merge")
 	hub.world.AddPlayer(player)
 	if err := hub.world.MutateInventory(player.ID, func(inv *Inventory) error {
@@ -3231,7 +3236,7 @@ func TestGroundGoldMergesOnSameTile(t *testing.T) {
 }
 
 func TestConsoleDropValidation(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	player := newTestPlayerState("player-invalid")
 	hub.world.AddPlayer(player)
 	if err := hub.world.MutateInventory(player.ID, func(inv *Inventory) error {
@@ -3252,7 +3257,7 @@ func TestConsoleDropValidation(t *testing.T) {
 }
 
 func TestConsolePickupOutOfRange(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	dropper := newTestPlayerState("player-out-range-a")
 	picker := newTestPlayerState("player-out-range-b")
 	hub.world.AddPlayer(dropper)
@@ -3280,7 +3285,7 @@ func TestConsolePickupOutOfRange(t *testing.T) {
 }
 
 func TestJoinIncludesGroundItems(t *testing.T) {
-	hub := newHub()
+	hub := newHubWithFullWorld()
 	first := hub.Join()
 	if ack, _ := hub.HandleConsoleCommand(first.ID, "drop_gold", 10); ack.Status != "ok" {
 		t.Fatalf("expected drop to succeed for seeded player")

@@ -17,7 +17,7 @@ func newStaticAIWorld() (*World, *npcState) {
 		obstacles:       nil,
 		aiLibrary:       globalAILibrary,
 	}
-	cfg := defaultWorldConfig()
+	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-static"
 	cfg = cfg.normalized()
 	w.config = cfg
@@ -99,7 +99,7 @@ func newRatTestWorld() (*World, *npcState) {
 		obstacles:       nil,
 		aiLibrary:       globalAILibrary,
 	}
-	cfg := defaultWorldConfig()
+	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-rat"
 	cfg = cfg.normalized()
 	w.config = cfg
