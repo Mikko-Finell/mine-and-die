@@ -25,7 +25,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | Map Go payload structs to TS interfaces | Emit TypeScript interfaces from `server/effects/contract` payload structs and wire them into the generated module. | 🟢 Done | `tools/effectsgen` now parses the Go registry, generates payload interfaces, and maps spawn/update/end types into `client/generated/effect-contracts.ts`. |
 | Lift Go enums into TypeScript unions | Translate `server/effects/contract` enum constants into literal-union aliases so client code narrows on contract fields. | 🟢 Done | `tools/effectsgen/internal/pipeline/contracts.go` now collects typed constants and emits literal-union aliases with coverage in `internal/pipeline/run_test.go`. |
 | Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | 🟢 Done | Loader now rejects duplicate IDs/unknown contracts and survives missing sources. |
-| Enforce managed-by-client invariants | Extend `server/effects/catalog` validation so client-managed entries disable updates/end events and use single-tick lifetimes. | ⚪ Planned | Catch catalog mistakes like `attack`/`blood-splatter` before they ship. |
+| Enforce managed-by-client invariants | Extend `server/effects/catalog` validation so client-managed entries disable updates/end events and use single-tick lifetimes. | 🟢 Done | `server/effects/catalog/resolver.go` now rejects managed entries that enable updates/end payloads or exceed one tick. |
 
 ## Program Goals
 
@@ -37,4 +37,4 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 
 ## Suggested Next Task
 
-Extend catalog validation to enforce the managed-by-client invariants in `server/effects/catalog` before generated bindings rely on the constraints.
+Emit managed-by-client metadata from `tools/effectsgen` into `client/generated/effect-contracts.ts` so the client runtime can skip scheduling update/end handlers for those entries.
