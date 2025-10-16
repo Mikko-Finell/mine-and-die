@@ -16,6 +16,7 @@ client/.npm/
 client/.cache/
 client/.parcel-cache/
 client/build/
+client/dist/
 tools/js-effects/node_modules/
 tools/js-effects/apps/playground/dist/
 tools/js-effects/packages/effects-lib/dist/
