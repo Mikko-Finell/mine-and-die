@@ -1,0 +1,230 @@
+package catalog
+
+import (
+	"encoding/json"
+	"path/filepath"
+	"testing"
+
+	"mine-and-die/server/effects/contract"
+)
+
+type memorySource struct {
+	path string
+	data []byte
+	err  error
+}
+
+func (m memorySource) Load() ([]byte, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return append([]byte(nil), m.data...), nil
+}
+
+func (m memorySource) Path() string {
+	return m.path
+}
+
+func TestResolverLoadArray(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+	entry := map[string]any{
+		"id":         "attack",
+		"contractId": "attack",
+		"definition": map[string]any{
+			"typeId":        "attack",
+			"delivery":      "area",
+			"shape":         "rect",
+			"motion":        "instant",
+			"impact":        "all-in-path",
+			"lifetimeTicks": 1,
+			"hooks":         map[string]any{"onSpawn": "swing"},
+			"client": map[string]any{
+				"sendSpawn":       true,
+				"sendUpdates":     true,
+				"sendEnd":         true,
+				"managedByClient": true,
+			},
+			"end": map[string]any{"kind": 1},
+		},
+		"jsEffect":   "attack/basic",
+		"parameters": map[string]any{"reach": 40},
+	}
+	data, err := json.Marshal([]map[string]any{entry})
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+
+	resolver, err := NewResolver(reg, memorySource{path: "inline.json", data: data})
+	if err != nil {
+		t.Fatalf("NewResolver failed: %v", err)
+	}
+
+	defs := resolver.DefinitionsByContractID()
+	def, ok := defs["attack"]
+	if !ok {
+		t.Fatalf("expected definition for attack")
+	}
+	if def.Delivery != contract.DeliveryKindArea {
+		t.Fatalf("expected delivery area, got %q", def.Delivery)
+	}
+
+	entrySnapshot, ok := resolver.Resolve("attack")
+	if !ok {
+		t.Fatalf("expected to resolve attack entry")
+	}
+	if entrySnapshot.ContractID != "attack" {
+		t.Fatalf("expected contractId attack, got %q", entrySnapshot.ContractID)
+	}
+	if len(entrySnapshot.Blocks) == 0 {
+		t.Fatalf("expected metadata blocks")
+	}
+	if _, ok := entrySnapshot.Blocks["jsEffect"]; !ok {
+		t.Fatalf("expected jsEffect metadata block")
+	}
+}
+
+func TestResolverObjectSyntax(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "fireball", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+	entry := map[string]any{
+		"contractId": "fireball",
+		"definition": map[string]any{
+			"typeId":        "fireball",
+			"delivery":      "area",
+			"shape":         "circle",
+			"motion":        "linear",
+			"impact":        "first-hit",
+			"lifetimeTicks": 45,
+			"hooks":         map[string]any{"onSpawn": "projectile", "onTick": "projectile"},
+			"client":        map[string]any{"sendSpawn": true, "sendUpdates": true, "sendEnd": true},
+			"end":           map[string]any{"kind": 0},
+		},
+	}
+	payload, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+	data := []byte("{" + "\"fireball\":" + string(payload) + "}")
+
+	resolver, err := NewResolver(reg, memorySource{path: "object.json", data: data})
+	if err != nil {
+		t.Fatalf("NewResolver failed: %v", err)
+	}
+
+	def, ok := resolver.DefinitionsByContractID()["fireball"]
+	if !ok || def.Motion != contract.MotionKindLinear {
+		t.Fatalf("expected fireball definition with linear motion")
+	}
+
+	if _, ok := resolver.Resolve("fireball"); !ok {
+		t.Fatalf("expected resolve to succeed")
+	}
+}
+
+func TestResolverReloadOverrides(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "burning", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+
+	first := memorySource{path: "base.json", data: mustMarshal([]map[string]any{{
+		"id":         "burning",
+		"contractId": "burning",
+		"definition": map[string]any{
+			"typeId":        "burning",
+			"delivery":      "target",
+			"shape":         "rect",
+			"motion":        "instant",
+			"impact":        "first-hit",
+			"lifetimeTicks": 1,
+			"hooks":         map[string]any{"onSpawn": "ignite"},
+			"client":        map[string]any{"sendSpawn": true, "sendUpdates": false, "sendEnd": true},
+			"end":           map[string]any{"kind": 1},
+		},
+	}})}
+	second := memorySource{path: "override.json", data: mustMarshal([]map[string]any{{
+		"id":         "burning",
+		"contractId": "burning",
+		"definition": map[string]any{
+			"typeId":        "burning",
+			"delivery":      "target",
+			"shape":         "rect",
+			"motion":        "instant",
+			"impact":        "first-hit",
+			"lifetimeTicks": 3,
+			"hooks":         map[string]any{"onSpawn": "ignite"},
+			"client":        map[string]any{"sendSpawn": true, "sendUpdates": false, "sendEnd": true},
+			"end":           map[string]any{"kind": 1},
+		},
+	}})}
+
+	resolver, err := NewResolver(reg, first, second)
+	if err != nil {
+		t.Fatalf("NewResolver failed: %v", err)
+	}
+
+	def := resolver.DefinitionsByContractID()["burning"]
+	if def.LifetimeTicks != 3 {
+		t.Fatalf("expected override lifetime 3, got %d", def.LifetimeTicks)
+	}
+
+	// Mutate the override source to confirm Reload picks up changes.
+	second.data = mustMarshal([]map[string]any{{
+		"id":         "burning",
+		"contractId": "burning",
+		"definition": map[string]any{
+			"typeId":        "burning",
+			"delivery":      "target",
+			"shape":         "rect",
+			"motion":        "instant",
+			"impact":        "first-hit",
+			"lifetimeTicks": 6,
+			"hooks":         map[string]any{"onSpawn": "ignite"},
+			"client":        map[string]any{"sendSpawn": true, "sendUpdates": false, "sendEnd": true},
+			"end":           map[string]any{"kind": 1},
+		},
+	}})
+
+	resolver.mu.Lock()
+	resolver.sources[1] = second
+	resolver.mu.Unlock()
+
+	if err := resolver.Reload(); err != nil {
+		t.Fatalf("Reload failed: %v", err)
+	}
+	if resolver.DefinitionsByContractID()["burning"].LifetimeTicks != 6 {
+		t.Fatalf("expected lifetime 6 after reload")
+	}
+}
+
+func TestResolverRejectsUnknownContract(t *testing.T) {
+	reg := contract.Registry{}
+	entry := mustMarshal([]map[string]any{{
+		"id":         "missing",
+		"contractId": "unknown",
+		"definition": map[string]any{"typeId": "missing"},
+	}})
+	if _, err := NewResolver(reg, memorySource{path: "bad.json", data: entry}); err == nil {
+		t.Fatalf("expected error for unknown contract")
+	}
+}
+
+func TestDefaultPaths(t *testing.T) {
+	paths := DefaultPaths()
+	if len(paths) != 1 {
+		t.Fatalf("expected single default path")
+	}
+	if filepath.Base(paths[0]) != "definitions.json" {
+		t.Fatalf("unexpected default path: %s", paths[0])
+	}
+}
+
+func mustMarshal(v any) []byte {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
