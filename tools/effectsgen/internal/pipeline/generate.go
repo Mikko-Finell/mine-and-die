@@ -77,10 +77,10 @@ func generateEffectCatalogModule(definitions []contractDefinition, decls tsDecla
 
 	builder.WriteString("export type EffectContractID = keyof EffectContractMap;\n\n")
 
-	builder.WriteString("export type EffectCatalogEntry = {\n")
-	builder.WriteString("  readonly contractId: string;\n")
-	builder.WriteString("  readonly definition: Readonly<Record<string, unknown>>;\n")
-	builder.WriteString("  readonly blocks: Readonly<Record<string, unknown>>;\n")
+        builder.WriteString("export type EffectCatalogEntry = {\n")
+        builder.WriteString("  readonly contractId: string;\n")
+        builder.WriteString("  readonly definition: EffectDefinition;\n")
+        builder.WriteString("  readonly blocks: Readonly<Record<string, unknown>>;\n")
 	builder.WriteString("};\n\n")
 	builder.WriteString("export const effectCatalog = {\n")
 

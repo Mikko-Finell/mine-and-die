@@ -1,5 +1,8 @@
+import type { EffectDefinition, EndPolicy } from "./generated/effect-contracts";
+
 export interface EffectCatalogEntryMetadata {
   readonly contractId: string;
+  readonly definition: EffectDefinition | null;
   readonly blocks: Readonly<Record<string, unknown>>;
 }
 
@@ -18,6 +21,47 @@ const cloneBlocks = (source: Record<string, unknown>): Record<string, unknown> =
   return copy;
 };
 
+const cloneJsonValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneJsonValue(item));
+  }
+  if (isRecord(value)) {
+    const copy: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      copy[key] = cloneJsonValue(nested);
+    }
+    return copy;
+  }
+  return value;
+};
+
+const freezeJsonValue = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      freezeJsonValue(item);
+    }
+    return Object.freeze(value) as typeof value;
+  }
+  if (isRecord(value)) {
+    for (const nested of Object.values(value)) {
+      freezeJsonValue(nested);
+    }
+    return Object.freeze(value) as typeof value;
+  }
+  return value;
+};
+
+const DEFAULT_END_POLICY: EndPolicy = Object.freeze({ kind: 0 });
+
+const cloneEffectDefinition = (source: Record<string, unknown>): EffectDefinition => {
+  const cloned = cloneJsonValue(source) as Partial<EffectDefinition>;
+  const endValue = cloned.end;
+  if (!isRecord(endValue)) {
+    cloned.end = DEFAULT_END_POLICY;
+  }
+  return freezeJsonValue(cloned) as EffectDefinition;
+};
+
 export const normalizeEffectCatalog = (input: unknown): EffectCatalogSnapshot => {
   if (input == null) {
     return EMPTY_CATALOG;
@@ -30,12 +74,20 @@ export const normalizeEffectCatalog = (input: unknown): EffectCatalogSnapshot =>
     if (!isRecord(entryValue)) {
       throw new Error(`Effect catalog entry ${entryId} must be an object.`);
     }
-    const { contractId, blocks } = entryValue as {
+    const { contractId, definition, blocks } = entryValue as {
       readonly contractId?: unknown;
+      readonly definition?: unknown;
       readonly blocks?: unknown;
     };
     if (typeof contractId !== "string" || contractId.length === 0) {
       throw new Error(`Effect catalog entry ${entryId} missing contractId.`);
+    }
+    let normalizedDefinition: EffectDefinition | null = null;
+    if (definition !== undefined && definition !== null) {
+      if (!isRecord(definition)) {
+        throw new Error(`Effect catalog entry ${entryId} definition must be an object.`);
+      }
+      normalizedDefinition = cloneEffectDefinition(definition);
     }
     let normalizedBlocks: Record<string, unknown> | undefined;
     if (blocks !== undefined) {
@@ -44,10 +96,11 @@ export const normalizeEffectCatalog = (input: unknown): EffectCatalogSnapshot =>
       }
       normalizedBlocks = cloneBlocks(blocks);
     }
-    result[entryId] = {
+    result[entryId] = Object.freeze({
       contractId,
+      definition: normalizedDefinition,
       blocks: Object.freeze(normalizedBlocks ?? {}),
-    };
+    });
   }
   return Object.freeze(result);
 };

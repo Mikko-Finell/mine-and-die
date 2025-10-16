@@ -20,6 +20,22 @@ describe("effect catalog store", () => {
     const normalized = normalizeEffectCatalog({
       slash: {
         contractId: "attack",
+        definition: {
+          typeId: "attack",
+          delivery: "area",
+          shape: "rect",
+          motion: "instant",
+          impact: "first-hit",
+          lifetimeTicks: 1,
+          hooks: { onSpawn: "melee.spawn" },
+          client: {
+            sendSpawn: true,
+            sendUpdates: false,
+            sendEnd: false,
+            managedByClient: true,
+          },
+          end: { kind: 0 },
+        },
         blocks: { damage: 12 },
       },
     });
@@ -30,7 +46,47 @@ describe("effect catalog store", () => {
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(snapshot).not.toBe(normalized);
     expect(snapshot.slash?.contractId).toBe("attack");
+    expect(snapshot.slash?.definition).not.toBeNull();
+    expect(Object.isFrozen(snapshot.slash?.definition ?? {})).toBe(true);
+    expect(Object.isFrozen(snapshot.slash?.definition?.client ?? {})).toBe(true);
+    expect(snapshot.slash?.definition?.client.sendSpawn).toBe(true);
     expect(snapshot.slash?.blocks.damage).toBe(12);
+  });
+
+  test("omits definition when entry does not include one", () => {
+    const normalized = normalizeEffectCatalog({
+      slash: {
+        contractId: "attack",
+      },
+    });
+
+    expect(normalized.slash?.definition).toBeNull();
+  });
+
+  test("fills default end policy when definition omits it", () => {
+    const normalized = normalizeEffectCatalog({
+      slash: {
+        contractId: "attack",
+        definition: {
+          typeId: "attack",
+          delivery: "area",
+          shape: "rect",
+          motion: "instant",
+          impact: "first-hit",
+          lifetimeTicks: 1,
+          hooks: {},
+          client: {
+            sendSpawn: true,
+            sendUpdates: false,
+            sendEnd: false,
+          },
+        },
+      },
+    });
+
+    const endPolicy = normalized.slash?.definition?.end;
+    expect(endPolicy).toEqual({ kind: 0 });
+    expect(Object.isFrozen(endPolicy ?? {})).toBe(true);
   });
 
   test("notifies subscribers immediately and on subsequent updates", () => {

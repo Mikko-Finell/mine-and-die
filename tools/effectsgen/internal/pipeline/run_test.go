@@ -103,7 +103,7 @@ export type EffectContractID = keyof EffectContractMap;
 
 export type EffectCatalogEntry = {
   readonly contractId: string;
-  readonly definition: Readonly<Record<string, unknown>>;
+  readonly definition: EffectDefinition;
   readonly blocks: Readonly<Record<string, unknown>>;
 };
 
