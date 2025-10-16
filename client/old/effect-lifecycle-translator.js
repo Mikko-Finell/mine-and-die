@@ -42,6 +42,20 @@ function quantizedToWorld(value, tileSize) {
   return (numeric / COORD_SCALE) * tileSize;
 }
 
+function isZeroMotionAxis(position, velocity) {
+  const numericPosition = Number(position);
+  const numericVelocity = Number(velocity);
+  const positionIsZero =
+    (Number.isFinite(numericPosition) && numericPosition === 0) ||
+    position === null ||
+    position === undefined;
+  const velocityIsZero =
+    (Number.isFinite(numericVelocity) && numericVelocity === 0) ||
+    velocity === null ||
+    velocity === undefined;
+  return positionIsZero && velocityIsZero;
+}
+
 function copyParams(source, target) {
   if (!isPlainObject(source)) {
     return;
