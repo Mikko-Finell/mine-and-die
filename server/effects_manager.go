@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	effectcatalog "mine-and-die/server/effects/catalog"
 )
 
 type endDecision struct {
@@ -18,6 +20,7 @@ type EffectManager struct {
 	intentQueue       []EffectIntent
 	instances         map[string]*EffectInstance
 	definitions       map[string]*EffectDefinition
+	catalog           *effectcatalog.Resolver
 	seqByInstance     map[string]Seq
 	hooks             map[string]effectHookSet
 	worldEffects      map[string]*effectState
@@ -44,10 +47,20 @@ const (
 )
 
 func newEffectManager(world *World) *EffectManager {
+	definitions := defaultEffectDefinitions()
+	var resolver *effectcatalog.Resolver
+	if r, err := effectcatalog.Load(BuiltInRegistry, effectcatalog.DefaultPaths()...); err == nil {
+		if loaded := r.DefinitionsByContractID(); len(loaded) > 0 {
+			definitions = loaded
+		}
+		resolver = r
+	}
+
 	return &EffectManager{
 		intentQueue:   make([]EffectIntent, 0),
 		instances:     make(map[string]*EffectInstance),
-		definitions:   defaultEffectDefinitions(),
+		definitions:   definitions,
+		catalog:       resolver,
 		hooks:         defaultEffectHookRegistry(world),
 		worldEffects:  make(map[string]*effectState),
 		seqByInstance: make(map[string]Seq),
@@ -168,7 +181,10 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 	if geometry.Variants != nil {
 		geometry.Variants = copyIntMap(geometry.Variants)
 	}
-	definition := m.definitionFor(intent.TypeID)
+	definition, definitionID := m.resolveDefinition(intent.TypeID)
+	if definitionID == "" {
+		definitionID = intent.TypeID
+	}
 	replication := ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true}
 	endPolicy := EndPolicy{Kind: EndDuration}
 	if definition != nil {
@@ -199,7 +215,7 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 	}
 	instance := &EffectInstance{
 		ID:           id,
-		DefinitionID: intent.TypeID,
+		DefinitionID: definitionID,
 		Definition:   definition,
 		StartTick:    tick,
 		DeliveryState: EffectDeliveryState{
@@ -317,14 +333,28 @@ func (m *EffectManager) invokeOnTick(instance *EffectInstance, tick Tick, now ti
 	hook.OnTick(m, instance, tick, now)
 }
 
-func (m *EffectManager) definitionFor(typeID string) *EffectDefinition {
+func (m *EffectManager) resolveDefinition(typeID string) (*EffectDefinition, string) {
 	if typeID == "" {
-		return nil
+		return nil, ""
 	}
-	if def, ok := m.definitions[typeID]; ok {
-		return def
+	contractID := typeID
+	var catalogDef *EffectDefinition
+	if m != nil && m.catalog != nil {
+		if entry, ok := m.catalog.Resolve(typeID); ok {
+			contractID = entry.ContractID
+			catalogDef = entry.Definition
+		}
 	}
-	return nil
+	if m == nil {
+		return catalogDef, contractID
+	}
+	if def, ok := m.definitions[contractID]; ok && def != nil {
+		return def, contractID
+	}
+	if catalogDef != nil {
+		return catalogDef, contractID
+	}
+	return nil, contractID
 }
 
 func (m *EffectManager) evaluateEndPolicy(instance *EffectInstance, tick Tick) endDecision {
