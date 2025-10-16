@@ -634,6 +634,51 @@ var e5 = e4(class extends i5 {
   }
 });
 
+// client/effect-catalog.ts
+var EMPTY_CATALOG = Object.freeze({});
+var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var cloneBlocks = (source) => {
+  const copy = {};
+  for (const [key, value] of Object.entries(source)) {
+    copy[key] = value;
+  }
+  return copy;
+};
+var normalizeEffectCatalog = (input) => {
+  if (input == null) {
+    return EMPTY_CATALOG;
+  }
+  if (!isRecord(input)) {
+    throw new Error("Effect catalog must be an object map of entry metadata.");
+  }
+  const result = {};
+  for (const [entryId, entryValue] of Object.entries(input)) {
+    if (!isRecord(entryValue)) {
+      throw new Error(`Effect catalog entry ${entryId} must be an object.`);
+    }
+    const { contractId, blocks } = entryValue;
+    if (typeof contractId !== "string" || contractId.length === 0) {
+      throw new Error(`Effect catalog entry ${entryId} missing contractId.`);
+    }
+    let normalizedBlocks;
+    if (blocks !== void 0) {
+      if (!isRecord(blocks)) {
+        throw new Error(`Effect catalog entry ${entryId} blocks must be an object.`);
+      }
+      normalizedBlocks = cloneBlocks(blocks);
+    }
+    result[entryId] = {
+      contractId,
+      blocks: Object.freeze(normalizedBlocks != null ? normalizedBlocks : {})
+    };
+  }
+  return Object.freeze(result);
+};
+var currentCatalog = EMPTY_CATALOG;
+var setEffectCatalog = (catalog) => {
+  currentCatalog = catalog ? Object.freeze({ ...catalog }) : EMPTY_CATALOG;
+};
+
 // client/network.ts
 var WebSocketNetworkClient = class {
   constructor(configuration) {
@@ -670,6 +715,7 @@ var WebSocketNetworkClient = class {
     if (typeof joinPayload.ver !== "number") {
       throw new Error("Join response missing protocol version.");
     }
+    const effectCatalog = normalizeEffectCatalog(config.effectCatalog);
     if (joinPayload.ver !== this.configuration.protocolVersion) {
       throw new Error(
         `Protocol mismatch: expected ${this.configuration.protocolVersion}, received ${joinPayload.ver}`
@@ -678,7 +724,8 @@ var WebSocketNetworkClient = class {
     const joinResponse = {
       id: joinPayload.id,
       seed: config.seed,
-      protocolVersion: joinPayload.ver
+      protocolVersion: joinPayload.ver,
+      effectCatalog
     };
     this.joinResponse = joinResponse;
     return joinResponse;
@@ -921,8 +968,11 @@ var GameClientApp = class extends i4 {
     this.networkClient = networkClient;
     try {
       const joinResponse = await networkClient.join();
+      setEffectCatalog(joinResponse.effectCatalog);
       this.playerId = joinResponse.id;
       this.addLog(`Joined world as ${joinResponse.id}.`);
+      const catalogSize = Object.keys(joinResponse.effectCatalog).length;
+      this.addLog(`Received ${catalogSize} effect catalog entries.`);
       await networkClient.connect({
         onJoin: () => {
           this.addLog("Connected to world stream.");

@@ -1,7 +1,13 @@
+import {
+  normalizeEffectCatalog,
+  type EffectCatalogSnapshot,
+} from "./effect-catalog";
+
 export interface JoinResponse {
   readonly id: string;
   readonly seed: string;
   readonly protocolVersion: number;
+  readonly effectCatalog: EffectCatalogSnapshot;
 }
 
 export interface NetworkMessageEnvelope {
@@ -71,7 +77,10 @@ export class WebSocketNetworkClient implements NetworkClient {
       throw new Error("Join response missing world configuration.");
     }
 
-    const config = joinPayload.config as { readonly seed?: unknown };
+    const config = joinPayload.config as {
+      readonly seed?: unknown;
+      readonly effectCatalog?: unknown;
+    };
     if (typeof config.seed !== "string" || config.seed.length === 0) {
       throw new Error("Join response missing world seed.");
     }
@@ -79,6 +88,8 @@ export class WebSocketNetworkClient implements NetworkClient {
     if (typeof joinPayload.ver !== "number") {
       throw new Error("Join response missing protocol version.");
     }
+
+    const effectCatalog = normalizeEffectCatalog(config.effectCatalog);
 
     if (joinPayload.ver !== this.configuration.protocolVersion) {
       throw new Error(
@@ -90,6 +101,7 @@ export class WebSocketNetworkClient implements NetworkClient {
       id: joinPayload.id,
       seed: config.seed,
       protocolVersion: joinPayload.ver,
+      effectCatalog,
     };
 
     this.joinResponse = joinResponse;

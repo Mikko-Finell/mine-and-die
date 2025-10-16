@@ -5,6 +5,7 @@ import {
   type NetworkClient,
   type NetworkMessageEnvelope,
 } from "./network";
+import { setEffectCatalog } from "./effect-catalog";
 
 const HEALTH_CHECK_URL = "/health";
 const JOIN_URL = "/join";
@@ -139,8 +140,11 @@ class GameClientApp extends LitElement {
 
     try {
       const joinResponse = await networkClient.join();
+      setEffectCatalog(joinResponse.effectCatalog);
       this.playerId = joinResponse.id;
       this.addLog(`Joined world as ${joinResponse.id}.`);
+      const catalogSize = Object.keys(joinResponse.effectCatalog).length;
+      this.addLog(`Received ${catalogSize} effect catalog entries.`);
 
       await networkClient.connect({
         onJoin: () => {
