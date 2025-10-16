@@ -6,6 +6,7 @@ import (
 	"time"
 
 	effectcatalog "mine-and-die/server/effects/catalog"
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 type endDecision struct {
@@ -38,16 +39,8 @@ type effectHookSet struct {
 	OnTick  effectHookFunc
 }
 
-const (
-	meleeSpawnHookID          = "melee.spawn"
-	projectileLifecycleHookID = "projectile.fireball.lifecycle"
-	statusBurningVisualHookID = "status.burning.visual"
-	statusBurningDamageHookID = "status.burning.tick"
-	visualBloodSplatterHookID = "visual.blood.splatter"
-)
-
 func newEffectManager(world *World) *EffectManager {
-	definitions := defaultEffectDefinitions()
+	definitions := effectcontract.BuiltInDefinitions()
 	var resolver *effectcatalog.Resolver
 	if r, err := effectcatalog.Load(BuiltInRegistry, effectcatalog.DefaultPaths()...); err == nil {
 		if loaded := r.DefinitionsByContractID(); len(loaded) > 0 {
@@ -450,7 +443,7 @@ func ticksToDuration(ticks int) time.Duration {
 
 func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 	registry := make(map[string]effectHookSet)
-	registry[meleeSpawnHookID] = effectHookSet{
+	registry[effectcontract.HookMeleeSpawn] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
 			if m == nil || instance == nil || m.world == nil {
 				return
@@ -466,7 +459,7 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			m.world.resolveMeleeImpact(effect, owner, instance.OwnerActorID, uint64(tick), now, area)
 		},
 	}
-	registry[projectileLifecycleHookID] = effectHookSet{
+	registry[effectcontract.HookProjectileLifecycle] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
 			if m == nil || instance == nil || m.world == nil {
 				return
@@ -521,7 +514,7 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			}
 		},
 	}
-	registry[statusBurningVisualHookID] = effectHookSet{
+	registry[effectcontract.HookStatusBurningVisual] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
 			if m == nil || instance == nil || m.world == nil {
 				return
@@ -596,7 +589,7 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			}
 		},
 	}
-	registry[statusBurningDamageHookID] = effectHookSet{
+	registry[effectcontract.HookStatusBurningDamage] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
 			if m == nil || instance == nil || m.world == nil {
 				return
@@ -630,7 +623,7 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			m.world.applyBurningDamage(instance.OwnerActorID, actor, statusType, delta, now)
 		},
 	}
-	registry[visualBloodSplatterHookID] = effectHookSet{
+	registry[effectcontract.HookVisualBloodSplatter] = effectHookSet{
 		OnSpawn: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
 			m.ensureBloodDecalInstance(instance, now)
 		},
@@ -893,99 +886,4 @@ func dequantizeWorldCoord(value int) float64 {
 		return 0
 	}
 	return DequantizeCoord(value) * tileSize
-}
-
-func defaultEffectDefinitions() map[string]*EffectDefinition {
-	return map[string]*EffectDefinition{
-		effectTypeAttack: &EffectDefinition{
-			TypeID:        effectTypeAttack,
-			Delivery:      DeliveryKindArea,
-			Shape:         GeometryShapeRect,
-			Motion:        MotionKindInstant,
-			Impact:        ImpactPolicyAllInPath,
-			LifetimeTicks: 1,
-			Hooks: EffectHooks{
-				OnSpawn: meleeSpawnHookID,
-			},
-			Client: ReplicationSpec{
-				SendSpawn:       true,
-				SendUpdates:     true,
-				SendEnd:         true,
-				ManagedByClient: true,
-			},
-			End: EndPolicy{Kind: EndInstant},
-		},
-		effectTypeFireball: &EffectDefinition{
-			TypeID:        effectTypeFireball,
-			Delivery:      DeliveryKindArea,
-			Shape:         GeometryShapeCircle,
-			Motion:        MotionKindLinear,
-			Impact:        ImpactPolicyFirstHit,
-			LifetimeTicks: 45,
-			Hooks: EffectHooks{
-				OnSpawn: projectileLifecycleHookID,
-				OnTick:  projectileLifecycleHookID,
-			},
-			Client: ReplicationSpec{
-				SendSpawn:   true,
-				SendUpdates: true,
-				SendEnd:     true,
-			},
-			End: EndPolicy{Kind: EndDuration},
-		},
-		effectTypeBurningTick: &EffectDefinition{
-			TypeID:        effectTypeBurningTick,
-			Delivery:      DeliveryKindTarget,
-			Shape:         GeometryShapeRect,
-			Motion:        MotionKindInstant,
-			Impact:        ImpactPolicyFirstHit,
-			LifetimeTicks: 1,
-			Hooks: EffectHooks{
-				OnSpawn: statusBurningDamageHookID,
-			},
-			Client: ReplicationSpec{
-				SendSpawn:   true,
-				SendUpdates: false,
-				SendEnd:     true,
-			},
-			End: EndPolicy{Kind: EndInstant},
-		},
-		effectTypeBurningVisual: &EffectDefinition{
-			TypeID:        effectTypeBurningVisual,
-			Delivery:      DeliveryKindTarget,
-			Shape:         GeometryShapeRect,
-			Motion:        MotionKindFollow,
-			Impact:        ImpactPolicyFirstHit,
-			LifetimeTicks: durationToTicks(burningStatusEffectDuration),
-			Hooks: EffectHooks{
-				OnSpawn: statusBurningVisualHookID,
-				OnTick:  statusBurningVisualHookID,
-			},
-			Client: ReplicationSpec{
-				SendSpawn:   true,
-				SendUpdates: true,
-				SendEnd:     true,
-			},
-			End: EndPolicy{Kind: EndDuration},
-		},
-		effectTypeBloodSplatter: &EffectDefinition{
-			TypeID:        effectTypeBloodSplatter,
-			Delivery:      DeliveryKindVisual,
-			Shape:         GeometryShapeRect,
-			Motion:        MotionKindNone,
-			Impact:        ImpactPolicyNone,
-			LifetimeTicks: durationToTicks(bloodSplatterDuration),
-			Hooks: EffectHooks{
-				OnSpawn: visualBloodSplatterHookID,
-				OnTick:  visualBloodSplatterHookID,
-			},
-			Client: ReplicationSpec{
-				SendSpawn:       true,
-				SendUpdates:     false,
-				SendEnd:         true,
-				ManagedByClient: true,
-			},
-			End: EndPolicy{Kind: EndDuration},
-		},
-	}
 }
