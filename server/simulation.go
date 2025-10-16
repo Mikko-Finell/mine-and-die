@@ -63,8 +63,11 @@ type HeartbeatCommand struct {
 
 // World owns the authoritative simulation state.
 type World struct {
-	players             map[string]*playerState
-	npcs                map[string]*npcState
+	players map[string]*playerState
+	npcs    map[string]*npcState
+	// LEGACY: effects/effectTriggers/nextEffectID maintain the pre-contract
+	// snapshot pipeline. They stay populated for compatibility until
+	// effectsgen removes the legacy effectState runtime.
 	effects             []*effectState
 	effectsByID         map[string]*effectState
 	effectsIndex        *effectSpatialIndex
