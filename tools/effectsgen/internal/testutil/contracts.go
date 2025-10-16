@@ -24,6 +24,20 @@ func (payloadSentinel) payloadMarker() {}
 
 var NoPayload Payload = payloadSentinel{}
 
+type DeliveryKind string
+
+const (
+        DeliveryKindMelee  DeliveryKind = "melee"
+        DeliveryKindRanged DeliveryKind = "ranged"
+)
+
+type EndResult uint8
+
+const (
+        EndResultUnknown EndResult = iota
+        EndResultCancelled
+)
+
 type Definition struct {
         ID     string
         Spawn  Payload
@@ -44,6 +58,7 @@ type AttackSpawnPayload struct {
         ContractPayload
         InstanceID string       ` + "`json:\"instanceId\"`" + `
         Location   Coordinates  ` + "`json:\"location\"`" + `
+        Delivery   DeliveryKind ` + "`json:\"delivery\"`" + `
 }
 
 type AttackUpdatePayload struct {
@@ -57,6 +72,7 @@ type AttackEndPayload struct {
         ContractPayload
         Reason string ` + "`json:\"reason\"`" + `
         Notes  string ` + "`json:\"notes,omitempty\" effect:\"optional\"`" + `
+        Result EndResult ` + "`json:\"result\"`" + `
 }
 
 type FireballSpawnPayload = AttackSpawnPayload

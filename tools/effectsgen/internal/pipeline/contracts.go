@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -57,7 +58,8 @@ func loadContractMetadata(contractsDir, registryPath string) ([]contractDefiniti
 	}
 
 	aliasTargets := collectAliasTargets(pkg)
-	translator := newTypeTranslator(pkg, aliasTargets)
+	enumValues := collectEnumValues(pkg)
+	translator := newTypeTranslator(pkg, aliasTargets, enumValues)
 
 	definitions, err := parseRegistryDefinitions(pkg, registryPath, translator)
 	if err != nil {
@@ -359,15 +361,17 @@ func resolveTypeName(pkg *packages.Package, expr ast.Expr) (*types.TypeName, err
 type typeTranslator struct {
 	pkg          *packages.Package
 	aliasTargets map[string]types.Type
+	enumValues   map[string][]string
 	interfaces   map[string]tsInterface
 	aliases      map[string]string
 	structStack  map[string]bool
 }
 
-func newTypeTranslator(pkg *packages.Package, aliasTargets map[string]types.Type) *typeTranslator {
+func newTypeTranslator(pkg *packages.Package, aliasTargets map[string]types.Type, enumValues map[string][]string) *typeTranslator {
 	return &typeTranslator{
 		pkg:          pkg,
 		aliasTargets: aliasTargets,
+		enumValues:   enumValues,
 		interfaces:   make(map[string]tsInterface),
 		aliases:      make(map[string]string),
 		structStack:  make(map[string]bool),
@@ -427,6 +431,12 @@ func (t *typeTranslator) typeReference(typ types.Type) (string, error) {
 					return "", err
 				}
 			}
+			return name, nil
+		}
+
+		if ok, err := t.ensureEnumAlias(name); err != nil {
+			return "", err
+		} else if ok {
 			return name, nil
 		}
 
@@ -591,4 +601,103 @@ func (t *typeTranslator) declarations() tsDeclarations {
 	})
 
 	return tsDeclarations{Interfaces: interfaces, Aliases: aliases}
+}
+
+func collectEnumValues(pkg *packages.Package) map[string][]string {
+	results := make(map[string][]string)
+	accumulator := make(map[string]map[string]struct{})
+
+	scope := pkg.Types.Scope()
+	if scope == nil {
+		return results
+	}
+
+	for _, name := range scope.Names() {
+		obj := scope.Lookup(name)
+		if obj == nil {
+			continue
+		}
+		constObj, ok := obj.(*types.Const)
+		if !ok {
+			continue
+		}
+		named, ok := constObj.Type().(*types.Named)
+		if !ok {
+			continue
+		}
+		if named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != pkg.PkgPath {
+			continue
+		}
+
+		basic, ok := named.Underlying().(*types.Basic)
+		if !ok {
+			continue
+		}
+		literal, ok := tsLiteralForConstant(constObj.Val(), basic)
+		if !ok {
+			continue
+		}
+
+		typeName := named.Obj().Name()
+		values := accumulator[typeName]
+		if values == nil {
+			values = make(map[string]struct{})
+			accumulator[typeName] = values
+		}
+		values[literal] = struct{}{}
+	}
+
+	for typeName, values := range accumulator {
+		literals := make([]string, 0, len(values))
+		for literal := range values {
+			literals = append(literals, literal)
+		}
+		sort.Strings(literals)
+		results[typeName] = literals
+	}
+
+	return results
+}
+
+func tsLiteralForConstant(val constant.Value, basic *types.Basic) (string, bool) {
+	switch basic.Kind() {
+	case types.String:
+		return strconv.Quote(constant.StringVal(val)), true
+	case types.Bool:
+		if constant.BoolVal(val) {
+			return "true", true
+		}
+		return "false", true
+	case types.Int, types.Int8, types.Int16, types.Int32, types.Int64:
+		if i, ok := constant.Int64Val(val); ok {
+			return strconv.FormatInt(i, 10), true
+		}
+	case types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64, types.Uintptr:
+		if u, ok := constant.Uint64Val(val); ok {
+			return strconv.FormatUint(u, 10), true
+		}
+	case types.Float32, types.Float64:
+		if f, ok := constant.Float64Val(val); ok {
+			return strconv.FormatFloat(f, 'f', -1, 64), true
+		}
+	}
+
+	return "", false
+}
+
+func (t *typeTranslator) ensureEnumAlias(name string) (bool, error) {
+	literals, ok := t.enumValues[name]
+	if !ok || len(literals) == 0 {
+		return false, nil
+	}
+
+	union := strings.Join(literals, " | ")
+	if existing, exists := t.aliases[name]; exists {
+		if existing != union {
+			return false, fmt.Errorf("effectsgen: conflicting enum alias for %s", name)
+		}
+	} else {
+		t.aliases[name] = union
+	}
+	return true, nil
 }

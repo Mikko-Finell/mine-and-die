@@ -11,10 +11,10 @@ export interface EffectBehaviorState {
 
 export interface EffectDefinition {
   readonly typeId: string;
-  readonly delivery: string;
-  readonly shape: string;
-  readonly motion: string;
-  readonly impact: string;
+  readonly delivery: DeliveryKind;
+  readonly shape: GeometryShape;
+  readonly motion: MotionKind;
+  readonly impact: ImpactPolicy;
   readonly lifetimeTicks: number;
   readonly pierceCount?: number;
   readonly params?: Readonly<Record<string, number>>;
@@ -27,11 +27,11 @@ export interface EffectDeliveryState {
   readonly geometry: EffectGeometry;
   readonly motion: EffectMotionState;
   readonly attachedActorId?: string;
-  readonly follow?: string;
+  readonly follow?: FollowMode;
 }
 
 export interface EffectGeometry {
-  readonly shape: string;
+  readonly shape: GeometryShape;
   readonly offsetX?: number;
   readonly offsetY?: number;
   readonly facing?: number;
@@ -85,13 +85,13 @@ export interface EndConditions {
 }
 
 export interface EndPolicy {
-  readonly kind: number;
+  readonly kind: EndPolicyKind;
   readonly conditions?: EndConditions;
 }
 
 export interface InstanceEndPayload {
   readonly id: string;
-  readonly reason: string;
+  readonly reason: EndReason;
 }
 
 export interface InstanceSpawnPayload {
@@ -137,11 +137,25 @@ export type BurningVisualSpawnPayload = InstanceSpawnPayload;
 
 export type BurningVisualUpdatePayload = InstanceUpdatePayload;
 
+export type DeliveryKind = "area" | "target" | "visual";
+
+export type EndPolicyKind = 0 | 1 | 2;
+
+export type EndReason = "cancelled" | "expired" | "mapChange" | "ownerLost";
+
 export type FireballEndPayload = InstanceEndPayload;
 
 export type FireballSpawnPayload = InstanceSpawnPayload;
 
 export type FireballUpdatePayload = InstanceUpdatePayload;
+
+export type FollowMode = "none" | "owner" | "target";
+
+export type GeometryShape = "arc" | "capsule" | "circle" | "rect" | "segment";
+
+export type ImpactPolicy = "all-in-path" | "first-hit" | "none" | "pierce";
+
+export type MotionKind = "follow" | "instant" | "linear" | "none" | "parabolic";
 
 export type EffectContractMap = {
   readonly "attack": {
