@@ -15,7 +15,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 
 | Item | Goal | Status | Notes |
 | --- | --- | --- | --- |
-| Consolidate contract declarations | Move scattered struct definitions into `server/effects/contracts` with compile-time registration. | 🟡 In progress | `server/effects/contract` now owns the types, effect IDs, and a built-in registry backed by shared lifecycle payload structs; remaining callers still import the legacy aliases. |
+| Consolidate contract declarations | Move scattered struct definitions into `server/effects/contracts` with compile-time registration. | 🟡 In progress | `server/effects/contract` now owns the types, effect IDs, built-in registry, and default effect definitions consumed by `server/effects_manager.go`; legacy aliases still backfill other callers. |
 | Retire legacy effectState pipeline | Remove `server/effects.go`/`server/simulation.go` shims once contract definitions cover all gameplay behaviours. | 🟡 In progress | Legacy structs now marked with `LEGACY` comments to scope the cleanup. |
 | Draft JSON schema | Use `jsonschema` tags on Go structs and export schema to `docs/contracts/effects.schema.json`. | 🟢 Done | `go generate` now emits `docs/contracts/effects.schema.json` from `catalog.EntryDocument`. |
 | Build catalog loader | Add runtime loader that merges static JSON compositions, validates contract IDs, and exposes catalog entry lookups to gameplay. | 🟢 Done | `server/effects/catalog` now reads `config/effects/definitions.json`, validates against the Go registry, and feeds `EffectManager` with runtime contract lookups. |

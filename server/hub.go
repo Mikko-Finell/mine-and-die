@@ -1166,6 +1166,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	}
 
 	currentInterval := h.CurrentKeyframeInterval()
+	cfg.EffectCatalog = nil
 	msg := stateMessage{
 		Ver:              ProtocolVersion,
 		Type:             "state",
