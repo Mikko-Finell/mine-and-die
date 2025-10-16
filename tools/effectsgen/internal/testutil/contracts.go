@@ -24,6 +24,13 @@ func (payloadSentinel) payloadMarker() {}
 
 var NoPayload Payload = payloadSentinel{}
 
+type LifecycleOwner int
+
+const (
+        LifecycleOwnerServer LifecycleOwner = iota
+        LifecycleOwnerClient
+)
+
 type DeliveryKind string
 
 const (
@@ -43,6 +50,7 @@ type Definition struct {
         Spawn  Payload
         Update Payload
         End    Payload
+        Owner  LifecycleOwner
 }
 
 type Registry []Definition
@@ -94,6 +102,7 @@ var BuiltInRegistry = Registry{
                 Spawn:  (*AttackSpawnPayload)(nil),
                 Update: (*AttackUpdatePayload)(nil),
                 End:    (*AttackEndPayload)(nil),
+                Owner:  LifecycleOwnerClient,
         },
         {
                 ID:     EffectIDFireball,

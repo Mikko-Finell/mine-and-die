@@ -189,6 +189,7 @@ export type EffectContractID = keyof EffectContractMap;
 
 export type EffectCatalogEntry = {
   readonly contractId: string;
+  readonly managedByClient: boolean;
   readonly definition: Readonly<Record<string, unknown>>;
   readonly blocks: Readonly<Record<string, unknown>>;
 };
@@ -196,6 +197,7 @@ export type EffectCatalogEntry = {
 export const effectCatalog = {
   "attack": {
     "contractId": "attack",
+    "managedByClient": true,
     "definition": {
         "typeId": "attack",
         "delivery": "area",
@@ -209,8 +211,7 @@ export const effectCatalog = {
         "client": {
           "sendSpawn": true,
           "sendUpdates": false,
-          "sendEnd": false,
-          "managedByClient": true
+          "sendEnd": false
         }
       },
     "blocks": {
@@ -224,6 +225,7 @@ export const effectCatalog = {
   },
   "blood-splatter": {
     "contractId": "blood-splatter",
+    "managedByClient": true,
     "definition": {
         "typeId": "blood-splatter",
         "delivery": "visual",
@@ -237,8 +239,7 @@ export const effectCatalog = {
         "client": {
           "sendSpawn": true,
           "sendUpdates": false,
-          "sendEnd": false,
-          "managedByClient": true
+          "sendEnd": false
         }
       },
     "blocks": {
@@ -250,6 +251,7 @@ export const effectCatalog = {
   },
   "burning-tick": {
     "contractId": "burning-tick",
+    "managedByClient": false,
     "definition": {
         "typeId": "burning-tick",
         "delivery": "target",
@@ -278,6 +280,7 @@ export const effectCatalog = {
   },
   "fire": {
     "contractId": "fire",
+    "managedByClient": false,
     "definition": {
         "typeId": "fire",
         "delivery": "target",
@@ -307,6 +310,7 @@ export const effectCatalog = {
   },
   "fireball": {
     "contractId": "fireball",
+    "managedByClient": false,
     "definition": {
         "typeId": "fireball",
         "delivery": "area",

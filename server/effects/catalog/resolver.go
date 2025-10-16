@@ -178,16 +178,31 @@ func (r *Resolver) Reload() error {
 				def.TypeID = contractID
 			}
 
+			owner := contractDef.Owner
+			if owner != contract.LifecycleOwnerClient && !def.Client.SendUpdates && !def.Client.SendEnd && def.LifetimeTicks == 1 {
+				owner = contract.LifecycleOwnerClient
+			}
+
 			if def.Client.ManagedByClient {
+				return fmt.Errorf("catalog: entry %q must not set definition.client.managedByClient; ownership is derived from the contract registry", id)
+			}
+
+			if owner == contract.LifecycleOwnerClient {
 				if def.Client.SendUpdates {
-					return fmt.Errorf("catalog: entry %q marks managedByClient but sendUpdates is enabled", id)
+					return fmt.Errorf("catalog: entry %q enables sendUpdates but the contract is client-owned", id)
 				}
 				if def.Client.SendEnd {
-					return fmt.Errorf("catalog: entry %q marks managedByClient but sendEnd is enabled", id)
+					return fmt.Errorf("catalog: entry %q enables sendEnd but the contract is client-owned", id)
 				}
 				if def.LifetimeTicks != 1 {
-					return fmt.Errorf("catalog: entry %q marks managedByClient but lifetimeTicks is %d (expected 1)", id, def.LifetimeTicks)
+					return fmt.Errorf("catalog: entry %q sets lifetimeTicks to %d but client-owned contracts must use 1", id, def.LifetimeTicks)
 				}
+				def.Client.SendUpdates = false
+				def.Client.SendEnd = false
+				def.LifetimeTicks = 1
+				def.Client.ManagedByClient = true
+			} else {
+				def.Client.ManagedByClient = false
 			}
 
 			entry := Entry{
@@ -196,6 +211,7 @@ func (r *Resolver) Reload() error {
 				Blocks:     fe.Blocks,
 			}
 			contractCopy := contractDef
+			contractCopy.Owner = owner
 			entry.Contract = &contractCopy
 			defCopy := def
 			entry.Definition = &defCopy
