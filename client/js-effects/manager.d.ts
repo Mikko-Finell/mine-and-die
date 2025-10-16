@@ -1,4 +1,4 @@
-import { type DecalSpec, type EffectDefinition, type EffectFrameContext, type EffectInstance, type EffectPreset } from "./types.js";
+import { type DecalSpec, type EffectDefinition, type EffectFrameContext, type EffectInstance, EffectLayer, type EffectPreset } from "./types.js";
 interface ViewBounds {
     x: number;
     y: number;
@@ -31,7 +31,7 @@ export declare class EffectManager {
     cullByAABB(view: ViewBounds): void;
     updateAll(frame: EffectFrameContext): void;
     drawAll(frame: EffectFrameContext): void;
-    drawLayerRange(frame: EffectFrameContext, minLayer?: number, maxLayer?: number, options?: {
+    drawLayerRange(frame: EffectFrameContext, minLayer?: EffectLayer | number, maxLayer?: EffectLayer | number, options?: {
         resetDrawn?: boolean;
     }): void;
     collectDecals(): DecalSpec[];
