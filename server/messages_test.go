@@ -70,6 +70,51 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 	}
 }
 
+func TestJoinResponseIncludesEffectCatalog(t *testing.T) {
+	hub := newHub()
+	join := hub.Join()
+
+	if len(join.EffectCatalog) == 0 {
+		t.Fatalf("expected join response to include effect catalog entries")
+	}
+
+	entry, ok := join.EffectCatalog["fireball"]
+	if !ok {
+		t.Fatalf("expected catalog to include fireball entry")
+	}
+	if entry.ContractID == "" {
+		t.Fatalf("expected catalog entry to include contract id")
+	}
+	if entry.Definition == nil || entry.Definition.TypeID == "" {
+		t.Fatalf("expected catalog entry to include definition metadata")
+	}
+}
+
+func TestStateMessageConfigOmitsEffectCatalog(t *testing.T) {
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+	hub.advance(time.Now(), 1.0/float64(tickRate))
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+
+	config, ok := payload["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config to decode as object, got %T", payload["config"])
+	}
+
+	if _, exists := config["effectCatalog"]; exists {
+		t.Fatalf("expected state message config to omit effectCatalog metadata")
+	}
+}
+
 func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
