@@ -35,4 +35,4 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 
 ## Suggested Next Task
 
-Surface catalog entry metadata to the client runtime so renderer code can fetch compositions by entry ID without handwritten mirrors.
+Draft JSON schema for designer-authored catalogs so tooling can validate `config/effects/definitions.json` locally.

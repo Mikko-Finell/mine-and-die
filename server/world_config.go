@@ -6,19 +6,20 @@ const defaultWorldSeed = "prototype"
 
 // worldConfig captures the toggles used when generating a world.
 type worldConfig struct {
-	Obstacles      bool    `json:"obstacles"`
-	ObstaclesCount int     `json:"obstaclesCount"`
-	GoldMines      bool    `json:"goldMines"`
-	GoldMineCount  int     `json:"goldMineCount"`
-	NPCs           bool    `json:"npcs"`
-	GoblinCount    int     `json:"goblinCount"`
-	RatCount       int     `json:"ratCount"`
-	NPCCount       int     `json:"npcCount"`
-	Lava           bool    `json:"lava"`
-	LavaCount      int     `json:"lavaCount"`
-	Seed           string  `json:"seed"`
-	Width          float64 `json:"width"`
-	Height         float64 `json:"height"`
+	Obstacles      bool                             `json:"obstacles"`
+	ObstaclesCount int                              `json:"obstaclesCount"`
+	GoldMines      bool                             `json:"goldMines"`
+	GoldMineCount  int                              `json:"goldMineCount"`
+	NPCs           bool                             `json:"npcs"`
+	GoblinCount    int                              `json:"goblinCount"`
+	RatCount       int                              `json:"ratCount"`
+	NPCCount       int                              `json:"npcCount"`
+	Lava           bool                             `json:"lava"`
+	LavaCount      int                              `json:"lavaCount"`
+	Seed           string                           `json:"seed"`
+	Width          float64                          `json:"width"`
+	Height         float64                          `json:"height"`
+	EffectCatalog  map[string]effectCatalogMetadata `json:"effectCatalog,omitempty"`
 }
 
 // normalized returns a config with defaults applied.

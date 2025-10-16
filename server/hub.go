@@ -146,8 +146,11 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 		interval = 1
 	}
 
+	world := newWorld(cfg, pub)
+	cfg = world.config
+
 	hub := &Hub{
-		world:                   newWorld(cfg, pub),
+		world:                   world,
 		subscribers:             make(map[string]*subscriber),
 		pendingCommands:         make([]Command, 0),
 		pendingCommandsByActor:  make(map[string]int),
@@ -298,6 +301,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 	}
 
 	newW := newWorld(cfg, h.publisher)
+	cfg = newW.config
 	newW.telemetry = h.telemetry
 	newW.journal.AttachTelemetry(h.telemetry)
 	for _, id := range playerIDs {
