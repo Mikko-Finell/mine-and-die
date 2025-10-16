@@ -9,9 +9,9 @@ configuration for the client runtime.
 1. **Single contract source** – All spawn/update/end payloads are declared once
    in Go and registered in a central registry. Field names, enums, and nesting
    originate from these structs.
-2. **Data-driven compositions** – Effect compositions ("fireball", "blood splatter")
-   are authored in JSON that both the server and client read. Designers modify
-   JSON without recompiling TypeScript.
+2. **Data-driven compositions** – Effect compositions ("fireball", "ray of frost",
+   "blood splatter") are authored in JSON that both the server and client read.
+   Designers modify JSON without recompiling Go or TypeScript.
 3. **Generated client bindings** – Running `tools/effectgen` emits TypeScript
    interfaces plus strongly typed views of the JSON compositions so the client
    never hand-maintains mirrors of Go contracts.
@@ -24,7 +24,7 @@ configuration for the client runtime.
 | ------------------------- | ------------------------------------------------------------------ | ----- |
 | Contract payload structs  | `server/effects/contract` Go package                               | Only place structs are defined. |
 | Contract registry         | `server/effects/contract/registry.go`                              | Exports a `Registry` describing each contract and its payload types. |
-| Composition catalog       | `config/effects/definitions.json`                                  | Designers map contract IDs to js-effects animation keys and parameters. |
+| Composition catalog       | `config/effects/definitions.json`                                  | Designers map effect IDs to shared contract IDs plus animation/status params. |
 | Optional shared constants | `config/effects/constants.json`                                    | (Future) Non-struct data like palette names; also surfaced by generator. |
 | Generated client API      | `client/generated/effect-contracts.ts` (tool output)               | Never hand-edited. |
 
@@ -38,14 +38,19 @@ configuration for the client runtime.
   ```go
   package contract
 
-  type FireballSpawn struct {
+  type ProjectileSpawn struct {
       ProjectileID   string `effect:"projectileId"`
       Origin         Vec2   `effect:"origin"`
       Velocity       Vec2
       Damage         int16
       ImpactEffectID string `effect:"impactEffectId"`
+      Variant        string `effect:"variant"`
   }
   ```
+
+  The projectile contract is intentionally generic. Designers build `fireball`,
+  `ray-of-frost`, and similar payloads by configuring catalog entries that
+  reference this shared struct rather than creating bespoke contract IDs.
 
 * Supported field types: numeric primitives, `string`, `bool`, arrays/slices,
   fixed-size structs (referencing other contract structs), maps with string keys,
@@ -64,10 +69,10 @@ configuration for the client runtime.
   ```go
   var Registry = []Definition{
       {
-          ID: "fireball",
-          Spawn: (*FireballSpawn)(nil),
-          Update: (*FireballUpdate)(nil),
-          End: (*FireballEnd)(nil),
+          ID: "projectile",
+          Spawn: (*ProjectileSpawn)(nil),
+          Update: (*ProjectileUpdate)(nil),
+          End: (*ProjectileEnd)(nil),
       },
       {
           ID: "blood-splatter",
@@ -108,26 +113,40 @@ configuration for the client runtime.
   ```json
   {
       "id": "fireball",
-      "contractId": "fireball",
+      "contractId": "projectile",
       "jsEffect": "projectile/fireball",
       "parameters": {
           "trail": "ember-sparks",
-          "impact": "fire-explosion-large"
+          "impact": "fire-explosion-large",
+          "variant": "fire"
+      }
+  },
+  {
+      "id": "ray-of-frost",
+      "contractId": "projectile",
+      "jsEffect": "projectile/ray-of-frost",
+      "parameters": {
+          "trail": "ice-shards",
+          "impact": "frost-burst-medium",
+          "variant": "ice"
       }
   }
   ```
 
-* `contractId` must match an ID from the registry. Server-side loaders validate
-  this at startup using the registry.
+* `contractId` must match an ID from the registry. Designers create new variants
+  (e.g., `fireball`, `ray-of-frost`, `arrow`) by pointing them at the shared
+  contract (`projectile` in the example above) and providing variant-specific
+  metadata. Server-side loaders validate `contractId` values at startup using the
+  registry.
 
 * Additional optional blocks (`audio`, `cameraShake`, etc.) are free-form objects
   that designers can extend. The generator will surface them as TypeScript types
   derived from JSON schema inference (see below).
 
 * The server reads the JSON during startup (`server/effects/definitions_loader.go`)
-  and caches parsed structures keyed by contract ID. Runtime spawning logic
-  combines authoritative contract payloads with designer-provided animation
-  metadata when sending commands to clients.
+  and caches parsed structures keyed by the catalog entry ID. Runtime spawning
+  logic combines authoritative contract payloads with designer-provided
+  animation metadata when sending commands to clients.
 
 ## `tools/effectgen` Pipeline
 
@@ -189,9 +208,10 @@ for reproducibility.
    `config/effects/definitions.json`, validates `contractId` keys against the
    registry, and stores the compositions in memory.
 3. When gameplay code enqueues an effect, it references the contract ID from the
-   registry. Runtime assembly fetches the designer composition metadata and
-   includes it in the lifecycle event sent to clients. The payload structs remain
-   authoritative and are serialized via the shared contract.
+   registry (e.g., `projectile`). Runtime assembly fetches the designer
+   composition metadata keyed by the catalog entry (`fireball`, `ray-of-frost`,
+   etc.) and includes it in the lifecycle event sent to clients. The payload
+   structs remain authoritative and are serialized via the shared contract.
 
 ## Client Consumption
 
@@ -204,16 +224,27 @@ for reproducibility.
   receives new literal types; any outdated property access fails TypeScript
   compilation.
 
-## Workflow for Adding a New Effect
+## Workflow for Adding Effects
+
+*To add a new variant of an existing contract (most common):*
+
+1. **Author composition** – Add or edit an entry in `config/effects/definitions.json`
+   that references an existing contract ID (`projectile`, `status-effect`, etc.)
+   and sets variant-specific animation and status parameters.
+2. **Regenerate bindings** – Run `go run ./tools/effectgen ...` (or `go generate`).
+3. **Verify** – Run server tests to ensure runtime loading succeeds and TypeScript
+   compilation passes with the regenerated file.
+
+*To introduce a brand-new contract type:*
 
 1. **Define payloads** – Add Go structs in `server/effects/contract` with
    appropriate fields.
 2. **Register contract** – Append an entry to `Registry` with a unique ID.
-3. **Author composition** – Add an entry to `config/effects/definitions.json`
-   referencing the contract ID and desired js-effects animation keys.
+3. **Author composition** – Add one or more entries to
+   `config/effects/definitions.json` that reference the new contract ID.
 4. **Regenerate bindings** – Run `go run ./tools/effectgen ...` (or `go generate`).
 5. **Verify** – Run server tests to ensure runtime loading succeeds and TypeScript
-   compilation passes with the new generated file.
+   compilation passes with the regenerated file.
 
 ## Future Enhancements
 
