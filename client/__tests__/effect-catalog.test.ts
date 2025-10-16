@@ -20,6 +20,7 @@ describe("effect catalog store", () => {
     const normalized = normalizeEffectCatalog({
       slash: {
         contractId: "attack",
+        managedByClient: false,
         blocks: { damage: 12 },
       },
     });
@@ -40,13 +41,13 @@ describe("effect catalog store", () => {
     });
 
     const first = normalizeEffectCatalog({
-      slash: { contractId: "attack" },
+      slash: { contractId: "attack", managedByClient: false },
     });
     setEffectCatalog(first);
 
     const second = normalizeEffectCatalog({
-      slash: { contractId: "attack" },
-      frostbite: { contractId: "frost" },
+      slash: { contractId: "attack", managedByClient: false },
+      frostbite: { contractId: "frost", managedByClient: true },
     });
     setEffectCatalog(second);
 
@@ -64,7 +65,7 @@ describe("effect catalog store", () => {
     unsubscribe();
 
     const payload = normalizeEffectCatalog({
-      slash: { contractId: "attack" },
+      slash: { contractId: "attack", managedByClient: false },
     });
     setEffectCatalog(payload);
 
