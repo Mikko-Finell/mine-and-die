@@ -264,11 +264,11 @@ const (
 	meleeAttackWidth    = 40.0
 	meleeAttackDamage   = 10.0
 
-	effectTypeAttack        = "attack"
-	effectTypeFireball      = "fireball"
-	effectTypeBloodSplatter = "blood-splatter"
-	effectTypeBurningTick   = "burning-tick"
-	effectTypeBurningVisual = "fire"
+	effectTypeAttack        = EffectIDAttack
+	effectTypeFireball      = EffectIDFireball
+	effectTypeBloodSplatter = EffectIDBloodSplatter
+	effectTypeBurningTick   = EffectIDBurningTick
+	effectTypeBurningVisual = EffectIDBurningVisual
 
 	bloodSplatterDuration = 1200 * time.Millisecond
 
