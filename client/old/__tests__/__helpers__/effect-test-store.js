@@ -1,4 +1,4 @@
-import { EffectManager } from "../../js-effects/manager.js";
+import { EffectManager } from "@js-effects/effects-lib";
 import { createPatchState } from "../../patches.js";
 import { RENDER_MODE_SNAPSHOT } from "../../render-modes.js";
 

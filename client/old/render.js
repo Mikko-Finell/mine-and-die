@@ -1,12 +1,12 @@
-import { EffectManager } from "./js-effects/manager.js";
-import { MeleeSwingEffectDefinition } from "./js-effects/effects/meleeSwing.js";
-import { BloodSplatterDefinition } from "./js-effects/effects/bloodSplatter.js";
-import { FireEffectDefinition } from "./js-effects/effects/fire.js";
 import {
+  BloodSplatterDefinition,
+  EffectLayer,
+  EffectManager,
+  FireEffectDefinition,
+  MeleeSwingEffectDefinition,
   makeRectZoneDefinition,
   updateRectZoneInstance,
-} from "./js-effects/effects/rectZone.js";
-import { EffectLayer } from "./js-effects/types.js";
+} from "@js-effects/effects-lib";
 import {
   ensureEffectRegistry,
   mirrorEffectInstances,
@@ -55,7 +55,9 @@ const FireballZoneEffectDefinition = makeRectZoneDefinition("fireball", {
 const CLIENT_MANAGED_EFFECT_MAX_AGE_MS = 2000;
 
 if (typeof EffectLayer !== "object" || typeof EffectLayer.ActorOverlay !== "number") {
-  throw new Error("EffectLayer.ActorOverlay is not defined; rebuild js-effects to sync layers.");
+  throw new Error(
+    "EffectLayer.ActorOverlay is not defined; rebuild @js-effects/effects-lib to sync layers.",
+  );
 }
 const ACTOR_OVERLAY_LAYER = EffectLayer.ActorOverlay;
 const GROUND_EFFECT_MAX_LAYER = ACTOR_OVERLAY_LAYER - 1;
