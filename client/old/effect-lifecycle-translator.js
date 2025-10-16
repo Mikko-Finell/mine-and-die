@@ -42,6 +42,20 @@ function quantizedToWorld(value, tileSize) {
   return (numeric / COORD_SCALE) * tileSize;
 }
 
+function isZeroMotionAxis(position, velocity) {
+  const numericPosition = Number(position);
+  const numericVelocity = Number(velocity);
+  const positionIsZero =
+    (Number.isFinite(numericPosition) && numericPosition === 0) ||
+    position === null ||
+    position === undefined;
+  const velocityIsZero =
+    (Number.isFinite(numericVelocity) && numericVelocity === 0) ||
+    velocity === null ||
+    velocity === undefined;
+  return positionIsZero && velocityIsZero;
+}
+
 function copyParams(source, target) {
   if (!isPlainObject(source)) {
     return;
@@ -225,6 +239,14 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
 
   const offsetX = quantToWorld(geometry?.offsetX);
   const offsetY = quantToWorld(geometry?.offsetY);
+  const zeroMotionX =
+    centerFromExtraX == null &&
+    offsetX === null &&
+    isZeroMotionAxis(motion?.positionX, motion?.velocityX);
+  const zeroMotionY =
+    centerFromExtraY == null &&
+    offsetY === null &&
+    isZeroMotionAxis(motion?.positionY, motion?.velocityY);
 
   const anchor =
     findActorPosition(renderState, store, instance.followActorId) ??
@@ -233,12 +255,12 @@ export function contractLifecycleToEffect(lifecycleEntry, context = {}) {
   if (anchor) {
     if (offsetX !== null) {
       centerX = anchor.x + offsetX;
-    } else if (centerX == null) {
+    } else if (centerX == null || zeroMotionX) {
       centerX = anchor.x;
     }
     if (offsetY !== null) {
       centerY = anchor.y + offsetY;
-    } else if (centerY == null) {
+    } else if (centerY == null || zeroMotionY) {
       centerY = anchor.y;
     }
   } else {
