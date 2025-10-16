@@ -199,6 +199,31 @@ func main() {
 		w.Write(data)
 	})
 
+	http.HandleFunc("/effects/catalog", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		catalog := hub.EffectCatalogSnapshot()
+		if catalog == nil {
+			catalog = make(map[string]effectCatalogMetadata)
+		}
+
+		payload := struct {
+			Catalog map[string]effectCatalogMetadata `json:"effectCatalog"`
+		}{Catalog: catalog}
+
+		data, err := json.Marshal(payload)
+		if err != nil {
+			http.Error(w, "failed to encode", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+	})
+
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,

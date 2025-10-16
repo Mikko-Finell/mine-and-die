@@ -167,6 +167,35 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 	return hub
 }
 
+func (h *Hub) effectCatalogSnapshotLocked() map[string]effectCatalogMetadata {
+	if h == nil || h.world == nil || h.world.effectManager == nil {
+		return nil
+	}
+	resolver := h.world.effectManager.catalog
+	if resolver == nil {
+		return nil
+	}
+	entries := resolver.Entries()
+	if len(entries) == 0 {
+		return nil
+	}
+	catalog := make(map[string]effectCatalogMetadata, len(entries))
+	for id, entry := range entries {
+		catalog[id] = newEffectCatalogMetadata(entry)
+	}
+	return catalog
+}
+
+// EffectCatalogSnapshot returns a cloned snapshot of the designer-authored effect catalog.
+func (h *Hub) EffectCatalogSnapshot() map[string]effectCatalogMetadata {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.effectCatalogSnapshotLocked()
+}
+
 func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 	inventory := NewInventory()
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
@@ -227,6 +256,7 @@ func (h *Hub) Join() joinResponse {
 	groundItems := h.world.GroundItemsSnapshot()
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
+	catalog := h.effectCatalogSnapshotLocked()
 	h.mu.Unlock()
 
 	logginglifecycle.PlayerJoined(
@@ -251,6 +281,7 @@ func (h *Hub) Join() joinResponse {
 		Config:           cfg,
 		Resync:           true,
 		KeyframeInterval: h.CurrentKeyframeInterval(),
+		EffectCatalog:    catalog,
 	}
 }
 
