@@ -115,6 +115,7 @@ type EffectGeometry struct {
 
 // EffectIntent represents an authoritative request to spawn an effect.
 type EffectIntent struct {
+	EntryID       string         `json:"entryId,omitempty"`
 	TypeID        string         `json:"typeId"`
 	Delivery      DeliveryKind   `json:"delivery"`
 	SourceActorID string         `json:"sourceActorId"`
@@ -168,6 +169,7 @@ type ReplicationSpec struct {
 // EffectInstance represents a server-owned effect with live state tracked by the simulation.
 type EffectInstance struct {
 	ID            string              `json:"id"`
+	EntryID       string              `json:"entryId,omitempty"`
 	DefinitionID  string              `json:"definitionId"`
 	Definition    *EffectDefinition   `json:"definition,omitempty"`
 	StartTick     Tick                `json:"startTick"`

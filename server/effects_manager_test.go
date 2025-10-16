@@ -29,6 +29,7 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 	}
 
 	manager.EnqueueIntent(EffectIntent{
+		EntryID:       effectType,
 		TypeID:        effectType,
 		DurationTicks: 2,
 		SourceActorID: "owner-1",
@@ -38,6 +39,15 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 	manager.RunTick(1, now, nil)
 	if tickCount != 1 {
 		t.Fatalf("expected hook to be invoked once on first tick, got %d", tickCount)
+	}
+
+	if len(manager.instances) != 1 {
+		t.Fatalf("expected one active instance after first tick, got %d", len(manager.instances))
+	}
+	for _, inst := range manager.instances {
+		if inst.EntryID != effectType {
+			t.Fatalf("expected instance entry id %q, got %q", effectType, inst.EntryID)
+		}
 	}
 
 	manager.RunTick(2, now.Add(time.Millisecond), nil)

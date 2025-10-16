@@ -51,7 +51,12 @@ func newEffectManager(world *World) *EffectManager {
 	var resolver *effectcatalog.Resolver
 	if r, err := effectcatalog.Load(BuiltInRegistry, effectcatalog.DefaultPaths()...); err == nil {
 		if loaded := r.DefinitionsByContractID(); len(loaded) > 0 {
-			definitions = loaded
+			for id, def := range loaded {
+				if _, exists := definitions[id]; exists {
+					continue
+				}
+				definitions[id] = def
+			}
 		}
 		resolver = r
 	}
@@ -98,9 +103,6 @@ func (m *EffectManager) RunTick(tick Tick, now time.Time, emit func(EffectLifecy
 	newInstances := make([]*EffectInstance, 0, drained)
 	if drained > 0 {
 		for _, intent := range drainedQueue {
-			if intent.TypeID == "" {
-				continue
-			}
 			instance := m.instantiateIntent(intent, tick)
 			if instance == nil {
 				continue
@@ -181,9 +183,19 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 	if geometry.Variants != nil {
 		geometry.Variants = copyIntMap(geometry.Variants)
 	}
-	definition, definitionID := m.resolveDefinition(intent.TypeID)
+	entryID := intent.EntryID
+	if entryID == "" {
+		entryID = intent.TypeID
+	}
+	if entryID == "" {
+		return nil
+	}
+	definition, definitionID := m.resolveDefinition(entryID)
 	if definitionID == "" {
 		definitionID = intent.TypeID
+	}
+	if definitionID == "" {
+		definitionID = entryID
 	}
 	replication := ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true}
 	endPolicy := EndPolicy{Kind: EndDuration}
@@ -215,6 +227,7 @@ func (m *EffectManager) instantiateIntent(intent EffectIntent, tick Tick) *Effec
 	}
 	instance := &EffectInstance{
 		ID:           id,
+		EntryID:      entryID,
 		DefinitionID: definitionID,
 		Definition:   definition,
 		StartTick:    tick,

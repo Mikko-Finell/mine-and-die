@@ -1961,6 +1961,7 @@ func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
 	now := time.Now()
 
 	world.effectManager.EnqueueIntent(EffectIntent{
+		EntryID:       anchorType,
 		TypeID:        anchorType,
 		Delivery:      DeliveryKindTarget,
 		SourceActorID: owner.ID,
@@ -2020,6 +2021,7 @@ func TestContractReplicationOffSkipsUpdates(t *testing.T) {
 	now := time.Now()
 
 	world.effectManager.EnqueueIntent(EffectIntent{
+		EntryID:  spawnOnlyType,
 		TypeID:   spawnOnlyType,
 		Delivery: DeliveryKindArea,
 		Geometry: EffectGeometry{Shape: GeometryShapeCircle},
@@ -2064,6 +2066,7 @@ func TestContractSeqMonotonicAcrossTicks(t *testing.T) {
 	now := time.Now()
 
 	world.effectManager.EnqueueIntent(EffectIntent{
+		EntryID:  seqType,
 		TypeID:   seqType,
 		Delivery: DeliveryKindArea,
 		Geometry: EffectGeometry{Shape: GeometryShapeCircle},
