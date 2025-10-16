@@ -76,6 +76,7 @@ func NewMeleeIntent(owner *actorState) (EffectIntent, bool) {
 	}
 
 	intent := EffectIntent{
+		EntryID:       effectTypeAttack,
 		TypeID:        effectTypeAttack,
 		Delivery:      DeliveryKindArea,
 		SourceActorID: owner.ID,
@@ -152,6 +153,7 @@ func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (EffectInte
 	}
 
 	intent := EffectIntent{
+		EntryID:       tpl.Type,
 		TypeID:        tpl.Type,
 		Delivery:      DeliveryKindArea,
 		SourceActorID: owner.ID,
@@ -185,6 +187,7 @@ func NewStatusVisualIntent(target *actorState, sourceID, effectType string, life
 	}
 
 	intent := EffectIntent{
+		EntryID:       effectType,
 		TypeID:        effectType,
 		Delivery:      DeliveryKindTarget,
 		SourceActorID: sourceID,
@@ -230,6 +233,7 @@ func NewBurningTickIntent(target *actorState, sourceID string, delta float64) (E
 	params := map[string]int{"healthDelta": rounded}
 
 	intent := EffectIntent{
+		EntryID:       effectTypeBurningTick,
 		TypeID:        effectTypeBurningTick,
 		Delivery:      DeliveryKindTarget,
 		SourceActorID: sourceID,
@@ -268,6 +272,7 @@ func NewBloodSplatterIntent(sourceID string, target *actorState) (EffectIntent, 
 	}
 
 	intent := EffectIntent{
+		EntryID:       effectTypeBloodSplatter,
 		TypeID:        effectTypeBloodSplatter,
 		Delivery:      DeliveryKindVisual,
 		SourceActorID: sourceID,

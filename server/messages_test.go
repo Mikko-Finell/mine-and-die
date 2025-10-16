@@ -357,6 +357,7 @@ func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
 	}
 
 	hub.world.effectManager.EnqueueIntent(EffectIntent{
+		EntryID:  effectTypeAttack,
 		TypeID:   effectTypeAttack,
 		Delivery: DeliveryKindArea,
 		Geometry: EffectGeometry{Shape: GeometryShapeRect},

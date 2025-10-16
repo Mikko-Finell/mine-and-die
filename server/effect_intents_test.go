@@ -32,6 +32,9 @@ func TestNewMeleeIntent(t *testing.T) {
 	if !ok {
 		t.Fatal("expected melee intent to be constructed")
 	}
+	if intent.EntryID != effectTypeAttack {
+		t.Fatalf("unexpected EntryID: %q", intent.EntryID)
+	}
 	if intent.TypeID != effectTypeAttack {
 		t.Fatalf("unexpected TypeID: %q", intent.TypeID)
 	}
@@ -81,6 +84,9 @@ func TestNewProjectileIntent(t *testing.T) {
 		t.Fatal("expected projectile intent to be constructed")
 	}
 
+	if intent.EntryID != tpl.Type {
+		t.Fatalf("expected EntryID %q, got %q", tpl.Type, intent.EntryID)
+	}
 	if intent.TypeID != tpl.Type {
 		t.Fatalf("expected TypeID %q, got %q", tpl.Type, intent.TypeID)
 	}
@@ -113,6 +119,9 @@ func TestNewStatusVisualIntent(t *testing.T) {
 		t.Fatal("expected status visual intent to be constructed")
 	}
 
+	if intent.EntryID != effectTypeBurningVisual {
+		t.Fatalf("expected EntryID %q, got %q", effectTypeBurningVisual, intent.EntryID)
+	}
 	if intent.TypeID != effectTypeBurningVisual {
 		t.Fatalf("expected TypeID %q, got %q", effectTypeBurningVisual, intent.TypeID)
 	}
@@ -152,6 +161,9 @@ func TestNewBurningTickIntent(t *testing.T) {
 	if !ok {
 		t.Fatal("expected burning tick intent to be constructed")
 	}
+	if intent.EntryID != effectTypeBurningTick {
+		t.Fatalf("expected EntryID %q, got %q", effectTypeBurningTick, intent.EntryID)
+	}
 	if intent.TypeID != effectTypeBurningTick {
 		t.Fatalf("expected TypeID %q, got %q", effectTypeBurningTick, intent.TypeID)
 	}
@@ -189,6 +201,9 @@ func TestNewBloodSplatterIntent(t *testing.T) {
 		t.Fatal("expected blood splatter intent to be constructed")
 	}
 
+	if intent.EntryID != effectTypeBloodSplatter {
+		t.Fatalf("expected EntryID %q, got %q", effectTypeBloodSplatter, intent.EntryID)
+	}
 	if intent.TypeID != effectTypeBloodSplatter {
 		t.Fatalf("expected TypeID %q, got %q", effectTypeBloodSplatter, intent.TypeID)
 	}
