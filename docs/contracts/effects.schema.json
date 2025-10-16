@@ -1,0 +1,455 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "items": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9-]+$",
+            "title": "Catalog Entry ID",
+            "description": "Designer-facing identifier that maps to gameplay intents."
+          },
+          "contractId": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9-]+$",
+            "title": "Contract ID",
+            "description": "Identifier from the Go contract registry this entry references."
+          },
+          "definition": {
+            "properties": {
+              "typeId": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9-]+$",
+                "title": "Effect Type ID",
+                "description": "Canonical identifier for the gameplay effect."
+              },
+              "delivery": {
+                "type": "string",
+                "enum": [
+                  "area",
+                  "target",
+                  "visual"
+                ],
+                "title": "Delivery Mode",
+                "description": "How the effect is delivered in the world."
+              },
+              "shape": {
+                "type": "string",
+                "enum": [
+                  "circle",
+                  "rect",
+                  "arc",
+                  "segment",
+                  "capsule"
+                ],
+                "title": "Primary Shape",
+                "description": "Default geometry used by the effect."
+              },
+              "motion": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "instant",
+                  "linear",
+                  "parabolic",
+                  "follow"
+                ],
+                "title": "Motion Profile",
+                "description": "Movement behaviour applied to the instance."
+              },
+              "impact": {
+                "type": "string",
+                "enum": [
+                  "first-hit",
+                  "all-in-path",
+                  "pierce",
+                  "none"
+                ],
+                "title": "Impact Policy",
+                "description": "Collision resolution policy."
+              },
+              "lifetimeTicks": {
+                "type": "integer",
+                "title": "Lifetime Ticks",
+                "description": "Duration in simulation ticks before expiry."
+              },
+              "pierceCount": {
+                "type": "integer",
+                "description": "Number of additional targets an instance may pierce."
+              },
+              "params": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object",
+                "description": "Optional numeric designer parameters exposed to gameplay."
+              },
+              "hooks": {
+                "properties": {
+                  "onSpawn": {
+                    "type": "string",
+                    "description": "Callback invoked when the effect instance spawns."
+                  },
+                  "onTick": {
+                    "type": "string",
+                    "description": "Callback invoked on each simulation tick."
+                  },
+                  "onHit": {
+                    "type": "string",
+                    "description": "Callback invoked when the effect collides with a target."
+                  },
+                  "onExpire": {
+                    "type": "string",
+                    "description": "Callback invoked when the effect expires naturally."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "description": "Lifecycle callbacks executed by the server runtime."
+              },
+              "client": {
+                "properties": {
+                  "sendSpawn": {
+                    "type": "boolean",
+                    "description": "Whether the server emits spawn payloads to clients."
+                  },
+                  "sendUpdates": {
+                    "type": "boolean",
+                    "description": "Whether the server emits incremental update payloads."
+                  },
+                  "sendEnd": {
+                    "type": "boolean",
+                    "description": "Whether the server emits end payloads."
+                  },
+                  "managedByClient": {
+                    "type": "boolean",
+                    "description": "Marks effects that transition to client-side ownership after spawn."
+                  },
+                  "updateFields": {
+                    "additionalProperties": {
+                      "type": "boolean"
+                    },
+                    "type": "object",
+                    "description": "Optional whitelist of fields sent during updates."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "sendSpawn",
+                  "sendUpdates",
+                  "sendEnd"
+                ],
+                "description": "Authoritative replication contract for clients."
+              },
+              "end": {
+                "properties": {
+                  "kind": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1,
+                      2
+                    ],
+                    "title": "Termination Policy",
+                    "description": "Determines how the effect instance decides to stop."
+                  },
+                  "conditions": {
+                    "properties": {
+                      "onUnequip": {
+                        "type": "boolean",
+                        "description": "End when the owning actor unequips the source item."
+                      },
+                      "onOwnerDeath": {
+                        "type": "boolean",
+                        "description": "End when the owning actor dies."
+                      },
+                      "onOwnerLost": {
+                        "type": "boolean",
+                        "description": "End when the effect loses its owning actor (e.g. despawn)."
+                      },
+                      "onZoneChange": {
+                        "type": "boolean",
+                        "description": "End when the owning actor changes zones."
+                      },
+                      "onExplicitCancel": {
+                        "type": "boolean",
+                        "description": "End when gameplay explicitly cancels the effect."
+                      }
+                    },
+                    "additionalProperties": false,
+                    "type": "object",
+                    "description": "Conditional checks evaluated when Kind is set to EndCondition."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "description": "Termination behaviour configuration."
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "typeId",
+              "delivery",
+              "shape",
+              "motion",
+              "impact",
+              "lifetimeTicks",
+              "hooks",
+              "client",
+              "end"
+            ],
+            "title": "Effect Definition",
+            "description": "Canonical gameplay configuration resolved by the runtime."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "contractId",
+          "definition"
+        ],
+        "title": "Effect Catalog Entry",
+        "description": "Designer-authored payload that references an authoritative contract definition."
+      },
+      "type": "array",
+      "title": "Array Catalog",
+      "description": "Effect catalog expressed as an array of entry objects."
+    },
+    {
+      "additionalProperties": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9-]+$",
+            "title": "Catalog Entry ID",
+            "description": "Designer-facing identifier that maps to gameplay intents."
+          },
+          "contractId": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9-]+$",
+            "title": "Contract ID",
+            "description": "Identifier from the Go contract registry this entry references."
+          },
+          "definition": {
+            "properties": {
+              "typeId": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9-]+$",
+                "title": "Effect Type ID",
+                "description": "Canonical identifier for the gameplay effect."
+              },
+              "delivery": {
+                "type": "string",
+                "enum": [
+                  "area",
+                  "target",
+                  "visual"
+                ],
+                "title": "Delivery Mode",
+                "description": "How the effect is delivered in the world."
+              },
+              "shape": {
+                "type": "string",
+                "enum": [
+                  "circle",
+                  "rect",
+                  "arc",
+                  "segment",
+                  "capsule"
+                ],
+                "title": "Primary Shape",
+                "description": "Default geometry used by the effect."
+              },
+              "motion": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "instant",
+                  "linear",
+                  "parabolic",
+                  "follow"
+                ],
+                "title": "Motion Profile",
+                "description": "Movement behaviour applied to the instance."
+              },
+              "impact": {
+                "type": "string",
+                "enum": [
+                  "first-hit",
+                  "all-in-path",
+                  "pierce",
+                  "none"
+                ],
+                "title": "Impact Policy",
+                "description": "Collision resolution policy."
+              },
+              "lifetimeTicks": {
+                "type": "integer",
+                "title": "Lifetime Ticks",
+                "description": "Duration in simulation ticks before expiry."
+              },
+              "pierceCount": {
+                "type": "integer",
+                "description": "Number of additional targets an instance may pierce."
+              },
+              "params": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object",
+                "description": "Optional numeric designer parameters exposed to gameplay."
+              },
+              "hooks": {
+                "properties": {
+                  "onSpawn": {
+                    "type": "string",
+                    "description": "Callback invoked when the effect instance spawns."
+                  },
+                  "onTick": {
+                    "type": "string",
+                    "description": "Callback invoked on each simulation tick."
+                  },
+                  "onHit": {
+                    "type": "string",
+                    "description": "Callback invoked when the effect collides with a target."
+                  },
+                  "onExpire": {
+                    "type": "string",
+                    "description": "Callback invoked when the effect expires naturally."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "description": "Lifecycle callbacks executed by the server runtime."
+              },
+              "client": {
+                "properties": {
+                  "sendSpawn": {
+                    "type": "boolean",
+                    "description": "Whether the server emits spawn payloads to clients."
+                  },
+                  "sendUpdates": {
+                    "type": "boolean",
+                    "description": "Whether the server emits incremental update payloads."
+                  },
+                  "sendEnd": {
+                    "type": "boolean",
+                    "description": "Whether the server emits end payloads."
+                  },
+                  "managedByClient": {
+                    "type": "boolean",
+                    "description": "Marks effects that transition to client-side ownership after spawn."
+                  },
+                  "updateFields": {
+                    "additionalProperties": {
+                      "type": "boolean"
+                    },
+                    "type": "object",
+                    "description": "Optional whitelist of fields sent during updates."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "sendSpawn",
+                  "sendUpdates",
+                  "sendEnd"
+                ],
+                "description": "Authoritative replication contract for clients."
+              },
+              "end": {
+                "properties": {
+                  "kind": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1,
+                      2
+                    ],
+                    "title": "Termination Policy",
+                    "description": "Determines how the effect instance decides to stop."
+                  },
+                  "conditions": {
+                    "properties": {
+                      "onUnequip": {
+                        "type": "boolean",
+                        "description": "End when the owning actor unequips the source item."
+                      },
+                      "onOwnerDeath": {
+                        "type": "boolean",
+                        "description": "End when the owning actor dies."
+                      },
+                      "onOwnerLost": {
+                        "type": "boolean",
+                        "description": "End when the effect loses its owning actor (e.g. despawn)."
+                      },
+                      "onZoneChange": {
+                        "type": "boolean",
+                        "description": "End when the owning actor changes zones."
+                      },
+                      "onExplicitCancel": {
+                        "type": "boolean",
+                        "description": "End when gameplay explicitly cancels the effect."
+                      }
+                    },
+                    "additionalProperties": false,
+                    "type": "object",
+                    "description": "Conditional checks evaluated when Kind is set to EndCondition."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "description": "Termination behaviour configuration."
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "typeId",
+              "delivery",
+              "shape",
+              "motion",
+              "impact",
+              "lifetimeTicks",
+              "hooks",
+              "client",
+              "end"
+            ],
+            "title": "Effect Definition",
+            "description": "Canonical gameplay configuration resolved by the runtime."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "contractId",
+          "definition"
+        ],
+        "title": "Effect Catalog Entry",
+        "description": "Designer-authored payload that references an authoritative contract definition."
+      },
+      "type": "object",
+      "title": "Object Catalog",
+      "description": "Effect catalog expressed as an object keyed by entry ID."
+    }
+  ],
+  "title": "Mine \u0026 Die Effect Catalog",
+  "description": "Designer-authored effect compositions consumed by the Mine \u0026 Die runtime."
+}

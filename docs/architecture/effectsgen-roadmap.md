@@ -7,7 +7,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | Phase | Goal | Exit Criteria | Status |
 | ----- | ---- | ------------- | ------ |
 | 1 | Finalise Go contract registry | All effect contracts registered through a central Go package with validation helpers and unit coverage. | 🟡 In progress |
-| 2 | Author JSON schema and catalog resolver | Machine-validated JSON schema covers catalog entries keyed by designer IDs and validates referenced contract IDs; loader in `server/effects` caches entry → contract mappings. | ⚪ Planned |
+| 2 | Author JSON schema and catalog resolver | Machine-validated JSON schema covers catalog entries keyed by designer IDs and validates referenced contract IDs; loader in `server/effects` caches entry → contract mappings. | 🟢 Done |
 | 3 | Implement `tools/effectgen` TypeScript emitter | CLI reads Go registry and catalog resolver output to generate deterministic bindings that expose both contract payloads and catalog entry metadata with golden-file tests. | ⚪ Planned |
 | 4 | Integrate generated bindings into client build | Client imports generated module, gameplay enqueues catalog entry IDs, runtime resolves contract payloads via the loader, and CI enforces regeneration drift checks. | ⚪ Planned |
 
@@ -17,7 +17,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | --- | --- | --- | --- |
 | Consolidate contract declarations | Move scattered struct definitions into `server/effects/contracts` with compile-time registration. | 🟡 In progress | `server/effects/contract` now owns the types, effect IDs, and a built-in registry backed by shared lifecycle payload structs; remaining callers still import the legacy aliases. |
 | Retire legacy effectState pipeline | Remove `server/effects.go`/`server/simulation.go` shims once contract definitions cover all gameplay behaviours. | 🟡 In progress | Legacy structs now marked with `LEGACY` comments to scope the cleanup. |
-| Draft JSON schema | Use `jsonschema` tags on Go structs and export schema to `docs/contracts/effects.schema.json`. | ⚪ Planned | Schema will validate designer-authored catalogs. |
+| Draft JSON schema | Use `jsonschema` tags on Go structs and export schema to `docs/contracts/effects.schema.json`. | 🟢 Done | `go generate` now emits `docs/contracts/effects.schema.json` from `catalog.EntryDocument`. |
 | Build catalog loader | Add runtime loader that merges static JSON compositions, validates contract IDs, and exposes catalog entry lookups to gameplay. | 🟢 Done | `server/effects/catalog` now reads `config/effects/definitions.json`, validates against the Go registry, and feeds `EffectManager` with runtime contract lookups. |
 | Align runtime effect queue with catalog IDs | Update `server/effects_manager.go` and related callers so gameplay code enqueues catalog entry IDs while the runtime resolves the linked contract before serialization. | 🟢 Done | Gameplay intents now propagate designer entry IDs through the manager while resolving contracts. |
 | Surface catalog entry metadata to client runtime | Ensure generated bindings feed catalog metadata into `client/js-effects` so the effect runner can resolve compositions by entry ID without manual mirrors. | 🟡 In progress | Server now exposes catalog snapshot via `/join` and `/effects/catalog`; client wiring and generator output still pending. |
@@ -35,4 +35,4 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 
 ## Suggested Next Task
 
-Draft JSON schema for designer-authored catalogs so tooling can validate `config/effects/definitions.json` locally.
+Add regression tests for the catalog loader and schema generation to guard against drift in future changes.
