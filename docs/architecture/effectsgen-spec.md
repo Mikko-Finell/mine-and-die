@@ -207,11 +207,12 @@ for reproducibility.
 2. `server/effects/definitions_loader.go` reads
    `config/effects/definitions.json`, validates `contractId` keys against the
    registry, and stores the compositions in memory.
-3. When gameplay code enqueues an effect, it references the contract ID from the
-   registry (e.g., `projectile`). Runtime assembly fetches the designer
-   composition metadata keyed by the catalog entry (`fireball`, `ray-of-frost`,
-   etc.) and includes it in the lifecycle event sent to clients. The payload
-   structs remain authoritative and are serialized via the shared contract.
+3. When gameplay code enqueues an effect, it references the **catalog entry ID**
+   (e.g., `fireball`, `ray-of-frost`). Runtime assembly uses that ID to load the
+   composition, then reads the linked `contractId` (`projectile` in the example)
+   from the catalog entry to determine which payload struct to serialize. The
+   payload structs remain authoritative and are serialized via the shared
+   contract.
 
 ## Client Consumption
 
