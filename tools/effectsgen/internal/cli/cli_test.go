@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"mine-and-die/tools/effectsgen/internal/testutil"
 )
 
 func TestExecuteRequiresContractsFlag(t *testing.T) {
@@ -25,14 +27,7 @@ func TestExecuteRequiresContractsFlag(t *testing.T) {
 
 func TestExecuteRunsPipeline(t *testing.T) {
 	tempDir := t.TempDir()
-	contractsDir := filepath.Join(tempDir, "contracts")
-	if err := os.MkdirAll(contractsDir, 0o755); err != nil {
-		t.Fatalf("failed to create contracts dir: %v", err)
-	}
-	registryPath := filepath.Join(contractsDir, "registry.go")
-	if err := os.WriteFile(registryPath, []byte("package contract\n"), 0o644); err != nil {
-		t.Fatalf("failed to write registry stub: %v", err)
-	}
+	contractsDir, registryPath := testutil.WriteContractFixtures(t, tempDir)
 	definitionsPath := filepath.Join(tempDir, "definitions.json")
 	definitions := `[
   {
