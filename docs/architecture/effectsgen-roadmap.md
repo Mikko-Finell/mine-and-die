@@ -22,7 +22,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | Align runtime effect queue with catalog IDs | Update `server/effects_manager.go` and related callers so gameplay code enqueues catalog entry IDs while the runtime resolves the linked contract before serialization. | 🟢 Done | Gameplay intents now propagate designer entry IDs through the manager while resolving contracts. |
 | Surface catalog entry metadata to client runtime | Ensure generated bindings feed catalog metadata into `client/js-effects` so the effect runner can resolve compositions by entry ID without manual mirrors. | 🟡 In progress | Server now exposes catalog snapshot via `/join` and `/effects/catalog`; client wiring and generator output still pending. |
 | Scaffold code generator | Parse Go registry, map to TS AST, and emit modules under `client/generated/effects`. | 🟡 In progress | Workspace skeleton added in `tools/effectsgen`; CLI currently returns "not implemented". |
-| Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | ⚪ Planned | Guard against accidental contract drift. |
+| Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | 🟢 Done | Loader now rejects duplicate IDs/unknown contracts and survives missing sources. |
 | Enforce managed-by-client invariants | Extend `server/effects/catalog` validation so client-managed entries disable updates/end events and use single-tick lifetimes. | ⚪ Planned | Catch catalog mistakes like `attack`/`blood-splatter` before they ship. |
 
 ## Program Goals
