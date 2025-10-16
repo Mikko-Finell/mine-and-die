@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { startRenderLoop } from "../render.js";
 import { createEffectTestStore } from "./__helpers__/effect-test-store.js";
 import { ingestStateMessage } from "./__helpers__/ingest-state-message.js";
-import { EffectManager } from "../js-effects/manager.js";
+import { EffectManager } from "@js-effects/effects-lib";
 
 const ZERO_MOTION_MESSAGE =
   '{"ver":1,"type":"state","t":256,"sequence":812,"keyframeSeq":804,"serverTime":1710000000456,' +

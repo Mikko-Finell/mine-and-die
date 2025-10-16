@@ -4,6 +4,7 @@ export * from "./effects/bloodSplatter.js";
 export * from "./effects/impactBurst.js";
 export * from "./effects/meleeSwing.js";
 export * from "./effects/fire.js";
+export * from "./effects/rectZone.js";
 export * from "./manager.js";
 export * from "./presets.js";
 export * from "./rng.js";

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ensureEffectLifecycleState } from "../effect-lifecycle.js";
 import { startRenderLoop } from "../render.js";
-import { EffectManager } from "../js-effects/manager.js";
+import { EffectManager } from "@js-effects/effects-lib";
 import { createEffectTestStore } from "./__helpers__/effect-test-store.js";
 import { ingestStateMessage } from "./__helpers__/ingest-state-message.js";
 

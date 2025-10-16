@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { EffectManager } from "../js-effects/manager.js";
+import { EffectManager } from "@js-effects/effects-lib";
 import { __testing__ } from "../render.js";
 
 const {
