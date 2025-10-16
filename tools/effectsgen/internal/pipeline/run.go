@@ -19,12 +19,16 @@ type Options struct {
 	OutputPath string
 }
 
-// Run executes the effects contract generation pipeline. The current implementation loads the
-// designer-authored catalog definitions and emits a typed TypeScript snapshot that mirrors the
-// server metadata contract. Subsequent iterations will extend this to include generated payload
-// interfaces and registry bindings.
+// Run executes the effects contract generation pipeline. The current implementation parses the
+// Go contract registry, generates TypeScript interfaces for payload structs, and merges the
+// designer-authored catalog definitions into a typed module consumed by the client runtime.
 func Run(opts Options) error {
 	if err := validateOptions(opts); err != nil {
+		return err
+	}
+
+	definitions, decls, err := loadContractMetadata(opts.ContractsDir, opts.RegistryPath)
+	if err != nil {
 		return err
 	}
 
@@ -33,7 +37,7 @@ func Run(opts Options) error {
 		return err
 	}
 
-	module, err := generateEffectCatalogModule(entries)
+	module, err := generateEffectCatalogModule(definitions, decls, entries)
 	if err != nil {
 		return err
 	}

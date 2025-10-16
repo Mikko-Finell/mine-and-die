@@ -22,6 +22,7 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 | Align runtime effect queue with catalog IDs | Update `server/effects_manager.go` and related callers so gameplay code enqueues catalog entry IDs while the runtime resolves the linked contract before serialization. | 🟢 Done | Gameplay intents now propagate designer entry IDs through the manager while resolving contracts. |
 | Surface catalog entry metadata to client runtime | Ensure generated bindings feed catalog metadata into `client/js-effects` so the effect runner can resolve compositions by entry ID without manual mirrors. | 🟡 In progress | Server now exposes catalog snapshot via `/join` and `/effects/catalog`; client now normalizes the snapshot and exposes a subscription API for orchestrators, with generator-emitted catalog constants ready for wiring. |
 | Scaffold code generator | Parse Go registry, map to TS AST, and emit modules under `client/generated/effects`. | 🟡 In progress | Pipeline now validates inputs and emits a typed effect catalog snapshot to `client/generated/effect-contracts.ts`; contract payload typing still pending. |
+| Map Go payload structs to TS interfaces | Emit TypeScript interfaces from `server/effects/contract` payload structs and wire them into the generated module. | 🟢 Done | `tools/effectsgen` now parses the Go registry, generates payload interfaces, and maps spawn/update/end types into `client/generated/effect-contracts.ts`. |
 | Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | 🟢 Done | Loader now rejects duplicate IDs/unknown contracts and survives missing sources. |
 | Enforce managed-by-client invariants | Extend `server/effects/catalog` validation so client-managed entries disable updates/end events and use single-tick lifetimes. | ⚪ Planned | Catch catalog mistakes like `attack`/`blood-splatter` before they ship. |
 
@@ -35,4 +36,4 @@ This document tracks the engineering work needed to deliver the `effectsgen` too
 
 ## Suggested Next Task
 
-Map Go payload structs to TypeScript interfaces in the generated module so client builds receive contract typings alongside the catalog snapshot.
+Expand the generator to lift Go enum constants into TypeScript literal unions so client code narrows on values like `DeliveryKind` and `ImpactPolicy`.
