@@ -199,6 +199,142 @@ func TestResolverReloadOverrides(t *testing.T) {
 	}
 }
 
+func TestResolverRejectsDuplicateIDs(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+
+	duplicate := mustMarshal([]map[string]any{
+		{
+			"id":         "attack",
+			"contractId": "attack",
+			"definition": map[string]any{
+				"typeId":        "attack",
+				"delivery":      "area",
+				"shape":         "rect",
+				"motion":        "instant",
+				"impact":        "first-hit",
+				"lifetimeTicks": 1,
+				"client":        map[string]any{"sendSpawn": true, "sendEnd": true},
+				"end":           map[string]any{"kind": 1},
+			},
+		},
+		{
+			"id":         "attack",
+			"contractId": "attack",
+			"definition": map[string]any{
+				"typeId":        "attack",
+				"delivery":      "area",
+				"shape":         "rect",
+				"motion":        "instant",
+				"impact":        "first-hit",
+				"lifetimeTicks": 2,
+				"client":        map[string]any{"sendSpawn": true, "sendEnd": true},
+				"end":           map[string]any{"kind": 1},
+			},
+		},
+	})
+
+	resolver, err := NewResolver(reg, memorySource{path: "duplicate.json", data: duplicate})
+	if err == nil {
+		t.Fatalf("expected NewResolver to fail due to duplicate ids")
+	}
+	if resolver != nil {
+		t.Fatalf("expected resolver to be nil when duplicates are present")
+	}
+}
+
+func TestResolverRejectsUnknownContractID(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+
+	payload := mustMarshal([]map[string]any{{
+		"id":         "fireball",
+		"contractId": "fireball",
+		"definition": map[string]any{
+			"typeId":        "fireball",
+			"delivery":      "area",
+			"shape":         "circle",
+			"motion":        "linear",
+			"impact":        "first-hit",
+			"lifetimeTicks": 30,
+			"client":        map[string]any{"sendSpawn": true, "sendEnd": true},
+			"end":           map[string]any{"kind": 0},
+		},
+	}})
+
+	resolver, err := NewResolver(reg, memorySource{path: "unknown.json", data: payload})
+	if err == nil {
+		t.Fatalf("expected NewResolver to fail for unknown contract id")
+	}
+	if resolver != nil {
+		t.Fatalf("expected resolver to be nil when contract id is unknown")
+	}
+}
+
+func TestLoadIgnoresMissingFiles(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+
+	missing := filepath.Join(t.TempDir(), "does-not-exist.json")
+	resolver, err := Load(reg, missing)
+	if err != nil {
+		t.Fatalf("Load returned error for missing path: %v", err)
+	}
+	if resolver == nil {
+		t.Fatalf("expected resolver to be created even when files are missing")
+	}
+	if entries := resolver.Entries(); len(entries) != 0 {
+		t.Fatalf("expected no entries when sources are missing, got %d", len(entries))
+	}
+}
+
+func TestEntriesReturnClones(t *testing.T) {
+	reg := contract.Registry{
+		{ID: "attack", Spawn: contract.NoPayload, Update: contract.NoPayload, End: contract.NoPayload},
+	}
+	payload := mustMarshal([]map[string]any{{
+		"id":         "attack",
+		"contractId": "attack",
+		"definition": map[string]any{
+			"typeId":        "attack",
+			"delivery":      "area",
+			"shape":         "rect",
+			"motion":        "instant",
+			"impact":        "first-hit",
+			"lifetimeTicks": 1,
+			"client":        map[string]any{"sendSpawn": true, "sendEnd": true},
+			"end":           map[string]any{"kind": 1},
+		},
+	}})
+
+	resolver, err := NewResolver(reg, memorySource{path: "catalog.json", data: payload})
+	if err != nil {
+		t.Fatalf("failed to construct resolver: %v", err)
+	}
+
+	entries := resolver.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("expected single entry, got %d", len(entries))
+	}
+	entry := entries["attack"]
+	if entry.Blocks == nil {
+		entry.Blocks = make(map[string]json.RawMessage)
+	}
+	entry.Blocks["mutated"] = json.RawMessage(`"yes"`)
+	entry.ContractID = "mutated"
+
+	snapshot := resolver.Entries()
+	if snapshot["attack"].ContractID != "attack" {
+		t.Fatalf("expected resolver entries to remain unchanged after mutation")
+	}
+	if _, ok := snapshot["attack"].Blocks["mutated"]; ok {
+		t.Fatalf("expected cloned blocks to prevent external mutation")
+	}
+}
+
 func TestResolverRejectsUnknownContract(t *testing.T) {
 	reg := contract.Registry{}
 	entry := mustMarshal([]map[string]any{{
