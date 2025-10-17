@@ -36,6 +36,7 @@ describe("NetworkInputActionDispatcher", () => {
     dispatcher.sendAction("attack");
     dispatcher.sendCurrentIntent({ dx: 0, dy: 1, facing: "down" });
     dispatcher.cancelPath();
+    dispatcher.sendPathCommand({ x: 100, y: 200 });
 
     expect(sendMessage).not.toHaveBeenCalled();
   });
@@ -76,6 +77,25 @@ describe("NetworkInputActionDispatcher", () => {
     });
   });
 
+  it("dispatches path commands with metadata", () => {
+    const sendMessage = vi.fn();
+    const dispatcher = new NetworkInputActionDispatcher({
+      getProtocolVersion: () => 7,
+      getAcknowledgedTick: () => 256,
+      sendMessage,
+    });
+
+    dispatcher.sendPathCommand({ x: 320, y: 144 });
+
+    expect(sendMessage).toHaveBeenCalledWith({
+      type: "path",
+      x: 320,
+      y: 144,
+      ver: 7,
+      ack: 256,
+    });
+  });
+
   it("notifies hooks when intents and path commands are dispatched", () => {
     const sendMessage = vi.fn();
     const onIntent = vi.fn();
@@ -90,10 +110,12 @@ describe("NetworkInputActionDispatcher", () => {
 
     dispatcher.sendCurrentIntent({ dx: 0.5, dy: 0, facing: "right" });
     dispatcher.cancelPath();
+    dispatcher.sendPathCommand({ x: 12, y: 24 });
 
     expect(onIntent).toHaveBeenCalledTimes(1);
     expect(onIntent).toHaveBeenCalledWith({ dx: 0.5, dy: 0, facing: "right" });
-    expect(onPathCommand).toHaveBeenCalledTimes(1);
-    expect(onPathCommand).toHaveBeenCalledWith(false);
+    expect(onPathCommand).toHaveBeenCalledTimes(2);
+    expect(onPathCommand).toHaveBeenNthCalledWith(1, false);
+    expect(onPathCommand).toHaveBeenNthCalledWith(2, true);
   });
 });

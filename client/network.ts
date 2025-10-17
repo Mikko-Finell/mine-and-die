@@ -3,11 +3,17 @@ import {
   type EffectCatalogSnapshot,
 } from "./effect-catalog";
 
+export interface WorldConfigurationSnapshot {
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface JoinResponse {
   readonly id: string;
   readonly seed: string;
   readonly protocolVersion: number;
   readonly effectCatalog: EffectCatalogSnapshot;
+  readonly world: WorldConfigurationSnapshot;
 }
 
 export interface NetworkMessageEnvelope {
@@ -90,10 +96,20 @@ export class WebSocketNetworkClient implements NetworkClient {
 
     const config = joinPayload.config as {
       readonly seed?: unknown;
+      readonly width?: unknown;
+      readonly height?: unknown;
       readonly effectCatalog?: unknown;
     };
     if (typeof config.seed !== "string" || config.seed.length === 0) {
       throw new Error("Join response missing world seed.");
+    }
+
+    if (typeof config.width !== "number" || !Number.isFinite(config.width)) {
+      throw new Error("Join response missing world width.");
+    }
+
+    if (typeof config.height !== "number" || !Number.isFinite(config.height)) {
+      throw new Error("Join response missing world height.");
     }
 
     if (typeof joinPayload.ver !== "number") {
@@ -108,11 +124,17 @@ export class WebSocketNetworkClient implements NetworkClient {
       );
     }
 
+    const world: WorldConfigurationSnapshot = {
+      width: config.width,
+      height: config.height,
+    };
+
     const joinResponse: JoinResponse = {
       id: joinPayload.id,
       seed: config.seed,
       protocolVersion: joinPayload.ver,
       effectCatalog,
+      world,
     };
 
     this.joinResponse = joinResponse;

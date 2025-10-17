@@ -59,8 +59,8 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 * 🟢 **Keyboard input capture and dispatcher plumbing**
   `client/main.ts` boots `KeyboardInputController` with `InMemoryInputStore`, handing dispatch to `GameClientOrchestrator.createInputDispatcher`; tests in `client/__tests__/client-manager.test.ts` assert protocol metadata, pause-on-resync, and hook notifications for intents/path cancels.
-* 🟡 **Pointer navigation command hooks**
-  TODO: wire canvas pointer interactions in `client/main.ts` to emit path requests via `client/input.ts` dispatcher, updating `InputStore` path state and covering resync throttling in headless harness tests.
+* 🟢 **Pointer navigation command hooks**
+  `client/main.ts` now routes canvas pointer interactions through the input dispatcher to emit `path` and `cancelPath` commands, updating `InMemoryInputStore` path state via dispatcher hooks with harness coverage validating resync pause behaviour.
 
 ### Planned (to finish Phase 4)
 
@@ -96,10 +96,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Implement pointer-based path navigation dispatch.**
+**Track pointer path targets for UI feedback.**
 
 **Acceptance criteria**
 
-* `client/main.ts` captures canvas pointer interactions and forwards them through the input dispatcher to emit `moveTo` and `cancelPath` commands.
-* `client/input.ts`/`InputStore` keep `pathActive` in sync when pointer commands fire so keyboard-driven cancellations remain coherent.
-* Headless harness coverage asserts pointer-derived path commands respect resync pauses before resuming dispatch.
+* `client/input.ts` persists the most recent pointer target coordinates alongside `pathActive` state and exposes a getter for UI consumers.
+* `client/main.ts` or a dedicated view model publishes the active path target so `client/render.ts` can draw a navigation marker while a path is active.
+* Tests under `client/__tests__` cover target persistence across dispatch pauses and ensure cancellations or resyncs clear the stored pointer target.

@@ -16,6 +16,7 @@ import type {
   NetworkClientConfiguration,
   NetworkEventHandlers,
   NetworkMessageEnvelope,
+  WorldConfigurationSnapshot,
 } from "../../network";
 import type {
   RenderBatch,
@@ -60,6 +61,10 @@ export const createJoinResponse = (
   seed: "seed",
   protocolVersion: 1,
   effectCatalog: normalizeEffectCatalog(catalog),
+  world: (overrides.world as WorldConfigurationSnapshot | undefined) ?? {
+    width: defaultRendererConfiguration.dimensions.width,
+    height: defaultRendererConfiguration.dimensions.height,
+  },
   ...overrides,
 });
 
