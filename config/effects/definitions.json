@@ -16,6 +16,9 @@
         "sendSpawn": true,
         "sendUpdates": false,
         "sendEnd": false
+      },
+      "end": {
+        "kind": 1
       }
     },
     "jsEffect": "melee/swing",
@@ -127,6 +130,9 @@
         "sendSpawn": true,
         "sendUpdates": false,
         "sendEnd": false
+      },
+      "end": {
+        "kind": 0
       }
     },
     "jsEffect": "visual/blood-splatter",

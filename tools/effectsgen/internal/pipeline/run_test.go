@@ -19,7 +19,8 @@ func TestRunGeneratesEffectCatalogModule(t *testing.T) {
     "contractId": "fireball",
     "definition": {
       "typeId": "fireball",
-      "client": {"sendSpawn": true}
+      "client": {"sendSpawn": true},
+      "end": {"kind": 0}
     },
     "jsEffect": "projectile/fireball",
     "parameters": {"speed": 320}
@@ -27,7 +28,10 @@ func TestRunGeneratesEffectCatalogModule(t *testing.T) {
   {
     "id": "attack",
     "contractId": "attack",
-    "definition": {"typeId": "attack"}
+    "definition": {
+      "typeId": "attack",
+      "end": {"kind": 1}
+    }
   }
 ]`
 	if err := os.WriteFile(definitionsPath, []byte(definitions), 0o644); err != nil {
@@ -104,7 +108,7 @@ export type EffectContractID = keyof EffectContractMap;
 export type EffectCatalogEntry = {
   readonly contractId: string;
   readonly managedByClient: boolean;
-  readonly definition: Readonly<Record<string, unknown>>;
+  readonly definition: EffectDefinition;
   readonly blocks: Readonly<Record<string, unknown>>;
 };
 
@@ -113,7 +117,10 @@ export const effectCatalog = {
     "contractId": "attack",
     "managedByClient": true,
     "definition": {
-        "typeId": "attack"
+        "typeId": "attack",
+        "end": {
+          "kind": 1
+        }
       },
     "blocks": {},
   },
@@ -124,6 +131,9 @@ export const effectCatalog = {
         "typeId": "fireball",
         "client": {
           "sendSpawn": true
+        },
+        "end": {
+          "kind": 0
         }
       },
     "blocks": {
