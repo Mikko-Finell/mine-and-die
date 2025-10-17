@@ -260,17 +260,17 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		return
 	}
 	eff := &effectState{
-		Effect: Effect{
-			Type:   effectTypeBurningTick,
-			Owner:  owner,
-			Start:  now.UnixMilli(),
-			Params: map[string]float64{"healthDelta": delta},
-		},
+		Type:               effectTypeBurningTick,
+		Owner:              owner,
+		Start:              now.UnixMilli(),
+		Params:             map[string]float64{"healthDelta": delta},
+		Instance:           effectcontract.EffectInstance{DefinitionID: effectTypeBurningTick, OwnerActorID: owner, StartTick: effectcontract.Tick(int64(w.currentTick))},
 		StatusEffect:       status,
 		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
-	if eff.Effect.Owner == "" {
-		eff.Effect.Owner = actor.ID
+	if eff.Owner == "" {
+		eff.Owner = actor.ID
+		eff.Instance.OwnerActorID = actor.ID
 	}
 	w.applyEffectHitActor(eff, actor, now)
 	w.flushEffectTelemetry(eff)
@@ -288,18 +288,18 @@ func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, l
 	width := playerHalf * 2
 	height := playerHalf * 2
 	start := now.UnixMilli()
+	instanceID := fmt.Sprintf("effect-%d", w.nextEffectID)
 	eff := &effectState{
-		Effect: Effect{
-			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
-			Type:     effectType,
-			Owner:    actor.ID,
-			Start:    start,
-			Duration: lifetime.Milliseconds(),
-			X:        actor.X - width/2,
-			Y:        actor.Y - height/2,
-			Width:    width,
-			Height:   height,
-		},
+		ID:                 instanceID,
+		Type:               effectType,
+		Owner:              actor.ID,
+		Start:              start,
+		Duration:           lifetime.Milliseconds(),
+		X:                  actor.X - width/2,
+		Y:                  actor.Y - height/2,
+		Width:              width,
+		Height:             height,
+		Instance:           effectcontract.EffectInstance{ID: instanceID, DefinitionID: effectType, OwnerActorID: actor.ID, StartTick: effectcontract.Tick(int64(w.currentTick))},
 		expiresAt:          now.Add(lifetime),
 		FollowActorID:      actor.ID,
 		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
@@ -319,15 +319,15 @@ func (w *World) extendAttachedEffect(eff *effectState, expiresAt time.Time) {
 		return
 	}
 	eff.expiresAt = expiresAt
-	start := time.UnixMilli(eff.Effect.Start)
-	if eff.Effect.Start == 0 {
+	start := time.UnixMilli(eff.Start)
+	if eff.Start == 0 {
 		start = expiresAt
 	}
 	duration := expiresAt.Sub(start)
 	if duration < 0 {
 		duration = 0
 	}
-	eff.Effect.Duration = duration.Milliseconds()
+	eff.Duration = duration.Milliseconds()
 }
 
 func (w *World) expireAttachedEffect(eff *effectState, now time.Time) {
@@ -338,15 +338,15 @@ func (w *World) expireAttachedEffect(eff *effectState, now time.Time) {
 	if now.Before(eff.expiresAt) {
 		eff.expiresAt = now
 	}
-	start := time.UnixMilli(eff.Effect.Start)
-	if eff.Effect.Start == 0 {
+	start := time.UnixMilli(eff.Start)
+	if eff.Start == 0 {
 		start = now
 	}
 	duration := now.Sub(start)
 	if duration < 0 {
 		duration = 0
 	}
-	eff.Effect.Duration = duration.Milliseconds()
+	eff.Duration = duration.Milliseconds()
 	if shouldRecord {
 		w.recordEffectEnd(eff, "status-effect-expire")
 	}

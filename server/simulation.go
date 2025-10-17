@@ -66,9 +66,8 @@ type HeartbeatCommand struct {
 type World struct {
 	players map[string]*playerState
 	npcs    map[string]*npcState
-	// LEGACY: effects/effectTriggers/nextEffectID maintain the pre-contract
-	// snapshot pipeline. They stay populated for compatibility until
-	// effectsgen removes the legacy effectState runtime.
+	// effects/effectTriggers/nextEffectID track contract-managed runtime state
+	// and author the telemetry snapshots consumed by gameplay and analytics.
 	effects             []*effectState
 	effectsByID         map[string]*effectState
 	effectsIndex        *effectSpatialIndex

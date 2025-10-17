@@ -673,18 +673,17 @@ func (m *EffectManager) meleeEffectForInstance(instance *effectcontract.EffectIn
 		params["width"] = meleeAttackWidth
 	}
 	effect := &effectState{
-		Effect: Effect{
-			ID:       instance.ID,
-			Type:     instance.DefinitionID,
-			Owner:    instance.OwnerActorID,
-			Start:    now.UnixMilli(),
-			Duration: meleeAttackDuration.Milliseconds(),
-			X:        rectX,
-			Y:        rectY,
-			Width:    width,
-			Height:   height,
-			Params:   params,
-		},
+		ID:                 instance.ID,
+		Type:               instance.DefinitionID,
+		Owner:              instance.OwnerActorID,
+		Start:              now.UnixMilli(),
+		Duration:           meleeAttackDuration.Milliseconds(),
+		X:                  rectX,
+		Y:                  rectY,
+		Width:              width,
+		Height:             height,
+		Params:             params,
+		Instance:           *instance,
 		telemetrySpawnTick: instance.StartTick,
 	}
 	area := Obstacle{X: rectX, Y: rectY, Width: width, Height: height}
@@ -714,15 +713,15 @@ func (m *EffectManager) syncProjectileInstance(instance *effectcontract.EffectIn
 		}
 	}
 	geometry := instance.DeliveryState.Geometry
-	if effect.Effect.Width > 0 {
-		geometry.Width = quantizeWorldCoord(effect.Effect.Width)
+	if effect.Width > 0 {
+		geometry.Width = quantizeWorldCoord(effect.Width)
 	}
-	if effect.Effect.Height > 0 {
-		geometry.Height = quantizeWorldCoord(effect.Effect.Height)
+	if effect.Height > 0 {
+		geometry.Height = quantizeWorldCoord(effect.Height)
 	}
-	radius := effect.Effect.Params["radius"]
+	radius := effect.Params["radius"]
 	if radius <= 0 {
-		radius = effect.Effect.Width / 2
+		radius = effect.Width / 2
 	}
 	geometry.Radius = quantizeWorldCoord(radius)
 	if owner != nil {
@@ -749,11 +748,11 @@ func (m *EffectManager) syncStatusVisualInstance(instance *effectcontract.Effect
 		return
 	}
 	geometry := instance.DeliveryState.Geometry
-	width := effect.Effect.Width
+	width := effect.Width
 	if width <= 0 {
 		width = playerHalf * 2
 	}
-	height := effect.Effect.Height
+	height := effect.Height
 	if height <= 0 {
 		height = playerHalf * 2
 	}
@@ -790,7 +789,8 @@ func (m *EffectManager) spawnStatusVisualFromInstance(instance *effectcontract.E
 		return nil
 	}
 	effect.contractManaged = true
-	effect.Effect.ID = instance.ID
+	effect.ID = instance.ID
+	effect.Instance = *instance
 	effect.StatusEffect = StatusEffectBurning
 	effect.FollowActorID = actor.ID
 	effect.telemetrySpawnTick = instance.StartTick
@@ -844,11 +844,11 @@ func (m *EffectManager) syncBloodDecalInstance(instance *effectcontract.EffectIn
 		return
 	}
 	geometry := instance.DeliveryState.Geometry
-	width := effect.Effect.Width
+	width := effect.Width
 	if width <= 0 {
 		width = playerHalf * 2
 	}
-	height := effect.Effect.Height
+	height := effect.Height
 	if height <= 0 {
 		height = playerHalf * 2
 	}

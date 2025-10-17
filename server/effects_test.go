@@ -36,7 +36,7 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 	}
 	w.npcs[npc.ID] = npc
 
-	effect := &effectState{Effect: Effect{Type: effectTypeAttack}}
+	effect := &effectState{Type: effectTypeAttack}
 	area := Obstacle{X: 0, Y: 0, Width: 64, Height: 64}
 
 	w.resolveMeleeImpact(effect, &npc.actorState, npc.ID, 1, time.Now(), area)
