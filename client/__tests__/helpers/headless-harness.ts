@@ -1,6 +1,15 @@
-import { GameClientOrchestrator, type ClientManagerConfiguration } from "../../client-manager";
+import {
+  GameClientOrchestrator,
+  type ClientManagerConfiguration,
+} from "../../client-manager";
 import { normalizeEffectCatalog } from "../../effect-catalog";
 import type { EffectCatalogEntry } from "../../generated/effect-contracts";
+import type {
+  ContractLifecycleBatch,
+  ContractLifecycleEndEvent,
+  ContractLifecycleSpawnEvent,
+  ContractLifecycleUpdateEvent,
+} from "../../effect-lifecycle-store";
 import type {
   JoinResponse,
   NetworkClient,
@@ -56,6 +65,7 @@ export const createJoinResponse = (
 
 export class HeadlessNetworkClient implements NetworkClient {
   private handlers: NetworkEventHandlers | null = null;
+  public readonly sentMessages: unknown[] = [];
 
   constructor(
     public readonly configuration: NetworkClientConfiguration,
@@ -75,7 +85,9 @@ export class HeadlessNetworkClient implements NetworkClient {
     this.handlers = null;
   }
 
-  send(_data: unknown): void {}
+  send(data: unknown): void {
+    this.sentMessages.push(data);
+  }
 
   emit(message: NetworkMessageEnvelope): void {
     this.handlers?.onMessage?.(message);
@@ -125,6 +137,21 @@ export interface HeadlessHarness {
   renderer: HeadlessRenderer;
   orchestrator: GameClientOrchestrator;
   worldState: InMemoryWorldStateStore;
+  emitLifecycleState: (options: HeadlessLifecycleStateOptions) => void;
+}
+
+export interface HeadlessLifecycleStateOptions {
+  readonly spawns?: readonly ContractLifecycleSpawnEvent[];
+  readonly updates?: readonly ContractLifecycleUpdateEvent[];
+  readonly ends?: readonly ContractLifecycleEndEvent[];
+  readonly cursors?: ContractLifecycleBatch["cursors"];
+  readonly tick?: number | null;
+  readonly sequence?: number | null;
+  readonly keyframeSequence?: number | null;
+  readonly resync?: boolean;
+  readonly config?: Record<string, unknown>;
+  readonly payload?: Record<string, unknown>;
+  readonly receivedAt?: number;
 }
 
 export const createHeadlessHarness = ({
@@ -156,5 +183,59 @@ export const createHeadlessHarness = ({
     },
   );
 
-  return { joinResponse, network, renderer, orchestrator, worldState };
+  const emitLifecycleState = ({
+    spawns,
+    updates,
+    ends,
+    cursors,
+    tick,
+    sequence,
+    keyframeSequence,
+    resync,
+    config,
+    payload,
+    receivedAt,
+  }: HeadlessLifecycleStateOptions): void => {
+    const messagePayload: Record<string, unknown> = payload ? { ...payload } : {};
+
+    if (Array.isArray(spawns) && spawns.length > 0) {
+      messagePayload.effect_spawned = spawns;
+    }
+    if (Array.isArray(updates) && updates.length > 0) {
+      messagePayload.effect_update = updates;
+    }
+    if (Array.isArray(ends) && ends.length > 0) {
+      messagePayload.effect_ended = ends;
+    }
+    if (cursors) {
+      const hasEntries =
+        cursors instanceof Map ? cursors.size > 0 : Object.keys(cursors as Record<string, number>).length > 0;
+      if (hasEntries) {
+        messagePayload.effect_seq_cursors = cursors;
+      }
+    }
+    if (typeof tick === "number") {
+      messagePayload.t = tick;
+    }
+    if (typeof sequence === "number") {
+      messagePayload.sequence = sequence;
+    }
+    if (typeof keyframeSequence === "number") {
+      messagePayload.keyframeSeq = keyframeSequence;
+    }
+    if (resync) {
+      messagePayload.resync = true;
+    }
+    if (config) {
+      messagePayload.config = config;
+    }
+
+    network.emit({
+      type: "state",
+      payload: messagePayload,
+      receivedAt: receivedAt ?? Date.now(),
+    });
+  };
+
+  return { joinResponse, network, renderer, orchestrator, worldState, emitLifecycleState };
 };
