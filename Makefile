@@ -1,4 +1,10 @@
-.PHONY: run sync stop cleanbranches test
+.PHONY: build run sync stop cleanbranches test
+
+build:
+	@npm install
+	@npm run build
+	@mkdir -p server/bin
+	@(cd server && go build -o bin/server .)
 
 run:
 	SYNC=0 FOLLOW=0 ./dev-follow.sh
