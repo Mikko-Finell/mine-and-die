@@ -77,6 +77,69 @@ func generateEffectCatalogModule(definitions []contractDefinition, decls tsDecla
 
 	builder.WriteString("export type EffectContractID = keyof EffectContractMap;\n\n")
 
+	builder.WriteString("export type Phantom<T> = {\n")
+	builder.WriteString("  readonly __phantom?: (t: T) => T;\n")
+	builder.WriteString("};\n\n")
+
+	builder.WriteString("export interface LifecyclePayloadMetadata<TPayload> extends Phantom<TPayload> {\n")
+	builder.WriteString("  readonly hasPayload: boolean;\n")
+	builder.WriteString("}\n\n")
+
+	builder.WriteString("export interface EffectContractMetadata<TSpawn, TUpdate, TEnd> {\n")
+	builder.WriteString("  readonly id: EffectContractID;\n")
+	builder.WriteString("  readonly managedByClient: boolean;\n")
+	builder.WriteString("  readonly spawn: LifecyclePayloadMetadata<TSpawn>;\n")
+	builder.WriteString("  readonly update: LifecyclePayloadMetadata<TUpdate>;\n")
+	builder.WriteString("  readonly end: LifecyclePayloadMetadata<TEnd>;\n")
+	builder.WriteString("}\n\n")
+
+	builder.WriteString("export type EffectContractMetadataMap = {\n")
+	builder.WriteString("  readonly [TContract in EffectContractID]: EffectContractMetadata<\n")
+	builder.WriteString("    EffectContractMap[TContract][\"spawn\"],\n")
+	builder.WriteString("    EffectContractMap[TContract][\"update\"],\n")
+	builder.WriteString("    EffectContractMap[TContract][\"end\"]\n")
+	builder.WriteString("  >;\n")
+	builder.WriteString("};\n\n")
+
+	builder.WriteString("export const effectContracts = {\n")
+
+	for _, def := range definitions {
+		builder.WriteString("  ")
+		builder.WriteString(strconv.Quote(def.ID))
+		builder.WriteString(": {\n")
+
+		builder.WriteString("    id: ")
+		builder.WriteString(strconv.Quote(def.ID))
+		builder.WriteString(",\n")
+
+		builder.WriteString("    managedByClient: ")
+		builder.WriteString(strconv.FormatBool(def.ClientOwned))
+		builder.WriteString(",\n")
+
+		builder.WriteString("    spawn: ")
+		writeLifecycleMetadata(&builder, def.Spawn)
+		builder.WriteString(",\n")
+
+		builder.WriteString("    update: ")
+		writeLifecycleMetadata(&builder, def.Update)
+		builder.WriteString(",\n")
+
+		builder.WriteString("    end: ")
+		writeLifecycleMetadata(&builder, def.End)
+		builder.WriteString(",\n")
+
+		builder.WriteString("  },\n")
+	}
+
+	builder.WriteString("} as const satisfies EffectContractMetadataMap;\n\n")
+	builder.WriteString("export type EffectContracts = typeof effectContracts;\n\n")
+
+	builder.WriteString("export function getContractMeta<TContract extends EffectContractID>(\n")
+	builder.WriteString("  contractId: TContract,\n")
+	builder.WriteString("): EffectContractMetadataMap[TContract] {\n")
+	builder.WriteString("  return effectContracts[contractId];\n")
+	builder.WriteString("}\n\n")
+
 	builder.WriteString("export type EffectCatalogEntry = {\n")
 	builder.WriteString("  readonly contractId: string;\n")
 	builder.WriteString("  readonly managedByClient: boolean;\n")
@@ -178,4 +241,12 @@ func formatJSONValue(raw json.RawMessage, indent string) (string, error) {
 	default:
 		return string(trimmed), nil
 	}
+}
+
+func writeLifecycleMetadata(builder *strings.Builder, binding payloadBinding) {
+	builder.WriteString("{\n")
+	builder.WriteString("      hasPayload: ")
+	builder.WriteString(strconv.FormatBool(!binding.IsNoPayload))
+	builder.WriteString(",\n")
+	builder.WriteString("    }")
 }

@@ -187,6 +187,106 @@ export type EffectContractMap = {
 
 export type EffectContractID = keyof EffectContractMap;
 
+export type Phantom<T> = {
+  readonly __phantom?: (t: T) => T;
+};
+
+export interface LifecyclePayloadMetadata<TPayload> extends Phantom<TPayload> {
+  readonly hasPayload: boolean;
+}
+
+export interface EffectContractMetadata<TSpawn, TUpdate, TEnd> {
+  readonly id: EffectContractID;
+  readonly managedByClient: boolean;
+  readonly spawn: LifecyclePayloadMetadata<TSpawn>;
+  readonly update: LifecyclePayloadMetadata<TUpdate>;
+  readonly end: LifecyclePayloadMetadata<TEnd>;
+}
+
+export type EffectContractMetadataMap = {
+  readonly [TContract in EffectContractID]: EffectContractMetadata<
+    EffectContractMap[TContract]["spawn"],
+    EffectContractMap[TContract]["update"],
+    EffectContractMap[TContract]["end"]
+  >;
+};
+
+export const effectContracts = {
+  "attack": {
+    id: "attack",
+    managedByClient: true,
+    spawn: {
+      hasPayload: true,
+    },
+    update: {
+      hasPayload: true,
+    },
+    end: {
+      hasPayload: true,
+    },
+  },
+  "blood-splatter": {
+    id: "blood-splatter",
+    managedByClient: true,
+    spawn: {
+      hasPayload: true,
+    },
+    update: {
+      hasPayload: true,
+    },
+    end: {
+      hasPayload: true,
+    },
+  },
+  "burning-tick": {
+    id: "burning-tick",
+    managedByClient: false,
+    spawn: {
+      hasPayload: true,
+    },
+    update: {
+      hasPayload: true,
+    },
+    end: {
+      hasPayload: true,
+    },
+  },
+  "fire": {
+    id: "fire",
+    managedByClient: false,
+    spawn: {
+      hasPayload: true,
+    },
+    update: {
+      hasPayload: true,
+    },
+    end: {
+      hasPayload: true,
+    },
+  },
+  "fireball": {
+    id: "fireball",
+    managedByClient: false,
+    spawn: {
+      hasPayload: true,
+    },
+    update: {
+      hasPayload: true,
+    },
+    end: {
+      hasPayload: true,
+    },
+  },
+} as const satisfies EffectContractMetadataMap;
+
+export type EffectContracts = typeof effectContracts;
+
+export function getContractMeta<TContract extends EffectContractID>(
+  contractId: TContract,
+): EffectContractMetadataMap[TContract] {
+  return effectContracts[contractId];
+}
+
 export type EffectCatalogEntry = {
   readonly contractId: string;
   readonly managedByClient: boolean;
