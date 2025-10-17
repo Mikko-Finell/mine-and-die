@@ -16,12 +16,30 @@ export interface InputStateSnapshot {
   readonly pathActive: boolean;
 }
 
+export interface InputKeyState {
+  readonly pressedKeys: ReadonlySet<string>;
+  readonly directionOrder: readonly string[];
+}
+
 export interface InputStore {
   readonly getState: () => InputStateSnapshot;
   readonly setIntent: (intent: PlayerIntent) => void;
   readonly updateFacing: (facing: FacingDirection) => void;
   readonly toggleCameraLock?: () => void;
   readonly setPathActive?: (pathActive: boolean) => void;
+  readonly setKeyState?: (state: InputKeyState) => void;
+}
+
+export interface InputStoreOptions {
+  readonly initialFacing?: FacingDirection;
+  readonly initialPathActive?: boolean;
+  readonly initialPressedKeys?: Iterable<string>;
+  readonly initialDirectionOrder?: readonly string[];
+  readonly initialCameraLocked?: boolean;
+  readonly onIntentChanged?: (intent: PlayerIntent) => void;
+  readonly onFacingChanged?: (facing: FacingDirection) => void;
+  readonly onPathActiveChanged?: (pathActive: boolean) => void;
+  readonly onCameraLockToggle?: (locked: boolean) => void;
 }
 
 export interface InputActionDispatcher {
@@ -79,6 +97,107 @@ const clampFinite = (value: number): number => {
   }
   return value;
 };
+
+const cloneIntent = (intent: PlayerIntent): PlayerIntent => ({
+  dx: intent.dx,
+  dy: intent.dy,
+  facing: intent.facing,
+});
+
+const normalizeKeyCollection = (keys: Iterable<string>): Set<string> => {
+  const normalized = new Set<string>();
+  for (const key of keys) {
+    if (typeof key === "string" && key.length > 0) {
+      normalized.add(key.toLowerCase());
+    }
+  }
+  return normalized;
+};
+
+const normalizeDirectionOrder = (keys: readonly string[]): string[] =>
+  keys.map((key) => key.toLowerCase()).filter((key) => key.length > 0);
+
+export class InMemoryInputStore implements InputStore {
+  private readonly onIntentChanged?: (intent: PlayerIntent) => void;
+  private readonly onFacingChanged?: (facing: FacingDirection) => void;
+  private readonly onPathActiveChanged?: (pathActive: boolean) => void;
+  private readonly onCameraLockToggle?: (locked: boolean) => void;
+
+  private readonly pressedKeys: Set<string>;
+  private directionOrder: string[];
+  private currentFacing: FacingDirection;
+  private pathActive: boolean;
+  private cameraLocked: boolean;
+  private lastIntent: PlayerIntent;
+
+  constructor(options: InputStoreOptions = {}) {
+    this.onIntentChanged = options.onIntentChanged;
+    this.onFacingChanged = options.onFacingChanged;
+    this.onPathActiveChanged = options.onPathActiveChanged;
+    this.onCameraLockToggle = options.onCameraLockToggle;
+    this.pressedKeys = normalizeKeyCollection(options.initialPressedKeys ?? []);
+    this.directionOrder = normalizeDirectionOrder(options.initialDirectionOrder ?? []);
+    this.currentFacing = options.initialFacing ?? DEFAULT_FACING;
+    this.pathActive = options.initialPathActive ?? false;
+    this.cameraLocked = options.initialCameraLocked ?? false;
+    this.lastIntent = { dx: 0, dy: 0, facing: this.currentFacing };
+  }
+
+  getState(): InputStateSnapshot {
+    return {
+      pressedKeys: new Set(this.pressedKeys),
+      directionOrder: [...this.directionOrder],
+      currentFacing: this.currentFacing,
+      pathActive: this.pathActive,
+    };
+  }
+
+  setIntent(intent: PlayerIntent): void {
+    const snapshot = cloneIntent(intent);
+    this.lastIntent = snapshot;
+    this.currentFacing = snapshot.facing;
+    this.onIntentChanged?.(cloneIntent(snapshot));
+  }
+
+  updateFacing(facing: FacingDirection): void {
+    if (this.currentFacing === facing) {
+      return;
+    }
+    this.currentFacing = facing;
+    this.onFacingChanged?.(facing);
+  }
+
+  toggleCameraLock(): void {
+    this.cameraLocked = !this.cameraLocked;
+    this.onCameraLockToggle?.(this.cameraLocked);
+  }
+
+  setPathActive(pathActive: boolean): void {
+    if (this.pathActive === pathActive) {
+      return;
+    }
+    this.pathActive = pathActive;
+    this.onPathActiveChanged?.(pathActive);
+  }
+
+  setKeyState(state: InputKeyState): void {
+    this.pressedKeys.clear();
+    for (const key of state.pressedKeys) {
+      if (typeof key === "string" && key.length > 0) {
+        this.pressedKeys.add(key.toLowerCase());
+      }
+    }
+    this.directionOrder = normalizeDirectionOrder(state.directionOrder);
+  }
+
+  isCameraLocked(): boolean {
+    return this.cameraLocked;
+  }
+
+  getLastIntent(): PlayerIntent {
+    return cloneIntent(this.lastIntent);
+  }
+}
 
 export class NetworkInputActionDispatcher implements InputActionDispatcher {
   constructor(private readonly options: DispatcherOptions) {}
@@ -169,6 +288,7 @@ export class KeyboardInputController implements InputController {
 
     this.pressedKeys.clear();
     this.directionOrder = [];
+    this.publishKeyStateSnapshot();
     const { store } = this.configuration;
     const state = store.getState();
     const facing = state.currentFacing ?? DEFAULT_FACING;
@@ -259,14 +379,15 @@ export class KeyboardInputController implements InputController {
 
       if (!this.pressedKeys.has(normalizedKey)) {
         this.directionOrder = this.directionOrder.filter((entry) => entry !== normalizedKey);
-        this.directionOrder.push(normalizedKey);
-      }
-      this.pressedKeys.add(normalizedKey);
-    } else {
-      this.pressedKeys.delete(normalizedKey);
-      this.directionOrder = this.directionOrder.filter((entry) => entry !== normalizedKey);
+      this.directionOrder.push(normalizedKey);
     }
+    this.pressedKeys.add(normalizedKey);
+  } else {
+    this.pressedKeys.delete(normalizedKey);
+    this.directionOrder = this.directionOrder.filter((entry) => entry !== normalizedKey);
+  }
 
+    this.publishKeyStateSnapshot();
     this.updateIntentFromKeys();
   }
 
@@ -349,5 +470,12 @@ export class KeyboardInputController implements InputController {
     this.configuration.store.setIntent(intent);
     this.configuration.dispatcher.sendCurrentIntent(intent);
     this.lastIntent = intent;
+  }
+
+  private publishKeyStateSnapshot(): void {
+    this.configuration.store.setKeyState?.({
+      pressedKeys: this.pressedKeys,
+      directionOrder: this.directionOrder,
+    });
   }
 }

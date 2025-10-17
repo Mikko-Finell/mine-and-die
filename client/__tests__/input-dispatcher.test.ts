@@ -75,4 +75,25 @@ describe("NetworkInputActionDispatcher", () => {
       ack: 128,
     });
   });
+
+  it("notifies hooks when intents and path commands are dispatched", () => {
+    const sendMessage = vi.fn();
+    const onIntent = vi.fn();
+    const onPathCommand = vi.fn();
+    const dispatcher = new NetworkInputActionDispatcher({
+      getProtocolVersion: () => null,
+      getAcknowledgedTick: () => null,
+      sendMessage,
+      onIntentDispatched: onIntent,
+      onPathCommand,
+    });
+
+    dispatcher.sendCurrentIntent({ dx: 0.5, dy: 0, facing: "right" });
+    dispatcher.cancelPath();
+
+    expect(onIntent).toHaveBeenCalledTimes(1);
+    expect(onIntent).toHaveBeenCalledWith({ dx: 0.5, dy: 0, facing: "right" });
+    expect(onPathCommand).toHaveBeenCalledTimes(1);
+    expect(onPathCommand).toHaveBeenCalledWith(false);
+  });
 });

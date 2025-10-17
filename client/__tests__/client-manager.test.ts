@@ -107,4 +107,52 @@ describe("GameClientOrchestrator", () => {
     expect(cleared).toBeDefined();
     expect(cleared!.animations.length).toBe(0);
   });
+
+  test("input dispatcher attaches metadata, respects pause, and notifies hooks", async () => {
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const onPathCommand = vi.fn();
+    const dispatcher = orchestrator.createInputDispatcher({ onPathCommand });
+
+    dispatcher.sendAction("attack");
+    expect(network.sentMessages).toHaveLength(0);
+
+    emitLifecycleState({ tick: 8, receivedAt: 1000 });
+
+    dispatcher.sendAction("attack");
+    expect(network.sentMessages).toHaveLength(1);
+    expect(network.sentMessages[0]).toEqual({ type: "action", action: "attack", ver: 1, ack: 8 });
+
+    dispatcher.sendCurrentIntent({ dx: 1.2, dy: 0, facing: "right" });
+    expect(network.sentMessages).toHaveLength(2);
+    expect(network.sentMessages[1]).toEqual({
+      type: "input",
+      dx: 1,
+      dy: 0,
+      facing: "right",
+      ver: 1,
+      ack: 8,
+    });
+
+    dispatcher.cancelPath();
+    expect(network.sentMessages).toHaveLength(3);
+    expect(network.sentMessages[2]).toEqual({ type: "cancelPath", ver: 1, ack: 8 });
+    expect(onPathCommand).toHaveBeenCalledWith(false);
+
+    emitLifecycleState({ resync: true, receivedAt: 1500 });
+    dispatcher.sendAction("attack");
+    expect(network.sentMessages).toHaveLength(4);
+    expect(network.sentMessages[3]).toEqual({ type: "action", action: "attack", ver: 1 });
+    expect(network.sentMessages[3]).not.toHaveProperty("ack");
+
+    emitLifecycleState({ tick: 11, receivedAt: 1600 });
+    dispatcher.sendAction("attack");
+    expect(network.sentMessages).toHaveLength(5);
+    expect(network.sentMessages[4]).toEqual({ type: "action", action: "attack", ver: 1, ack: 11 });
+
+    await orchestrator.shutdown();
+  });
 });

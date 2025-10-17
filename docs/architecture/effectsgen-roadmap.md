@@ -57,8 +57,10 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Keyframe request triggers for patch sequence gaps**
   `client/client-manager.ts` tracks lifecycle patch sequences, raises a keyframe request when the hub skips ahead, and the headless harness asserts only one retry is issued before playback catches up.
 
-* 🟡 **Keyboard input capture and dispatcher plumbing**
-  `client/input.ts` now registers DOM keyboard listeners, normalises intents, and streams actions through `client/client-manager.ts` so payloads include protocol metadata and pause during resync.
+* 🟢 **Keyboard input capture and dispatcher plumbing**
+  `client/main.ts` boots `KeyboardInputController` with `InMemoryInputStore`, handing dispatch to `GameClientOrchestrator.createInputDispatcher`; tests in `client/__tests__/client-manager.test.ts` assert protocol metadata, pause-on-resync, and hook notifications for intents/path cancels.
+* 🟡 **Pointer navigation command hooks**
+  TODO: wire canvas pointer interactions in `client/main.ts` to emit path requests via `client/input.ts` dispatcher, updating `InputStore` path state and covering resync throttling in headless harness tests.
 
 ### Planned (to finish Phase 4)
 
@@ -94,10 +96,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Kick off Phase 6 by implementing keyboard input capture and command dispatch.**
+**Implement pointer-based path navigation dispatch.**
 
 **Acceptance criteria**
 
-* `client/input.ts` wires `KeyboardInputController.register/unregister` to DOM events and exposes an `InputActionDispatcher` that normalizes intents/actions.
-* `client/client-manager.ts` routes dispatcher output through `NetworkClient.send`, preserving protocol version + ack metadata and pausing dispatch while resyncing.
-* A headless harness or unit tests exercise the dispatcher to confirm movement/action payloads reach the mock network client with the expected shape.
+* `client/main.ts` captures canvas pointer interactions and forwards them through the input dispatcher to emit `moveTo` and `cancelPath` commands.
+* `client/input.ts`/`InputStore` keep `pathActive` in sync when pointer commands fire so keyboard-driven cancellations remain coherent.
+* Headless harness coverage asserts pointer-derived path commands respect resync pauses before resuming dispatch.

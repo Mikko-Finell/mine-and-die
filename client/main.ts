@@ -2,6 +2,7 @@ import { LitElement, html } from "lit";
 import type { PropertyValues } from "lit";
 import { classMap } from "lit/directives/class-map.js";
 import { GameClientOrchestrator, type ClientHeartbeatTelemetry } from "./client-manager";
+import { InMemoryInputStore, KeyboardInputController, type InputBindings } from "./input";
 import { WebSocketNetworkClient } from "./network";
 import { CanvasRenderer, type Renderer } from "./render";
 import { InMemoryWorldStateStore } from "./world-state";
@@ -25,6 +26,18 @@ const ORCHESTRATOR_CONFIGURATION = {
   autoConnect: true,
   reconcileIntervalMs: 0,
   keyframeRetryDelayMs: 1000,
+} as const;
+
+const INPUT_BINDINGS: InputBindings = {
+  attackAction: "attack",
+  fireballAction: "fireball",
+  cameraLockKey: "c",
+  movementKeys: {
+    w: "up",
+    a: "left",
+    s: "down",
+    d: "right",
+  },
 } as const;
 
 type PanelKey = "telemetry" | "world" | "inventory";
@@ -51,11 +64,14 @@ class GameClientApp extends LitElement {
   private readonly worldStateStore: InMemoryWorldStateStore;
   private readonly networkClient: WebSocketNetworkClient;
   private readonly orchestrator: GameClientOrchestrator;
+  private readonly inputStore: InMemoryInputStore;
+  private readonly inputController: KeyboardInputController;
   private sessionState: SessionState = "idle";
   private connectionStatus: SessionState = "idle";
   private connectionError: string | null = null;
   private lastHeartbeatTelemetry: ClientHeartbeatTelemetry | null = null;
   private heartbeatAcknowledged = false;
+  private inputRegistered = false;
 
   playerId: string | null;
 
@@ -75,6 +91,22 @@ class GameClientApp extends LitElement {
       renderer: this.renderer,
       worldState: this.worldStateStore,
     });
+    this.inputStore = new InMemoryInputStore({
+      onCameraLockToggle: (locked) => {
+        this.addLog(locked ? "Camera lock enabled." : "Camera lock disabled.");
+      },
+    });
+    const inputDispatcher = this.orchestrator.createInputDispatcher({
+      onPathCommand: (active) => {
+        this.inputStore.setPathActive(active);
+      },
+    });
+    this.inputController = new KeyboardInputController({
+      store: this.inputStore,
+      dispatcher: inputDispatcher,
+      bindings: INPUT_BINDINGS,
+    });
+    this.inputRegistered = false;
     this.sessionState = "idle";
     this.connectionStatus = "idle";
     this.connectionError = null;
@@ -99,6 +131,10 @@ class GameClientApp extends LitElement {
     this.updateServerTime();
     void this.fetchHealth();
     this.startSession();
+    if (!this.inputRegistered) {
+      this.inputController.register();
+      this.inputRegistered = true;
+    }
     this.clockInterval = window.setInterval(() => {
       this.updateServerTime();
     }, 1000);
@@ -109,6 +145,10 @@ class GameClientApp extends LitElement {
     if (this.clockInterval) {
       window.clearInterval(this.clockInterval);
       this.clockInterval = undefined;
+    }
+    if (this.inputRegistered) {
+      this.inputController.unregister();
+      this.inputRegistered = false;
     }
     void this.shutdownSession();
   }
@@ -232,6 +272,7 @@ class GameClientApp extends LitElement {
       this.playerId = null;
       this.lastHeartbeatTelemetry = null;
       this.heartbeatAcknowledged = false;
+      this.inputStore.setPathActive(false);
       this.updateHeartbeatStatus();
       this.addLog("Disconnected from world.");
     }
