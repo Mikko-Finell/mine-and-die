@@ -21,6 +21,7 @@ import { InMemoryWorldStateStore } from "../../world-state";
 export const defaultOrchestratorConfiguration: ClientManagerConfiguration = {
   autoConnect: true,
   reconcileIntervalMs: 0,
+  keyframeRetryDelayMs: 1000,
 };
 
 export const defaultNetworkConfiguration: NetworkClientConfiguration = {

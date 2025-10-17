@@ -26,6 +26,13 @@ import type { DeliveryKind } from "./generated/effect-contracts";
 export interface ClientManagerConfiguration {
   readonly autoConnect: boolean;
   readonly reconcileIntervalMs: number;
+  readonly keyframeRetryDelayMs: number;
+  readonly keyframeRetryPolicy?: {
+    readonly baseMs?: number;
+    readonly maxMs?: number;
+    readonly multiplier?: number;
+    readonly jitterMs?: number;
+  };
 }
 
 export interface ClientLifecycleHandlers {
@@ -42,6 +49,13 @@ export interface ClientOrchestrator {
   readonly requestRender: (batch: RenderBatch) => void;
 }
 
+interface PendingKeyframeRetry {
+  sequence: number | null;
+  earliestRetryAt: number;
+  awaitingResync: boolean;
+  attempt?: number;
+}
+
 export class GameClientOrchestrator implements ClientOrchestrator {
   private readonly network: NetworkClient;
   private readonly renderer: Renderer;
@@ -53,6 +67,11 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private lastRenderVersion = -1;
   private lastRenderTime = -1;
   private joinResponse: JoinResponse | null = null;
+  private latestKeyframeSequence: number | null = null;
+  private keyframeRequestInFlight: number | null = null;
+  private pendingKeyframeRetry: PendingKeyframeRetry | null = null;
+  private pendingKeyframeRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastKeyframeRequestAt = 0;
 
   constructor(
     public readonly configuration: ClientManagerConfiguration,
@@ -151,8 +170,22 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       return;
     }
 
-    if (payload["resync"] === true) {
+    const keyframeSequence = this.extractSequence(payload["keyframeSeq"]);
+    if (keyframeSequence !== null) {
+      this.latestKeyframeSequence = keyframeSequence;
+    }
+
+    const isResync = payload["resync"] === true;
+    if (isResync) {
       this.handleResync();
+      if (this.pendingKeyframeRetry) {
+        this.pendingKeyframeRetry.awaitingResync = false;
+        if (keyframeSequence !== null) {
+          this.pendingKeyframeRetry.sequence = keyframeSequence;
+        } else if (this.pendingKeyframeRetry.sequence === null && this.latestKeyframeSequence !== null) {
+          this.pendingKeyframeRetry.sequence = this.latestKeyframeSequence;
+        }
+      }
     }
 
     const batch = this.extractLifecycleBatch(payload);
@@ -164,17 +197,45 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     const tick = typeof tickValue === "number" ? tickValue : null;
     const frameTime = tick !== null ? tick * TICK_DURATION_MS : receivedAt;
     this.renderLifecycleView(frameTime);
+
+    if (isResync) {
+      this.applyPendingKeyframeRetry();
+    }
   }
 
   private handleKeyframePayload(payload: Record<string, unknown>): void {
     const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
     this.hydrateEffectCatalog(effectCatalogPayload);
+    const sequence = this.extractSequence(payload["sequence"]);
+    if (sequence !== null) {
+      this.latestKeyframeSequence = sequence;
+    }
+    this.keyframeRequestInFlight = null;
+    this.pendingKeyframeRetry = null;
+    this.clearPendingKeyframeRetryTimer();
   }
 
   private handleKeyframeNackPayload(payload: Record<string, unknown>): void {
     const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
+    const sequence = this.extractSequence(payload["sequence"]);
+    const resyncRequested = payload["resync"] === true;
     this.handleResync();
     this.hydrateEffectCatalog(effectCatalogPayload);
+    this.keyframeRequestInFlight = null;
+    const now = Date.now();
+    const policy = resolveRetryPolicy(this.configuration);
+    const attempt = (this.pendingKeyframeRetry?.attempt ?? 0) + 1;
+    const retryDelay = computeRetryDelayMs(attempt, policy);
+    const earliestRetryAt = Math.max(now + retryDelay, this.lastKeyframeRequestAt + retryDelay);
+    this.pendingKeyframeRetry = {
+      sequence,
+      earliestRetryAt,
+      awaitingResync: resyncRequested,
+      attempt,
+    };
+    if (!resyncRequested) {
+      this.applyPendingKeyframeRetry();
+    }
     this.renderLifecycleView();
   }
 
@@ -251,6 +312,11 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lifecycleStore.reset();
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;
+    this.latestKeyframeSequence = null;
+    this.keyframeRequestInFlight = null;
+    this.pendingKeyframeRetry = null;
+    this.lastKeyframeRequestAt = 0;
+    this.clearPendingKeyframeRetryTimer();
     this.renderLifecycleView();
   }
 
@@ -259,11 +325,16 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lifecycleStore.reset();
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;
+    this.clearPendingKeyframeRetryTimer();
   }
 
   private handleDisconnect(): void {
     this.handleResync();
     this.joinResponse = null;
+    this.latestKeyframeSequence = null;
+    this.keyframeRequestInFlight = null;
+    this.pendingKeyframeRetry = null;
+    this.lastKeyframeRequestAt = 0;
     this.renderLifecycleView();
   }
 
@@ -424,6 +495,51 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     };
   }
 
+  private applyPendingKeyframeRetry(): void {
+    const pending = this.pendingKeyframeRetry;
+    if (!pending || pending.awaitingResync || this.keyframeRequestInFlight !== null) {
+      return;
+    }
+
+    const normalized = this.extractSequence(pending.sequence ?? this.latestKeyframeSequence);
+    if (normalized === null) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now < pending.earliestRetryAt) {
+      this.schedulePendingKeyframeRetry(pending.earliestRetryAt - now);
+      return;
+    }
+
+    if (this.sendKeyframeRequest(normalized)) {
+      this.pendingKeyframeRetry = null;
+    } else {
+      const policy = resolveRetryPolicy(this.configuration);
+      const nextAttempt = (pending.attempt ?? 0) + 1;
+      const nextDelay = computeRetryDelayMs(nextAttempt, policy);
+      pending.attempt = nextAttempt;
+      pending.earliestRetryAt = now + nextDelay;
+      this.schedulePendingKeyframeRetry(nextDelay);
+    }
+  }
+
+  private schedulePendingKeyframeRetry(delayMs: number): void {
+    this.clearPendingKeyframeRetryTimer();
+    const delay = Math.max(0, Math.floor(delayMs));
+    this.pendingKeyframeRetryTimer = setTimeout(() => {
+      this.pendingKeyframeRetryTimer = null;
+      this.applyPendingKeyframeRetry();
+    }, delay);
+  }
+
+  private clearPendingKeyframeRetryTimer(): void {
+    if (this.pendingKeyframeRetryTimer !== null) {
+      clearTimeout(this.pendingKeyframeRetryTimer);
+      this.pendingKeyframeRetryTimer = null;
+    }
+  }
+
   private selectLayer(delivery: DeliveryKind): RenderLayer {
     const cached = this.layerCache.get(delivery);
     if (cached) {
@@ -442,6 +558,74 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     const error = cause instanceof Error ? cause : new Error(String(cause));
     this.lifecycleHandlers?.onError?.(error);
   }
+
+  private sendKeyframeRequest(sequence: number): boolean {
+    if (this.keyframeRequestInFlight !== null) {
+      return false;
+    }
+
+    if (!Number.isFinite(sequence) || sequence <= 0) {
+      return false;
+    }
+
+    const normalized = Math.floor(sequence);
+    const payload: Record<string, unknown> = {
+      type: "keyframeRequest",
+      keyframeSeq: normalized,
+    };
+
+    const version = this.joinResponse?.protocolVersion;
+    if (typeof version === "number") {
+      payload.ver = version;
+    }
+
+    try {
+      this.network.send(payload);
+      this.keyframeRequestInFlight = normalized;
+      this.lastKeyframeRequestAt = Date.now();
+      return true;
+    } catch (error) {
+      this.reportError(error);
+      return false;
+    }
+  }
+
+  private extractSequence(value: unknown): number | null {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return null;
+    }
+    const normalized = Math.floor(value);
+    return normalized > 0 ? normalized : null;
+  }
+}
+
+interface ResolvedKeyframeRetryPolicy {
+  readonly baseMs: number;
+  readonly maxMs: number;
+  readonly multiplier: number;
+  readonly jitterMs: number;
+}
+
+function computeRetryDelayMs(attempt: number, cfg: ResolvedKeyframeRetryPolicy): number {
+  if (attempt <= 1) {
+    return cfg.baseMs;
+  }
+
+  let delay = cfg.baseMs * Math.pow(cfg.multiplier, attempt - 1);
+  if (!Number.isFinite(delay)) {
+    delay = cfg.maxMs;
+  }
+  delay = Math.min(delay, cfg.maxMs);
+  const jitter = cfg.jitterMs > 0 ? Math.floor(Math.random() * cfg.jitterMs) : 0;
+  return delay + jitter;
+}
+
+function resolveRetryPolicy(configuration: ClientManagerConfiguration): ResolvedKeyframeRetryPolicy {
+  const base = Math.max(0, configuration.keyframeRetryPolicy?.baseMs ?? configuration.keyframeRetryDelayMs ?? 200);
+  const max = Math.max(base, configuration.keyframeRetryPolicy?.maxMs ?? 2000);
+  const multiplier = Math.max(1, configuration.keyframeRetryPolicy?.multiplier ?? 2);
+  const jitter = Math.max(0, configuration.keyframeRetryPolicy?.jitterMs ?? 100);
+  return { baseMs: base, maxMs: max, multiplier, jitterMs: jitter };
 }
 
 const TICK_DURATION_MS = 16;

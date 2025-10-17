@@ -42,6 +42,9 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Keyframe NACK resync fallback**
   `server/hub.go` and `server/messages.go` attach `snapshotEffectCatalog` metadata to `keyframeNack` responses, schedule the next broadcast as a resync, and `client/client-manager.ts` resets the lifecycle store on NACK before rehydrating from the resync payload with smoke coverage in `client/__tests__/lifecycle-render-smoke.test.ts`.
 
+* 🟢 **Keyframe retry scheduling after resync fallback**
+  `client/client-manager.ts` defers keyframe re-requests until resync payloads are applied, throttles retries with an exponential backoff+jitter policy exposed via `ClientManagerConfiguration.keyframeRetryPolicy`, and harness coverage asserts a single retry is issued before rendering resumes.
+
 ### Planned (to finish Phase 4)
 
 
@@ -73,10 +76,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Implement client keyframe retry scheduling after resync fallback.**
+**Implement keyframe request triggers for patch sequence gaps.**
 
 **Acceptance criteria**
 
-* `client/client-manager.ts` schedules a keyframe re-request when a `keyframeNack` is received and defers the retry until the resync payload has been applied.
-* Retries respect the server's keyframe rate limiter (no more than one outstanding request) with configuration surfaced for throttling/backoff.
-* Harness coverage in `client/__tests__/helpers/headless-harness.ts` + `client/__tests__/lifecycle-render-smoke.test.ts` asserts that the orchestrator issues a single retry, hydrates from the follow-up keyframe, and resumes rendering without duplicating lifecycle events.
+* `client/client-manager.ts` (or `client/world-state.ts`) tracks the latest `sequence` cursor and requests a keyframe when incoming batches skip ahead beyond the tracked sequence.
+* Requests reuse the new retry throttle, avoid duplicates while a keyframe is in flight, and cancel when a resync or keyframe closes the gap.
+* Headless harness coverage injects a skipped sequence, asserts a single keyframe request is sent, and verifies rendering resumes without duplicated lifecycle events once the keyframe response arrives.

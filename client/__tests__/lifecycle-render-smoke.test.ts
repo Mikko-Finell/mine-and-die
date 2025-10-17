@@ -577,4 +577,190 @@ describe("Lifecycle renderer smoke test", () => {
       setCatalogSpy.mockRestore();
     }
   });
+
+  test("retries keyframe requests after resync fallback before resuming rendering", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    const fireballEntry = generatedEffectCatalog.fireball;
+    const fireballParameters = {
+      ...(fireballEntry.blocks.parameters as Record<string, number> | undefined),
+    } as Readonly<Record<string, number>>;
+    const retryDelayMs = 250;
+    const nackTime = 2000;
+    const resyncTime = nackTime + 100;
+    const timeUntilRetry = retryDelayMs - (resyncTime - nackTime);
+    const { network, renderer, orchestrator } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+      orchestratorConfiguration: {
+        keyframeRetryDelayMs: retryDelayMs,
+        keyframeRetryPolicy: {
+          baseMs: retryDelayMs,
+          maxMs: retryDelayMs,
+          multiplier: 1,
+          jitterMs: 0,
+        },
+      },
+    });
+
+    const sendSpy = vi.spyOn(network, "send");
+
+    try {
+      const onReady = vi.fn();
+      await orchestrator.boot({ onReady });
+      expect(onReady).toHaveBeenCalledTimes(1);
+
+      const initialSpawn: ContractLifecycleSpawnEvent = {
+        seq: 4,
+        tick: 144,
+        instance: {
+          id: "effect-fireball",
+          entryId: "fireball",
+          definitionId: fireballEntry.contractId,
+          definition: fireballEntry.definition,
+          startTick: 144,
+          deliveryState: {
+            geometry: {
+              shape: "circle",
+              radius: fireballParameters.radius ?? 12,
+            },
+            motion: {
+              positionX: 160,
+              positionY: 208,
+              velocityX: 0,
+              velocityY: 0,
+            },
+          },
+          behaviorState: {
+            ticksRemaining: fireballEntry.definition.lifetimeTicks,
+            tickCadence: 1,
+          },
+          params: fireballParameters,
+          colors: ["#ffaa33"],
+          replication: fireballEntry.definition.client,
+          end: fireballEntry.definition.end,
+        },
+      };
+
+      network.emit({
+        type: "state",
+        payload: {
+          effect_spawned: [initialSpawn],
+          effect_seq_cursors: { [initialSpawn.instance.id]: initialSpawn.seq },
+          t: initialSpawn.tick,
+          keyframeSeq: 12,
+        },
+        receivedAt: 1200,
+      });
+
+      const initialBatch = renderer.batches.at(-1)!;
+      expect(initialBatch.animations.some((frame) => frame.effectId === initialSpawn.instance.id)).toBe(true);
+
+      sendSpy.mockClear();
+      vi.setSystemTime(nackTime);
+
+      const nackCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+      network.emit({
+        type: "keyframeNack",
+        payload: {
+          sequence: 12,
+          resync: true,
+          config: {
+            effectCatalog: nackCatalogPayload,
+          },
+        },
+        receivedAt: nackTime + 50,
+      });
+
+      expect(sendSpy).not.toHaveBeenCalled();
+      const clearedBatch = renderer.batches.at(-1)!;
+      expect(clearedBatch.staticGeometry).toHaveLength(0);
+      expect(clearedBatch.animations).toHaveLength(0);
+
+      const resyncSequence = 24;
+      const resyncTick = 384;
+      const resyncCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+      vi.setSystemTime(resyncTime);
+      network.emit({
+        type: "state",
+        payload: {
+          resync: true,
+          t: resyncTick,
+          keyframeSeq: resyncSequence,
+          config: {
+            effectCatalog: resyncCatalogPayload,
+          },
+        },
+        receivedAt: resyncTime + 50,
+      });
+
+      expect(sendSpy).not.toHaveBeenCalled();
+
+      if (timeUntilRetry > 1) {
+        vi.advanceTimersByTime(timeUntilRetry - 1);
+        expect(sendSpy).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+      } else if (timeUntilRetry === 1) {
+        vi.advanceTimersByTime(1);
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+      } else {
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+      }
+      expect(sendSpy).toHaveBeenLastCalledWith({
+        type: "keyframeRequest",
+        keyframeSeq: resyncSequence,
+        ver: 1,
+      });
+
+      const keyframeCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+      vi.advanceTimersByTime(50);
+      network.emit({
+        type: "keyframe",
+        payload: {
+          sequence: resyncSequence,
+          config: {
+            effectCatalog: keyframeCatalogPayload,
+          },
+        },
+        receivedAt: Date.now() + 50,
+      });
+
+      vi.runOnlyPendingTimers();
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+
+      const postResyncSpawn: ContractLifecycleSpawnEvent = {
+        seq: 18,
+        tick: resyncTick + 6,
+        instance: {
+          ...initialSpawn.instance,
+          startTick: resyncTick + 6,
+        },
+      };
+
+      vi.advanceTimersByTime(200);
+      network.emit({
+        type: "state",
+        payload: {
+          effect_spawned: [postResyncSpawn],
+          effect_seq_cursors: { [postResyncSpawn.instance.id]: postResyncSpawn.seq },
+          t: postResyncSpawn.tick,
+          keyframeSeq: resyncSequence,
+        },
+        receivedAt: Date.now() + 50,
+      });
+
+      const resumedBatch = renderer.batches.at(-1)!;
+      expect(resumedBatch.keyframeId).toBe(`tick-${postResyncSpawn.tick}`);
+      const resumedFrames = resumedBatch.animations.filter((frame) => frame.effectId === postResyncSpawn.instance.id);
+      expect(resumedFrames).toHaveLength(1);
+      expect(resumedFrames[0].metadata).toMatchObject({
+        entryId: "fireball",
+        lastEventKind: "spawn",
+      });
+    } finally {
+      sendSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });
