@@ -805,7 +805,6 @@ type keyframe struct {
 	Players     []Player
 	NPCs        []NPC
 	Obstacles   []Obstacle
-	Effects     []Effect
 	GroundItems []GroundItem
 	Config      worldConfig
 	RecordedAt  time.Time

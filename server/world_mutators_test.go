@@ -285,11 +285,9 @@ func TestApplyEffectHitPlayerEmitsHealthPatch(t *testing.T) {
 	w.AddPlayer(player)
 
 	eff := &effectState{
-		Effect: Effect{
-			Type:   effectTypeAttack,
-			Owner:  "attacker-1",
-			Params: map[string]float64{"healthDelta": -15},
-		},
+		Type:   effectTypeAttack,
+		Owner:  "attacker-1",
+		Params: map[string]float64{"healthDelta": -15},
 	}
 
 	w.applyEffectHitPlayer(eff, player, time.Now())
@@ -607,7 +605,7 @@ func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
 
 func TestSetEffectPositionRecordsPatch(t *testing.T) {
 	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	eff := &effectState{Effect: Effect{ID: "effect-1", X: 1, Y: 2}}
+	eff := &effectState{ID: "effect-1", X: 1, Y: 2}
 
 	w.SetEffectPosition(eff, 5, 7)
 
@@ -634,7 +632,7 @@ func TestSetEffectPositionRecordsPatch(t *testing.T) {
 
 func TestSetEffectParamRecordsPatch(t *testing.T) {
 	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	eff := &effectState{Effect: Effect{ID: "effect-2"}}
+	eff := &effectState{ID: "effect-2"}
 
 	w.SetEffectParam(eff, "remainingRange", 3.5)
 

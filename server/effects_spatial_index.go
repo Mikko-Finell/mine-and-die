@@ -132,18 +132,18 @@ func (idx *effectSpatialIndex) cellsForEffect(effect *effectState) []effectCellK
 		return nil
 	}
 	minExtent := idx.cellSize * effectSpatialMinExtentFrac
-	width := math.Abs(effect.Effect.Width)
-	height := math.Abs(effect.Effect.Height)
+	width := math.Abs(effect.Width)
+	height := math.Abs(effect.Height)
 	if width < minExtent {
 		width = minExtent
 	}
 	if height < minExtent {
 		height = minExtent
 	}
-	minX := idx.coordToCell(effect.Effect.X)
-	minY := idx.coordToCell(effect.Effect.Y)
-	maxX := idx.coordToCell(effect.Effect.X + width)
-	maxY := idx.coordToCell(effect.Effect.Y + height)
+	minX := idx.coordToCell(effect.X)
+	minY := idx.coordToCell(effect.Y)
+	maxX := idx.coordToCell(effect.X + width)
+	maxY := idx.coordToCell(effect.Y + height)
 	cellCount := (maxX - minX + 1) * (maxY - minY + 1)
 	if cellCount <= 0 {
 		cellCount = 1

@@ -21,7 +21,7 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 	}
 	tpl := &ProjectileTemplate{Type: effectTypeFireball, MaxDistance: 30}
 	effect := &effectState{
-		Effect: Effect{Params: map[string]float64{"radius": 1}},
+		Params: map[string]float64{"radius": 1},
 		Projectile: &ProjectileState{
 			Template:       tpl,
 			VelocityUnitX:  math.Sqrt(0.5),
@@ -71,12 +71,12 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 		t.Fatalf("expected projectile remaining range to persist, got %.2f", spawned.Projectile.RemainingRange)
 	}
 
-	if val := spawned.Effect.Params["remainingRange"]; math.Abs(val-18) > 1e-6 {
+	if val := spawned.Params["remainingRange"]; math.Abs(val-18) > 1e-6 {
 		t.Fatalf("expected effect params remainingRange to persist, got %.2f", val)
 	}
 
-	paramDX := spawned.Effect.Params["dx"]
-	paramDY := spawned.Effect.Params["dy"]
+	paramDX := spawned.Params["dx"]
+	paramDY := spawned.Params["dy"]
 	if math.Abs(paramDX-math.Sqrt(0.5)) > 0.05 {
 		t.Fatalf("expected effect params dx to approximate diagonal, got %.4f", paramDX)
 	}
