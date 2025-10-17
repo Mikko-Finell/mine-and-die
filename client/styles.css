@@ -131,6 +131,43 @@ h1 {
   align-items: center;
 }
 
+.play-area__canvas {
+  width: 100%;
+  max-width: 960px;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: radial-gradient(circle at top, rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.7));
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.55);
+}
+
+.play-area__canvas canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.play-area__status {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #cbd5f5;
+  text-align: center;
+}
+
+.play-area__error {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fca5a5;
+  text-align: center;
+}
+
 .hud-network {
   display: flex;
   align-items: center;
@@ -153,6 +190,10 @@ h1 {
 
 .hud-network__item {
   font-variant-numeric: tabular-nums;
+}
+
+.hud-network__item--error {
+  color: #fca5a5;
 }
 
 .interface-tabs {

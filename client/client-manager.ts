@@ -91,6 +91,10 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.fallbackLayer = firstLayer ?? { id: "effects", zIndex: 0 };
   }
 
+  get playerId(): string | null {
+    return this.joinResponse?.id ?? null;
+  }
+
   async boot(handlers: ClientLifecycleHandlers): Promise<void> {
     this.lifecycleHandlers = handlers;
     try {
