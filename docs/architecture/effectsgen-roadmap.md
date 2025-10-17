@@ -26,7 +26,10 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 ### Planned (to finish Phase 4)
 
-* _(none)_
+* ⚪ **Lifecycle smoke coverage for client-managed entries** — Extend `client/__tests__/lifecycle-render-smoke.test.ts` to spawn, update, and end a `managedByClient` catalog entry (e.g., `generatedEffectCatalog.attack`), then assert the renderer flags `metadata.retained === true` after the end batch.
+* ⚪ **Resync clearing assertions in harness** — Within the same smoke test, simulate a `resync` (`payload.resync = true`) and verify both `ContractLifecycleStore` state and renderer batches reset to empty.
+* ⚪ **Shared harness helper reuse** — Refactor test harness utilities as needed so client-managed coverage reuses the existing server-managed helpers while keeping the generated catalog snapshot authoritative for types.
+* ⚪ **Snapshot and tooling updates for client-managed flows** — Refresh golden snapshots or utilities that assume only server-managed entries so `npm test -- client` succeeds with the expanded scenarios.
 
 ## Definition of Done (Phase 4)
 
