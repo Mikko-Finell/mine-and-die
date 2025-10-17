@@ -165,8 +165,8 @@ for reproducibility.
 
 ### Processing steps
 
-1. **Load Go package** – Use `golang.org/x/tools/go/packages` to load the
-   `--contracts` package with `TypesInfo`. Collect all exported structs that
+1. **Load Go package** – Parse the `--contracts` package with the Go standard
+   library (`go/parser`, `go/types`) to obtain `TypesInfo`. Collect all exported structs that
    embed `ContractPayload` or satisfy the `Payload` interface.
 2. **Parse registry** – Evaluate the `Registry` variable via `go/types` and
    reflection. Each entry yields concrete Go types for spawn/update/end.

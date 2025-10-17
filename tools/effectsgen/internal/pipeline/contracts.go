@@ -1,10 +1,11 @@
 package pipeline
 
 import (
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/importer"
+	"go/parser"
 	"go/token"
 	"go/types"
 	"os"
@@ -14,8 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
-
-	"golang.org/x/tools/go/packages"
 )
 
 type contractDefinition struct {
@@ -52,6 +51,14 @@ type tsDeclarations struct {
 	Aliases    []tsAlias
 }
 
+type contractPackage struct {
+	Syntax    []*ast.File
+	Types     *types.Package
+	TypesInfo *types.Info
+	Fset      *token.FileSet
+	PkgPath   string
+}
+
 func loadContractMetadata(contractsDir, registryPath string) ([]contractDefinition, tsDeclarations, error) {
 	pkg, err := loadContractsPackage(contractsDir)
 	if err != nil {
@@ -72,65 +79,76 @@ func loadContractMetadata(contractsDir, registryPath string) ([]contractDefiniti
 	return definitions, decls, nil
 }
 
-func loadContractsPackage(dir string) (*packages.Package, error) {
+func loadContractsPackage(dir string) (*contractPackage, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("effectsgen: unable to resolve contracts directory: %w", err)
 	}
 
-	modRoot, err := findModuleRoot(absDir)
+	files, err := packageGoFiles(absDir)
 	if err != nil {
 		return nil, err
 	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("effectsgen: no go files found in %s", absDir)
+	}
 
-	relPath, err := filepath.Rel(modRoot, absDir)
+	fset := token.NewFileSet()
+	syntax := make([]*ast.File, 0, len(files))
+	for _, file := range files {
+		parsed, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
+		if err != nil {
+			return nil, fmt.Errorf("effectsgen: failed parsing %s: %w", file, err)
+		}
+		syntax = append(syntax, parsed)
+	}
+
+	info := &types.Info{
+		Types:      make(map[ast.Expr]types.TypeAndValue),
+		Defs:       make(map[*ast.Ident]types.Object),
+		Uses:       make(map[*ast.Ident]types.Object),
+		Implicits:  make(map[ast.Node]types.Object),
+		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+	}
+
+	conf := &types.Config{Importer: importer.Default()}
+	pkgTypes, err := conf.Check(syntax[0].Name.Name, fset, syntax, info)
 	if err != nil {
-		return nil, fmt.Errorf("effectsgen: failed computing package path: %w", err)
+		return nil, fmt.Errorf("effectsgen: failed type-checking contract package: %w", err)
 	}
 
-	pattern := "./" + filepath.ToSlash(relPath)
-	cfg := &packages.Config{
-		Dir:  modRoot,
-		Mode: packages.NeedName | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedSyntax | packages.NeedFiles | packages.NeedModule | packages.NeedDeps,
-	}
-
-	pkgs, err := packages.Load(cfg, pattern)
-	if err != nil {
-		return nil, fmt.Errorf("effectsgen: failed loading contracts package: %w", err)
-	}
-	if len(pkgs) == 0 {
-		return nil, fmt.Errorf("effectsgen: package load returned no results for %s", pattern)
-	}
-	if len(pkgs) > 1 {
-		return nil, fmt.Errorf("effectsgen: expected a single package for %s, got %d", pattern, len(pkgs))
-	}
-
-	pkg := pkgs[0]
-	if len(pkg.Errors) > 0 {
-		return nil, fmt.Errorf("effectsgen: package load reported errors: %v", pkg.Errors[0])
-	}
-
-	return pkg, nil
+	return &contractPackage{
+		Syntax:    syntax,
+		Types:     pkgTypes,
+		TypesInfo: info,
+		Fset:      fset,
+		PkgPath:   pkgTypes.Path(),
+	}, nil
 }
 
-func findModuleRoot(start string) (string, error) {
-	dir := start
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("effectsgen: failed probing %s: %w", dir, err)
-		}
-
-		next := filepath.Dir(dir)
-		if next == dir {
-			return "", fmt.Errorf("effectsgen: unable to locate go.mod for %s", start)
-		}
-		dir = next
+func packageGoFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("effectsgen: unable to list %s: %w", dir, err)
 	}
+
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		files = append(files, filepath.Join(dir, name))
+	}
+
+	sort.Strings(files)
+	return files, nil
 }
 
-func collectAliasTargets(pkg *packages.Package) map[string]types.Type {
+func collectAliasTargets(pkg *contractPackage) map[string]types.Type {
 	targets := make(map[string]types.Type)
 	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
@@ -162,7 +180,7 @@ func collectAliasTargets(pkg *packages.Package) map[string]types.Type {
 	return targets
 }
 
-func parseRegistryDefinitions(pkg *packages.Package, registryPath string, translator *typeTranslator) ([]contractDefinition, error) {
+func parseRegistryDefinitions(pkg *contractPackage, registryPath string, translator *typeTranslator) ([]contractDefinition, error) {
 	absRegistry, err := filepath.Abs(registryPath)
 	if err != nil {
 		return nil, fmt.Errorf("effectsgen: unable to resolve registry path: %w", err)
@@ -235,7 +253,7 @@ func parseRegistryDefinitions(pkg *packages.Package, registryPath string, transl
 	return definitions, nil
 }
 
-func findFileByPath(pkg *packages.Package, path string) *ast.File {
+func findFileByPath(pkg *contractPackage, path string) *ast.File {
 	cleaned := filepath.Clean(path)
 	for _, file := range pkg.Syntax {
 		pos := pkg.Fset.Position(file.Package)
@@ -253,7 +271,7 @@ func selectValueExpression(vs *ast.ValueSpec, index int) ast.Expr {
 	return vs.Values[0]
 }
 
-func decodeRegistryEntries(pkg *packages.Package, lit *ast.CompositeLit, translator *typeTranslator) ([]contractDefinition, error) {
+func decodeRegistryEntries(pkg *contractPackage, lit *ast.CompositeLit, translator *typeTranslator) ([]contractDefinition, error) {
 	defs := make([]contractDefinition, 0, len(lit.Elts))
 	for _, elt := range lit.Elts {
 		entry, ok := elt.(*ast.CompositeLit)
@@ -313,7 +331,7 @@ func decodeRegistryEntries(pkg *packages.Package, lit *ast.CompositeLit, transla
 	return defs, nil
 }
 
-func evaluateStringConstant(pkg *packages.Package, expr ast.Expr) (string, error) {
+func evaluateStringConstant(pkg *contractPackage, expr ast.Expr) (string, error) {
 	tv, ok := pkg.TypesInfo.Types[expr]
 	if !ok || tv.Value == nil {
 		return "", fmt.Errorf("effectsgen: expected string constant, got %T", expr)
@@ -324,7 +342,7 @@ func evaluateStringConstant(pkg *packages.Package, expr ast.Expr) (string, error
 	return constant.StringVal(tv.Value), nil
 }
 
-func resolvePayloadBinding(pkg *packages.Package, expr ast.Expr, translator *typeTranslator) (payloadBinding, error) {
+func resolvePayloadBinding(pkg *contractPackage, expr ast.Expr, translator *typeTranslator) (payloadBinding, error) {
 	if ident, ok := expr.(*ast.Ident); ok && ident.Name == "NoPayload" {
 		return payloadBinding{IsNoPayload: true, TypeName: "null"}, nil
 	}
@@ -342,7 +360,7 @@ func resolvePayloadBinding(pkg *packages.Package, expr ast.Expr, translator *typ
 	return payloadBinding{TypeName: tsName}, nil
 }
 
-func resolveTypeName(pkg *packages.Package, expr ast.Expr) (*types.TypeName, error) {
+func resolveTypeName(pkg *contractPackage, expr ast.Expr) (*types.TypeName, error) {
 	switch e := expr.(type) {
 	case *ast.CallExpr:
 		return resolveTypeName(pkg, e.Fun)
@@ -365,7 +383,7 @@ func resolveTypeName(pkg *packages.Package, expr ast.Expr) (*types.TypeName, err
 	}
 }
 
-func resolveLifecycleOwner(pkg *packages.Package, expr ast.Expr) (bool, error) {
+func resolveLifecycleOwner(pkg *contractPackage, expr ast.Expr) (bool, error) {
 	if expr == nil {
 		return false, nil
 	}
@@ -398,7 +416,7 @@ func resolveLifecycleOwner(pkg *packages.Package, expr ast.Expr) (bool, error) {
 }
 
 type typeTranslator struct {
-	pkg          *packages.Package
+	pkg          *contractPackage
 	aliasTargets map[string]types.Type
 	enumValues   map[string][]string
 	interfaces   map[string]tsInterface
@@ -406,7 +424,7 @@ type typeTranslator struct {
 	structStack  map[string]bool
 }
 
-func newTypeTranslator(pkg *packages.Package, aliasTargets map[string]types.Type, enumValues map[string][]string) *typeTranslator {
+func newTypeTranslator(pkg *contractPackage, aliasTargets map[string]types.Type, enumValues map[string][]string) *typeTranslator {
 	return &typeTranslator{
 		pkg:          pkg,
 		aliasTargets: aliasTargets,
@@ -642,7 +660,7 @@ func (t *typeTranslator) declarations() tsDeclarations {
 	return tsDeclarations{Interfaces: interfaces, Aliases: aliases}
 }
 
-func collectEnumValues(pkg *packages.Package) map[string][]string {
+func collectEnumValues(pkg *contractPackage) map[string][]string {
 	results := make(map[string][]string)
 	accumulator := make(map[string]map[string]struct{})
 

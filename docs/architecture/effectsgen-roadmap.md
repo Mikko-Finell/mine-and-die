@@ -22,7 +22,7 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Lifecycle renderer smoke tests**
   Headless harness replays recorded lifecycle batches and asserts renderer output derives from generated catalog metadata and managed ownership flags.
 * 🟢 **effectsgen Go toolchain compatibility**
-  Upgraded `golang.org/x/tools` (and indirect deps) so the generator builds cleanly with Go 1.24.3, restoring `npm run build` and client bundle output.
+  Replaced the `go/packages` dependency with a standard-library loader so the generator no longer pulls `golang.org/x/tools`, eliminating the Go 1.24.3 build break and restoring `npm run build` output on macOS.
 
 ### Planned (to finish Phase 4)
 
