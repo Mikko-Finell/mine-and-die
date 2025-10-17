@@ -14,6 +14,7 @@ import {
   type EffectCatalogEntryMetadata,
 } from "./effect-catalog";
 import type {
+  HeartbeatAck,
   JoinResponse,
   NetworkClient,
   NetworkEventHandlers,
@@ -38,6 +39,7 @@ export interface ClientManagerConfiguration {
 export interface ClientLifecycleHandlers {
   readonly onReady?: () => void;
   readonly onError?: (error: Error) => void;
+  readonly onHeartbeat?: (telemetry: ClientHeartbeatTelemetry) => void;
 }
 
 export interface ClientOrchestrator {
@@ -48,6 +50,13 @@ export interface ClientOrchestrator {
   readonly handlePatchBatch: (patch: WorldPatchBatch) => void;
   readonly requestRender: (batch: RenderBatch) => void;
   readonly getJoinResponse: () => JoinResponse | null;
+}
+
+export interface ClientHeartbeatTelemetry {
+  readonly serverTime: number | null;
+  readonly clientTime: number | null;
+  readonly roundTripTimeMs: number | null;
+  readonly receivedAt: number;
 }
 
 interface PendingKeyframeRetry {
@@ -150,6 +159,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       },
       onError: (error) => {
         this.reportError(error);
+      },
+      onHeartbeat: (ack) => {
+        this.handleHeartbeatAck(ack);
       },
     };
   }
@@ -355,6 +367,16 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lastKeyframeRequestAt = 0;
     this.resetPatchSequenceTracking();
     this.renderLifecycleView();
+  }
+
+  private handleHeartbeatAck(ack: HeartbeatAck): void {
+    const telemetry: ClientHeartbeatTelemetry = {
+      serverTime: Number.isFinite(ack.serverTime) ? ack.serverTime : null,
+      clientTime: Number.isFinite(ack.clientTime) ? ack.clientTime : null,
+      roundTripTimeMs: Number.isFinite(ack.roundTripTime) ? ack.roundTripTime : null,
+      receivedAt: ack.receivedAt,
+    };
+    this.lifecycleHandlers?.onHeartbeat?.(telemetry);
   }
 
   private renderLifecycleView(frameTime?: number): void {

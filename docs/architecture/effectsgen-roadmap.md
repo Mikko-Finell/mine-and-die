@@ -20,10 +20,10 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 * 🟢 **Bootstrap orchestrator inside the live client shell**
   `client/main.ts` now constructs `GameClientOrchestrator` with `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, wiring the renderer host in `<game-canvas>` so lifecycle playback flows through the orchestrator entry point.
-* 🟡 **Plumb WebSocket lifecycle events into the orchestrator**
-  Extend `client/network.ts` and `client/client-manager.ts` so `state`, `keyframe`, `keyframeNack`, and disconnect messages call the orchestrator handlers, including error/reporting hooks for unexpected payloads.
-* 🟡 **Mount renderer host and expose connection state in the shell**
-  Add a dedicated canvas container via `client/index.html` and `styles.css`, stream `renderBatch` output from `client/render.ts`, and surface connection status/errors in the DOM for manual QA.
+* 🟢 **Plumb WebSocket lifecycle events into the orchestrator**
+  `client/network.ts` now forwards `state`, `keyframe`, `keyframeNack`, and heartbeat envelopes into `client/client-manager.ts`, which surfaces disconnect/errors through orchestrator handlers and client lifecycle callbacks.
+* 🟢 **Mount renderer host and expose connection state in the shell**
+  `client/main.ts` binds the renderer to `<game-canvas>`, streams batches into the canvas, and updates connection/heartbeat UI + styles in `client/styles.css` so operators can see status and errors in the live shell.
 * 🟢 **Consume generated catalog metadata on the client**
   Client modules now import canonical catalog data from `client/generated/effect-contracts.ts`; join-time payloads are verified against the generated snapshot and all downstream helpers read from the shared store.
 * 🟢 **Feed renderer from `ContractLifecycleStore`**
@@ -91,10 +91,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Bootstrap the contract orchestrator inside the live client shell.**
+**Kick off Phase 6 by implementing keyboard input capture and command dispatch.**
 
 **Acceptance criteria**
 
-* `client/main.ts` (or a dedicated bootstrap module) instantiates `GameClientOrchestrator` with `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, wiring lifecycle handlers to the DOM lifecycle.
-* The UI mounts a canvas (or renderer host) that receives `renderBatch` output from the orchestrator and exposes connection status/errors surfaced via `ClientLifecycleHandlers`.
-* WebSocket events (`state`, `keyframe`, `keyframeNack`, disconnect) are forwarded from the network client into the orchestrator methods so effect catalog snapshots and lifecycle batches hydrate the renderer without relying on the legacy telemetry-only flow.
+* `client/input.ts` wires `KeyboardInputController.register/unregister` to DOM events and exposes an `InputActionDispatcher` that normalizes intents/actions.
+* `client/client-manager.ts` routes dispatcher output through `NetworkClient.send`, preserving protocol version + ack metadata and pausing dispatch while resyncing.
+* A headless harness or unit tests exercise the dispatcher to confirm movement/action payloads reach the mock network client with the expected shape.

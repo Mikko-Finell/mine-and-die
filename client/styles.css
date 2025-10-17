@@ -89,6 +89,65 @@ h1 {
   flex: 1 1 320px;
 }
 
+.connection-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  min-width: 160px;
+}
+
+.connection-status__pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.65);
+  color: #cbd5f5;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.connection-status__pill--idle {
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.connection-status__pill--connecting {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #bae6fd;
+}
+
+.connection-status__pill--connected {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.45);
+  color: #bbf7d0;
+}
+
+.connection-status__pill--disconnecting {
+  background: rgba(250, 204, 21, 0.2);
+  border-color: rgba(250, 204, 21, 0.45);
+  color: #fef08a;
+}
+
+.connection-status__pill--error {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+}
+
+.connection-status__error {
+  font-size: 0.75rem;
+  color: #fca5a5;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .page-header__seed {
   display: flex;
   flex-direction: column;
@@ -133,6 +192,7 @@ h1 {
 
 .hud-network {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
   gap: 0.75rem;
@@ -153,6 +213,15 @@ h1 {
 
 .hud-network__item {
   font-variant-numeric: tabular-nums;
+}
+
+.hud-network__item--status {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.hud-network__item--error {
+  color: #fca5a5;
 }
 
 .interface-tabs {
