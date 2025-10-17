@@ -9,7 +9,10 @@ import (
 )
 
 func TestNewEffectCatalogMetadataClonesEntry(t *testing.T) {
-	def := &effectcontract.EffectDefinition{TypeID: "fireball"}
+	def := &effectcontract.EffectDefinition{
+		TypeID: "fireball",
+		Client: effectcontract.ReplicationSpec{ManagedByClient: true},
+	}
 	blocks := map[string]json.RawMessage{
 		"jsEffect":   json.RawMessage(`"projectile/fireball"`),
 		"parameters": json.RawMessage(`{"speed":320}`),
@@ -32,6 +35,14 @@ func TestNewEffectCatalogMetadataClonesEntry(t *testing.T) {
 		t.Fatalf("expected cloned definition to retain original type id, got %v", meta.Definition)
 	}
 
+	if !meta.ManagedByClient {
+		t.Fatalf("expected managedByClient flag to mirror entry definition")
+	}
+	def.Client.ManagedByClient = false
+	if !meta.ManagedByClient {
+		t.Fatalf("expected cloned metadata to retain managedByClient flag after source mutation")
+	}
+
 	blocks["jsEffect"][0] = 'x'
 	encoded := string(meta.Blocks["jsEffect"])
 	if encoded != "\"projectile/fireball\"" {
@@ -44,6 +55,9 @@ func TestNewEffectCatalogMetadataClonesEntry(t *testing.T) {
 	}
 	if string(clone.Blocks["jsEffect"]) != encoded {
 		t.Fatalf("expected clone to retain metadata value, got %q", string(clone.Blocks["jsEffect"]))
+	}
+	if !clone.ManagedByClient {
+		t.Fatalf("expected clone to retain managedByClient flag")
 	}
 }
 
@@ -58,13 +72,14 @@ func TestEffectCatalogMetadataMarshalJSONFlattensBlocks(t *testing.T) {
 			Impact:        effectcontract.ImpactPolicyFirstHit,
 			LifetimeTicks: 10,
 			Hooks:         effectcontract.EffectHooks{OnSpawn: "spawn"},
-			Client:        effectcontract.ReplicationSpec{SendSpawn: true},
+			Client:        effectcontract.ReplicationSpec{SendSpawn: true, ManagedByClient: true},
 			End:           effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
 		},
 		Blocks: map[string]json.RawMessage{
 			"jsEffect":   json.RawMessage(`"projectile/fireball"`),
 			"parameters": json.RawMessage(`{"speed":320}`),
 		},
+		ManagedByClient: true,
 	}
 
 	data, err := json.Marshal(meta)
@@ -82,6 +97,9 @@ func TestEffectCatalogMetadataMarshalJSONFlattensBlocks(t *testing.T) {
 	}
 	if _, ok := decoded["definition"]; !ok {
 		t.Fatalf("expected definition field to be present")
+	}
+	if string(decoded["managedByClient"]) != "true" {
+		t.Fatalf("expected managedByClient to be encoded, got %s", string(decoded["managedByClient"]))
 	}
 	if string(decoded["jsEffect"]) != "\"projectile/fireball\"" {
 		t.Fatalf("expected jsEffect block to be flattened, got %s", string(decoded["jsEffect"]))

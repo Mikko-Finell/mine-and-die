@@ -15,9 +15,7 @@ func snapshotEffectCatalog(resolver *effectcatalog.Resolver) map[string]effectCa
 		if id == "" {
 			continue
 		}
-		meta := effectCatalogMetadata{ContractID: entry.ContractID}
-		meta.Blocks = cloneRawMessageMap(entry.Blocks)
-		snapshot[id] = meta
+		snapshot[id] = newEffectCatalogMetadata(entry)
 	}
 	if len(snapshot) == 0 {
 		return nil
