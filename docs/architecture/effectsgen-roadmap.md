@@ -4,17 +4,26 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 ## Roadmap
 
-| Phase | Goal                                     | Exit Criteria                                                                                                                                                                                               | Status         |
-| ----- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| 1     | Finalise Go contract registry            | Central Go package owns all effect contracts and validation helpers; unit coverage in place.                                                                                                                | 🟢 Done        |
-| 2     | JSON schema & catalog resolver           | JSON schema validated; loader in `server/effects` resolves designer `entryId` → contract and caches lookups.                                                                                                | 🟢 Done        |
-| 3     | `tools/effectgen` TypeScript emitter     | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks.                                                                                     | 🟢 Done        |
-| 4     | Client integration of generated bindings | Client imports generated module; WebSocket lifecycle batches hydrate `ContractLifecycleStore`; renderer draws from store snapshots using generated catalog metadata; CI enforces regeneration drift checks. | 🟡 In progress |
+| Phase | Goal | Exit Criteria | Status |
+| ----- | ---- | ------------- | ------ |
+| 1 | Finalise Go contract registry | Central Go package owns all effect contracts and validation helpers; unit coverage in place. | 🟢 Done |
+| 2 | JSON schema & catalog resolver | JSON schema validated; loader in `server/effects` resolves designer `entryId` → contract and caches lookups. | 🟢 Done |
+| 3 | `tools/effectgen` TypeScript emitter | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks. | 🟢 Done |
+| 4 | Client integration of generated bindings | Client imports generated module; WebSocket lifecycle batches hydrate `ContractLifecycleStore`; renderer draws from store snapshots using generated catalog metadata; CI enforces regeneration drift checks. | 🟡 In progress |
+| 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | ⚪ Planned |
+| 6 | Input capture & command dispatch | `client/input.ts` implements `KeyboardInputController.register/unregister`; an `InputActionDispatcher` wires player intents/actions into `NetworkClient.send`, updating path/action payloads and honouring resync/ack flows in `client/client-manager.ts`. | ⚪ Planned |
+| 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | ⚪ Planned |
 
 ## Active Work
 
 ### In progress
 
+* 🟡 **Bootstrap orchestrator inside the live client shell**
+  `client/main.ts` should construct `GameClientOrchestrator` with `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, replacing the telemetry-only bootstrap so lifecycle playback flows through the orchestrator entry point.
+* 🟡 **Plumb WebSocket lifecycle events into the orchestrator**
+  Extend `client/network.ts` and `client/client-manager.ts` so `state`, `keyframe`, `keyframeNack`, and disconnect messages call the orchestrator handlers, including error/reporting hooks for unexpected payloads.
+* 🟡 **Mount renderer host and expose connection state in the shell**
+  Add a dedicated canvas container via `client/index.html` and `styles.css`, stream `renderBatch` output from `client/render.ts`, and surface connection status/errors in the DOM for manual QA.
 * 🟢 **Consume generated catalog metadata on the client**
   Client modules now import canonical catalog data from `client/generated/effect-contracts.ts`; join-time payloads are verified against the generated snapshot and all downstream helpers read from the shared store.
 * 🟢 **Feed renderer from `ContractLifecycleStore`**
@@ -45,7 +54,13 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Keyframe retry scheduling after resync fallback**
   `client/client-manager.ts` defers keyframe re-requests until resync payloads are applied, throttles retries with an exponential backoff+jitter policy exposed via `ClientManagerConfiguration.keyframeRetryPolicy`, and harness coverage asserts a single retry is issued before rendering resumes.
 
+* 🟢 **Keyframe request triggers for patch sequence gaps**
+  `client/client-manager.ts` tracks lifecycle patch sequences, raises a keyframe request when the hub skips ahead, and the headless harness asserts only one retry is issued before playback catches up.
+
 ### Planned (to finish Phase 4)
+
+
+* _None — monitoring for regressions only; follow-up items are scoped under Phases 5–7._
 
 
 ## Definition of Done (Phase 4)
@@ -76,10 +91,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Implement keyframe request triggers for patch sequence gaps.**
+**Bootstrap the contract orchestrator inside the live client shell.**
 
 **Acceptance criteria**
 
-* `client/client-manager.ts` (or `client/world-state.ts`) tracks the latest `sequence` cursor and requests a keyframe when incoming batches skip ahead beyond the tracked sequence.
-* Requests reuse the new retry throttle, avoid duplicates while a keyframe is in flight, and cancel when a resync or keyframe closes the gap.
-* Headless harness coverage injects a skipped sequence, asserts a single keyframe request is sent, and verifies rendering resumes without duplicated lifecycle events once the keyframe response arrives.
+* `client/main.ts` (or a dedicated bootstrap module) instantiates `GameClientOrchestrator` with `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, wiring lifecycle handlers to the DOM lifecycle.
+* The UI mounts a canvas (or renderer host) that receives `renderBatch` output from the orchestrator and exposes connection status/errors surfaced via `ClientLifecycleHandlers`.
+* WebSocket events (`state`, `keyframe`, `keyframeNack`, disconnect) are forwarded from the network client into the orchestrator methods so effect catalog snapshots and lifecycle batches hydrate the renderer without relying on the legacy telemetry-only flow.
