@@ -18,6 +18,7 @@ FOLLOW="${FOLLOW:-$SYNC_MODE}"
 
 mkdir -p "$BIN_DIR"
 SRV_PID=""
+CLEANUP_DONE=0
 
 port_in_use() {
   local p="${1:?port required}"
@@ -80,9 +81,9 @@ start_server() {
   pick_port_if_needed
   pushd "$SERVER_DIR" >/dev/null
   if [[ "$RUN_CMD" == "./bin/server" ]]; then
-    PORT="$PORT" eval "$RUN_CMD" &
+    PORT="$PORT" "$RUN_CMD" &
   else
-    eval "$RUN_CMD" &
+    PORT="$PORT" bash -c "exec $RUN_CMD" &
   fi
   SRV_PID=$!
   popd >/dev/null
@@ -122,13 +123,20 @@ build_swap_run() {
 cleanup() {
   local reason="${1:-EXIT}"
 
-  if [[ "$reason" == "SIGINT" ]]; then
+  if [[ "$CLEANUP_DONE" == "1" ]]; then
+    return 0
+  fi
+  CLEANUP_DONE=1
+
+  if [[ "$reason" == "SIGINT" ]] || [[ "$reason" == "SIGTERM" ]]; then
     local pid="${SRV_PID:-}"
     if [[ -z "$pid" ]] && [[ -f "$PID_FILE" ]]; then
       pid="$(cat "$PID_FILE" || true)"
     fi
     if [[ -n "$pid" ]] && ps -p "$pid" >/dev/null 2>&1; then
-      kill -INT "$pid" 2>/dev/null || true
+      local sig="-INT"
+      [[ "$reason" == "SIGTERM" ]] && sig="-TERM"
+      kill "$sig" "$pid" 2>/dev/null || true
     fi
   fi
 
@@ -136,8 +144,19 @@ cleanup() {
   rm -f "$PID_FILE" || true
   echo "🧹 cleaned up"
 }
-trap 'cleanup SIGINT' INT
-trap 'cleanup SIGTERM' TERM
+
+handle_sigint() {
+  cleanup SIGINT
+  exit 130
+}
+
+handle_sigterm() {
+  cleanup SIGTERM
+  exit 143
+}
+
+trap handle_sigint INT
+trap handle_sigterm TERM
 trap 'cleanup EXIT' EXIT
 
 if [[ "$SYNC_MODE" == "1" ]]; then
