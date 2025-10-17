@@ -47,6 +47,7 @@ export interface ClientOrchestrator {
   readonly handleKeyframe: (keyframe: WorldKeyframe) => void;
   readonly handlePatchBatch: (patch: WorldPatchBatch) => void;
   readonly requestRender: (batch: RenderBatch) => void;
+  readonly getJoinResponse: () => JoinResponse | null;
 }
 
 interface PendingKeyframeRetry {
@@ -122,6 +123,10 @@ export class GameClientOrchestrator implements ClientOrchestrator {
 
   requestRender(batch: RenderBatch): void {
     this.renderer.renderBatch(batch);
+  }
+
+  getJoinResponse(): JoinResponse | null {
+    return this.joinResponse;
   }
 
   private createNetworkHandlers(): NetworkEventHandlers {
