@@ -1,107 +1,16 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { GameClientOrchestrator, type ClientManagerConfiguration } from "../client-manager";
 import { setEffectCatalog } from "../effect-catalog";
 import {
   effectCatalog as generatedEffectCatalog,
-  type EffectCatalogEntry,
 } from "../generated/effect-contracts";
-import type {
-  JoinResponse,
-  NetworkClient,
-  NetworkClientConfiguration,
-  NetworkEventHandlers,
-  NetworkMessageEnvelope,
-} from "../network";
-import type {
-  RenderBatch,
-  RenderContextProvider,
-  RenderDimensions,
-  RenderLayer,
-  Renderer,
-  RendererConfiguration,
-} from "../render";
 import {
   type ContractLifecycleBatch,
   type ContractLifecycleEndEvent,
   type ContractLifecycleSpawnEvent,
   type ContractLifecycleUpdateEvent,
 } from "../effect-lifecycle-store";
-import { InMemoryWorldStateStore } from "../world-state";
-
-class HeadlessNetworkClient implements NetworkClient {
-  private handlers: NetworkEventHandlers | null = null;
-
-  constructor(
-    public readonly configuration: NetworkClientConfiguration,
-    private readonly joinResponse: JoinResponse,
-  ) {}
-
-  async join(): Promise<JoinResponse> {
-    return this.joinResponse;
-  }
-
-  async connect(handlers: NetworkEventHandlers): Promise<void> {
-    this.handlers = handlers;
-    handlers.onJoin?.(this.joinResponse);
-  }
-
-  async disconnect(): Promise<void> {
-    this.handlers = null;
-  }
-
-  send(_data: unknown): void {}
-
-  emit(message: NetworkMessageEnvelope): void {
-    this.handlers?.onMessage?.(message);
-  }
-}
-
-class HeadlessRenderer implements Renderer {
-  public readonly configuration: RendererConfiguration;
-  public readonly batches: RenderBatch[] = [];
-
-  constructor(configuration?: Partial<RendererConfiguration>) {
-    const dimensions: RenderDimensions = configuration?.dimensions ?? {
-      width: 960,
-      height: 540,
-    };
-    const layers: RenderLayer[] = configuration?.layers
-      ? configuration.layers.map((layer) => ({ ...layer }))
-      : [
-          { id: "effect-area", zIndex: 1 },
-          { id: "effect-target", zIndex: 2 },
-          { id: "effect-visual", zIndex: 3 },
-        ];
-
-    this.configuration = {
-      dimensions,
-      layers,
-    };
-  }
-
-  mount(_provider: RenderContextProvider): void {}
-
-  unmount(): void {}
-
-  renderBatch(batch: RenderBatch): void {
-    this.batches.push(batch);
-  }
-
-  resize(_dimensions: RenderDimensions): void {}
-}
-
-const orchestratorConfig: ClientManagerConfiguration = {
-  autoConnect: true,
-  reconcileIntervalMs: 0,
-};
-
-const createJoinResponse = (catalog: Record<string, EffectCatalogEntry>): JoinResponse => ({
-  id: "player-render-test",
-  seed: "seed",
-  protocolVersion: 1,
-  effectCatalog: catalog,
-});
+import { createHeadlessHarness } from "./helpers/headless-harness";
 
 describe("Lifecycle renderer smoke test", () => {
   beforeEach(() => {
@@ -118,22 +27,8 @@ describe("Lifecycle renderer smoke test", () => {
       ...(attackEntry.blocks.parameters as Record<string, number> | undefined),
     } as Readonly<Record<string, number>>;
     const fireballRadius = fireballParameters.radius ?? 12;
-    const joinResponse = createJoinResponse(generatedEffectCatalog);
-    const network = new HeadlessNetworkClient(
-      {
-        joinUrl: "/join",
-        websocketUrl: "ws://localhost",
-        heartbeatIntervalMs: 1000,
-        protocolVersion: 1,
-      },
-      joinResponse,
-    );
-    const renderer = new HeadlessRenderer();
-    const worldState = new InMemoryWorldStateStore();
-    const orchestrator = new GameClientOrchestrator(orchestratorConfig, {
-      network,
-      renderer,
-      worldState,
+    const { network, renderer, orchestrator } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
     });
 
     const onReady = vi.fn();
