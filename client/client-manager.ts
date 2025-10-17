@@ -20,6 +20,11 @@ import type {
   NetworkEventHandlers,
   NetworkMessageEnvelope,
 } from "./network";
+import {
+  NetworkInputActionDispatcher,
+  type InputActionDispatcher,
+  type PlayerIntent,
+} from "./input";
 import type { RenderBatch, Renderer, StaticGeometry, AnimationFrame, RenderLayer } from "./render";
 import type { WorldPatchBatch, WorldStateStore, WorldKeyframe } from "./world-state";
 import type { DeliveryKind } from "./generated/effect-contracts";
@@ -85,6 +90,8 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private lastPatchSequence: number | null = null;
   private maxPatchSequenceSeen: number | null = null;
   private pendingGapSequence: number | null = null;
+  private latestAcknowledgedTick: number | null = null;
+  private inputDispatchPaused = true;
 
   constructor(
     public readonly configuration: ClientManagerConfiguration,
@@ -140,6 +147,23 @@ export class GameClientOrchestrator implements ClientOrchestrator {
 
   get playerId(): string | null {
     return this.joinResponse?.id ?? null;
+  }
+
+  createInputDispatcher(): InputActionDispatcher {
+    return new NetworkInputActionDispatcher({
+      getProtocolVersion: () => this.joinResponse?.protocolVersion ?? null,
+      getAcknowledgedTick: () => this.latestAcknowledgedTick,
+      isDispatchPaused: () => this.inputDispatchPaused,
+      sendMessage: (payload) => {
+        this.sendClientCommand(payload);
+      },
+      onIntentDispatched: (intent: PlayerIntent) => {
+        this.handleIntentDispatched(intent);
+      },
+      onPathCommand: (active) => {
+        this.handlePathCommand(active);
+      },
+    });
   }
 
   private createNetworkHandlers(): NetworkEventHandlers {
@@ -199,6 +223,12 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       this.latestKeyframeSequence = keyframeSequence;
     }
 
+    const tickValue = payload["t"];
+    const tick = typeof tickValue === "number" && Number.isFinite(tickValue) ? Math.floor(tickValue) : null;
+    if (tick !== null) {
+      this.latestAcknowledgedTick = tick;
+    }
+
     const isResync = payload["resync"] === true;
     if (isResync) {
       this.handleResync();
@@ -220,10 +250,10 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       this.lifecycleStore.applyBatch(batch);
     }
 
-    const tickValue = payload["t"];
-    const tick = typeof tickValue === "number" ? tickValue : null;
     const frameTime = tick !== null ? tick * TICK_DURATION_MS : receivedAt;
     this.renderLifecycleView(frameTime);
+
+    this.inputDispatchPaused = false;
 
     if (isResync) {
       this.applyPendingKeyframeRetry();
@@ -346,6 +376,8 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lastKeyframeRequestAt = 0;
     this.resetPatchSequenceTracking();
     this.clearPendingKeyframeRetryTimer();
+    this.latestAcknowledgedTick = null;
+    this.inputDispatchPaused = true;
     this.renderLifecycleView();
   }
 
@@ -356,6 +388,8 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lastRenderTime = -1;
     this.resetPatchSequenceTracking();
     this.clearPendingKeyframeRetryTimer();
+    this.latestAcknowledgedTick = null;
+    this.inputDispatchPaused = true;
   }
 
   private handleDisconnect(): void {
@@ -733,6 +767,22 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     }
     const normalized = Math.floor(value);
     return normalized > 0 ? normalized : null;
+  }
+
+  private sendClientCommand(payload: Record<string, unknown>): void {
+    try {
+      this.network.send(payload);
+    } catch (error) {
+      this.reportError(error);
+    }
+  }
+
+  private handleIntentDispatched(_intent: PlayerIntent): void {
+    // Reserved for future intent instrumentation.
+  }
+
+  private handlePathCommand(_pathActive: boolean): void {
+    // Reserved for future path state synchronisation once the input store is available.
   }
 }
 
