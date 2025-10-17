@@ -14,6 +14,7 @@ interface TestStoreContext {
   readonly intents: PlayerIntent[];
   readonly facingUpdates: FacingDirection[];
   readonly toggleCameraLock: ReturnType<typeof vi.fn>;
+  readonly keyStates: InputStateSnapshot[];
 }
 
 type EventHandler = (event: unknown) => void;
@@ -84,6 +85,7 @@ const createTestStore = (snapshot?: Partial<InputStateSnapshot>): TestStoreConte
   const intents: PlayerIntent[] = [];
   const facingUpdates: FacingDirection[] = [];
   const toggleCameraLock = vi.fn();
+  const keyStates: InputStateSnapshot[] = [];
 
   const baseSnapshot: InputStateSnapshot = {
     pressedKeys: snapshot?.pressedKeys ?? new Set<string>(),
@@ -111,9 +113,17 @@ const createTestStore = (snapshot?: Partial<InputStateSnapshot>): TestStoreConte
     setPathActive: (value) => {
       pathActive = value;
     },
+    setKeyState: (state) => {
+      keyStates.push({
+        pressedKeys: new Set(state.pressedKeys),
+        directionOrder: [...state.directionOrder],
+        currentFacing,
+        pathActive,
+      });
+    },
   };
 
-  return { store, intents, facingUpdates, toggleCameraLock };
+  return { store, intents, facingUpdates, toggleCameraLock, keyStates };
 };
 
 const createController = (snapshot?: Partial<InputStateSnapshot>) => {
@@ -189,6 +199,10 @@ describe("KeyboardInputController", () => {
 
       expect(keyDown.defaultPrevented).toBe(true);
       expect(dispatcher.cancelPath).toHaveBeenCalledTimes(1);
+      const firstKeyState = testStore.keyStates[0];
+      expect(firstKeyState).toBeDefined();
+      expect(Array.from(firstKeyState!.pressedKeys)).toEqual(["w"]);
+      expect(firstKeyState!.directionOrder).toEqual(["w"]);
       expect(dispatcher.sendCurrentIntent).toHaveBeenNthCalledWith(1, {
         dx: 0,
         dy: -1,
@@ -204,6 +218,10 @@ describe("KeyboardInputController", () => {
         dy: 0,
         facing: "up",
       });
+      const lastKeyState = testStore.keyStates.at(-1);
+      expect(lastKeyState).toBeDefined();
+      expect(Array.from(lastKeyState!.pressedKeys)).toEqual([]);
+      expect(lastKeyState!.directionOrder).toEqual([]);
     } finally {
       controller.unregister();
     }

@@ -57,6 +57,11 @@ export interface ClientOrchestrator {
   readonly getJoinResponse: () => JoinResponse | null;
 }
 
+export interface InputDispatcherHooks {
+  readonly onIntentDispatched?: (intent: PlayerIntent) => void;
+  readonly onPathCommand?: (pathActive: boolean) => void;
+}
+
 export interface ClientHeartbeatTelemetry {
   readonly serverTime: number | null;
   readonly clientTime: number | null;
@@ -149,7 +154,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     return this.joinResponse?.id ?? null;
   }
 
-  createInputDispatcher(): InputActionDispatcher {
+  createInputDispatcher(hooks: InputDispatcherHooks = {}): InputActionDispatcher {
     return new NetworkInputActionDispatcher({
       getProtocolVersion: () => this.joinResponse?.protocolVersion ?? null,
       getAcknowledgedTick: () => this.latestAcknowledgedTick,
@@ -158,9 +163,11 @@ export class GameClientOrchestrator implements ClientOrchestrator {
         this.sendClientCommand(payload);
       },
       onIntentDispatched: (intent: PlayerIntent) => {
+        hooks.onIntentDispatched?.(intent);
         this.handleIntentDispatched(intent);
       },
       onPathCommand: (active) => {
+        hooks.onPathCommand?.(active);
         this.handlePathCommand(active);
       },
     });
