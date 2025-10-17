@@ -25,10 +25,11 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   Upgraded `golang.org/x/tools` (and indirect deps) so the generator builds cleanly with Go 1.24.3, restoring `npm run build` and client bundle output.
 * 🟢 **Lifecycle smoke coverage for client-managed entries**
   Extended `client/__tests__/lifecycle-render-smoke.test.ts` to replay a `managedByClient` catalog entry and assert renderer metadata retains ownership after lifecycle end.
+* 🟢 **Resync clearing coverage in renderer harness**
+  Added a resync replay to `client/__tests__/lifecycle-render-smoke.test.ts` that asserts the lifecycle store clears retained entries and the renderer emits an empty frame when `payload.resync = true`.
 
 ### Planned (to finish Phase 4)
 
-* ⚪ **Resync clearing assertions in harness** — Within the same smoke test, simulate a `resync` (`payload.resync = true`) and verify both `ContractLifecycleStore` state and renderer batches reset to empty.
 * ⚪ **Shared harness helper reuse** — Refactor test harness utilities as needed so client-managed coverage reuses the existing server-managed helpers while keeping the generated catalog snapshot authoritative for types.
 * ⚪ **Snapshot and tooling updates for client-managed flows** — Refresh golden snapshots or utilities that assume only server-managed entries so `npm test -- client` succeeds with the expanded scenarios.
 
@@ -60,10 +61,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Add resync clearing coverage for client-managed lifecycle batches in the renderer harness.**
+**Refactor lifecycle harness helpers so client-managed coverage reuses the server-managed utilities.**
 
 **Acceptance criteria**
 
-* Resync message clears lifecycle state and renderer batches back to an empty frame.
-* Renderer asserts retained entries are dropped after resync while server-managed entries continue to behave as before.
-* Harness utilities shared between managed and server-driven flows remain catalog-authoritative and reusable for future scenarios.
+* Shared helpers live in a reusable module and back both the server-managed and client-managed smoke scenarios.
+* Client-managed smoke coverage keeps using the generated catalog snapshot for type authority.
+* Existing snapshots or fixtures continue to pass without duplicating catalog state.
