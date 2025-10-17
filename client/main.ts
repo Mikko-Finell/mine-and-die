@@ -2,8 +2,13 @@ import { LitElement, html } from "lit";
 import type { PropertyValues } from "lit";
 import { classMap } from "lit/directives/class-map.js";
 import { GameClientOrchestrator, type ClientHeartbeatTelemetry } from "./client-manager";
-import { InMemoryInputStore, KeyboardInputController, type InputBindings } from "./input";
-import { WebSocketNetworkClient } from "./network";
+import {
+  InMemoryInputStore,
+  KeyboardInputController,
+  type InputBindings,
+  type InputActionDispatcher,
+} from "./input";
+import { WebSocketNetworkClient, type WorldConfigurationSnapshot } from "./network";
 import { CanvasRenderer, type Renderer } from "./render";
 import { InMemoryWorldStateStore } from "./world-state";
 
@@ -42,6 +47,10 @@ const INPUT_BINDINGS: InputBindings = {
 
 type PanelKey = "telemetry" | "world" | "inventory";
 
+type PathCommandDetail =
+  | { readonly kind: "move"; readonly x: number; readonly y: number }
+  | { readonly kind: "cancel" };
+
 interface LogEntry {
   timestamp: string;
   message: string;
@@ -57,6 +66,7 @@ class GameClientApp extends LitElement {
     logs: { state: true },
     activeTab: { state: true },
     playerId: { state: true },
+    worldDimensions: { state: true },
   } as const;
 
   private clockInterval: number | undefined;
@@ -65,6 +75,7 @@ class GameClientApp extends LitElement {
   private readonly networkClient: WebSocketNetworkClient;
   private readonly orchestrator: GameClientOrchestrator;
   private readonly inputStore: InMemoryInputStore;
+  private readonly inputDispatcher: InputActionDispatcher;
   private readonly inputController: KeyboardInputController;
   private sessionState: SessionState = "idle";
   private connectionStatus: SessionState = "idle";
@@ -74,6 +85,7 @@ class GameClientApp extends LitElement {
   private inputRegistered = false;
 
   playerId: string | null;
+  worldDimensions: WorldConfigurationSnapshot | null;
 
   constructor() {
     super();
@@ -96,14 +108,14 @@ class GameClientApp extends LitElement {
         this.addLog(locked ? "Camera lock enabled." : "Camera lock disabled.");
       },
     });
-    const inputDispatcher = this.orchestrator.createInputDispatcher({
+    this.inputDispatcher = this.orchestrator.createInputDispatcher({
       onPathCommand: (active) => {
         this.inputStore.setPathActive(active);
       },
     });
     this.inputController = new KeyboardInputController({
       store: this.inputStore,
-      dispatcher: inputDispatcher,
+      dispatcher: this.inputDispatcher,
       bindings: INPUT_BINDINGS,
     });
     this.inputRegistered = false;
@@ -118,6 +130,7 @@ class GameClientApp extends LitElement {
     this.logs = [] as LogEntry[];
     this.activeTab = "telemetry";
     this.playerId = null;
+    this.worldDimensions = null;
     this.addLog("Booting client…");
     this.updateHeartbeatStatus();
   }
@@ -198,6 +211,7 @@ class GameClientApp extends LitElement {
     this.connectionStatus = "connecting";
     this.connectionError = null;
     this.lastHeartbeatTelemetry = null;
+    this.worldDimensions = null;
     this.heartbeatAcknowledged = false;
     this.playerId = null;
     this.addLog("Joining world…");
@@ -212,6 +226,7 @@ class GameClientApp extends LitElement {
           const join = this.orchestrator.getJoinResponse();
           if (join) {
             this.playerId = this.orchestrator.playerId;
+            this.worldDimensions = join.world;
             if (this.playerId) {
               this.addLog(`Joined world as ${this.playerId}.`);
             }
@@ -273,6 +288,7 @@ class GameClientApp extends LitElement {
       this.lastHeartbeatTelemetry = null;
       this.heartbeatAcknowledged = false;
       this.inputStore.setPathActive(false);
+      this.worldDimensions = null;
       this.updateHeartbeatStatus();
       this.addLog("Disconnected from world.");
     }
@@ -298,6 +314,22 @@ class GameClientApp extends LitElement {
       this.heartbeatAcknowledged = true;
     }
     this.updateHeartbeatStatus();
+  }
+
+  private handlePathCommand(event: CustomEvent<PathCommandDetail>): void {
+    const detail = event.detail;
+    if (!detail) {
+      return;
+    }
+
+    if (detail.kind === "move") {
+      this.inputDispatcher.sendPathCommand({ x: detail.x, y: detail.y });
+      return;
+    }
+
+    if (detail.kind === "cancel") {
+      this.inputDispatcher.cancelPath();
+    }
   }
 
   private updateHeartbeatStatus(): void {
@@ -367,9 +399,11 @@ class GameClientApp extends LitElement {
         .activeTab=${this.activeTab}
         .connectionStatus=${this.connectionStatus}
         .connectionError=${this.connectionError ?? ""}
+        .worldDimensions=${this.worldDimensions}
         @refresh-requested=${this.handleRefreshRequested}
         @tab-change=${this.handleTabChange}
         @world-reset-requested=${this.handleWorldReset}
+        @path-command=${this.handlePathCommand}
       ></app-shell>
       <hud-network
         .serverTime=${this.serverTime}
@@ -394,6 +428,7 @@ class AppShell extends LitElement {
     activeTab: { attribute: false },
     connectionStatus: { type: String },
     connectionError: { type: String },
+    worldDimensions: { attribute: false },
   } as const;
 
   heading!: string;
@@ -406,6 +441,7 @@ class AppShell extends LitElement {
   activeTab!: PanelKey;
   connectionStatus!: SessionState;
   connectionError!: string;
+  worldDimensions: WorldConfigurationSnapshot | null;
 
   constructor() {
     super();
@@ -419,6 +455,7 @@ class AppShell extends LitElement {
     this.activeTab = "telemetry";
     this.connectionStatus = "idle";
     this.connectionError = "";
+    this.worldDimensions = null;
   }
 
   createRenderRoot(): Element | ShadowRoot {
@@ -501,6 +538,7 @@ class AppShell extends LitElement {
           .healthStatus=${this.healthStatus}
           .serverTime=${this.serverTime}
           .heartbeat=${this.heartbeat}
+          .worldDimensions=${this.worldDimensions}
         ></game-canvas>
       </main>
     `;
@@ -515,10 +553,12 @@ class GameCanvas extends LitElement {
     healthStatus: { type: String },
     serverTime: { type: String },
     heartbeat: { type: String },
+    worldDimensions: { attribute: false },
   } as const;
 
   private canvasElement: HTMLCanvasElement | null = null;
   private mountedRenderer: Renderer | null = null;
+  private pointerHandlersAttached = false;
 
   renderer: Renderer | null;
   activeTab!: PanelKey;
@@ -526,6 +566,31 @@ class GameCanvas extends LitElement {
   healthStatus!: string;
   serverTime!: string;
   heartbeat!: string;
+  worldDimensions: WorldConfigurationSnapshot | null;
+
+  private readonly handlePointerDown = (event: PointerEvent): void => {
+    if (event.button === 0) {
+      if (this.activeTab !== "telemetry") {
+        return;
+      }
+      event.preventDefault();
+      const position = this.translatePointerToWorld(event);
+      if (!position) {
+        return;
+      }
+      this.dispatchPathCommand({ kind: "move", x: position.x, y: position.y });
+      return;
+    }
+
+    if (event.button === 2) {
+      event.preventDefault();
+      this.dispatchPathCommand({ kind: "cancel" });
+    }
+  };
+
+  private readonly handleContextMenu = (event: MouseEvent): void => {
+    event.preventDefault();
+  };
 
   constructor() {
     super();
@@ -535,6 +600,7 @@ class GameCanvas extends LitElement {
     this.healthStatus = "--";
     this.serverTime = "--";
     this.heartbeat = "--";
+    this.worldDimensions = null;
   }
 
   createRenderRoot(): Element | ShadowRoot {
@@ -543,6 +609,7 @@ class GameCanvas extends LitElement {
 
   protected firstUpdated(): void {
     this.canvasElement = this.querySelector("canvas");
+    this.registerPointerHandlers();
     this.attachRenderer();
     if (!this.renderer && this.canvasElement) {
       this.drawBootScreen(this.canvasElement);
@@ -557,6 +624,7 @@ class GameCanvas extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.unregisterPointerHandlers();
     this.detachRenderer();
     if (this.canvasElement) {
       this.drawBootScreen(this.canvasElement);
@@ -587,6 +655,7 @@ class GameCanvas extends LitElement {
       return;
     }
     this.canvasElement = canvas;
+    this.registerPointerHandlers();
 
     if (!this.renderer) {
       this.detachRenderer();
@@ -619,6 +688,73 @@ class GameCanvas extends LitElement {
       this.mountedRenderer.unmount();
       this.mountedRenderer = null;
     }
+  }
+
+  private registerPointerHandlers(): void {
+    const canvas = this.canvasElement;
+    if (!canvas || this.pointerHandlersAttached) {
+      return;
+    }
+    canvas.addEventListener("pointerdown", this.handlePointerDown);
+    canvas.addEventListener("contextmenu", this.handleContextMenu);
+    this.pointerHandlersAttached = true;
+  }
+
+  private unregisterPointerHandlers(): void {
+    const canvas = this.canvasElement;
+    if (!canvas) {
+      this.pointerHandlersAttached = false;
+      return;
+    }
+    if (!this.pointerHandlersAttached) {
+      return;
+    }
+    canvas.removeEventListener("pointerdown", this.handlePointerDown);
+    canvas.removeEventListener("contextmenu", this.handleContextMenu);
+    this.pointerHandlersAttached = false;
+  }
+
+  private translatePointerToWorld(event: PointerEvent): { x: number; y: number } | null {
+    const canvas = this.canvasElement;
+    if (!canvas) {
+      return null;
+    }
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return null;
+    }
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const localX = (event.clientX - rect.left) * scaleX;
+    const localY = (event.clientY - rect.top) * scaleY;
+
+    const width = this.worldDimensions?.width ?? canvas.width;
+    const height = this.worldDimensions?.height ?? canvas.height;
+
+    return {
+      x: this.clamp(localX, 0, width),
+      y: this.clamp(localY, 0, height),
+    };
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    if (value < min) {
+      return min;
+    }
+    if (value > max) {
+      return max;
+    }
+    return value;
+  }
+
+  private dispatchPathCommand(detail: PathCommandDetail): void {
+    this.dispatchEvent(
+      new CustomEvent<PathCommandDetail>("path-command", {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   render() {

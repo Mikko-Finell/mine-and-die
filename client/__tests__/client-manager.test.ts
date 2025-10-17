@@ -118,6 +118,7 @@ describe("GameClientOrchestrator", () => {
     const dispatcher = orchestrator.createInputDispatcher({ onPathCommand });
 
     dispatcher.sendAction("attack");
+    dispatcher.sendPathCommand({ x: 320, y: 240 });
     expect(network.sentMessages).toHaveLength(0);
 
     emitLifecycleState({ tick: 8, receivedAt: 1000 });
@@ -126,9 +127,13 @@ describe("GameClientOrchestrator", () => {
     expect(network.sentMessages).toHaveLength(1);
     expect(network.sentMessages[0]).toEqual({ type: "action", action: "attack", ver: 1, ack: 8 });
 
-    dispatcher.sendCurrentIntent({ dx: 1.2, dy: 0, facing: "right" });
+    dispatcher.sendPathCommand({ x: 320, y: 240 });
     expect(network.sentMessages).toHaveLength(2);
-    expect(network.sentMessages[1]).toEqual({
+    expect(network.sentMessages[1]).toEqual({ type: "path", x: 320, y: 240, ver: 1, ack: 8 });
+
+    dispatcher.sendCurrentIntent({ dx: 1.2, dy: 0, facing: "right" });
+    expect(network.sentMessages).toHaveLength(3);
+    expect(network.sentMessages[2]).toEqual({
       type: "input",
       dx: 1,
       dy: 0,
@@ -138,20 +143,29 @@ describe("GameClientOrchestrator", () => {
     });
 
     dispatcher.cancelPath();
-    expect(network.sentMessages).toHaveLength(3);
-    expect(network.sentMessages[2]).toEqual({ type: "cancelPath", ver: 1, ack: 8 });
-    expect(onPathCommand).toHaveBeenCalledWith(false);
+    expect(network.sentMessages).toHaveLength(4);
+    expect(network.sentMessages[3]).toEqual({ type: "cancelPath", ver: 1, ack: 8 });
+    expect(onPathCommand).toHaveBeenNthCalledWith(1, true);
+    expect(onPathCommand).toHaveBeenNthCalledWith(2, false);
 
     emitLifecycleState({ resync: true, receivedAt: 1500 });
     dispatcher.sendAction("attack");
-    expect(network.sentMessages).toHaveLength(4);
-    expect(network.sentMessages[3]).toEqual({ type: "action", action: "attack", ver: 1 });
-    expect(network.sentMessages[3]).not.toHaveProperty("ack");
+    dispatcher.sendPathCommand({ x: 128, y: 96 });
+    expect(network.sentMessages).toHaveLength(6);
+    expect(network.sentMessages[4]).toEqual({ type: "action", action: "attack", ver: 1 });
+    expect(network.sentMessages[4]).not.toHaveProperty("ack");
+    expect(network.sentMessages[5]).toEqual({ type: "path", x: 128, y: 96, ver: 1 });
+    expect(network.sentMessages[5]).not.toHaveProperty("ack");
 
     emitLifecycleState({ tick: 11, receivedAt: 1600 });
     dispatcher.sendAction("attack");
-    expect(network.sentMessages).toHaveLength(5);
-    expect(network.sentMessages[4]).toEqual({ type: "action", action: "attack", ver: 1, ack: 11 });
+    dispatcher.sendPathCommand({ x: 512, y: 256 });
+    expect(network.sentMessages).toHaveLength(8);
+    expect(network.sentMessages[6]).toEqual({ type: "action", action: "attack", ver: 1, ack: 11 });
+    expect(network.sentMessages[7]).toEqual({ type: "path", x: 512, y: 256, ver: 1, ack: 11 });
+    expect(onPathCommand).toHaveBeenCalledTimes(4);
+    expect(onPathCommand).toHaveBeenNthCalledWith(3, true);
+    expect(onPathCommand).toHaveBeenNthCalledWith(4, true);
 
     await orchestrator.shutdown();
   });

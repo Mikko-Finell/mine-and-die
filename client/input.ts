@@ -46,6 +46,7 @@ export interface InputActionDispatcher {
   readonly sendAction: (action: string, params?: Record<string, unknown>) => void;
   readonly cancelPath: () => void;
   readonly sendCurrentIntent: (intent: PlayerIntent) => void;
+  readonly sendPathCommand: (target: { readonly x: number; readonly y: number }) => void;
 }
 
 export interface InputBindings {
@@ -223,6 +224,21 @@ export class NetworkInputActionDispatcher implements InputActionDispatcher {
     const payload: Record<string, unknown> = { type: "cancelPath" };
     this.dispatch(payload);
     this.options.onPathCommand?.(false);
+  }
+
+  sendPathCommand(target: { readonly x: number; readonly y: number }): void {
+    if (this.isDispatchPaused()) {
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      type: "path",
+      x: target.x,
+      y: target.y,
+    };
+
+    this.dispatch(payload);
+    this.options.onPathCommand?.(true);
   }
 
   sendCurrentIntent(intent: PlayerIntent): void {
