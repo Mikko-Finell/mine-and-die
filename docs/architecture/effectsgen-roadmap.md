@@ -39,6 +39,9 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Keyframe catalog hydration**
   `hub.HandleKeyframeRequest` now returns `snapshotEffectCatalog` payloads and the client orchestrator normalizes catalog snapshots from WebSocket keyframe replies with headless harness coverage.
 
+* 🟢 **Keyframe NACK resync fallback**
+  `server/hub.go` and `server/messages.go` attach `snapshotEffectCatalog` metadata to `keyframeNack` responses, schedule the next broadcast as a resync, and `client/client-manager.ts` resets the lifecycle store on NACK before rehydrating from the resync payload with smoke coverage in `client/__tests__/lifecycle-render-smoke.test.ts`.
+
 ### Planned (to finish Phase 4)
 
 
@@ -70,10 +73,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Handle keyframe NACK fallbacks for lifecycle hydration.**
+**Implement client keyframe retry scheduling after resync fallback.**
 
 **Acceptance criteria**
 
-* Server `keyframeNack` responses trigger a resync broadcast that carries the latest `snapshotEffectCatalog` payload.
-* The client orchestrator treats `keyframeNack` messages as resync signals, resetting `ContractLifecycleStore` and rehydrating catalog metadata from the attached payloads.
-* Headless harness coverage replays a keyframe request that yields a NACK followed by a resync, asserting renderer output resumes from generated catalog metadata without duplicate animations.
+* `client/client-manager.ts` schedules a keyframe re-request when a `keyframeNack` is received and defers the retry until the resync payload has been applied.
+* Retries respect the server's keyframe rate limiter (no more than one outstanding request) with configuration surfaced for throttling/backoff.
+* Harness coverage in `client/__tests__/helpers/headless-harness.ts` + `client/__tests__/lifecycle-render-smoke.test.ts` asserts that the orchestrator issues a single retry, hydrates from the follow-up keyframe, and resumes rendering without duplicating lifecycle events.

@@ -427,4 +427,154 @@ describe("Lifecycle renderer smoke test", () => {
       setCatalogSpy.mockRestore();
     }
   });
+
+  test("resets lifecycle store when keyframe requests are nacked and recovers on resync", async () => {
+    const fireballEntry = generatedEffectCatalog.fireball;
+    const fireballParameters = {
+      ...(fireballEntry.blocks.parameters as Record<string, number> | undefined),
+    } as Readonly<Record<string, number>>;
+    const { network, renderer, orchestrator } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    const onReady = vi.fn();
+    await orchestrator.boot({ onReady });
+    expect(onReady).toHaveBeenCalledTimes(1);
+
+    const fireballSpawn: ContractLifecycleSpawnEvent = {
+      seq: 1,
+      tick: 96,
+      instance: {
+        id: "effect-fireball",
+        entryId: "fireball",
+        definitionId: fireballEntry.contractId,
+        definition: fireballEntry.definition,
+        startTick: 96,
+        deliveryState: {
+          geometry: {
+            shape: "circle",
+            radius: fireballParameters.radius ?? 12,
+          },
+          motion: {
+            positionX: 192,
+            positionY: 256,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: fireballEntry.definition.lifetimeTicks,
+          tickCadence: 1,
+        },
+        params: fireballParameters,
+        colors: ["#ffaa33"],
+        replication: fireballEntry.definition.client,
+        end: fireballEntry.definition.end,
+      },
+    };
+
+    network.emit({
+      type: "state",
+      payload: {
+        effect_spawned: [fireballSpawn],
+        effect_seq_cursors: { [fireballSpawn.instance.id]: fireballSpawn.seq },
+        t: fireballSpawn.tick,
+      },
+      receivedAt: 2000,
+    });
+
+    expect(renderer.batches.length).toBeGreaterThan(0);
+    let lastBatch = renderer.batches.at(-1)!;
+    expect(lastBatch.animations.some((frame) => frame.effectId === fireballSpawn.instance.id)).toBe(true);
+
+    const setCatalogSpy = vi.spyOn(effectCatalogStore, "setEffectCatalog");
+    const normalizeCatalogSpy = vi.spyOn(effectCatalogStore, "normalizeEffectCatalog");
+
+    try {
+      setCatalogSpy.mockClear();
+      normalizeCatalogSpy.mockClear();
+
+      const resyncCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+
+      network.emit({
+        type: "keyframeNack",
+        payload: {
+          config: {
+            effectCatalog: resyncCatalogPayload,
+          },
+          resync: true,
+        },
+        receivedAt: 2600,
+      });
+
+      expect(normalizeCatalogSpy).toHaveBeenCalledTimes(1);
+      expect(normalizeCatalogSpy).toHaveBeenLastCalledWith(resyncCatalogPayload);
+      const normalizedCatalog = normalizeCatalogSpy.mock.results.at(-1)?.value;
+      expect(setCatalogSpy).toHaveBeenCalledTimes(1);
+      expect(setCatalogSpy).toHaveBeenLastCalledWith(normalizedCatalog);
+
+      lastBatch = renderer.batches.at(-1)!;
+      expect(lastBatch.keyframeId).toBe("lifecycle-0");
+      expect(lastBatch.staticGeometry).toHaveLength(0);
+      expect(lastBatch.animations).toHaveLength(0);
+
+      const resyncTick = 400;
+      network.emit({
+        type: "state",
+        payload: {
+          resync: true,
+          t: resyncTick,
+          config: {
+            effectCatalog: resyncCatalogPayload,
+          },
+        },
+        receivedAt: 3000,
+      });
+
+      expect(normalizeCatalogSpy).toHaveBeenCalledTimes(2);
+      expect(normalizeCatalogSpy).toHaveBeenLastCalledWith(resyncCatalogPayload);
+      const resyncedCatalog = normalizeCatalogSpy.mock.results.at(-1)?.value;
+      expect(setCatalogSpy).toHaveBeenCalledTimes(2);
+      expect(setCatalogSpy).toHaveBeenLastCalledWith(resyncedCatalog);
+
+      lastBatch = renderer.batches.at(-1)!;
+      expect(lastBatch.keyframeId).toBe("lifecycle-0");
+      expect(lastBatch.staticGeometry).toHaveLength(0);
+      expect(lastBatch.animations).toHaveLength(0);
+      expect(lastBatch.time).toBe(resyncTick * 16);
+
+      const postResyncSpawn: ContractLifecycleSpawnEvent = {
+        seq: 11,
+        tick: resyncTick + 4,
+        instance: {
+          ...fireballSpawn.instance,
+          startTick: resyncTick + 4,
+        },
+      };
+
+      network.emit({
+        type: "state",
+        payload: {
+          effect_spawned: [postResyncSpawn],
+          effect_seq_cursors: { [postResyncSpawn.instance.id]: postResyncSpawn.seq },
+          t: postResyncSpawn.tick,
+        },
+        receivedAt: 3400,
+      });
+
+      lastBatch = renderer.batches.at(-1)!;
+      expect(lastBatch.keyframeId).toBe(`tick-${postResyncSpawn.tick}`);
+      const animations = lastBatch.animations.filter((frame) => frame.effectId === postResyncSpawn.instance.id);
+      expect(animations).toHaveLength(1);
+      expect(animations[0].metadata).toMatchObject({
+        entryId: "fireball",
+        contractId: fireballEntry.contractId,
+        catalog: fireballEntry,
+        lastEventKind: "spawn",
+      });
+    } finally {
+      normalizeCatalogSpy.mockRestore();
+      setCatalogSpy.mockRestore();
+    }
+  });
 });

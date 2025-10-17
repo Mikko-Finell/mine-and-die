@@ -174,6 +174,26 @@ func (h *Hub) effectCatalogSnapshotLocked() map[string]effectCatalogMetadata {
 	return snapshotEffectCatalog(h.world.effectManager.catalog)
 }
 
+func (h *Hub) resyncConfigSnapshot() worldConfig {
+	if h == nil {
+		return worldConfig{}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	cfg := h.config
+	cfg.EffectCatalog = h.effectCatalogSnapshotLocked()
+	return cfg
+}
+
+func (h *Hub) scheduleKeyframeResync() {
+	if h == nil {
+		return
+	}
+	h.forceKeyframe()
+	h.resyncNext.Store(true)
+}
+
 // EffectCatalogSnapshot returns a cloned snapshot of the designer-authored effect catalog.
 func (h *Hub) EffectCatalogSnapshot() map[string]effectCatalogMetadata {
 	if h == nil {
@@ -1300,7 +1320,10 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 			Type:     "keyframeNack",
 			Sequence: sequence,
 			Reason:   "rate_limited",
+			Resync:   true,
+			Config:   h.resyncConfigSnapshot(),
 		}
+		h.scheduleKeyframeResync()
 		return keyframeMessage{}, nack, true
 	}
 
@@ -1324,7 +1347,10 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 			Type:     "keyframeNack",
 			Sequence: sequence,
 			Reason:   "expired",
+			Resync:   true,
+			Config:   h.resyncConfigSnapshot(),
 		}
+		h.scheduleKeyframeResync()
 		return keyframeMessage{}, nack, true
 	default:
 		if h.telemetry != nil {

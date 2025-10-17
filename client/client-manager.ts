@@ -129,6 +129,10 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     }
 
     const payload = message.payload as Record<string, unknown>;
+    if (message.type === "keyframeNack") {
+      this.handleKeyframeNackPayload(payload);
+      return;
+    }
     if (message.type === "keyframe") {
       this.handleKeyframePayload(payload);
       return;
@@ -165,6 +169,13 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private handleKeyframePayload(payload: Record<string, unknown>): void {
     const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
     this.hydrateEffectCatalog(effectCatalogPayload);
+  }
+
+  private handleKeyframeNackPayload(payload: Record<string, unknown>): void {
+    const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
+    this.handleResync();
+    this.hydrateEffectCatalog(effectCatalogPayload);
+    this.renderLifecycleView();
   }
 
   private extractEffectCatalogPayload(config: unknown): unknown {

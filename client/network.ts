@@ -11,7 +11,7 @@ export interface JoinResponse {
 }
 
 export interface NetworkMessageEnvelope {
-  readonly type: "keyframe" | "patch" | "heartbeat" | "error" | string;
+  readonly type: "keyframe" | "keyframeNack" | "patch" | "heartbeat" | "error" | string;
   readonly payload: unknown;
   readonly receivedAt: number;
 }

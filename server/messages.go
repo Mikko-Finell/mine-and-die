@@ -52,10 +52,12 @@ type keyframeMessage struct {
 }
 
 type keyframeNackMessage struct {
-	Ver      int    `json:"ver"`
-	Type     string `json:"type"`
-	Sequence uint64 `json:"sequence"`
-	Reason   string `json:"reason"`
+	Ver      int         `json:"ver"`
+	Type     string      `json:"type"`
+	Sequence uint64      `json:"sequence"`
+	Reason   string      `json:"reason"`
+	Resync   bool        `json:"resync,omitempty"`
+	Config   worldConfig `json:"config,omitempty"`
 }
 
 type clientMessage struct {
