@@ -17,15 +17,13 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 * 🟢 **Consume generated catalog metadata on the client**
   Client modules now import canonical catalog data from `client/generated/effect-contracts.ts`; join-time payloads are verified against the generated snapshot and all downstream helpers read from the shared store.
-* 🟡 **Feed renderer from `ContractLifecycleStore`**
-  Implement an orchestrator so WebSocket state/lifecycle messages populate `ContractLifecycleStore` and trigger renders that consume store snapshots (no legacy stubs).
+* 🟢 **Feed renderer from `ContractLifecycleStore`**
+  Orchestrator now ingests WebSocket `state` batches into `ContractLifecycleStore` and emits render batches derived from generated catalog metadata/layers.
 
 ### Planned (to finish Phase 4)
 
-* **Transport → Store ingestion**
-  Normalize `effect_spawned` / `effect_update` / `effect_ended` (plus cursor hints) into `ContractLifecycleStore`, including resync/reset handling.
-* **Renderer scheduling via catalog metadata**
-  Use generated catalog/definitions to decide ownership (`managedByClient`) and build draw instructions (layers/animations) instead of placeholders.
+* **Lifecycle renderer smoke tests**
+  Add a headless render harness that exercises a known lifecycle batch and asserts a frame is produced using catalog metadata.
 
 ## Definition of Done (Phase 4)
 
@@ -55,10 +53,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Wire the live path *WebSocket → ContractLifecycleStore → Renderer* using generated types/metadata.**
+**Automate a headless render smoke test that validates lifecycle-driven frames produced from generated metadata.**
 
 **Acceptance criteria**
 
-* Batches for a known `entryId` flow from network handlers into `ContractLifecycleStore` with cursor/reset handling.
-* Renderer consumes only store snapshots; draw scheduling respects `managedByClient` and other generated metadata.
+* Harness replays a recorded lifecycle batch for a known `entryId` and verifies the renderer outputs at least one animation/static geometry frame.
+* Test asserts metadata-driven properties (layer selection, managed ownership flags) match the generated catalog snapshot.
 * CI passes with generator drift, schema validation, goldens, and the headless render smoke test.
