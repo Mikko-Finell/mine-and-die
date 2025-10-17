@@ -15,9 +15,9 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 ### In progress
 
-* **Consume generated catalog metadata on the client**
-  Replace manual validators/types with exports from `client/generated/effect-contracts.ts`. Update join handling so no schema mirrors are hand-maintained.
-* **Feed renderer from `ContractLifecycleStore`**
+* 🟢 **Consume generated catalog metadata on the client**
+  Client modules now import canonical catalog data from `client/generated/effect-contracts.ts`; join-time payloads are verified against the generated snapshot and all downstream helpers read from the shared store.
+* 🟡 **Feed renderer from `ContractLifecycleStore`**
   Implement an orchestrator so WebSocket state/lifecycle messages populate `ContractLifecycleStore` and trigger renders that consume store snapshots (no legacy stubs).
 
 ### Planned (to finish Phase 4)

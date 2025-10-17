@@ -1,64 +1,98 @@
-export interface EffectCatalogEntryMetadata {
-  readonly contractId: string;
-  readonly managedByClient: boolean;
-  readonly blocks: Readonly<Record<string, unknown>>;
-}
+import {
+  effectCatalog as generatedEffectCatalog,
+  type EffectCatalogEntry,
+} from "./generated/effect-contracts";
+
+export type EffectCatalogEntryMetadata = EffectCatalogEntry;
 
 export type EffectCatalogSnapshot = Readonly<Record<string, EffectCatalogEntryMetadata>>;
-
-const EMPTY_CATALOG: EffectCatalogSnapshot = Object.freeze({});
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const cloneBlocks = (source: Record<string, unknown>): Record<string, unknown> => {
-  const copy: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(source)) {
-    copy[key] = value;
+const cloneAndFreeze = <T>(value: T): T => {
+  if (value === null || typeof value !== "object") {
+    return value;
   }
-  return copy;
+
+  if (Array.isArray(value)) {
+    const cloned = value.map((item) => cloneAndFreeze(item)) as unknown as T;
+    return Object.freeze(cloned) as T;
+  }
+
+  const entries: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    entries[key] = cloneAndFreeze(entry);
+  }
+  return Object.freeze(entries) as T;
+};
+
+const canonicalCatalog: EffectCatalogSnapshot = cloneAndFreeze(generatedEffectCatalog);
+
+const deepEqual = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) {
+    return true;
+  }
+
+  if (typeof left !== typeof right) {
+    return false;
+  }
+
+  if (left === null || right === null) {
+    return false;
+  }
+
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) {
+      return false;
+    }
+    return left.every((value, index) => deepEqual(value, right[index]));
+  }
+
+  if (isRecord(left) && isRecord(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) {
+      return false;
+    }
+    return leftKeys.every((key) => deepEqual(left[key], right[key]));
+  }
+
+  return false;
+};
+
+const validateAgainstCanonical = (input: unknown): void => {
+  if (!isRecord(input)) {
+    throw new Error("Effect catalog payload must be an object map of entry metadata.");
+  }
+
+  const inputKeys = Object.keys(input);
+  const canonicalKeys = Object.keys(canonicalCatalog);
+
+  if (inputKeys.length !== canonicalKeys.length) {
+    throw new Error(
+      `Effect catalog mismatch: expected ${canonicalKeys.length} entries, received ${inputKeys.length}.`,
+    );
+  }
+
+  for (const key of inputKeys) {
+    const canonicalEntry = canonicalCatalog[key];
+    if (!canonicalEntry) {
+      throw new Error(`Effect catalog contains unknown entry ${key}.`);
+    }
+    const candidate = (input as Record<string, unknown>)[key];
+    if (!deepEqual(candidate, canonicalEntry)) {
+      throw new Error(`Effect catalog entry ${key} does not match generated metadata.`);
+    }
+  }
 };
 
 export const normalizeEffectCatalog = (input: unknown): EffectCatalogSnapshot => {
-  if (input == null) {
-    return EMPTY_CATALOG;
-  }
-  if (!isRecord(input)) {
-    throw new Error("Effect catalog must be an object map of entry metadata.");
-  }
-  const result: Record<string, EffectCatalogEntryMetadata> = {};
-  for (const [entryId, entryValue] of Object.entries(input)) {
-    if (!isRecord(entryValue)) {
-      throw new Error(`Effect catalog entry ${entryId} must be an object.`);
-    }
-    const { contractId, managedByClient, blocks } = entryValue as {
-      readonly contractId?: unknown;
-      readonly managedByClient?: unknown;
-      readonly blocks?: unknown;
-    };
-    if (typeof contractId !== "string" || contractId.length === 0) {
-      throw new Error(`Effect catalog entry ${entryId} missing contractId.`);
-    }
-    if (typeof managedByClient !== "boolean") {
-      throw new Error(`Effect catalog entry ${entryId} missing managedByClient flag.`);
-    }
-    let normalizedBlocks: Record<string, unknown> | undefined;
-    if (blocks !== undefined) {
-      if (!isRecord(blocks)) {
-        throw new Error(`Effect catalog entry ${entryId} blocks must be an object.`);
-      }
-      normalizedBlocks = cloneBlocks(blocks);
-    }
-    result[entryId] = {
-      contractId,
-      managedByClient,
-      blocks: Object.freeze(normalizedBlocks ?? {}),
-    };
-  }
-  return Object.freeze(result);
+  validateAgainstCanonical(input);
+  return canonicalCatalog;
 };
 
-let currentCatalog: EffectCatalogSnapshot = EMPTY_CATALOG;
+let currentCatalog: EffectCatalogSnapshot = canonicalCatalog;
 const catalogListeners = new Set<(catalog: EffectCatalogSnapshot) => void>();
 
 const notifyCatalogListeners = (): void => {
@@ -74,7 +108,7 @@ const notifyCatalogListeners = (): void => {
 };
 
 export const setEffectCatalog = (catalog: EffectCatalogSnapshot | null | undefined): void => {
-  currentCatalog = catalog ? Object.freeze({ ...catalog }) : EMPTY_CATALOG;
+  currentCatalog = catalog ? cloneAndFreeze(catalog) : canonicalCatalog;
   notifyCatalogListeners();
 };
 
