@@ -30,9 +30,11 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Shared harness helper reuse**
   Extracted reusable headless orchestrator helpers in `client/__tests__/helpers/headless-harness.ts` so both server- and client-managed smoke coverage share the same catalog-driven setup.
 
+* 🟢 **Snapshot and tooling updates for client-managed flows**
+  Surfaced `managedByClient` from `server/effect_catalog_metadata.go` and snapshot utilities so join payloads match the generated catalog bindings without manual overrides.
+
 ### Planned (to finish Phase 4)
 
-* ⚪ **Snapshot and tooling updates for client-managed flows** — Refresh golden snapshots or utilities that assume only server-managed entries so `npm test -- client` succeeds with the expanded scenarios.
 
 ## Definition of Done (Phase 4)
 
@@ -62,10 +64,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Refresh snapshots and tooling assumptions for client-managed lifecycle flows.**
+**Add resync/keyframe coverage for canonical effect catalog metadata.**
 
 **Acceptance criteria**
 
-* Golden snapshots and utilities accept client-managed catalog entries without manual overrides.
-* `npm test -- client` passes without regenerating fixtures after the client-managed smoke scenarios run.
-* Any drift detection scripts continue to read from generated bindings only.
+* `server/hub.go` resync/keyframe config snapshots include the canonical effect catalog data emitted by `snapshotEffectCatalog`.
+* A client-side smoke test (e.g. `client/__tests__/lifecycle-render-smoke.test.ts`) asserts that resync hydration reuses the server-provided catalog snapshot without falling back to generated defaults.
+* Join/resync fixtures avoid manual overrides—`normalizeEffectCatalog` accepts the network payload as-is.

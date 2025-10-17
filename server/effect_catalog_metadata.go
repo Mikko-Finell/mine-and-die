@@ -8,15 +8,24 @@ import (
 )
 
 type effectCatalogMetadata struct {
-	ContractID string
-	Definition *effectcontract.EffectDefinition
-	Blocks     map[string]json.RawMessage
+	ContractID      string
+	Definition      *effectcontract.EffectDefinition
+	Blocks          map[string]json.RawMessage
+	ManagedByClient bool
 }
 
 func newEffectCatalogMetadata(entry effectcatalog.Entry) effectCatalogMetadata {
+	managedByClient := false
+	if entry.Definition != nil {
+		managedByClient = entry.Definition.Client.ManagedByClient
+	} else if entry.Contract != nil {
+		managedByClient = entry.Contract.Owner == effectcontract.LifecycleOwnerClient
+	}
+
 	meta := effectCatalogMetadata{
-		ContractID: entry.ContractID,
-		Blocks:     cloneRawMessageMap(entry.Blocks),
+		ContractID:      entry.ContractID,
+		Blocks:          cloneRawMessageMap(entry.Blocks),
+		ManagedByClient: managedByClient,
 	}
 	if entry.Definition != nil {
 		defCopy := *entry.Definition
@@ -27,8 +36,9 @@ func newEffectCatalogMetadata(entry effectcatalog.Entry) effectCatalogMetadata {
 
 func (meta effectCatalogMetadata) clone() effectCatalogMetadata {
 	cloned := effectCatalogMetadata{
-		ContractID: meta.ContractID,
-		Blocks:     cloneRawMessageMap(meta.Blocks),
+		ContractID:      meta.ContractID,
+		Blocks:          cloneRawMessageMap(meta.Blocks),
+		ManagedByClient: meta.ManagedByClient,
 	}
 	if meta.Definition != nil {
 		defCopy := *meta.Definition
@@ -38,8 +48,9 @@ func (meta effectCatalogMetadata) clone() effectCatalogMetadata {
 }
 
 func (meta effectCatalogMetadata) MarshalJSON() ([]byte, error) {
-	payload := make(map[string]any, len(meta.Blocks)+2)
+	payload := make(map[string]any, len(meta.Blocks)+3)
 	payload["contractId"] = meta.ContractID
+	payload["managedByClient"] = meta.ManagedByClient
 	if meta.Definition != nil {
 		payload["definition"] = meta.Definition
 	}
