@@ -806,6 +806,11 @@ func TestHandleKeyframeRequestExpired(t *testing.T) {
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
 
+	expectedCatalog := snapshotEffectCatalog(hub.world.effectManager.catalog)
+	if len(expectedCatalog) == 0 {
+		t.Fatalf("expected effect catalog snapshot to contain entries")
+	}
+
 	first, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
@@ -829,6 +834,44 @@ func TestHandleKeyframeRequestExpired(t *testing.T) {
 	if nack.Reason != "expired" {
 		t.Fatalf("expected expired reason, got %s", nack.Reason)
 	}
+	if !nack.Resync {
+		t.Fatalf("expected nack to request resync")
+	}
+	if !reflect.DeepEqual(nack.Config.EffectCatalog, expectedCatalog) {
+		t.Fatalf("unexpected effect catalog snapshot on nack: got %+v want %+v", nack.Config.EffectCatalog, expectedCatalog)
+	}
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+
+	if !msg.Resync {
+		t.Fatalf("expected follow-up state payload to request resync")
+	}
+	if msg.Config.EffectCatalog == nil {
+		t.Fatalf("expected resync payload to include effect catalog snapshot")
+	}
+	for id, expected := range expectedCatalog {
+		actual, ok := msg.Config.EffectCatalog[id]
+		if !ok {
+			t.Fatalf("expected resync catalog to include %s", id)
+		}
+		if actual.ContractID != expected.ContractID {
+			t.Fatalf("unexpected contract id for %s: got %s want %s", id, actual.ContractID, expected.ContractID)
+		}
+		if actual.ManagedByClient != expected.ManagedByClient {
+			t.Fatalf("unexpected managed flag for %s: got %t want %t", id, actual.ManagedByClient, expected.ManagedByClient)
+		}
+		if expected.Definition != nil && actual.Definition == nil {
+			t.Fatalf("expected resync catalog %s to include definition", id)
+		}
+	}
 }
 
 func TestHandleKeyframeRequestRateLimited(t *testing.T) {
@@ -848,5 +891,43 @@ func TestHandleKeyframeRequestRateLimited(t *testing.T) {
 	}
 	if nack.Sequence != 5 {
 		t.Fatalf("expected nack sequence 5, got %d", nack.Sequence)
+	}
+	if !nack.Resync {
+		t.Fatalf("expected rate limited nack to request resync")
+	}
+	expectedCatalog := snapshotEffectCatalog(hub.world.effectManager.catalog)
+	if !reflect.DeepEqual(nack.Config.EffectCatalog, expectedCatalog) {
+		t.Fatalf("unexpected effect catalog snapshot on rate limit nack: got %+v want %+v", nack.Config.EffectCatalog, expectedCatalog)
+	}
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+	if !msg.Resync {
+		t.Fatalf("expected resync broadcast after rate limited nack")
+	}
+	if msg.Config.EffectCatalog == nil {
+		t.Fatalf("expected resync broadcast to include effect catalog snapshot")
+	}
+	for id, expected := range expectedCatalog {
+		actual, ok := msg.Config.EffectCatalog[id]
+		if !ok {
+			t.Fatalf("expected resync catalog to include %s", id)
+		}
+		if actual.ContractID != expected.ContractID {
+			t.Fatalf("unexpected contract id for %s: got %s want %s", id, actual.ContractID, expected.ContractID)
+		}
+		if actual.ManagedByClient != expected.ManagedByClient {
+			t.Fatalf("unexpected managed flag for %s: got %t want %t", id, actual.ManagedByClient, expected.ManagedByClient)
+		}
+		if expected.Definition != nil && actual.Definition == nil {
+			t.Fatalf("expected resync catalog %s to include definition", id)
+		}
 	}
 }
