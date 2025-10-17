@@ -23,10 +23,11 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   Headless harness replays recorded lifecycle batches and asserts renderer output derives from generated catalog metadata and managed ownership flags.
 * 🟢 **effectsgen Go toolchain compatibility**
   Upgraded `golang.org/x/tools` (and indirect deps) so the generator builds cleanly with Go 1.24.3, restoring `npm run build` and client bundle output.
+* 🟢 **Lifecycle smoke coverage for client-managed entries**
+  Extended `client/__tests__/lifecycle-render-smoke.test.ts` to replay a `managedByClient` catalog entry and assert renderer metadata retains ownership after lifecycle end.
 
 ### Planned (to finish Phase 4)
 
-* ⚪ **Lifecycle smoke coverage for client-managed entries** — Extend `client/__tests__/lifecycle-render-smoke.test.ts` to spawn, update, and end a `managedByClient` catalog entry (e.g., `generatedEffectCatalog.attack`), then assert the renderer flags `metadata.retained === true` after the end batch.
 * ⚪ **Resync clearing assertions in harness** — Within the same smoke test, simulate a `resync` (`payload.resync = true`) and verify both `ContractLifecycleStore` state and renderer batches reset to empty.
 * ⚪ **Shared harness helper reuse** — Refactor test harness utilities as needed so client-managed coverage reuses the existing server-managed helpers while keeping the generated catalog snapshot authoritative for types.
 * ⚪ **Snapshot and tooling updates for client-managed flows** — Refresh golden snapshots or utilities that assume only server-managed entries so `npm test -- client` succeeds with the expanded scenarios.
@@ -59,10 +60,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Add smoke coverage for client-managed retention and resync handling in the lifecycle renderer harness.**
+**Add resync clearing coverage for client-managed lifecycle batches in the renderer harness.**
 
 **Acceptance criteria**
 
-* Recorded batch includes a client-managed catalog entry that should remain retained after an `end` event.
-* Harness verifies renderer output marks retained entries as managed and preserves geometry across the resync boundary.
 * Resync message clears lifecycle state and renderer batches back to an empty frame.
+* Renderer asserts retained entries are dropped after resync while server-managed entries continue to behave as before.
+* Harness utilities shared between managed and server-driven flows remain catalog-authoritative and reusable for future scenarios.
