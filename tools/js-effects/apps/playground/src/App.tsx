@@ -94,6 +94,21 @@ const effectControls: Record<string, OptionConfig[]> = {
       hint: "comma-separated colors",
     },
   ],
+  fireball: [
+    { key: "speed", label: "Speed (px/s)", step: 1 },
+    { key: "range", label: "Range (px)", step: 1 },
+    { key: "radius", label: "Core Radius", step: 0.5 },
+    { key: "glowRadius", label: "Glow Radius", step: 0.5 },
+    { key: "tailLength", label: "Tail Length", step: 1 },
+    { key: "tailTaper", label: "Tail Taper", step: 0.05 },
+    { key: "wobbleAmplitude", label: "Wobble Amplitude", step: 0.5 },
+    { key: "wobbleFrequency", label: "Wobble Frequency", step: 0.5 },
+    { key: "swirlSpeed", label: "Swirl Speed", step: 0.5 },
+    { key: "emberCount", label: "Ember Count", step: 1 },
+    { key: "emberSize", label: "Ember Size", step: 0.1 },
+    { key: "emberDrift", label: "Ember Drift", step: 0.5 },
+    { key: "fadeOutDuration", label: "Fade Out (s)", step: 0.05 },
+  ],
 };
 
 const isCanvasTexture = (value: unknown): value is HTMLCanvasElement =>
