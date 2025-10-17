@@ -740,6 +740,67 @@ func TestHandleKeyframeRequestReturnsCatalogSnapshot(t *testing.T) {
 	}
 }
 
+func TestHandleKeyframeRequestClonesCatalogSnapshot(t *testing.T) {
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state payload: %v", err)
+	}
+
+	snapshot, nack, ok := hub.HandleKeyframeRequest("player-1", nil, msg.Sequence)
+	if !ok {
+		t.Fatalf("expected handle to succeed")
+	}
+	if nack != nil {
+		t.Fatalf("expected ack response, got nack: %+v", nack)
+	}
+
+	expected := snapshotEffectCatalog(hub.world.effectManager.catalog)
+	if !reflect.DeepEqual(snapshot.Config.EffectCatalog, expected) {
+		t.Fatalf("unexpected effect catalog snapshot: got %+v want %+v", snapshot.Config.EffectCatalog, expected)
+	}
+
+	frame, found := hub.world.journal.KeyframeBySequence(msg.Sequence)
+	if !found {
+		t.Fatalf("expected journal to retain keyframe %d", msg.Sequence)
+	}
+	if frame.Config.EffectCatalog == nil {
+		t.Fatalf("expected journal keyframe to include effect catalog")
+	}
+	if snapshot.Config.EffectCatalog == nil {
+		t.Fatalf("expected keyframe response to include effect catalog")
+	}
+
+	const effectID = "fireball"
+	frameMeta, ok := frame.Config.EffectCatalog[effectID]
+	if !ok {
+		t.Fatalf("expected journal keyframe to include %s metadata", effectID)
+	}
+	responseMeta, ok := snapshot.Config.EffectCatalog[effectID]
+	if !ok {
+		t.Fatalf("expected keyframe response to include %s metadata", effectID)
+	}
+	if frameMeta.Definition == nil || responseMeta.Definition == nil {
+		t.Fatalf("expected %s metadata to include definition", effectID)
+	}
+	if frameMeta.Definition == responseMeta.Definition {
+		t.Fatalf("expected keyframe response to clone definition metadata")
+	}
+
+	originalFrameMeta := frameMeta
+	snapshot.Config.EffectCatalog[effectID] = effectCatalogMetadata{}
+	if !reflect.DeepEqual(frame.Config.EffectCatalog[effectID], originalFrameMeta) {
+		t.Fatalf("expected journal keyframe metadata to remain unchanged after mutating response")
+	}
+}
+
 func TestHandleKeyframeRequestExpired(t *testing.T) {
 	t.Setenv(envJournalCapacity, "1")
 	hub := newHub()

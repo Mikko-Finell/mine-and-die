@@ -47,6 +47,17 @@ func (meta effectCatalogMetadata) clone() effectCatalogMetadata {
 	return cloned
 }
 
+func cloneEffectCatalogMetadataMap(src map[string]effectCatalogMetadata) map[string]effectCatalogMetadata {
+	if len(src) == 0 {
+		return nil
+	}
+	cloned := make(map[string]effectCatalogMetadata, len(src))
+	for key, meta := range src {
+		cloned[key] = meta.clone()
+	}
+	return cloned
+}
+
 func (meta effectCatalogMetadata) MarshalJSON() ([]byte, error) {
 	payload := make(map[string]any, len(meta.Blocks)+3)
 	payload["contractId"] = meta.ContractID
