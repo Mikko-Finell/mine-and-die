@@ -9,14 +9,14 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 | 1 | Finalise Go contract registry | Central Go package owns all effect contracts and validation helpers; unit coverage in place. | 🟢 Done |
 | 2 | JSON schema & catalog resolver | JSON schema validated; loader in `server/effects` resolves designer `entryId` → contract and caches lookups. | 🟢 Done |
 | 3 | `tools/effectgen` TypeScript emitter | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks. | 🟢 Done |
-| 4 | Client integration of generated bindings | Client imports generated module; WebSocket lifecycle batches hydrate `ContractLifecycleStore`; renderer draws from store snapshots using generated catalog metadata; CI enforces regeneration drift checks. | 🟡 In progress |
+| 4 | Client integration of generated bindings | Generated bindings drive type authority and rendering paths in the live client; CI enforces regeneration drift checks. | 🟡 In progress |
 | 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | ⚪ Planned |
 | 6 | Input capture & command dispatch | `client/input.ts` implements `KeyboardInputController.register/unregister`; an `InputActionDispatcher` wires player intents/actions into `NetworkClient.send`, updating path/action payloads and honouring resync/ack flows in `client/client-manager.ts`. | 🟡 In progress |
 | 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | ⚪ Planned |
 
-## Active Work
+## Phase 4 – Client integration of generated bindings
 
-### In progress
+### Completed Work
 
 * 🟢 **Bootstrap orchestrator inside the live client shell**
   `client/main.ts` now constructs `GameClientOrchestrator` with `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, wiring the renderer host in `<game-canvas>` so lifecycle playback flows through the orchestrator entry point.
@@ -57,6 +57,24 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Keyframe request triggers for patch sequence gaps**
   `client/client-manager.ts` tracks lifecycle patch sequences, raises a keyframe request when the hub skips ahead, and the headless harness asserts only one retry is issued before playback catches up.
 
+### Next Task
+
+* _None queued; remain focused on Phase 6 command acknowledgement._
+
+## Phase 5 – Client session orchestration
+
+### Completed Work
+
+* _Not yet started._
+
+### Next Task
+
+* _Pending Phase 4 exit._
+
+## Phase 6 – Input capture & command dispatch
+
+### Completed Work
+
 * 🟢 **Keyboard input capture and dispatcher plumbing**
   `client/main.ts` boots `KeyboardInputController` with `InMemoryInputStore`, handing dispatch to `GameClientOrchestrator.createInputDispatcher`; tests in `client/__tests__/client-manager.test.ts` assert protocol metadata, pause-on-resync, and hook notifications for intents/path cancels.
 * 🟢 **Pointer navigation command hooks**
@@ -65,25 +83,61 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Track pointer path targets for UI feedback**
   `client/input.ts` persists the latest path targets, the orchestrator mirrors them into render batches, and resync handling clears stored targets so the canvas marker stays in sync with dispatcher state.
 
-### Planned (to finish Phase 4)
+### Next Task – Sequence, buffer, and acknowledge input commands
 
+**Acceptance criteria**
 
-* _None — monitoring for regressions only; follow-up items are scoped under Phases 5–7._
+* Dispatcher assigns monotonic sequence identifiers to outbound commands and preserves order across reconnects.
+* After a resync hydrate, the dispatcher replays buffered commands before accepting fresh input and requests any missing acknowledgements.
+* Acknowledgement envelopes clear pending entries; rejects trigger targeted retries with updated payload state.
 
+## Phase 7 – Effect runtime playback integration
 
-## Definition of Done (Phase 4)
+### Completed Work
+
+* _Not yet started._
+
+### Next Task
+
+* _Pending Phase 6 completion._
+
+## Definition of Done
+
+### Phase 4 – Client integration of generated bindings
 
 Phase 4 is complete when all of the following hold:
 
-1. **Type authority**: All client type narrowing and catalog metadata originate from generated code in `client/generated/*`; no manual mirrors.
-2. **Network→Store**: WebSocket lifecycle batches are parsed and inserted into `ContractLifecycleStore` with correct cursor semantics and resync handling.
-3. **Store→Renderer**: The renderer pulls only from `ContractLifecycleStore` snapshots and generated catalog metadata for scheduling/ownership; no legacy paths.
-4. **CI gates**:
+1. **Generated contract authority**: All lifecycle types, catalog metadata, and enums used by the client originate from `client/generated/*`; no manually maintained mirrors or fallbacks remain.
+2. **Network ingestion**: WebSocket lifecycle envelopes hydrate `ContractLifecycleStore` with correct cursor semantics, resync clears, and nack recovery driven by `client/client-manager.ts`.
+3. **Renderer wiring**: Rendering paths consume only `ContractLifecycleStore` snapshots and generated catalog metadata; no legacy data flow or bespoke catalog parsing is exercised at runtime.
+4. **CI gate**: Golden TypeScript comparisons, drift enforcement, JSON schema validation, and headless smoke playback all run in CI.
 
-   * Generator drift check fails CI if bindings are stale.
-   * Golden tests for generated TS pass.
-   * JSON schema validation passes for all catalogs.
-   * A headless render smoke test asserts that at least one lifecycle-driven frame is produced for a known `entryId`.
+### Phase 5 – Client session orchestration
+
+Phase 5 is complete when all of the following hold:
+
+1. **Orchestrator boot flow**: `client/main.ts` initialises `GameClientOrchestrator` with a real `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, wiring lifecycle callbacks for connection state.
+2. **Shell integration**: The live client shell mounts the renderer host, displays connection/heartbeat status, and surfaces disconnect/errors using orchestrator callbacks.
+3. **Lifecycle forwarding**: WebSocket handlers route lifecycle/keyframe/nack/resync events into the orchestrator, which in turn maintains the world state store without manual glue modules.
+4. **Smoke validation**: Automated smoke or integration coverage exercises a connect→render→disconnect loop and asserts renderer frames are produced from orchestrator-managed state.
+
+### Phase 6 – Input capture & command dispatch
+
+Phase 6 is complete when all of the following hold:
+
+1. **Input device coverage**: `KeyboardInputController` and pointer hooks in `client/main.ts` forward intents/actions to an `InputActionDispatcher` without bypassing orchestrator state.
+2. **Command lifecycle**: `InputActionDispatcher` tracks pending commands, clears them on acknowledgement, and halts/flushes dispatch on resync events from `client/client-manager.ts`.
+3. **UI feedback loop**: `InMemoryInputStore` (or successor) exposes the data required for UI feedback (active paths, pending actions, rejection reasons) and keeps it consistent through retries.
+4. **Regression coverage**: Tests under `client/__tests__` cover happy-path dispatch, rejection retries, and resync pause behaviour for both keyboard and pointer flows.
+
+### Phase 7 – Effect runtime playback integration
+
+Phase 7 is complete when all of the following hold:
+
+1. **Runtime swap**: The canvas renderer swaps placeholder drawing routines for the JS effects runtime backed by `tools/js-effects` definitions.
+2. **Lifecycle ownership**: Lifecycle batches spawn and dispose runtime instances according to `ContractLifecycleStore` data, including managed-by-client entries.
+3. **Resource hygiene**: Renderer disposes runtime resources on lifecycle end, resync, and disconnect, preventing leaks across frames.
+4. **End-to-end tests**: Automated playback harnesses validate that catalog-driven animations appear and settle as expected for representative `entryId` scenarios.
 
 ## Reference Map (authoritative paths)
 
@@ -97,12 +151,3 @@ Phase 4 is complete when all of the following hold:
   * Network plumbing: `client/network.ts`, `client/main.ts`
   * Rendering: `client/render.ts` (reads store snapshots & catalog metadata)
 
-## Suggested Next Task
-
-**Track pointer path targets for UI feedback.**
-
-**Acceptance criteria**
-
-* `client/input.ts` persists the most recent pointer target coordinates alongside `pathActive` state and exposes a getter for UI consumers.
-* `client/main.ts` or a dedicated view model publishes the active path target so `client/render.ts` can draw a navigation marker while a path is active.
-* Tests under `client/__tests__` cover target persistence across dispatch pauses and ensure cancellations or resyncs clear the stored pointer target.
