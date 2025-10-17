@@ -36,6 +36,9 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Resync catalog snapshots mirror server metadata**
   `server/hub.go` now attaches `snapshotEffectCatalog` output to resync/keyframe configs and the client orchestrator reuses the network payload; smoke coverage asserts the renderer hydrates with the server-sent snapshot.
 
+* 🟢 **Keyframe catalog hydration**
+  `hub.HandleKeyframeRequest` now returns `snapshotEffectCatalog` payloads and the client orchestrator normalizes catalog snapshots from WebSocket keyframe replies with headless harness coverage.
+
 ### Planned (to finish Phase 4)
 
 
@@ -67,10 +70,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Hydrate effect catalog snapshots from WebSocket keyframe replies.**
+**Handle keyframe NACK fallbacks for lifecycle hydration.**
 
 **Acceptance criteria**
 
-* `hub.HandleKeyframeRequest` returns `keyframeMessage` payloads whose `config.effectCatalog` mirrors `snapshotEffectCatalog`.
-* The client orchestrator updates the local catalog snapshot when it receives a WebSocket keyframe response, with a headless harness test replaying the path.
-* Keyframe hydration verifies renderer batches continue to resolve catalog metadata without manual fallbacks.
+* Server `keyframeNack` responses trigger a resync broadcast that carries the latest `snapshotEffectCatalog` payload.
+* The client orchestrator treats `keyframeNack` messages as resync signals, resetting `ContractLifecycleStore` and rehydrating catalog metadata from the attached payloads.
+* Headless harness coverage replays a keyframe request that yields a NACK followed by a resync, asserting renderer output resumes from generated catalog metadata without duplicate animations.

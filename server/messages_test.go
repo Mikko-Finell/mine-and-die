@@ -6,6 +6,7 @@ import (
 	"errors"
 	stdlog "log"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -93,60 +94,60 @@ func TestJoinResponseIncludesEffectCatalog(t *testing.T) {
 }
 
 func TestStateMessageConfigIncludesEffectCatalogOnSnapshot(t *testing.T) {
-        hub := newHub()
-        hub.SetKeyframeInterval(1)
-        hub.advance(time.Now(), 1.0/float64(tickRate))
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-        data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
-        if err != nil {
-                t.Fatalf("marshalState returned error: %v", err)
-        }
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
 
-        var payload map[string]any
-        if err := json.Unmarshal(data, &payload); err != nil {
-                t.Fatalf("failed to decode payload: %v", err)
-        }
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
 
-        config, ok := payload["config"].(map[string]any)
-        if !ok {
-                t.Fatalf("expected config to decode as object, got %T", payload["config"])
-        }
+	config, ok := payload["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config to decode as object, got %T", payload["config"])
+	}
 
-        catalog, exists := config["effectCatalog"].(map[string]any)
-        if !exists {
-                t.Fatalf("expected snapshot payload to include effectCatalog metadata")
-        }
-        if len(catalog) == 0 {
-                t.Fatalf("expected effectCatalog metadata to include entries")
-        }
-        if _, ok := catalog["fireball"].(map[string]any); !ok {
-                t.Fatalf("expected effectCatalog metadata to include fireball entry")
-        }
+	catalog, exists := config["effectCatalog"].(map[string]any)
+	if !exists {
+		t.Fatalf("expected snapshot payload to include effectCatalog metadata")
+	}
+	if len(catalog) == 0 {
+		t.Fatalf("expected effectCatalog metadata to include entries")
+	}
+	if _, ok := catalog["fireball"].(map[string]any); !ok {
+		t.Fatalf("expected effectCatalog metadata to include fireball entry")
+	}
 }
 
 func TestStateMessageConfigOmitsEffectCatalogOnDelta(t *testing.T) {
-        hub := newHub()
-        hub.SetKeyframeInterval(1)
-        hub.advance(time.Now(), 1.0/float64(tickRate))
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+	hub.advance(time.Now(), 1.0/float64(tickRate))
 
-        data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
-        if err != nil {
-                t.Fatalf("marshalState returned error: %v", err)
-        }
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
 
-        var payload map[string]any
-        if err := json.Unmarshal(data, &payload); err != nil {
-                t.Fatalf("failed to decode payload: %v", err)
-        }
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
 
-        config, ok := payload["config"].(map[string]any)
-        if !ok {
-                t.Fatalf("expected config to decode as object, got %T", payload["config"])
-        }
+	config, ok := payload["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config to decode as object, got %T", payload["config"])
+	}
 
-        if _, exists := config["effectCatalog"]; exists {
-                t.Fatalf("expected delta payload to omit effectCatalog metadata")
-        }
+	if _, exists := config["effectCatalog"]; exists {
+		t.Fatalf("expected delta payload to omit effectCatalog metadata")
+	}
 }
 
 func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {
@@ -699,6 +700,43 @@ func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
 	}
 	if snapshot.Sequence != msg.Sequence {
 		t.Fatalf("unexpected snapshot sequence: got %d want %d", snapshot.Sequence, msg.Sequence)
+	}
+}
+
+func TestHandleKeyframeRequestReturnsCatalogSnapshot(t *testing.T) {
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state payload: %v", err)
+	}
+
+	snapshot, nack, ok := hub.HandleKeyframeRequest("player-1", nil, msg.Sequence)
+	if !ok {
+		t.Fatalf("expected handle to succeed")
+	}
+	if nack != nil {
+		t.Fatalf("expected ack response, got nack: %+v", nack)
+	}
+
+	resolver := hub.world.effectManager.catalog
+	expected := snapshotEffectCatalog(resolver)
+	if len(expected) == 0 {
+		t.Fatalf("expected effect catalog snapshot to contain entries")
+	}
+
+	if snapshot.Config.EffectCatalog == nil {
+		t.Fatalf("expected keyframe config to include effect catalog snapshot")
+	}
+
+	if !reflect.DeepEqual(snapshot.Config.EffectCatalog, expected) {
+		t.Fatalf("unexpected effect catalog snapshot: got %+v want %+v", snapshot.Config.EffectCatalog, expected)
 	}
 }
 
