@@ -109,7 +109,7 @@ describe("GameClientOrchestrator", () => {
   });
 
   test("input dispatcher attaches metadata, respects pause, and notifies hooks", async () => {
-    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+    const { orchestrator, network, renderer, emitLifecycleState } = createHeadlessHarness({
       catalog: generatedEffectCatalog,
     });
 
@@ -117,9 +117,16 @@ describe("GameClientOrchestrator", () => {
     const onPathCommand = vi.fn();
     const dispatcher = orchestrator.createInputDispatcher({ onPathCommand });
 
+    expect(onPathCommand).toHaveBeenCalledTimes(1);
+    expect(onPathCommand).toHaveBeenLastCalledWith({ active: false, target: null });
+
     dispatcher.sendAction("attack");
     dispatcher.sendPathCommand({ x: 320, y: 240 });
     expect(network.sentMessages).toHaveLength(0);
+    expect(onPathCommand).toHaveBeenCalledTimes(2);
+    expect(onPathCommand).toHaveBeenLastCalledWith({ active: true, target: { x: 320, y: 240 } });
+    const initialBatch = renderer.batches.at(-1);
+    expect(initialBatch?.pathTarget).toEqual({ x: 320, y: 240 });
 
     emitLifecycleState({ tick: 8, receivedAt: 1000 });
 
@@ -130,6 +137,8 @@ describe("GameClientOrchestrator", () => {
     dispatcher.sendPathCommand({ x: 320, y: 240 });
     expect(network.sentMessages).toHaveLength(2);
     expect(network.sentMessages[1]).toEqual({ type: "path", x: 320, y: 240, ver: 1, ack: 8 });
+    expect(onPathCommand).toHaveBeenCalledTimes(3);
+    expect(onPathCommand).toHaveBeenLastCalledWith({ active: true, target: { x: 320, y: 240 } });
 
     dispatcher.sendCurrentIntent({ dx: 1.2, dy: 0, facing: "right" });
     expect(network.sentMessages).toHaveLength(3);
@@ -145,8 +154,9 @@ describe("GameClientOrchestrator", () => {
     dispatcher.cancelPath();
     expect(network.sentMessages).toHaveLength(4);
     expect(network.sentMessages[3]).toEqual({ type: "cancelPath", ver: 1, ack: 8 });
-    expect(onPathCommand).toHaveBeenNthCalledWith(1, true);
-    expect(onPathCommand).toHaveBeenNthCalledWith(2, false);
+    expect(onPathCommand).toHaveBeenCalledTimes(4);
+    expect(onPathCommand).toHaveBeenLastCalledWith({ active: false, target: null });
+    expect(renderer.batches.at(-1)?.pathTarget).toBeNull();
 
     emitLifecycleState({ resync: true, receivedAt: 1500 });
     dispatcher.sendAction("attack");
@@ -156,6 +166,10 @@ describe("GameClientOrchestrator", () => {
     expect(network.sentMessages[4]).not.toHaveProperty("ack");
     expect(network.sentMessages[5]).toEqual({ type: "path", x: 128, y: 96, ver: 1 });
     expect(network.sentMessages[5]).not.toHaveProperty("ack");
+    expect(onPathCommand).toHaveBeenCalledTimes(6);
+    expect(onPathCommand).toHaveBeenNthCalledWith(5, { active: false, target: null });
+    expect(onPathCommand).toHaveBeenNthCalledWith(6, { active: true, target: { x: 128, y: 96 } });
+    expect(renderer.batches.at(-1)?.pathTarget).toEqual({ x: 128, y: 96 });
 
     emitLifecycleState({ tick: 11, receivedAt: 1600 });
     dispatcher.sendAction("attack");
@@ -163,9 +177,9 @@ describe("GameClientOrchestrator", () => {
     expect(network.sentMessages).toHaveLength(8);
     expect(network.sentMessages[6]).toEqual({ type: "action", action: "attack", ver: 1, ack: 11 });
     expect(network.sentMessages[7]).toEqual({ type: "path", x: 512, y: 256, ver: 1, ack: 11 });
-    expect(onPathCommand).toHaveBeenCalledTimes(4);
-    expect(onPathCommand).toHaveBeenNthCalledWith(3, true);
-    expect(onPathCommand).toHaveBeenNthCalledWith(4, true);
+    expect(onPathCommand).toHaveBeenCalledTimes(7);
+    expect(onPathCommand).toHaveBeenNthCalledWith(7, { active: true, target: { x: 512, y: 256 } });
+    expect(renderer.batches.at(-1)?.pathTarget).toEqual({ x: 512, y: 256 });
 
     await orchestrator.shutdown();
   });

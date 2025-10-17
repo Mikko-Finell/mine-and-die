@@ -15,6 +15,7 @@ interface TestStoreContext {
   readonly facingUpdates: FacingDirection[];
   readonly toggleCameraLock: ReturnType<typeof vi.fn>;
   readonly keyStates: InputStateSnapshot[];
+  readonly pathTargets: (ReturnType<NonNullable<InputStore["getPathTarget"]>> | null)[];
 }
 
 type EventHandler = (event: unknown) => void;
@@ -82,16 +83,19 @@ const createKeyboardEvent = (init: { key?: string; code?: string; repeat?: boole
 const createTestStore = (snapshot?: Partial<InputStateSnapshot>): TestStoreContext => {
   let currentFacing: FacingDirection = snapshot?.currentFacing ?? "down";
   let pathActive = snapshot?.pathActive ?? false;
+  let pathTarget = snapshot?.pathTarget ?? null;
   const intents: PlayerIntent[] = [];
   const facingUpdates: FacingDirection[] = [];
   const toggleCameraLock = vi.fn();
   const keyStates: InputStateSnapshot[] = [];
+  const pathTargets: (ReturnType<NonNullable<InputStore["getPathTarget"]>> | null)[] = [];
 
   const baseSnapshot: InputStateSnapshot = {
     pressedKeys: snapshot?.pressedKeys ?? new Set<string>(),
     directionOrder: snapshot?.directionOrder ?? [],
     currentFacing,
     pathActive,
+    pathTarget,
   };
 
   const store: InputStore = {
@@ -100,6 +104,7 @@ const createTestStore = (snapshot?: Partial<InputStateSnapshot>): TestStoreConte
       directionOrder: [...baseSnapshot.directionOrder],
       currentFacing,
       pathActive,
+      pathTarget,
     }),
     setIntent: (intent) => {
       intents.push(intent);
@@ -112,6 +117,9 @@ const createTestStore = (snapshot?: Partial<InputStateSnapshot>): TestStoreConte
     toggleCameraLock,
     setPathActive: (value) => {
       pathActive = value;
+      if (!value) {
+        pathTarget = null;
+      }
     },
     setKeyState: (state) => {
       keyStates.push({
@@ -119,11 +127,17 @@ const createTestStore = (snapshot?: Partial<InputStateSnapshot>): TestStoreConte
         directionOrder: [...state.directionOrder],
         currentFacing,
         pathActive,
+        pathTarget,
       });
     },
+    setPathTarget: (target) => {
+      pathTarget = target ? { ...target } : null;
+      pathTargets.push(store.getPathTarget ? store.getPathTarget() : null);
+    },
+    getPathTarget: () => (pathTarget ? { ...pathTarget } : null),
   };
 
-  return { store, intents, facingUpdates, toggleCameraLock, keyStates };
+  return { store, intents, facingUpdates, toggleCameraLock, keyStates, pathTargets };
 };
 
 const createController = (snapshot?: Partial<InputStateSnapshot>) => {
