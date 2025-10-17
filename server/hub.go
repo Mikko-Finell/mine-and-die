@@ -1251,6 +1251,8 @@ func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupSt
 
 	frame, ok := journal.KeyframeBySequence(sequence)
 	if ok {
+		config := frame.Config
+		config.EffectCatalog = cloneEffectCatalogMetadataMap(frame.Config.EffectCatalog)
 		snapshot := keyframeMessage{
 			Ver:         ProtocolVersion,
 			Type:        "keyframe",
@@ -1260,7 +1262,7 @@ func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupSt
 			NPCs:        append([]NPC(nil), frame.NPCs...),
 			Obstacles:   append([]Obstacle(nil), frame.Obstacles...),
 			GroundItems: append([]GroundItem(nil), frame.GroundItems...),
-			Config:      frame.Config,
+			Config:      config,
 		}
 		return snapshot, keyframeLookupFound
 	}
