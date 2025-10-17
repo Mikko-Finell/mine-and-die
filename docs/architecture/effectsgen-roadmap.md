@@ -1,42 +1,64 @@
 # Effect Contract Generation Roadmap
 
-This document tracks the engineering work needed to deliver the `effectsgen` tool and supporting data sources defined in [`effectsgen-spec.md`](./effectsgen-spec.md). Each section highlights what contributors should focus on next to reach a production-ready pipeline.
+This document tracks the engineering work required to deliver the `effectsgen` toolchain and its supporting data sources defined in [`effectsgen-spec.md`](./effectsgen-spec.md). It is the single source of truth for status and the next concrete tasks.
 
 ## Roadmap
 
-| Phase | Goal | Exit Criteria | Status |
-| ----- | ---- | ------------- | ------ |
-| 1 | Finalise Go contract registry | All effect contracts registered through a central Go package with validation helpers and unit coverage. | 🟡 In progress |
-| 2 | Author JSON schema and catalog resolver | Machine-validated JSON schema covers catalog entries keyed by designer IDs and validates referenced contract IDs; loader in `server/effects` caches entry → contract mappings. | 🟢 Done |
-| 3 | Implement `tools/effectgen` TypeScript emitter | CLI reads Go registry and catalog resolver output to generate deterministic bindings that expose both contract payloads and catalog entry metadata with golden-file tests. | 🟡 In progress |
-| 4 | Integrate generated bindings into client build | Client imports generated module, gameplay enqueues catalog entry IDs, runtime resolves contract payloads via the loader, and CI enforces regeneration drift checks. | ⚪ Planned |
+| Phase | Goal                                     | Exit Criteria                                                                                                                                                                                               | Status         |
+| ----- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| 1     | Finalise Go contract registry            | Central Go package owns all effect contracts and validation helpers; unit coverage in place.                                                                                                                | 🟢 Done        |
+| 2     | JSON schema & catalog resolver           | JSON schema validated; loader in `server/effects` resolves designer `entryId` → contract and caches lookups.                                                                                                | 🟢 Done        |
+| 3     | `tools/effectgen` TypeScript emitter     | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks.                                                                                     | 🟢 Done        |
+| 4     | Client integration of generated bindings | Client imports generated module; WebSocket lifecycle batches hydrate `ContractLifecycleStore`; renderer draws from store snapshots using generated catalog metadata; CI enforces regeneration drift checks. | 🟡 In progress |
 
 ## Active Work
 
-| Item | Goal | Status | Notes |
-| --- | --- | --- | --- |
-| Consolidate contract declarations | Move scattered struct definitions into `server/effects/contracts` with compile-time registration. | 🟢 Done | `server/effects/contract` now owns the types, effect IDs, built-in registry, and default effect definitions consumed by `server/effects_manager.go`; legacy aliases removed and callers import the contract package directly. |
-| Retire legacy effectState pipeline | Remove `server/effects.go`/`server/simulation.go` shims once contract definitions cover all gameplay behaviours. | 🟢 Done | `effectState` now mirrors contract instances directly; legacy `Effect` snapshots removed and runtime helpers consume contract geometry/params. |
-| Draft JSON schema | Use `jsonschema` tags on Go structs and export schema to `docs/contracts/effects.schema.json`. | 🟢 Done | `go generate` now emits `docs/contracts/effects.schema.json` from `catalog.EntryDocument`. |
-| Build catalog loader | Add runtime loader that merges static JSON compositions, validates contract IDs, and exposes catalog entry lookups to gameplay. | 🟢 Done | `server/effects/catalog` now reads `config/effects/definitions.json`, validates against the Go registry, and feeds `EffectManager` with runtime contract lookups. |
-| Align runtime effect queue with catalog IDs | Update `server/effects_manager.go` and related callers so gameplay code enqueues catalog entry IDs while the runtime resolves the linked contract before serialization. | 🟢 Done | Gameplay intents now propagate designer entry IDs through the manager while resolving contracts. |
-| Surface catalog entry metadata to client runtime | Ensure generated bindings feed catalog metadata into `client/js-effects` so the effect runner can resolve compositions by entry ID without manual mirrors. | 🟢 Done | Catalog exports now include a required `managedByClient` flag derived from the Go registry; the client normalizer enforces it and exposes a helper for renderers. |
-| Adopt catalog-managed ownership in renderer | Use `effectCatalog` metadata to decide when lifecycles stay client-owned instead of falling back to replication hints. | 🟢 Done | New renderer helpers resolve catalog entries by `entryId` and expose `isLifecycleClientManaged` for scheduling logic. |
-| Scaffold code generator | Parse Go registry, map to TS AST, and emit modules under `client/generated/effects`. | 🟢 Done | Generator now validates inputs, projects catalog `definition` blocks as `EffectDefinition` literals, emits phantom-typed `effectContracts` metadata with a shared `getContractMeta` accessor for narrowing, wires `go:generate` in `server/effects/contract` via a shared `go.work`, and is invoked automatically by `npm run client:build`, `client:dev`, and the `pretest` drift check so CI fails when bindings are stale. |
-| Map Go payload structs to TS interfaces | Emit TypeScript interfaces from `server/effects/contract` payload structs and wire them into the generated module. | 🟢 Done | `tools/effectsgen` now parses the Go registry, generates payload interfaces, and maps spawn/update/end types into `client/generated/effect-contracts.ts`. |
-| Lift Go enums into TypeScript unions | Translate `server/effects/contract` enum constants into literal-union aliases so client code narrows on contract fields. | 🟢 Done | `tools/effectsgen/internal/pipeline/contracts.go` now collects typed constants and emits literal-union aliases with coverage in `internal/pipeline/run_test.go`. |
-| Add regression tests | Golden snapshots for generated TS and integration tests for loader fallback paths. | 🟢 Done | Loader now rejects duplicate IDs/unknown contracts and survives missing sources. |
-| Enforce managed-by-client invariants | Extend `server/effects/catalog` validation so client-managed entries disable updates/end events and use single-tick lifetimes. | 🟢 Done | `server/effects/catalog/resolver.go` now rejects managed entries that enable updates/end payloads or exceed one tick. |
-| Build contract lifecycle store | Ingest spawn/update/end batches into a typed client store that retains client-managed lifecycles. | 🟢 Done | `client/effect-lifecycle-store.ts` stores authoritative batches, exposes renderer views, and relies on catalog metadata for retention. |
+### In progress
 
-## Program Goals
+* **Consume generated catalog metadata on the client**
+  Replace manual validators/types with exports from `client/generated/effect-contracts.ts`. Update join handling so no schema mirrors are hand-maintained.
+* **Feed renderer from `ContractLifecycleStore`**
+  Implement an orchestrator so WebSocket state/lifecycle messages populate `ContractLifecycleStore` and trigger renders that consume store snapshots (no legacy stubs).
 
-* One authoritative Go registry defines every effect contract and its field semantics.
-* Designer-owned JSON catalogs describe effect compositions without duplicating struct definitions.
-* `tools/effectgen` produces stable TypeScript bindings consumed directly by the client build.
-* Continuous integration fails when contracts or catalogs change without regenerating bindings.
-* Runtime loaders validate catalog references and resolve entry IDs to contract payloads before effects are sent to clients.
+### Planned (to finish Phase 4)
+
+* **Transport → Store ingestion**
+  Normalize `effect_spawned` / `effect_update` / `effect_ended` (plus cursor hints) into `ContractLifecycleStore`, including resync/reset handling.
+* **Renderer scheduling via catalog metadata**
+  Use generated catalog/definitions to decide ownership (`managedByClient`) and build draw instructions (layers/animations) instead of placeholders.
+
+## Definition of Done (Phase 4)
+
+Phase 4 is complete when all of the following hold:
+
+1. **Type authority**: All client type narrowing and catalog metadata originate from generated code in `client/generated/*`; no manual mirrors.
+2. **Network→Store**: WebSocket lifecycle batches are parsed and inserted into `ContractLifecycleStore` with correct cursor semantics and resync handling.
+3. **Store→Renderer**: The renderer pulls only from `ContractLifecycleStore` snapshots and generated catalog metadata for scheduling/ownership; no legacy paths.
+4. **CI gates**:
+
+   * Generator drift check fails CI if bindings are stale.
+   * Golden tests for generated TS pass.
+   * JSON schema validation passes for all catalogs.
+   * A headless render smoke test asserts that at least one lifecycle-driven frame is produced for a known `entryId`.
+
+## Reference Map (authoritative paths)
+
+* **Contracts & schema**: `server/effects/contract`, `docs/contracts/effects.schema.json`
+* **Catalog**: `server/effects/catalog` (loader/validation), `config/effects/definitions.json`
+* **Generator**: `tools/effectsgen` → `client/generated/effect-contracts.ts` (payloads, enums, catalog metadata)
+* **Client runtime**:
+
+  * Store: `client/effect-lifecycle-store.ts`
+  * Orchestrator: `client/client-manager.ts` (hydrates store from network)
+  * Network plumbing: `client/network.ts`, `client/main.ts`
+  * Rendering: `client/render.ts` (reads store snapshots & catalog metadata)
 
 ## Suggested Next Task
 
-Integrate the contract lifecycle store into the new renderer pipeline so render scheduling consumes `client/effect-lifecycle-store.ts` instead of legacy lifecycle state.
+**Wire the live path *WebSocket → ContractLifecycleStore → Renderer* using generated types/metadata.**
+
+**Acceptance criteria**
+
+* Batches for a known `entryId` flow from network handlers into `ContractLifecycleStore` with cursor/reset handling.
+* Renderer consumes only store snapshots; draw scheduling respects `managedByClient` and other generated metadata.
+* CI passes with generator drift, schema validation, goldens, and the headless render smoke test.
