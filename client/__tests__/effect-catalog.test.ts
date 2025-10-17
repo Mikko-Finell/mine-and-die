@@ -22,8 +22,13 @@ describe("effect catalog store", () => {
     const payload = JSON.parse(JSON.stringify(generatedEffectCatalog));
 
     const normalized = normalizeEffectCatalog(payload);
+    expect(normalized).toEqual(generatedEffectCatalog);
+    expect(normalized).not.toBe(payload);
+    expect(Object.isFrozen(normalized)).toBe(true);
 
-    expect(normalized).toBe(normalizeEffectCatalog(payload));
+    const subsequent = normalizeEffectCatalog(payload);
+    expect(subsequent).not.toBe(normalized);
+
     expect(() => normalizeEffectCatalog({})).toThrowError(/effect catalog mismatch/i);
     expect(() => normalizeEffectCatalog(null)).toThrowError(/must be an object/i);
 

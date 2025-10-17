@@ -1,4 +1,5 @@
 import { GameClientOrchestrator, type ClientManagerConfiguration } from "../../client-manager";
+import { normalizeEffectCatalog } from "../../effect-catalog";
 import type { EffectCatalogEntry } from "../../generated/effect-contracts";
 import type {
   JoinResponse,
@@ -48,7 +49,7 @@ export const createJoinResponse = (
   id: "player",
   seed: "seed",
   protocolVersion: 1,
-  effectCatalog: catalog,
+  effectCatalog: normalizeEffectCatalog(catalog),
   ...overrides,
 });
 

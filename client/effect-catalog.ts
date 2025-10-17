@@ -89,7 +89,10 @@ const validateAgainstCanonical = (input: unknown): void => {
 
 export const normalizeEffectCatalog = (input: unknown): EffectCatalogSnapshot => {
   validateAgainstCanonical(input);
-  return canonicalCatalog;
+  const snapshot = cloneAndFreeze(
+    input as Record<string, EffectCatalogEntryMetadata>,
+  ) as EffectCatalogSnapshot;
+  return snapshot;
 };
 
 let currentCatalog: EffectCatalogSnapshot = canonicalCatalog;
