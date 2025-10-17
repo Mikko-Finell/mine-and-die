@@ -19,11 +19,12 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   Client modules now import canonical catalog data from `client/generated/effect-contracts.ts`; join-time payloads are verified against the generated snapshot and all downstream helpers read from the shared store.
 * 🟢 **Feed renderer from `ContractLifecycleStore`**
   Orchestrator now ingests WebSocket `state` batches into `ContractLifecycleStore` and emits render batches derived from generated catalog metadata/layers.
+* 🟢 **Lifecycle renderer smoke tests**
+  Headless harness replays recorded lifecycle batches and asserts renderer output derives from generated catalog metadata and managed ownership flags.
 
 ### Planned (to finish Phase 4)
 
-* **Lifecycle renderer smoke tests**
-  Add a headless render harness that exercises a known lifecycle batch and asserts a frame is produced using catalog metadata.
+* _(none)_
 
 ## Definition of Done (Phase 4)
 
@@ -53,10 +54,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Automate a headless render smoke test that validates lifecycle-driven frames produced from generated metadata.**
+**Add smoke coverage for client-managed retention and resync handling in the lifecycle renderer harness.**
 
 **Acceptance criteria**
 
-* Harness replays a recorded lifecycle batch for a known `entryId` and verifies the renderer outputs at least one animation/static geometry frame.
-* Test asserts metadata-driven properties (layer selection, managed ownership flags) match the generated catalog snapshot.
-* CI passes with generator drift, schema validation, goldens, and the headless render smoke test.
+* Recorded batch includes a client-managed catalog entry that should remain retained after an `end` event.
+* Harness verifies renderer output marks retained entries as managed and preserves geometry across the resync boundary.
+* Resync message clears lifecycle state and renderer batches back to an empty frame.
