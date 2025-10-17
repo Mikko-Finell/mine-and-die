@@ -12,27 +12,6 @@ import (
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
-// LEGACY: Effect represents the pre-contract gameplay snapshot that will be retired once
-// effectsgen drives all lifecycle transport. The contract pipeline mirrors these fields
-// today, but removal is planned after downstream consumers migrate.
-// Effect represents a time-limited gameplay artifact (attack swing, projectile, etc.).
-type Effect struct {
-	ID       string             `json:"id"`
-	Type     string             `json:"type"`
-	Owner    string             `json:"owner"`
-	Start    int64              `json:"start"`
-	Duration int64              `json:"duration"`
-	X        float64            `json:"x,omitempty"`
-	Y        float64            `json:"y,omitempty"`
-	Width    float64            `json:"width,omitempty"`
-	Height   float64            `json:"height,omitempty"`
-	Params   map[string]float64 `json:"params,omitempty"`
-	Colors   []string           `json:"colors,omitempty"`
-}
-
-// LEGACY: EffectTrigger mirrors the legacy fire-and-forget payloads. The
-// effectsgen roadmap tracks folding these into contract lifecycle events so
-// this struct can be removed alongside the legacy pipeline.
 // EffectTrigger represents a one-shot visual instruction that the client may
 // execute without additional server updates.
 type EffectTrigger struct {
@@ -48,11 +27,24 @@ type EffectTrigger struct {
 	Colors   []string           `json:"colors,omitempty"`
 }
 
-// LEGACY: effectState powers the legacy world bookkeeping for gameplay and
-// projectile resolution. The contract manager still hydrates it as a shim, but
-// effectsgen will remove this struct when contract-native behaviors land.
+// effectState stores the authoritative runtime bookkeeping for contract-driven
+// effects. The struct mirrors key fields from the historical legacy pipeline so
+// existing gameplay systems and telemetry remain stable while the contract
+// manager owns instance lifecycles.
 type effectState struct {
-	Effect
+	ID       string
+	Type     string
+	Owner    string
+	Start    int64
+	Duration int64
+	X        float64
+	Y        float64
+	Width    float64
+	Height   float64
+	Params   map[string]float64
+	Colors   []string
+
+	Instance              effectcontract.EffectInstance
 	expiresAt             time.Time
 	Projectile            *ProjectileState
 	FollowActorID         string
@@ -703,17 +695,21 @@ func (w *World) buildProjectileEffect(owner *actorState, actorID string, tpl *Pr
 	})
 
 	effect := &effectState{
-		Effect: Effect{
-			ID:       effectID,
-			Type:     tpl.Type,
-			Owner:    actorID,
-			Start:    now.UnixMilli(),
-			Duration: lifetime.Milliseconds(),
-			X:        centerX - width/2,
-			Y:        centerY - height/2,
-			Width:    width,
-			Height:   height,
-			Params:   params,
+		ID:       effectID,
+		Type:     tpl.Type,
+		Owner:    actorID,
+		Start:    now.UnixMilli(),
+		Duration: lifetime.Milliseconds(),
+		X:        centerX - width/2,
+		Y:        centerY - height/2,
+		Width:    width,
+		Height:   height,
+		Params:   params,
+		Instance: effectcontract.EffectInstance{
+			ID:           effectID,
+			DefinitionID: tpl.Type,
+			OwnerActorID: actorID,
+			StartTick:    effectcontract.Tick(int64(w.currentTick)),
 		},
 		expiresAt: now.Add(lifetime),
 		Projectile: &ProjectileState{
@@ -836,18 +832,17 @@ func (w *World) spawnContractProjectileFromInstance(instance *effectcontract.Eff
 	}
 
 	effect := &effectState{
-		Effect: Effect{
-			ID:       instance.ID,
-			Type:     tpl.Type,
-			Owner:    instance.OwnerActorID,
-			Start:    now.UnixMilli(),
-			Duration: lifetime.Milliseconds(),
-			X:        centerX - width/2,
-			Y:        centerY - height/2,
-			Width:    width,
-			Height:   height,
-			Params:   params,
-		},
+		ID:        instance.ID,
+		Type:      tpl.Type,
+		Owner:     instance.OwnerActorID,
+		Start:     now.UnixMilli(),
+		Duration:  lifetime.Milliseconds(),
+		X:         centerX - width/2,
+		Y:         centerY - height/2,
+		Width:     width,
+		Height:    height,
+		Params:    params,
+		Instance:  *instance,
 		expiresAt: now.Add(lifetime),
 		Projectile: &ProjectileState{
 			Template:       tpl,
@@ -906,19 +901,18 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *effectcontract.Eff
 	}
 	w.pruneEffects(now)
 	effect := &effectState{
-		Effect: Effect{
-			ID:       instance.ID,
-			Type:     effectType,
-			Owner:    instance.OwnerActorID,
-			Start:    now.UnixMilli(),
-			Duration: lifetime.Milliseconds(),
-			X:        centerX - width/2,
-			Y:        centerY - height/2,
-			Width:    width,
-			Height:   height,
-			Params:   newBloodSplatterParams(),
-			Colors:   bloodSplatterColors(),
-		},
+		ID:                 instance.ID,
+		Type:               effectType,
+		Owner:              instance.OwnerActorID,
+		Start:              now.UnixMilli(),
+		Duration:           lifetime.Milliseconds(),
+		X:                  centerX - width/2,
+		Y:                  centerY - height/2,
+		Width:              width,
+		Height:             height,
+		Params:             newBloodSplatterParams(),
+		Colors:             bloodSplatterColors(),
+		Instance:           *instance,
 		expiresAt:          now.Add(lifetime),
 		contractManaged:    true,
 		telemetrySpawnTick: instance.StartTick,
@@ -1121,7 +1115,7 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 	}
 
 	worldW, worldH := w.dimensions()
-	if eff.Effect.X < 0 || eff.Effect.Y < 0 || eff.Effect.X+eff.Effect.Width > worldW || eff.Effect.Y+eff.Effect.Height > worldH {
+	if eff.X < 0 || eff.Y < 0 || eff.X+eff.Width > worldW || eff.Y+eff.Height > worldH {
 		w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
 		return true
 	}
@@ -1213,7 +1207,7 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 				w.entityRef(eff.Owner),
 				targets,
 				payload,
-				map[string]any{"projectile": eff.Effect.Type},
+				map[string]any{"projectile": eff.Type},
 			)
 		}
 	}
@@ -1248,8 +1242,8 @@ func (w *World) updateFollowEffect(eff *effectState, now time.Time) {
 		eff.FollowActorID = ""
 		return
 	}
-	width := eff.Effect.Width
-	height := eff.Effect.Height
+	width := eff.Width
+	height := eff.Height
 	if width <= 0 {
 		width = playerHalf * 2
 	}
@@ -1335,7 +1329,7 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 	radius := spec.Radius
 	size := radius * 2
 	if size <= 0 {
-		size = eff.Effect.Width
+		size = eff.Width
 		if size <= 0 {
 			size = 1
 		}
@@ -1351,18 +1345,23 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 	}
 
 	w.nextEffectID++
+	instanceID := fmt.Sprintf("effect-%d", w.nextEffectID)
 	area := &effectState{
-		Effect: Effect{
-			ID:       fmt.Sprintf("effect-%d", w.nextEffectID),
-			Type:     spec.EffectType,
-			Owner:    eff.Owner,
-			Start:    now.UnixMilli(),
-			Duration: spec.Duration.Milliseconds(),
-			X:        centerX(eff) - size/2,
-			Y:        centerY(eff) - size/2,
-			Width:    size,
-			Height:   size,
-			Params:   params,
+		ID:       instanceID,
+		Type:     spec.EffectType,
+		Owner:    eff.Owner,
+		Start:    now.UnixMilli(),
+		Duration: spec.Duration.Milliseconds(),
+		X:        centerX(eff) - size/2,
+		Y:        centerY(eff) - size/2,
+		Width:    size,
+		Height:   size,
+		Params:   params,
+		Instance: effectcontract.EffectInstance{
+			ID:           instanceID,
+			DefinitionID: spec.EffectType,
+			OwnerActorID: eff.Owner,
+			StartTick:    effectcontract.Tick(int64(w.currentTick)),
 		},
 		expiresAt:          now.Add(spec.Duration),
 		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
@@ -1381,7 +1380,7 @@ func effectAABB(eff *effectState) Obstacle {
 	if eff == nil {
 		return Obstacle{}
 	}
-	return Obstacle{X: eff.Effect.X, Y: eff.Effect.Y, Width: eff.Effect.Width, Height: eff.Effect.Height}
+	return Obstacle{X: eff.X, Y: eff.Y, Width: eff.Width, Height: eff.Height}
 }
 
 func (w *World) findEffectByID(id string) *effectState {
@@ -1407,11 +1406,11 @@ func (w *World) anyObstacleOverlap(area Obstacle) bool {
 }
 
 func centerX(eff *effectState) float64 {
-	return eff.Effect.X + eff.Effect.Width/2
+	return eff.X + eff.Width/2
 }
 
 func centerY(eff *effectState) float64 {
-	return eff.Effect.Y + eff.Effect.Height/2
+	return eff.Y + eff.Height/2
 }
 
 // pruneEffects drops expired effects from the in-memory list.

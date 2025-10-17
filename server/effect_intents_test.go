@@ -278,7 +278,7 @@ func TestMaybeSpawnBloodSplatterQueuesIntent(t *testing.T) {
 	}
 	world.effectManager.intentQueue = world.effectManager.intentQueue[:0]
 
-	eff := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "player-attacker"}}
+	eff := &effectState{Type: effectTypeAttack, Owner: "player-attacker"}
 	target := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 220, Y: 300}}, Type: NPCTypeGoblin}
 	now := time.Unix(0, 0)
 

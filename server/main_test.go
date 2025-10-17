@@ -1517,14 +1517,14 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	}
 	world.npcs[npc.ID] = npc
 
-	eff := &effectState{Effect: Effect{
+	eff := &effectState{
 		Type:   effectTypeAttack,
 		Owner:  attacker.ID,
 		X:      npc.X - playerHalf,
 		Y:      npc.Y - playerHalf,
 		Width:  playerHalf * 2,
 		Height: playerHalf * 2,
-	}}
+	}
 
 	now := time.Unix(0, 0)
 	world.applyEffectHitNPC(eff, npc, now)
@@ -1611,11 +1611,11 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	centerY := dequantizeWorldCoord(centerYQuant)
 	expectedX := centerX - width/2
 	expectedY := centerY - height/2
-	if math.Abs(effect.Effect.X-expectedX) > 1e-6 {
-		t.Fatalf("expected effect X %.2f, got %.2f", expectedX, effect.Effect.X)
+	if math.Abs(effect.X-expectedX) > 1e-6 {
+		t.Fatalf("expected effect X %.2f, got %.2f", expectedX, effect.X)
 	}
-	if math.Abs(effect.Effect.Y-expectedY) > 1e-6 {
-		t.Fatalf("expected effect Y %.2f, got %.2f", expectedY, effect.Effect.Y)
+	if math.Abs(effect.Y-expectedY) > 1e-6 {
+		t.Fatalf("expected effect Y %.2f, got %.2f", expectedY, effect.Y)
 	}
 
 	if !slicesEqual(instance.Colors, expectedColors) {
@@ -2176,7 +2176,7 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 	state.lastHeartbeat = time.Now()
 	hub.world.players[playerID] = state
 
-	heal := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "healer", Params: map[string]float64{"healthDelta": 50}}}
+	heal := &effectState{Type: effectTypeAttack, Owner: "healer", Params: map[string]float64{"healthDelta": 50}}
 
 	hub.world.applyEffectHitPlayer(heal, state, time.Now())
 
@@ -2195,7 +2195,7 @@ func TestHealthDamageClampsToZero(t *testing.T) {
 	state.lastHeartbeat = time.Now()
 	hub.world.players[playerID] = state
 
-	blast := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: "boom", Params: map[string]float64{"healthDelta": -50}}}
+	blast := &effectState{Type: effectTypeAttack, Owner: "boom", Params: map[string]float64{"healthDelta": -50}}
 
 	hub.world.applyEffectHitPlayer(blast, state, time.Now())
 
@@ -3042,7 +3042,7 @@ func TestDeathDropsPlayerInventory(t *testing.T) {
 
 	now := time.Now()
 	damage := victim.Health + 5
-	eff := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -damage}}}
+	eff := &effectState{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -damage}}
 	hub.world.applyEffectHitPlayer(eff, victim, now)
 
 	if victim.Health > 0 {
@@ -3147,7 +3147,7 @@ func TestDeathDropsNPCInventory(t *testing.T) {
 	hub.world.npcs[npc.ID] = npc
 
 	now := time.Now()
-	eff := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -(npc.Health + 5)}}}
+	eff := &effectState{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -(npc.Health + 5)}}
 	hub.world.applyEffectHitNPC(eff, npc, now)
 
 	if _, exists := hub.world.npcs[npc.ID]; exists {
@@ -3190,7 +3190,7 @@ func TestRatDropsTailOnDeath(t *testing.T) {
 	}
 
 	now := time.Now()
-	eff := &effectState{Effect: Effect{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -(rat.Health + 5)}}}
+	eff := &effectState{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -(rat.Health + 5)}}
 	hub.world.applyEffectHitNPC(eff, rat, now)
 
 	if _, exists := hub.world.npcs[rat.ID]; exists {
