@@ -1,6 +1,10 @@
 package main
 
-import "math"
+import (
+	"math"
+
+	effectcontract "mine-and-die/server/effects/contract"
+)
 
 // FixedVec represents a 2D vector using the fixed-point coordinate system
 // defined by COORD_SCALE. All values are stored as integers to guarantee
@@ -42,13 +46,13 @@ type FixedCapsule struct {
 // fixed-point representation. Values are rounded to the nearest sub-unit to
 // keep round-trips deterministic.
 func QuantizeCoord(value float64) int {
-	return int(math.Round(value * COORD_SCALE))
+	return int(math.Round(value * effectcontract.CoordScale))
 }
 
 // DequantizeCoord converts a fixed-point coordinate back into floating point
 // space. The helper is primarily intended for debugging and diagnostics code.
 func DequantizeCoord(value int) float64 {
-	return float64(value) / COORD_SCALE
+	return float64(value) / effectcontract.CoordScale
 }
 
 // QuantizeVelocity converts a world-units-per-second velocity into the

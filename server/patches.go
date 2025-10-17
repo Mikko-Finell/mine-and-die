@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 const defaultJournalKeyframeCapacity = 8
@@ -150,10 +152,10 @@ type Journal struct {
 	keyframes     []keyframe
 	maxFrames     int
 	maxAge        time.Duration
-	effectSeq     map[string]Seq
+	effectSeq     map[string]effectcontract.Seq
 	effects       effectEventBuffer
 	endedIDs      []string
-	recentlyEnded map[string]Tick
+	recentlyEnded map[string]effectcontract.Tick
 	telemetry     *telemetryCounters
 	resync        *resyncPolicy
 }
@@ -172,34 +174,34 @@ func newJournal(keyframeCapacity int, maxAge time.Duration) Journal {
 		keyframes: make([]keyframe, 0, keyframeCapacity),
 		maxFrames: keyframeCapacity,
 		maxAge:    maxAge,
-		effectSeq: make(map[string]Seq),
+		effectSeq: make(map[string]effectcontract.Seq),
 		effects: effectEventBuffer{
-			spawns:  make([]EffectSpawnEvent, 0),
-			updates: make([]EffectUpdateEvent, 0),
-			ends:    make([]EffectEndEvent, 0),
+			spawns:  make([]effectcontract.EffectSpawnEvent, 0),
+			updates: make([]effectcontract.EffectUpdateEvent, 0),
+			ends:    make([]effectcontract.EffectEndEvent, 0),
 		},
 		endedIDs:      make([]string, 0),
-		recentlyEnded: make(map[string]Tick),
+		recentlyEnded: make(map[string]effectcontract.Tick),
 		resync:        newResyncPolicy(),
 	}
 }
 
-const journalRecentlyEndedWindow Tick = 4
+const journalRecentlyEndedWindow effectcontract.Tick = 4
 
 type effectEventBuffer struct {
-	spawns  []EffectSpawnEvent
-	updates []EffectUpdateEvent
-	ends    []EffectEndEvent
+	spawns  []effectcontract.EffectSpawnEvent
+	updates []effectcontract.EffectUpdateEvent
+	ends    []effectcontract.EffectEndEvent
 }
 
 // EffectEventBatch captures the lifecycle envelopes recorded for the current
 // journal window alongside the per-effect sequence counters used for
 // idempotency in replay tooling.
 type EffectEventBatch struct {
-	Spawns      []EffectSpawnEvent  `json:"effect_spawned,omitempty"`
-	Updates     []EffectUpdateEvent `json:"effect_update,omitempty"`
-	Ends        []EffectEndEvent    `json:"effect_ended,omitempty"`
-	LastSeqByID map[string]Seq      `json:"effect_seq_cursors,omitempty"`
+	Spawns      []effectcontract.EffectSpawnEvent  `json:"effect_spawned,omitempty"`
+	Updates     []effectcontract.EffectUpdateEvent `json:"effect_update,omitempty"`
+	Ends        []effectcontract.EffectEndEvent    `json:"effect_ended,omitempty"`
+	LastSeqByID map[string]effectcontract.Seq      `json:"effect_seq_cursors,omitempty"`
 }
 
 // journalConfig loads retention settings from the environment falling back to
@@ -239,9 +241,9 @@ func (j *Journal) AppendPatch(p Patch) {
 // RecordEffectSpawn registers an effect_spawned envelope in the journal.
 // The journal owns the per-effect sequence counter so replay tooling can drop
 // duplicates deterministically. The returned event mirrors the stored payload.
-func (j *Journal) RecordEffectSpawn(event EffectSpawnEvent) EffectSpawnEvent {
+func (j *Journal) RecordEffectSpawn(event effectcontract.EffectSpawnEvent) effectcontract.EffectSpawnEvent {
 	if event.Instance.ID == "" {
-		return EffectSpawnEvent{}
+		return effectcontract.EffectSpawnEvent{}
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -263,9 +265,9 @@ func (j *Journal) RecordEffectSpawn(event EffectSpawnEvent) EffectSpawnEvent {
 
 // RecordEffectUpdate registers an effect_update envelope in the journal and
 // returns the stored event with the assigned sequence value.
-func (j *Journal) RecordEffectUpdate(event EffectUpdateEvent) EffectUpdateEvent {
+func (j *Journal) RecordEffectUpdate(event effectcontract.EffectUpdateEvent) effectcontract.EffectUpdateEvent {
 	if event.ID == "" {
-		return EffectUpdateEvent{}
+		return effectcontract.EffectUpdateEvent{}
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -278,7 +280,7 @@ func (j *Journal) RecordEffectUpdate(event EffectUpdateEvent) EffectUpdateEvent 
 		if j.resync != nil {
 			j.resync.noteLostSpawn(metricJournalUnknownIDUpdate, event.ID)
 		}
-		return EffectUpdateEvent{}
+		return effectcontract.EffectUpdateEvent{}
 	}
 	j.pruneRecentlyEndedLocked(event.Tick)
 	if _, recently := j.recentlyEnded[event.ID]; recently {
@@ -286,17 +288,17 @@ func (j *Journal) RecordEffectUpdate(event EffectUpdateEvent) EffectUpdateEvent 
 		if j.resync != nil {
 			j.resync.noteLostSpawn(metricJournalUpdateAfterEnd, event.ID)
 		}
-		return EffectUpdateEvent{}
+		return effectcontract.EffectUpdateEvent{}
 	}
 	if event.Seq <= 0 {
 		event.Seq = j.nextEffectSeqLocked(event.ID)
 	} else if event.Seq <= last {
 		j.recordJournalDropLocked(metricJournalNonMonotonicSeq)
-		return EffectUpdateEvent{}
+		return effectcontract.EffectUpdateEvent{}
 	} else {
 		j.effectSeq[event.ID] = event.Seq
 	}
-	cloned := EffectUpdateEvent{
+	cloned := effectcontract.EffectUpdateEvent{
 		Tick: event.Tick,
 		Seq:  event.Seq,
 		ID:   event.ID,
@@ -319,9 +321,9 @@ func (j *Journal) RecordEffectUpdate(event EffectUpdateEvent) EffectUpdateEvent 
 // RecordEffectEnd registers an effect_ended envelope in the journal. The
 // journal retains the final sequence cursor until the batch is drained so
 // replay tooling can confirm ordering before the id is reclaimed.
-func (j *Journal) RecordEffectEnd(event EffectEndEvent) EffectEndEvent {
+func (j *Journal) RecordEffectEnd(event effectcontract.EffectEndEvent) effectcontract.EffectEndEvent {
 	if event.ID == "" {
-		return EffectEndEvent{}
+		return effectcontract.EffectEndEvent{}
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -334,14 +336,14 @@ func (j *Journal) RecordEffectEnd(event EffectEndEvent) EffectEndEvent {
 		if j.resync != nil {
 			j.resync.noteLostSpawn(metricJournalUnknownIDUpdate, event.ID)
 		}
-		return EffectEndEvent{}
+		return effectcontract.EffectEndEvent{}
 	}
 	j.pruneRecentlyEndedLocked(event.Tick)
 	if event.Seq <= 0 {
 		event.Seq = j.nextEffectSeqLocked(event.ID)
 	} else if event.Seq <= last {
 		j.recordJournalDropLocked(metricJournalNonMonotonicSeq)
-		return EffectEndEvent{}
+		return effectcontract.EffectEndEvent{}
 	} else {
 		j.effectSeq[event.ID] = event.Seq
 	}
@@ -474,25 +476,25 @@ func (j *Journal) RestoreEffectEvents(batch EffectEventBatch) {
 	defer j.mu.Unlock()
 
 	if len(batch.Spawns) > 0 {
-		restored := make([]EffectSpawnEvent, 0, len(batch.Spawns)+len(j.effects.spawns))
+		restored := make([]effectcontract.EffectSpawnEvent, 0, len(batch.Spawns)+len(j.effects.spawns))
 		restored = append(restored, batch.Spawns...)
 		restored = append(restored, j.effects.spawns...)
 		j.effects.spawns = restored
 	}
 	if len(batch.Updates) > 0 {
-		restored := make([]EffectUpdateEvent, 0, len(batch.Updates)+len(j.effects.updates))
+		restored := make([]effectcontract.EffectUpdateEvent, 0, len(batch.Updates)+len(j.effects.updates))
 		restored = append(restored, batch.Updates...)
 		restored = append(restored, j.effects.updates...)
 		j.effects.updates = restored
 	}
 	if len(batch.Ends) > 0 {
-		restored := make([]EffectEndEvent, 0, len(batch.Ends)+len(j.effects.ends))
+		restored := make([]effectcontract.EffectEndEvent, 0, len(batch.Ends)+len(j.effects.ends))
 		restored = append(restored, batch.Ends...)
 		restored = append(restored, j.effects.ends...)
 		j.effects.ends = restored
 
 		if j.recentlyEnded == nil {
-			j.recentlyEnded = make(map[string]Tick)
+			j.recentlyEnded = make(map[string]effectcontract.Tick)
 		}
 
 		seen := make(map[string]struct{}, len(batch.Ends))
@@ -518,7 +520,7 @@ func (j *Journal) RestoreEffectEvents(batch EffectEventBatch) {
 	}
 	if len(batch.LastSeqByID) > 0 {
 		if j.effectSeq == nil {
-			j.effectSeq = make(map[string]Seq, len(batch.LastSeqByID))
+			j.effectSeq = make(map[string]effectcontract.Seq, len(batch.LastSeqByID))
 		}
 		for id, seq := range batch.LastSeqByID {
 			if id == "" {
@@ -648,7 +650,7 @@ func (j *Journal) KeyframeWindow() (size int, oldest, newest uint64) {
 	return size, oldest, newest
 }
 
-func (j *Journal) nextEffectSeqLocked(id string) Seq {
+func (j *Journal) nextEffectSeqLocked(id string) effectcontract.Seq {
 	if id == "" {
 		return 0
 	}
@@ -657,7 +659,7 @@ func (j *Journal) nextEffectSeqLocked(id string) Seq {
 	return next
 }
 
-func (j *Journal) pruneRecentlyEndedLocked(current Tick) {
+func (j *Journal) pruneRecentlyEndedLocked(current effectcontract.Tick) {
 	if len(j.recentlyEnded) == 0 || current <= 0 {
 		return
 	}
@@ -705,13 +707,13 @@ func (j *Journal) AttachTelemetry(t *telemetryCounters) {
 	j.mu.Unlock()
 }
 
-func cloneSpawnEvents(events []EffectSpawnEvent) []EffectSpawnEvent {
+func cloneSpawnEvents(events []effectcontract.EffectSpawnEvent) []effectcontract.EffectSpawnEvent {
 	if len(events) == 0 {
 		return nil
 	}
-	clones := make([]EffectSpawnEvent, len(events))
+	clones := make([]effectcontract.EffectSpawnEvent, len(events))
 	for i, evt := range events {
-		clones[i] = EffectSpawnEvent{
+		clones[i] = effectcontract.EffectSpawnEvent{
 			Tick:     evt.Tick,
 			Seq:      evt.Seq,
 			Instance: cloneEffectInstance(evt.Instance),
@@ -720,13 +722,13 @@ func cloneSpawnEvents(events []EffectSpawnEvent) []EffectSpawnEvent {
 	return clones
 }
 
-func cloneUpdateEvents(events []EffectUpdateEvent) []EffectUpdateEvent {
+func cloneUpdateEvents(events []effectcontract.EffectUpdateEvent) []effectcontract.EffectUpdateEvent {
 	if len(events) == 0 {
 		return nil
 	}
-	clones := make([]EffectUpdateEvent, len(events))
+	clones := make([]effectcontract.EffectUpdateEvent, len(events))
 	for i, evt := range events {
-		clone := EffectUpdateEvent{Tick: evt.Tick, Seq: evt.Seq, ID: evt.ID}
+		clone := effectcontract.EffectUpdateEvent{Tick: evt.Tick, Seq: evt.Seq, ID: evt.ID}
 		if evt.DeliveryState != nil {
 			delivery := cloneEffectDeliveryState(*evt.DeliveryState)
 			clone.DeliveryState = &delivery
@@ -743,16 +745,16 @@ func cloneUpdateEvents(events []EffectUpdateEvent) []EffectUpdateEvent {
 	return clones
 }
 
-func cloneEndEvents(events []EffectEndEvent) []EffectEndEvent {
+func cloneEndEvents(events []effectcontract.EffectEndEvent) []effectcontract.EffectEndEvent {
 	if len(events) == 0 {
 		return nil
 	}
-	clones := make([]EffectEndEvent, len(events))
+	clones := make([]effectcontract.EffectEndEvent, len(events))
 	copy(clones, events)
 	return clones
 }
 
-func cloneEffectInstance(instance EffectInstance) EffectInstance {
+func cloneEffectInstance(instance effectcontract.EffectInstance) effectcontract.EffectInstance {
 	clone := instance
 	clone.DeliveryState = cloneEffectDeliveryState(instance.DeliveryState)
 	clone.BehaviorState = cloneEffectBehaviorState(instance.BehaviorState)
@@ -770,24 +772,24 @@ func cloneEffectInstance(instance EffectInstance) EffectInstance {
 	return clone
 }
 
-func cloneEffectDeliveryState(state EffectDeliveryState) EffectDeliveryState {
+func cloneEffectDeliveryState(state effectcontract.EffectDeliveryState) effectcontract.EffectDeliveryState {
 	clone := state
 	clone.Geometry = cloneGeometry(state.Geometry)
 	return clone
 }
 
-func cloneEffectBehaviorState(state EffectBehaviorState) EffectBehaviorState {
+func cloneEffectBehaviorState(state effectcontract.EffectBehaviorState) effectcontract.EffectBehaviorState {
 	clone := state
 	clone.Stacks = copyIntMap(state.Stacks)
 	clone.Extra = copyIntMap(state.Extra)
 	return clone
 }
 
-func copySeqMap(src map[string]Seq) map[string]Seq {
+func copySeqMap(src map[string]effectcontract.Seq) map[string]effectcontract.Seq {
 	if len(src) == 0 {
 		return nil
 	}
-	dst := make(map[string]Seq, len(src))
+	dst := make(map[string]effectcontract.Seq, len(src))
 	for k, v := range src {
 		dst[k] = v
 	}

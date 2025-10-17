@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/logging"
 	loggingcombat "mine-and-die/server/logging/combat"
 	loggingeconomy "mine-and-die/server/logging/economy"
@@ -59,8 +60,8 @@ type effectState struct {
 	version               uint64
 	telemetryEnded        bool
 	contractManaged       bool
-	telemetrySpawnTick    Tick
-	telemetryFirstHitTick Tick
+	telemetrySpawnTick    effectcontract.Tick
+	telemetryFirstHitTick effectcontract.Tick
 	telemetryHitCount     int
 	telemetryVictims      map[string]struct{}
 	telemetryDamage       float64
@@ -264,11 +265,11 @@ const (
 	meleeAttackWidth    = 40.0
 	meleeAttackDamage   = 10.0
 
-	effectTypeAttack        = EffectIDAttack
-	effectTypeFireball      = EffectIDFireball
-	effectTypeBloodSplatter = EffectIDBloodSplatter
-	effectTypeBurningTick   = EffectIDBurningTick
-	effectTypeBurningVisual = EffectIDBurningVisual
+	effectTypeAttack        = effectcontract.EffectIDAttack
+	effectTypeFireball      = effectcontract.EffectIDFireball
+	effectTypeBloodSplatter = effectcontract.EffectIDBloodSplatter
+	effectTypeBurningTick   = effectcontract.EffectIDBurningTick
+	effectTypeBurningVisual = effectcontract.EffectIDBurningVisual
 
 	bloodSplatterDuration = 1200 * time.Millisecond
 
@@ -521,10 +522,10 @@ func (w *World) recordEffectHitTelemetry(eff *effectState, targetID string, delt
 		return
 	}
 	if eff.telemetrySpawnTick == 0 {
-		eff.telemetrySpawnTick = Tick(int64(w.currentTick))
+		eff.telemetrySpawnTick = effectcontract.Tick(int64(w.currentTick))
 	}
 	if eff.telemetryFirstHitTick == 0 {
-		eff.telemetryFirstHitTick = Tick(int64(w.currentTick))
+		eff.telemetryFirstHitTick = effectcontract.Tick(int64(w.currentTick))
 	}
 	eff.telemetryHitCount++
 	if eff.telemetryVictims == nil {
@@ -548,7 +549,7 @@ func (w *World) flushEffectTelemetry(eff *effectState) {
 	}
 	spawnTick := eff.telemetrySpawnTick
 	if spawnTick == 0 {
-		spawnTick = Tick(int64(w.currentTick))
+		spawnTick = effectcontract.Tick(int64(w.currentTick))
 	}
 	summary := effectParitySummary{
 		EffectType:    eff.Type,
@@ -721,13 +722,13 @@ func (w *World) buildProjectileEffect(owner *actorState, actorID string, tpl *Pr
 			VelocityUnitY:  dirY,
 			RemainingRange: tpl.MaxDistance,
 		},
-		telemetrySpawnTick: Tick(int64(w.currentTick)),
+		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
 
 	return effect
 }
 
-func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, owner *actorState, tpl *ProjectileTemplate, now time.Time) *effectState {
+func (w *World) spawnContractProjectileFromInstance(instance *effectcontract.EffectInstance, owner *actorState, tpl *ProjectileTemplate, now time.Time) *effectState {
 	if w == nil || instance == nil || owner == nil || tpl == nil {
 		return nil
 	}
@@ -869,7 +870,7 @@ func (w *World) spawnContractProjectileFromInstance(instance *EffectInstance, ow
 	return effect
 }
 
-func (w *World) spawnContractBloodDecalFromInstance(instance *EffectInstance, now time.Time) *effectState {
+func (w *World) spawnContractBloodDecalFromInstance(instance *effectcontract.EffectInstance, now time.Time) *effectState {
 	if w == nil || instance == nil {
 		return nil
 	}
@@ -1364,7 +1365,7 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 			Params:   params,
 		},
 		expiresAt:          now.Add(spec.Duration),
-		telemetrySpawnTick: Tick(int64(w.currentTick)),
+		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
 	if !w.registerEffect(area) {
 		return

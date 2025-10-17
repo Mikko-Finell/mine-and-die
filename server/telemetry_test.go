@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 func TestTelemetryEffectParitySnapshot(t *testing.T) {
@@ -17,8 +19,8 @@ func TestTelemetryEffectParitySnapshot(t *testing.T) {
 		Hits:          3,
 		UniqueVictims: 2,
 		TotalDamage:   45,
-		SpawnTick:     Tick(10),
-		FirstHitTick:  Tick(12),
+		SpawnTick:     effectcontract.Tick(10),
+		FirstHitTick:  effectcontract.Tick(12),
 	})
 
 	counters.RecordEffectParity(effectParitySummary{
@@ -26,7 +28,7 @@ func TestTelemetryEffectParitySnapshot(t *testing.T) {
 		Hits:          0,
 		UniqueVictims: 0,
 		TotalDamage:   0,
-		SpawnTick:     Tick(20),
+		SpawnTick:     effectcontract.Tick(20),
 		FirstHitTick:  0,
 	})
 

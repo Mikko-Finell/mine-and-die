@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 type simpleCounter struct {
@@ -92,8 +94,8 @@ type effectParitySummary struct {
 	Hits          int
 	UniqueVictims int
 	TotalDamage   float64
-	SpawnTick     Tick
-	FirstHitTick  Tick
+	SpawnTick     effectcontract.Tick
+	FirstHitTick  effectcontract.Tick
 }
 
 type effectParityTotals struct {

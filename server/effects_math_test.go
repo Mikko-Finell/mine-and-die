@@ -3,10 +3,12 @@ package main
 import (
 	"math"
 	"testing"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 func fixed(value float64) int {
-	return int(math.Round(value * COORD_SCALE))
+	return int(math.Round(value * effectcontract.CoordScale))
 }
 
 func TestQuantizeCoord(t *testing.T) {
@@ -18,7 +20,7 @@ func TestQuantizeCoord(t *testing.T) {
 		{name: "zero", input: 0, want: 0},
 		{name: "positive", input: 2.5, want: 40},
 		{name: "negative", input: -1.125, want: -18},
-		{name: "small", input: 1.0 / float64(COORD_SCALE), want: 1},
+		{name: "small", input: 1.0 / float64(effectcontract.CoordScale), want: 1},
 	}
 
 	for _, tc := range cases {
@@ -27,7 +29,7 @@ func TestQuantizeCoord(t *testing.T) {
 			if got != tc.want {
 				t.Fatalf("QuantizeCoord(%v) = %d, want %d", tc.input, got, tc.want)
 			}
-			if de := DequantizeCoord(got); math.Abs(de-tc.input) > 1.0/float64(COORD_SCALE) {
+			if de := DequantizeCoord(got); math.Abs(de-tc.input) > 1.0/float64(effectcontract.CoordScale) {
 				t.Fatalf("DequantizeCoord(%d) = %f diverges from %f", got, de, tc.input)
 			}
 		})

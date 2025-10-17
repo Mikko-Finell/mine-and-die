@@ -4,17 +4,19 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 	owner := &actorState{Actor: Actor{ID: "owner", X: 10, Y: 20, Facing: FacingUp}}
-	instance := &EffectInstance{
+	instance := &effectcontract.EffectInstance{
 		ID:           "effect-1",
 		OwnerActorID: owner.ID,
-		BehaviorState: EffectBehaviorState{
+		BehaviorState: effectcontract.EffectBehaviorState{
 			Extra: make(map[string]int),
 		},
-		DeliveryState: EffectDeliveryState{Geometry: EffectGeometry{}},
+		DeliveryState: effectcontract.EffectDeliveryState{Geometry: effectcontract.EffectGeometry{}},
 		Params:        make(map[string]int),
 	}
 	tpl := &ProjectileTemplate{Type: effectTypeFireball, MaxDistance: 30}
@@ -85,11 +87,11 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 
 func TestSpawnContractProjectileFromInstancePreservesLifetime(t *testing.T) {
 	owner := &actorState{Actor: Actor{ID: "owner", Facing: FacingRight}}
-	instance := &EffectInstance{
+	instance := &effectcontract.EffectInstance{
 		ID:           "projectile-life",
 		OwnerActorID: owner.ID,
 		DefinitionID: effectTypeFireball,
-		BehaviorState: EffectBehaviorState{
+		BehaviorState: effectcontract.EffectBehaviorState{
 			TicksRemaining: 5,
 			Extra:          make(map[string]int),
 		},

@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/logging"
 	loggingstatuseffects "mine-and-die/server/logging/status_effects"
 )
@@ -266,7 +267,7 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 			Params: map[string]float64{"healthDelta": delta},
 		},
 		StatusEffect:       status,
-		telemetrySpawnTick: Tick(int64(w.currentTick)),
+		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
 	if eff.Effect.Owner == "" {
 		eff.Effect.Owner = actor.ID
@@ -301,7 +302,7 @@ func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, l
 		},
 		expiresAt:          now.Add(lifetime),
 		FollowActorID:      actor.ID,
-		telemetrySpawnTick: Tick(int64(w.currentTick)),
+		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
 	if !w.registerEffect(eff) {
 		return nil
