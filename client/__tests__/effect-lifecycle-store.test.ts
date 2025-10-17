@@ -7,6 +7,7 @@ import {
   type ContractLifecycleUpdateEvent,
 } from "../effect-lifecycle-store";
 import { setEffectCatalog } from "../effect-catalog";
+import { effectCatalog as generatedEffectCatalog } from "../generated/effect-contracts";
 
 const createInstance = ({
   id,
@@ -94,17 +95,11 @@ const createEnd = (options: {
 
 describe("ContractLifecycleStore", () => {
   beforeEach(() => {
-    setEffectCatalog({});
+    setEffectCatalog(null);
   });
 
   test("tracks spawn, update, and end for server-managed entries", () => {
-    setEffectCatalog({
-      "fireball-entry": {
-        contractId: "fireball",
-        managedByClient: false,
-        blocks: {},
-      },
-    });
+    setEffectCatalog({ fireball: generatedEffectCatalog.fireball });
 
     const store = new ContractLifecycleStore();
 
@@ -112,7 +107,7 @@ describe("ContractLifecycleStore", () => {
       seq: 1,
       tick: 10,
       id: "effect-1",
-      entryId: "fireball-entry",
+      entryId: "fireball",
       definitionId: "fireball",
     });
 
@@ -153,21 +148,15 @@ describe("ContractLifecycleStore", () => {
   });
 
   test("retains client-managed entries when they end", () => {
-    setEffectCatalog({
-      "managed-entry": {
-        contractId: "fireball",
-        managedByClient: true,
-        blocks: {},
-      },
-    });
+    setEffectCatalog({ attack: generatedEffectCatalog.attack });
 
     const store = new ContractLifecycleStore();
 
     const spawn = createSpawn({
       seq: 1,
       id: "effect-retained",
-      entryId: "managed-entry",
-      definitionId: "fireball",
+      entryId: "attack",
+      definitionId: "attack",
     });
     store.applyBatch({ spawns: [spawn] });
 
@@ -191,18 +180,12 @@ describe("ContractLifecycleStore", () => {
     expect(firstSummary.updates).toEqual([]);
     expect(firstSummary.unknownUpdates).toEqual([orphanUpdate]);
 
-    setEffectCatalog({
-      "fireball-entry": {
-        contractId: "fireball",
-        managedByClient: false,
-        blocks: {},
-      },
-    });
+    setEffectCatalog({ fireball: generatedEffectCatalog.fireball });
 
     const spawn = createSpawn({
       seq: 1,
       id: "effect-dup",
-      entryId: "fireball-entry",
+      entryId: "fireball",
       definitionId: "fireball",
     });
     store.applyBatch({ spawns: [spawn] });
