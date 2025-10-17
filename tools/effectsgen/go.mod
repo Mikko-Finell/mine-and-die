@@ -2,7 +2,7 @@ module mine-and-die/tools/effectsgen
 
 go 1.24.3
 
-require golang.org/x/tools v0.38.0
+require golang.org/x/tools v0.38.0 // Pinned for Go 1.24 token.FileSet layout compatibility
 
 require (
 	golang.org/x/mod v0.29.0 // indirect
