@@ -190,7 +190,7 @@ export type EffectContractID = keyof EffectContractMap;
 export type EffectCatalogEntry = {
   readonly contractId: string;
   readonly managedByClient: boolean;
-  readonly definition: Readonly<Record<string, unknown>>;
+  readonly definition: EffectDefinition;
   readonly blocks: Readonly<Record<string, unknown>>;
 };
 
@@ -212,6 +212,9 @@ export const effectCatalog = {
           "sendSpawn": true,
           "sendUpdates": false,
           "sendEnd": false
+        },
+        "end": {
+          "kind": 1
         }
       },
     "blocks": {
@@ -240,6 +243,9 @@ export const effectCatalog = {
           "sendSpawn": true,
           "sendUpdates": false,
           "sendEnd": false
+        },
+        "end": {
+          "kind": 0
         }
       },
     "blocks": {
