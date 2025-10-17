@@ -4,25 +4,26 @@ import (
 	"testing"
 	"time"
 
+	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/logging"
 )
 
 type lifecycleCollector struct {
-	spawns  []EffectSpawnEvent
-	updates []EffectUpdateEvent
-	ends    []EffectEndEvent
+	spawns  []effectcontract.EffectSpawnEvent
+	updates []effectcontract.EffectUpdateEvent
+	ends    []effectcontract.EffectEndEvent
 }
 
-func (c *lifecycleCollector) collect(evt EffectLifecycleEvent) {
+func (c *lifecycleCollector) collect(evt effectcontract.EffectLifecycleEvent) {
 	if c == nil {
 		return
 	}
 	switch e := evt.(type) {
-	case EffectSpawnEvent:
+	case effectcontract.EffectSpawnEvent:
 		c.spawns = append(c.spawns, e)
-	case EffectUpdateEvent:
+	case effectcontract.EffectUpdateEvent:
 		c.updates = append(c.updates, e)
-	case EffectEndEvent:
+	case effectcontract.EffectEndEvent:
 		c.ends = append(c.ends, e)
 	default:
 		panic("unexpected lifecycle event type")
@@ -32,112 +33,112 @@ func (c *lifecycleCollector) collect(evt EffectLifecycleEvent) {
 func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 	cases := []struct {
 		name       string
-		definition *EffectDefinition
-		intent     EffectIntent
+		definition *effectcontract.EffectDefinition
+		intent     effectcontract.EffectIntent
 		ticks      int
 		expect     struct {
 			spawns      int
 			updates     int
 			ends        int
-			follow      FollowMode
-			endReason   EndReason
+			follow      effectcontract.FollowMode
+			endReason   effectcontract.EndReason
 			attachCheck bool
 		}
 	}{
 		{
 			name: "area delivery emits spawn-update-end",
-			definition: &EffectDefinition{
+			definition: &effectcontract.EffectDefinition{
 				TypeID:        "contract-case-area",
-				Delivery:      DeliveryKindArea,
-				Shape:         GeometryShapeCircle,
-				Motion:        MotionKindInstant,
-				Impact:        ImpactPolicyFirstHit,
+				Delivery:      effectcontract.DeliveryKindArea,
+				Shape:         effectcontract.GeometryShapeCircle,
+				Motion:        effectcontract.MotionKindInstant,
+				Impact:        effectcontract.ImpactPolicyFirstHit,
 				LifetimeTicks: 2,
-				Client: ReplicationSpec{
+				Client: effectcontract.ReplicationSpec{
 					SendSpawn:   true,
 					SendUpdates: true,
 					SendEnd:     true,
 				},
-				End: EndPolicy{Kind: EndDuration},
+				End: effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
 			},
-			intent: EffectIntent{
+			intent: effectcontract.EffectIntent{
 				EntryID:  "contract-case-area",
-				Delivery: DeliveryKindArea,
-				Geometry: EffectGeometry{Shape: GeometryShapeCircle},
+				Delivery: effectcontract.DeliveryKindArea,
+				Geometry: effectcontract.EffectGeometry{Shape: effectcontract.GeometryShapeCircle},
 			},
 			ticks: 2,
 			expect: struct {
 				spawns      int
 				updates     int
 				ends        int
-				follow      FollowMode
-				endReason   EndReason
+				follow      effectcontract.FollowMode
+				endReason   effectcontract.EndReason
 				attachCheck bool
-			}{spawns: 1, updates: 2, ends: 1, follow: FollowNone, endReason: EndReasonExpired},
+			}{spawns: 1, updates: 2, ends: 1, follow: effectcontract.FollowNone, endReason: effectcontract.EndReasonExpired},
 		},
 		{
 			name: "target delivery follows actor and updates each tick",
-			definition: &EffectDefinition{
+			definition: &effectcontract.EffectDefinition{
 				TypeID:        "contract-case-target",
-				Delivery:      DeliveryKindTarget,
-				Shape:         GeometryShapeCircle,
-				Motion:        MotionKindFollow,
-				Impact:        ImpactPolicyFirstHit,
+				Delivery:      effectcontract.DeliveryKindTarget,
+				Shape:         effectcontract.GeometryShapeCircle,
+				Motion:        effectcontract.MotionKindFollow,
+				Impact:        effectcontract.ImpactPolicyFirstHit,
 				LifetimeTicks: 3,
-				Client: ReplicationSpec{
+				Client: effectcontract.ReplicationSpec{
 					SendSpawn:   true,
 					SendUpdates: true,
 					SendEnd:     true,
 				},
-				End: EndPolicy{Kind: EndDuration},
+				End: effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
 			},
-			intent: EffectIntent{
+			intent: effectcontract.EffectIntent{
 				EntryID:       "contract-case-target",
-				Delivery:      DeliveryKindTarget,
+				Delivery:      effectcontract.DeliveryKindTarget,
 				SourceActorID: "target-owner",
 				TargetActorID: "attached-target",
-				Geometry:      EffectGeometry{Shape: GeometryShapeCircle},
+				Geometry:      effectcontract.EffectGeometry{Shape: effectcontract.GeometryShapeCircle},
 			},
 			ticks: 3,
 			expect: struct {
 				spawns      int
 				updates     int
 				ends        int
-				follow      FollowMode
-				endReason   EndReason
+				follow      effectcontract.FollowMode
+				endReason   effectcontract.EndReason
 				attachCheck bool
-			}{spawns: 1, updates: 3, ends: 1, follow: FollowTarget, endReason: EndReasonExpired, attachCheck: true},
+			}{spawns: 1, updates: 3, ends: 1, follow: effectcontract.FollowTarget, endReason: effectcontract.EndReasonExpired, attachCheck: true},
 		},
 		{
 			name: "visual delivery omits updates but still ends",
-			definition: &EffectDefinition{
+			definition: &effectcontract.EffectDefinition{
 				TypeID:        "contract-case-visual",
-				Delivery:      DeliveryKindVisual,
-				Shape:         GeometryShapeRect,
-				Motion:        MotionKindNone,
-				Impact:        ImpactPolicyFirstHit,
+				Delivery:      effectcontract.DeliveryKindVisual,
+				Shape:         effectcontract.GeometryShapeRect,
+				Motion:        effectcontract.MotionKindNone,
+				Impact:        effectcontract.ImpactPolicyFirstHit,
 				LifetimeTicks: 2,
-				Client: ReplicationSpec{
+				Client: effectcontract.ReplicationSpec{
 					SendSpawn:   true,
 					SendUpdates: false,
 					SendEnd:     true,
 				},
-				End: EndPolicy{Kind: EndDuration},
+				End: effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
 			},
-			intent: EffectIntent{
+			intent: effectcontract.EffectIntent{
 				EntryID:  "contract-case-visual",
-				Delivery: DeliveryKindVisual,
-				Geometry: EffectGeometry{Shape: GeometryShapeRect},
+				Delivery: effectcontract.DeliveryKindVisual,
+				Geometry: effectcontract.EffectGeometry{Shape: effectcontract.GeometryShapeRect},
 			},
 			ticks: 2,
 			expect: struct {
 				spawns      int
 				updates     int
 				ends        int
-				follow      FollowMode
-				endReason   EndReason
+				follow      effectcontract.FollowMode
+				endReason   effectcontract.EndReason
 				attachCheck bool
-			}{spawns: 1, updates: 0, ends: 1, follow: FollowNone, endReason: EndReasonExpired},
+			}{spawns: 1, updates: 0, ends: 1, follow: effectcontract.FollowNone, endReason: effectcontract.EndReasonExpired},
 		},
 	}
 
@@ -184,7 +185,7 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 				t.Fatalf("expected attached actor %q, got %q", tc.intent.TargetActorID, spawn.Instance.DeliveryState.AttachedActorID)
 			}
 
-			lifecycleSeqs := []Seq{spawn.Seq}
+			lifecycleSeqs := []effectcontract.Seq{spawn.Seq}
 			instanceID := spawn.Instance.ID
 
 			for _, update := range collector.updates {
@@ -220,45 +221,45 @@ func TestEffectManagerRespectsTickCadence(t *testing.T) {
 		t.Fatalf("expected effect manager instance")
 	}
 
-	invocationTicks := make([]Tick, 0)
+	invocationTicks := make([]effectcontract.Tick, 0)
 	hookID := "contract.test.tickCadence"
 	manager.hooks[hookID] = effectHookSet{
-		OnTick: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
+		OnTick: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			invocationTicks = append(invocationTicks, tick)
 		},
 	}
 
-	definition := &EffectDefinition{
+	definition := &effectcontract.EffectDefinition{
 		TypeID:        "contract-tick-cadence",
-		Delivery:      DeliveryKindArea,
-		Shape:         GeometryShapeCircle,
-		Motion:        MotionKindInstant,
-		Impact:        ImpactPolicyNone,
+		Delivery:      effectcontract.DeliveryKindArea,
+		Shape:         effectcontract.GeometryShapeCircle,
+		Motion:        effectcontract.MotionKindInstant,
+		Impact:        effectcontract.ImpactPolicyNone,
 		LifetimeTicks: 10,
-		Hooks: EffectHooks{
+		Hooks: effectcontract.EffectHooks{
 			OnTick: hookID,
 		},
-		Client: ReplicationSpec{
+		Client: effectcontract.ReplicationSpec{
 			SendSpawn:   true,
 			SendUpdates: true,
 			SendEnd:     true,
 		},
-		End: EndPolicy{Kind: EndDuration},
+		End: effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
 	}
 
 	manager.definitions[definition.TypeID] = definition
 
-	manager.EnqueueIntent(EffectIntent{
+	manager.EnqueueIntent(effectcontract.EffectIntent{
 		EntryID:     definition.TypeID,
 		TypeID:      definition.TypeID,
-		Geometry:    EffectGeometry{Shape: GeometryShapeCircle},
+		Geometry:    effectcontract.EffectGeometry{Shape: effectcontract.GeometryShapeCircle},
 		TickCadence: 3,
 	})
 
 	collector := &lifecycleCollector{}
 	start := time.Now()
 	for tick := 1; tick <= 7; tick++ {
-		manager.RunTick(Tick(tick), start.Add(time.Duration(tick-1)*time.Millisecond), collector.collect)
+		manager.RunTick(effectcontract.Tick(tick), start.Add(time.Duration(tick-1)*time.Millisecond), collector.collect)
 	}
 
 	if len(collector.spawns) != 1 {
@@ -271,7 +272,7 @@ func TestEffectManagerRespectsTickCadence(t *testing.T) {
 		t.Fatalf("expected 2 OnTick invocations, got %d", got)
 	}
 
-	expectedTicks := []Tick{3, 6}
+	expectedTicks := []effectcontract.Tick{3, 6}
 	for idx, expected := range expectedTicks {
 		if invocationTicks[idx] != expected {
 			t.Fatalf("expected OnTick at tick %d, got %d", expected, invocationTicks[idx])

@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
@@ -11,24 +13,24 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 	const effectType = "effect.test"
 	const hookID = "hook.test.tick"
 
-	manager.definitions[effectType] = &EffectDefinition{
+	manager.definitions[effectType] = &effectcontract.EffectDefinition{
 		TypeID:        effectType,
 		LifetimeTicks: 2,
-		Hooks: EffectHooks{
+		Hooks: effectcontract.EffectHooks{
 			OnTick: hookID,
 		},
-		Client: ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true},
-		End:    EndPolicy{Kind: EndDuration},
+		Client: effectcontract.ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true},
+		End:    effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
 	}
 
 	tickCount := 0
 	manager.hooks[hookID] = effectHookSet{
-		OnTick: func(m *EffectManager, instance *EffectInstance, tick Tick, now time.Time) {
+		OnTick: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			tickCount++
 		},
 	}
 
-	manager.EnqueueIntent(EffectIntent{
+	manager.EnqueueIntent(effectcontract.EffectIntent{
 		EntryID:       effectType,
 		TypeID:        effectType,
 		DurationTicks: 2,
@@ -36,7 +38,7 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 	})
 
 	now := time.Now()
-	manager.RunTick(1, now, nil)
+	manager.RunTick(effectcontract.Tick(1), now, nil)
 	if tickCount != 1 {
 		t.Fatalf("expected hook to be invoked once on first tick, got %d", tickCount)
 	}
@@ -50,7 +52,7 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 		}
 	}
 
-	manager.RunTick(2, now.Add(time.Millisecond), nil)
+	manager.RunTick(effectcontract.Tick(2), now.Add(time.Millisecond), nil)
 	if tickCount != 2 {
 		t.Fatalf("expected hook to continue firing without emitter, got %d invocations", tickCount)
 	}

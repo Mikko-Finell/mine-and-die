@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 type failingPayload struct{}
@@ -196,25 +198,25 @@ func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
 	hub.mu.Lock()
 	hub.world.appendPatch(PatchPlayerPos, join.ID, failingPayload{})
 
-	spawn := EffectSpawnEvent{
-		Tick: Tick(hub.tick.Load()),
-		Instance: EffectInstance{
+	spawn := effectcontract.EffectSpawnEvent{
+		Tick: effectcontract.Tick(hub.tick.Load()),
+		Instance: effectcontract.EffectInstance{
 			ID:           "effect-1",
 			DefinitionID: "dummy",
-			Definition: &EffectDefinition{
+			Definition: &effectcontract.EffectDefinition{
 				TypeID:        "dummy",
-				Delivery:      DeliveryKindVisual,
-				Motion:        MotionKindNone,
-				Impact:        ImpactPolicyNone,
+				Delivery:      effectcontract.DeliveryKindVisual,
+				Motion:        effectcontract.MotionKindNone,
+				Impact:        effectcontract.ImpactPolicyNone,
 				LifetimeTicks: 1,
-				Client:        ReplicationSpec{},
+				Client:        effectcontract.ReplicationSpec{},
 			},
-			DeliveryState: EffectDeliveryState{
-				Geometry: EffectGeometry{Shape: GeometryShapeCircle},
-				Motion:   EffectMotionState{},
+			DeliveryState: effectcontract.EffectDeliveryState{
+				Geometry: effectcontract.EffectGeometry{Shape: effectcontract.GeometryShapeCircle},
+				Motion:   effectcontract.EffectMotionState{},
 			},
-			BehaviorState: EffectBehaviorState{TicksRemaining: 1},
-			Replication:   ReplicationSpec{SendSpawn: true, SendEnd: true},
+			BehaviorState: effectcontract.EffectBehaviorState{TicksRemaining: 1},
+			Replication:   effectcontract.ReplicationSpec{SendSpawn: true, SendEnd: true},
 		},
 	}
 	spawn = hub.world.journal.RecordEffectSpawn(spawn)
@@ -222,7 +224,7 @@ func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
 		t.Fatalf("expected spawn event to record effect instance")
 	}
 
-	hub.world.journal.RecordEffectEnd(EffectEndEvent{Tick: Tick(hub.tick.Load()), ID: spawn.Instance.ID, Reason: EndReasonExpired})
+	hub.world.journal.RecordEffectEnd(effectcontract.EffectEndEvent{Tick: effectcontract.Tick(hub.tick.Load()), ID: spawn.Instance.ID, Reason: effectcontract.EndReasonExpired})
 	hub.mu.Unlock()
 
 	if _, _, err := hub.marshalState(nil, nil, nil, nil, true, true); err == nil {
@@ -401,11 +403,11 @@ func TestStateMessageIncludesEffectEventsWhenEnabled(t *testing.T) {
 		t.Fatalf("expected effect manager to be initialized")
 	}
 
-	hub.world.effectManager.EnqueueIntent(EffectIntent{
+	hub.world.effectManager.EnqueueIntent(effectcontract.EffectIntent{
 		EntryID:  effectTypeAttack,
 		TypeID:   effectTypeAttack,
-		Delivery: DeliveryKindArea,
-		Geometry: EffectGeometry{Shape: GeometryShapeRect},
+		Delivery: effectcontract.DeliveryKindArea,
+		Geometry: effectcontract.EffectGeometry{Shape: effectcontract.GeometryShapeRect},
 	})
 
 	hub.advance(time.Now(), 1.0/float64(tickRate))
@@ -516,7 +518,7 @@ func TestHubSchedulesResyncAfterJournalHint(t *testing.T) {
 	hub.SetKeyframeInterval(5)
 
 	hub.mu.Lock()
-	hub.world.journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 1, ID: "effect-x"})
+	hub.world.journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 1, ID: "effect-x"})
 	hub.mu.Unlock()
 
 	scheduled, signal := hub.scheduleResyncIfNeeded()

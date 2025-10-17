@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 func TestJournalEvictsByCount(t *testing.T) {
@@ -67,16 +69,16 @@ func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 
 	extra := map[string]int{"damage": 15}
 	params := map[string]int{"damage": 15}
-	spawn := journal.RecordEffectSpawn(EffectSpawnEvent{
+	spawn := journal.RecordEffectSpawn(effectcontract.EffectSpawnEvent{
 		Tick: 10,
-		Instance: EffectInstance{
+		Instance: effectcontract.EffectInstance{
 			ID: "effect-1",
-			DeliveryState: EffectDeliveryState{
-				Geometry: EffectGeometry{Shape: GeometryShapeCircle, Radius: 4},
+			DeliveryState: effectcontract.EffectDeliveryState{
+				Geometry: effectcontract.EffectGeometry{Shape: effectcontract.GeometryShapeCircle, Radius: 4},
 			},
-			BehaviorState: EffectBehaviorState{TicksRemaining: 5, Extra: extra},
+			BehaviorState: effectcontract.EffectBehaviorState{TicksRemaining: 5, Extra: extra},
 			Params:        params,
-			Replication:   ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true},
+			Replication:   effectcontract.ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true},
 		},
 	})
 
@@ -98,7 +100,7 @@ func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 	}
 
 	updateParams := map[string]int{"damage": 20}
-	update := journal.RecordEffectUpdate(EffectUpdateEvent{
+	update := journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{
 		Tick:   11,
 		ID:     "effect-1",
 		Params: updateParams,
@@ -111,7 +113,7 @@ func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 		t.Fatalf("expected update params to be cloned from input")
 	}
 
-	end := journal.RecordEffectEnd(EffectEndEvent{Tick: 12, ID: "effect-1", Reason: EndReasonExpired})
+	end := journal.RecordEffectEnd(effectcontract.EffectEndEvent{Tick: 12, ID: "effect-1", Reason: effectcontract.EndReasonExpired})
 	if end.Seq != 3 {
 		t.Fatalf("expected end sequence 3, got %d", end.Seq)
 	}
@@ -138,7 +140,7 @@ func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 		t.Fatalf("expected cleared batch after drain, got %+v", cleared)
 	}
 
-	respawn := journal.RecordEffectSpawn(EffectSpawnEvent{Tick: 20, Instance: EffectInstance{ID: "effect-1"}})
+	respawn := journal.RecordEffectSpawn(effectcontract.EffectSpawnEvent{Tick: 20, Instance: effectcontract.EffectInstance{ID: "effect-1"}})
 	if respawn.Seq != 1 {
 		t.Fatalf("expected new spawn to reset sequence, got %d", respawn.Seq)
 	}
@@ -149,22 +151,22 @@ func TestJournalDropsNonMonotonicSequences(t *testing.T) {
 	telemetry := newTelemetryCounters()
 	journal.AttachTelemetry(telemetry)
 
-	spawn := journal.RecordEffectSpawn(EffectSpawnEvent{Tick: 1, Instance: EffectInstance{ID: "effect-1"}})
+	spawn := journal.RecordEffectSpawn(effectcontract.EffectSpawnEvent{Tick: 1, Instance: effectcontract.EffectInstance{ID: "effect-1"}})
 	if spawn.Seq != 1 {
 		t.Fatalf("expected spawn sequence 1, got %d", spawn.Seq)
 	}
 
-	accepted := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 2, ID: "effect-1", Seq: 2})
+	accepted := journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 2, ID: "effect-1", Seq: 2})
 	if accepted.Seq != 2 {
 		t.Fatalf("expected update sequence 2, got %d", accepted.Seq)
 	}
 
-	duplicate := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 3, ID: "effect-1", Seq: 2})
+	duplicate := journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 3, ID: "effect-1", Seq: 2})
 	if duplicate.ID != "" || duplicate.Seq != 0 {
 		t.Fatalf("expected duplicate sequence to be dropped, got %+v", duplicate)
 	}
 
-	regression := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 4, ID: "effect-1", Seq: 1})
+	regression := journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 4, ID: "effect-1", Seq: 1})
 	if regression.ID != "" || regression.Seq != 0 {
 		t.Fatalf("expected regressed sequence to be dropped, got %+v", regression)
 	}
@@ -180,13 +182,13 @@ func TestJournalDropsUnknownEffectUpdates(t *testing.T) {
 	telemetry := newTelemetryCounters()
 	journal.AttachTelemetry(telemetry)
 
-	dropped := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 5, ID: "effect-x", Seq: 1})
+	dropped := journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 5, ID: "effect-x", Seq: 1})
 	if dropped.ID != "" || dropped.Seq != 0 {
 		t.Fatalf("expected unknown effect update to be dropped, got %+v", dropped)
 	}
 
-	endDrop := journal.RecordEffectEnd(EffectEndEvent{Tick: 6, ID: "effect-x", Seq: 2})
-	if endDrop != (EffectEndEvent{}) {
+	endDrop := journal.RecordEffectEnd(effectcontract.EffectEndEvent{Tick: 6, ID: "effect-x", Seq: 2})
+	if endDrop != (effectcontract.EffectEndEvent{}) {
 		t.Fatalf("expected unknown effect end to be dropped, got %+v", endDrop)
 	}
 
@@ -199,7 +201,7 @@ func TestJournalDropsUnknownEffectUpdates(t *testing.T) {
 func TestJournalResyncHintOnLostSpawn(t *testing.T) {
 	journal := newJournal(0, 0)
 
-	journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 5, ID: "effect-x"})
+	journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 5, ID: "effect-x"})
 	signal, ok := journal.ConsumeResyncHint()
 	if !ok {
 		t.Fatalf("expected resync hint after unknown update")
@@ -220,13 +222,13 @@ func TestJournalDropsUpdatesAfterEnd(t *testing.T) {
 	telemetry := newTelemetryCounters()
 	journal.AttachTelemetry(telemetry)
 
-	journal.RecordEffectSpawn(EffectSpawnEvent{Tick: 10, Instance: EffectInstance{ID: "effect-1"}})
-	end := journal.RecordEffectEnd(EffectEndEvent{Tick: 12, ID: "effect-1"})
+	journal.RecordEffectSpawn(effectcontract.EffectSpawnEvent{Tick: 10, Instance: effectcontract.EffectInstance{ID: "effect-1"}})
+	end := journal.RecordEffectEnd(effectcontract.EffectEndEvent{Tick: 12, ID: "effect-1"})
 	if end.Seq != 2 {
 		t.Fatalf("expected end sequence 2, got %d", end.Seq)
 	}
 
-	dropped := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 13, ID: "effect-1", Seq: 3})
+	dropped := journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 13, ID: "effect-1", Seq: 3})
 	if dropped.ID != "" || dropped.Seq != 0 {
 		t.Fatalf("expected update after end to be dropped, got %+v", dropped)
 	}
@@ -238,7 +240,7 @@ func TestJournalDropsUpdatesAfterEnd(t *testing.T) {
 
 	journal.DrainEffectEvents()
 
-	allowed := journal.RecordEffectUpdate(EffectUpdateEvent{Tick: 20, ID: "effect-1", Seq: 4})
+	allowed := journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 20, ID: "effect-1", Seq: 4})
 	if allowed.ID != "" || allowed.Seq != 0 {
 		t.Fatalf("expected update to unknown id after drain to be dropped, got %+v", allowed)
 	}

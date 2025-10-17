@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 
 	effectcatalog "mine-and-die/server/effects/catalog"
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 type effectCatalogMetadata struct {
 	ContractID string
-	Definition *EffectDefinition
+	Definition *effectcontract.EffectDefinition
 	Blocks     map[string]json.RawMessage
 }
 

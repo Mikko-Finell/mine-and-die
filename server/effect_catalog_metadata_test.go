@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	effectcatalog "mine-and-die/server/effects/catalog"
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 func TestNewEffectCatalogMetadataClonesEntry(t *testing.T) {
-	def := &EffectDefinition{TypeID: "fireball"}
+	def := &effectcontract.EffectDefinition{TypeID: "fireball"}
 	blocks := map[string]json.RawMessage{
 		"jsEffect":   json.RawMessage(`"projectile/fireball"`),
 		"parameters": json.RawMessage(`{"speed":320}`),
@@ -49,16 +50,16 @@ func TestNewEffectCatalogMetadataClonesEntry(t *testing.T) {
 func TestEffectCatalogMetadataMarshalJSONFlattensBlocks(t *testing.T) {
 	meta := effectCatalogMetadata{
 		ContractID: "fireball",
-		Definition: &EffectDefinition{
+		Definition: &effectcontract.EffectDefinition{
 			TypeID:        "fireball",
-			Delivery:      DeliveryKindArea,
-			Shape:         GeometryShapeCircle,
-			Motion:        MotionKindLinear,
-			Impact:        ImpactPolicyFirstHit,
+			Delivery:      effectcontract.DeliveryKindArea,
+			Shape:         effectcontract.GeometryShapeCircle,
+			Motion:        effectcontract.MotionKindLinear,
+			Impact:        effectcontract.ImpactPolicyFirstHit,
 			LifetimeTicks: 10,
-			Hooks:         EffectHooks{OnSpawn: "spawn"},
-			Client:        ReplicationSpec{SendSpawn: true},
-			End:           EndPolicy{Kind: EndDuration},
+			Hooks:         effectcontract.EffectHooks{OnSpawn: "spawn"},
+			Client:        effectcontract.ReplicationSpec{SendSpawn: true},
+			End:           effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
 		},
 		Blocks: map[string]json.RawMessage{
 			"jsEffect":   json.RawMessage(`"projectile/fireball"`),
