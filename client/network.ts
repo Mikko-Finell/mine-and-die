@@ -16,11 +16,19 @@ export interface NetworkMessageEnvelope {
   readonly receivedAt: number;
 }
 
+export interface HeartbeatAck {
+  readonly serverTime: number | null;
+  readonly clientTime: number | null;
+  readonly roundTripTime: number | null;
+  readonly receivedAt: number;
+}
+
 export interface NetworkEventHandlers {
   readonly onJoin?: (response: JoinResponse) => void;
   readonly onMessage?: (message: NetworkMessageEnvelope) => void;
   readonly onDisconnect?: (code?: number, reason?: string) => void;
   readonly onError?: (error: Error) => void;
+  readonly onHeartbeat?: (ack: HeartbeatAck) => void;
 }
 
 export interface NetworkClientConfiguration {
@@ -42,12 +50,15 @@ export class WebSocketNetworkClient implements NetworkClient {
   private socket: WebSocket | null = null;
   private joinResponse: JoinResponse | null = null;
   private handlers: NetworkEventHandlers | null = null;
+  private heartbeatTimer: number | null = null;
+  private lastHeartbeatSentAt: number | null = null;
 
   constructor(public readonly configuration: NetworkClientConfiguration) {}
 
   async join(): Promise<JoinResponse> {
     await this.disconnect();
     this.joinResponse = null;
+    this.lastHeartbeatSentAt = null;
 
     const response = await fetch(this.configuration.joinUrl, {
       method: "POST",
@@ -127,12 +138,14 @@ export class WebSocketNetworkClient implements NetworkClient {
         resolved = true;
         socket.removeEventListener("open", handleOpen);
         handlers.onJoin?.(this.joinResponse!);
+        this.startHeartbeat();
         resolve();
       };
 
       const handleMessage = (event: MessageEvent<string>): void => {
         let messagePayload: unknown = event.data;
         let messageType = "unknown";
+        const receivedAt = Date.now();
 
         if (typeof event.data === "string") {
           try {
@@ -153,10 +166,18 @@ export class WebSocketNetworkClient implements NetworkClient {
           }
         }
 
+        if (messageType === "heartbeat") {
+          const ack = this.parseHeartbeatAck(messagePayload, receivedAt);
+          if (ack) {
+            handlers.onHeartbeat?.(ack);
+          }
+          return;
+        }
+
         const envelope: NetworkMessageEnvelope = {
           type: messageType,
           payload: messagePayload,
-          receivedAt: Date.now(),
+          receivedAt,
         };
 
         handlers.onMessage?.(envelope);
@@ -170,6 +191,8 @@ export class WebSocketNetworkClient implements NetworkClient {
         if (this.socket === socket) {
           this.socket = null;
         }
+
+        this.stopHeartbeat();
 
         if (!resolved) {
           resolved = true;
@@ -203,6 +226,7 @@ export class WebSocketNetworkClient implements NetworkClient {
           if (this.socket === socket) {
             this.socket = null;
           }
+          this.stopHeartbeat();
           reject(error);
           return;
         }
@@ -243,6 +267,7 @@ export class WebSocketNetworkClient implements NetworkClient {
       this.socket = null;
     }
     this.handlers = null;
+    this.stopHeartbeat();
   }
 
   send(data: unknown): void {
@@ -267,5 +292,86 @@ export class WebSocketNetworkClient implements NetworkClient {
 
     url.searchParams.set("id", playerId);
     return url.toString();
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.sendHeartbeat();
+    const interval = this.configuration.heartbeatIntervalMs;
+    if (!Number.isFinite(interval) || interval <= 0) {
+      return;
+    }
+    this.heartbeatTimer = window.setInterval(() => {
+      this.sendHeartbeat();
+    }, Math.floor(interval));
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      window.clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    this.lastHeartbeatSentAt = null;
+  }
+
+  private sendHeartbeat(): void {
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const sentAt = Date.now();
+    const payload: Record<string, unknown> = {
+      type: "heartbeat",
+      sentAt,
+      ver: this.configuration.protocolVersion,
+    };
+
+    try {
+      this.send(payload);
+      this.lastHeartbeatSentAt = sentAt;
+    } catch (error) {
+      const handlers = this.handlers;
+      if (handlers?.onError) {
+        const cause = error instanceof Error ? error : new Error(String(error));
+        handlers.onError(cause);
+      }
+    }
+  }
+
+  private parseHeartbeatAck(payload: unknown, receivedAt: number): HeartbeatAck | null {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+
+    const data = payload as {
+      readonly serverTime?: unknown;
+      readonly clientTime?: unknown;
+      readonly rtt?: unknown;
+    };
+
+    const serverTime = typeof data.serverTime === "number" && Number.isFinite(data.serverTime)
+      ? data.serverTime
+      : null;
+    const clientTime = typeof data.clientTime === "number" && Number.isFinite(data.clientTime)
+      ? data.clientTime
+      : this.lastHeartbeatSentAt;
+
+    let roundTripTime: number | null = null;
+    if (typeof data.rtt === "number" && Number.isFinite(data.rtt)) {
+      roundTripTime = Math.max(0, data.rtt);
+    } else if (clientTime !== null) {
+      const fallback = receivedAt - clientTime;
+      if (Number.isFinite(fallback)) {
+        roundTripTime = Math.max(0, fallback);
+      }
+    }
+
+    return {
+      serverTime,
+      clientTime,
+      roundTripTime,
+      receivedAt,
+    };
   }
 }
