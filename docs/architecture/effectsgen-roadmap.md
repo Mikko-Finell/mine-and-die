@@ -27,10 +27,11 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   Extended `client/__tests__/lifecycle-render-smoke.test.ts` to replay a `managedByClient` catalog entry and assert renderer metadata retains ownership after lifecycle end.
 * 🟢 **Resync clearing coverage in renderer harness**
   Added a resync replay to `client/__tests__/lifecycle-render-smoke.test.ts` that asserts the lifecycle store clears retained entries and the renderer emits an empty frame when `payload.resync = true`.
+* 🟢 **Shared harness helper reuse**
+  Extracted reusable headless orchestrator helpers in `client/__tests__/helpers/headless-harness.ts` so both server- and client-managed smoke coverage share the same catalog-driven setup.
 
 ### Planned (to finish Phase 4)
 
-* ⚪ **Shared harness helper reuse** — Refactor test harness utilities as needed so client-managed coverage reuses the existing server-managed helpers while keeping the generated catalog snapshot authoritative for types.
 * ⚪ **Snapshot and tooling updates for client-managed flows** — Refresh golden snapshots or utilities that assume only server-managed entries so `npm test -- client` succeeds with the expanded scenarios.
 
 ## Definition of Done (Phase 4)
@@ -61,10 +62,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Refactor lifecycle harness helpers so client-managed coverage reuses the server-managed utilities.**
+**Refresh snapshots and tooling assumptions for client-managed lifecycle flows.**
 
 **Acceptance criteria**
 
-* Shared helpers live in a reusable module and back both the server-managed and client-managed smoke scenarios.
-* Client-managed smoke coverage keeps using the generated catalog snapshot for type authority.
-* Existing snapshots or fixtures continue to pass without duplicating catalog state.
+* Golden snapshots and utilities accept client-managed catalog entries without manual overrides.
+* `npm test -- client` passes without regenerating fixtures after the client-managed smoke scenarios run.
+* Any drift detection scripts continue to read from generated bindings only.
