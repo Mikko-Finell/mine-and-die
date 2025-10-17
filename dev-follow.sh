@@ -105,8 +105,24 @@ stop_server() {
   rm -f "$PID_FILE" || true
 }
 
+build_client_bundle() {
+  echo "🎨 building client bundle…"
+  if (cd "$ROOT_DIR" && npm run client:build); then
+    echo "🎨 client bundle ok"
+    return 0
+  fi
+
+  echo "❌ client bundle failed"
+  return 1
+}
+
 build_swap_run() {
   echo "🔨 building…"
+  if ! build_client_bundle; then
+    echo "❌ build aborted; client bundle failed"
+    return 1
+  fi
+
   if (cd "$SERVER_DIR" && eval "$BUILD_CMD"); then
     mv "$BIN_DIR/server.new" "$BIN_DIR/server"
     echo "✅ build ok"

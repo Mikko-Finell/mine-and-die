@@ -23,6 +23,8 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   Headless harness replays recorded lifecycle batches and asserts renderer output derives from generated catalog metadata and managed ownership flags.
 * 🟢 **effectsgen Go toolchain compatibility**
   Upgraded `golang.org/x/tools` (and indirect deps) so the generator builds cleanly with Go 1.24.3, restoring `npm run build` and client bundle output.
+* 🟢 **Dev runner builds client bundle**
+  `dev-follow.sh` now runs `npm run client:build` (and its generator pre-step) before hot-swapping the Go server, keeping `make run` served assets in sync with generated contracts.
 
 ### Planned (to finish Phase 4)
 
