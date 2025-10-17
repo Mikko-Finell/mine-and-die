@@ -1,18 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import {
-  normalizeEffectCatalog,
-  setEffectCatalog,
-  type EffectCatalogSnapshot,
-} from "../effect-catalog";
+import { setEffectCatalog } from "../effect-catalog";
 import { isLifecycleClientManaged } from "../effect-lifecycle-metadata";
+import { effectCatalog as generatedEffectCatalog } from "../generated/effect-contracts";
 
 describe("effect lifecycle metadata", () => {
-  const bootstrapCatalog = (entries: EffectCatalogSnapshot): void => {
-    setEffectCatalog(null);
-    setEffectCatalog(entries);
-  };
-
   beforeEach(() => {
     setEffectCatalog(null);
   });
@@ -22,35 +14,27 @@ describe("effect lifecycle metadata", () => {
   });
 
   test("reports client-managed lifecycle entries from catalog metadata", () => {
-    bootstrapCatalog(
-      normalizeEffectCatalog({
-        slash: { contractId: "attack", managedByClient: true },
-      }),
-    );
+    setEffectCatalog({ attack: generatedEffectCatalog.attack });
 
     expect(
       isLifecycleClientManaged({
-        entryId: "slash",
+        entryId: "attack",
       }),
     ).toBe(true);
 
     expect(
       isLifecycleClientManaged({
-        instance: { entryId: "slash" },
+        instance: { entryId: "attack" },
       }),
     ).toBe(true);
   });
 
   test("treats entries without catalog matches as server-managed", () => {
-    bootstrapCatalog(
-      normalizeEffectCatalog({
-        splash: { contractId: "blood-splatter", managedByClient: false },
-      }),
-    );
+    setEffectCatalog({ fireball: generatedEffectCatalog.fireball });
 
     expect(
       isLifecycleClientManaged({
-        entryId: "splash",
+        entryId: "fireball",
       }),
     ).toBe(false);
 
@@ -62,11 +46,7 @@ describe("effect lifecycle metadata", () => {
   });
 
   test("ignores nested heuristics when catalog ownership is unavailable", () => {
-    bootstrapCatalog(
-      normalizeEffectCatalog({
-        slash: { contractId: "attack", managedByClient: false },
-      }),
-    );
+    setEffectCatalog({ attack: generatedEffectCatalog.attack });
 
     expect(
       isLifecycleClientManaged({

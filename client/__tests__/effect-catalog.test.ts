@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
 import {
   getEffectCatalog,
   normalizeEffectCatalog,
@@ -6,6 +7,7 @@ import {
   subscribeEffectCatalog,
   type EffectCatalogSnapshot,
 } from "../effect-catalog";
+import { effectCatalog as generatedEffectCatalog } from "../generated/effect-contracts";
 
 describe("effect catalog store", () => {
   beforeEach(() => {
@@ -16,47 +18,40 @@ describe("effect catalog store", () => {
     setEffectCatalog(null);
   });
 
-  test("normalizes catalog input and provides immutable snapshots", () => {
-    const normalized = normalizeEffectCatalog({
-      slash: {
-        contractId: "attack",
-        managedByClient: false,
-        blocks: { damage: 12 },
-      },
-    });
+  test("normalizes join payloads against generated metadata", () => {
+    const payload = JSON.parse(JSON.stringify(generatedEffectCatalog));
 
-    setEffectCatalog(normalized);
-    const snapshot = getEffectCatalog();
+    const normalized = normalizeEffectCatalog(payload);
 
-    expect(Object.isFrozen(snapshot)).toBe(true);
-    expect(snapshot).not.toBe(normalized);
-    expect(snapshot.slash?.contractId).toBe("attack");
-    expect(snapshot.slash?.blocks.damage).toBe(12);
+    expect(normalized).toBe(normalizeEffectCatalog(payload));
+    expect(() => normalizeEffectCatalog({})).toThrowError(/effect catalog mismatch/i);
+    expect(() => normalizeEffectCatalog(null)).toThrowError(/must be an object/i);
+
+    const mutated = JSON.parse(JSON.stringify(generatedEffectCatalog));
+    mutated.attack.managedByClient = false;
+    expect(() => normalizeEffectCatalog(mutated)).toThrowError(/does not match generated metadata/i);
   });
 
   test("notifies subscribers immediately and on subsequent updates", () => {
-    const received: EffectCatalogSnapshot[] = [];
+    const received: ReturnType<typeof getEffectCatalog>[] = [];
     const unsubscribe = subscribeEffectCatalog((catalog) => {
       received.push(catalog);
     });
 
-    const first = normalizeEffectCatalog({
-      slash: { contractId: "attack", managedByClient: false },
+    setEffectCatalog({ attack: generatedEffectCatalog.attack });
+    setEffectCatalog({
+      attack: generatedEffectCatalog.attack,
+      fireball: generatedEffectCatalog.fireball,
     });
-    setEffectCatalog(first);
-
-    const second = normalizeEffectCatalog({
-      slash: { contractId: "attack", managedByClient: false },
-      frostbite: { contractId: "frost", managedByClient: true },
-    });
-    setEffectCatalog(second);
 
     unsubscribe();
 
     expect(received).toHaveLength(3);
-    expect(Object.keys(received[0])).toHaveLength(0);
-    expect(Object.keys(received[1])).toEqual(["slash"]);
-    expect(Object.keys(received[2]).sort()).toEqual(["frostbite", "slash"]);
+    expect(Object.keys(received[0]).sort()).toEqual(Object.keys(generatedEffectCatalog));
+    expect(Object.keys(received[1])).toEqual(["attack"]);
+    expect(Object.keys(received[2]).sort()).toEqual(["attack", "fireball"]);
+    expect(Object.isFrozen(received[1])).toBe(true);
+    expect(Object.isFrozen(received[2])).toBe(true);
   });
 
   test("stops notifying listeners after unsubscribe", () => {
@@ -64,10 +59,7 @@ describe("effect catalog store", () => {
     const unsubscribe = subscribeEffectCatalog(listener);
     unsubscribe();
 
-    const payload = normalizeEffectCatalog({
-      slash: { contractId: "attack", managedByClient: false },
-    });
-    setEffectCatalog(payload);
+    setEffectCatalog({ attack: generatedEffectCatalog.attack });
 
     expect(listener).toHaveBeenCalledTimes(1);
   });
@@ -76,5 +68,17 @@ describe("effect catalog store", () => {
     expect(() => subscribeEffectCatalog(null as unknown as () => void)).toThrowError(
       /listener must be a function/i,
     );
+  });
+
+  test("does not retain references to mutable inputs", () => {
+    const mutable = JSON.parse(
+      JSON.stringify({ attack: generatedEffectCatalog.attack }),
+    ) as Record<string, any>;
+
+    setEffectCatalog(mutable as unknown as EffectCatalogSnapshot);
+    mutable.attack.blocks.jsEffect = "mutated";
+
+    const snapshot = getEffectCatalog();
+    expect(snapshot.attack.blocks.jsEffect).toBe("melee/swing");
   });
 });
