@@ -23,6 +23,8 @@ import type {
 import {
   NetworkInputActionDispatcher,
   type InputActionDispatcher,
+  type PathCommandState,
+  type PathTarget,
   type PlayerIntent,
 } from "./input";
 import type { RenderBatch, Renderer, StaticGeometry, AnimationFrame, RenderLayer } from "./render";
@@ -59,7 +61,7 @@ export interface ClientOrchestrator {
 
 export interface InputDispatcherHooks {
   readonly onIntentDispatched?: (intent: PlayerIntent) => void;
-  readonly onPathCommand?: (pathActive: boolean) => void;
+  readonly onPathCommand?: (state: PathCommandState) => void;
 }
 
 export interface ClientHeartbeatTelemetry {
@@ -86,6 +88,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private lifecycleHandlers: ClientLifecycleHandlers | null = null;
   private lastRenderVersion = -1;
   private lastRenderTime = -1;
+  private lastRenderPathSignature = "";
   private joinResponse: JoinResponse | null = null;
   private latestKeyframeSequence: number | null = null;
   private keyframeRequestInFlight: number | null = null;
@@ -97,6 +100,8 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private pendingGapSequence: number | null = null;
   private latestAcknowledgedTick: number | null = null;
   private inputDispatchPaused = true;
+  private pathCommandState: PathCommandState = { active: false, target: null };
+  private inputDispatcherHooks: InputDispatcherHooks | null = null;
 
   constructor(
     public readonly configuration: ClientManagerConfiguration,
@@ -155,6 +160,8 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   }
 
   createInputDispatcher(hooks: InputDispatcherHooks = {}): InputActionDispatcher {
+    this.inputDispatcherHooks = hooks;
+    hooks.onPathCommand?.(this.clonePathCommandState(this.pathCommandState));
     return new NetworkInputActionDispatcher({
       getProtocolVersion: () => this.joinResponse?.protocolVersion ?? null,
       getAcknowledgedTick: () => this.latestAcknowledgedTick,
@@ -166,9 +173,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
         hooks.onIntentDispatched?.(intent);
         this.handleIntentDispatched(intent);
       },
-      onPathCommand: (active) => {
-        hooks.onPathCommand?.(active);
-        this.handlePathCommand(active);
+      onPathCommand: (state) => {
+        hooks.onPathCommand?.(state);
+        this.handlePathCommand(state);
       },
     });
   }
@@ -377,6 +384,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lifecycleStore.reset();
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;
+    this.lastRenderPathSignature = "";
     this.latestKeyframeSequence = null;
     this.keyframeRequestInFlight = null;
     this.pendingKeyframeRetry = null;
@@ -385,6 +393,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.clearPendingKeyframeRetryTimer();
     this.latestAcknowledgedTick = null;
     this.inputDispatchPaused = true;
+    this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
     this.renderLifecycleView();
   }
 
@@ -393,10 +402,12 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lifecycleStore.reset();
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;
+    this.lastRenderPathSignature = "";
     this.resetPatchSequenceTracking();
     this.clearPendingKeyframeRetryTimer();
     this.latestAcknowledgedTick = null;
     this.inputDispatchPaused = true;
+    this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
   }
 
   private handleDisconnect(): void {
@@ -407,6 +418,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.pendingKeyframeRetry = null;
     this.lastKeyframeRequestAt = 0;
     this.resetPatchSequenceTracking();
+    this.applyPathCommandState({ active: false, target: null }, { notifyHooks: false });
     this.renderLifecycleView();
   }
 
@@ -425,13 +437,19 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     const timestamp = frameTime ?? (snapshot.lastBatchTick !== null
       ? snapshot.lastBatchTick * TICK_DURATION_MS
       : Date.now());
+    const pathSignature = this.serializePathCommandState(this.pathCommandState);
 
-    if (snapshot.version === this.lastRenderVersion && timestamp === this.lastRenderTime) {
+    if (
+      snapshot.version === this.lastRenderVersion &&
+      timestamp === this.lastRenderTime &&
+      pathSignature === this.lastRenderPathSignature
+    ) {
       return;
     }
 
     this.lastRenderVersion = snapshot.version;
     this.lastRenderTime = timestamp;
+    this.lastRenderPathSignature = pathSignature;
     const batch = this.buildRenderBatch(snapshot, timestamp);
     this.renderer.renderBatch(batch);
   }
@@ -439,6 +457,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private buildRenderBatch(view: ContractLifecycleView, time: number): RenderBatch {
     const staticGeometry: StaticGeometry[] = [];
     const animations: AnimationFrame[] = [];
+    const pathTarget = this.clonePathTarget(this.pathCommandState);
 
     for (const entry of view.entries.values()) {
       const catalogEntry = this.resolveCatalogEntry(entry);
@@ -472,6 +491,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       time,
       staticGeometry,
       animations,
+      pathTarget,
     };
   }
 
@@ -788,8 +808,51 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     // Reserved for future intent instrumentation.
   }
 
-  private handlePathCommand(_pathActive: boolean): void {
-    // Reserved for future path state synchronisation once the input store is available.
+  private handlePathCommand(state: PathCommandState): void {
+    this.applyPathCommandState(state, { notifyHooks: false });
+  }
+
+  private applyPathCommandState(state: PathCommandState, options: { notifyHooks: boolean }): void {
+    const normalized = this.normalizePathCommandState(state);
+    const signatureBefore = this.serializePathCommandState(this.pathCommandState);
+    this.pathCommandState = normalized;
+    if (options.notifyHooks) {
+      this.inputDispatcherHooks?.onPathCommand?.(this.clonePathCommandState(normalized));
+    }
+    const signatureAfter = this.serializePathCommandState(normalized);
+    if (signatureBefore !== signatureAfter) {
+      this.renderLifecycleView();
+    }
+  }
+
+  private normalizePathCommandState(state: PathCommandState): PathCommandState {
+    if (!state.active || !state.target) {
+      return { active: false, target: null };
+    }
+    const { x, y } = state.target;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return { active: false, target: null };
+    }
+    return { active: true, target: { x, y } };
+  }
+
+  private clonePathCommandState(state: PathCommandState): PathCommandState {
+    return state.active && state.target
+      ? { active: true, target: { x: state.target.x, y: state.target.y } }
+      : { active: false, target: null };
+  }
+
+  private clonePathTarget(state: PathCommandState): PathTarget | null {
+    return state.active && state.target
+      ? { x: state.target.x, y: state.target.y }
+      : null;
+  }
+
+  private serializePathCommandState(state: PathCommandState): string {
+    if (!state.active || !state.target) {
+      return "inactive";
+    }
+    return `active:${state.target.x}:${state.target.y}`;
   }
 }
 

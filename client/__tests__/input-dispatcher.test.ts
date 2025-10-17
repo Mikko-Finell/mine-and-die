@@ -115,7 +115,27 @@ describe("NetworkInputActionDispatcher", () => {
     expect(onIntent).toHaveBeenCalledTimes(1);
     expect(onIntent).toHaveBeenCalledWith({ dx: 0.5, dy: 0, facing: "right" });
     expect(onPathCommand).toHaveBeenCalledTimes(2);
-    expect(onPathCommand).toHaveBeenNthCalledWith(1, false);
-    expect(onPathCommand).toHaveBeenNthCalledWith(2, true);
+    expect(onPathCommand).toHaveBeenNthCalledWith(1, { active: false, target: null });
+    expect(onPathCommand).toHaveBeenNthCalledWith(2, { active: true, target: { x: 12, y: 24 } });
+  });
+
+  it("notifies path command hooks even when dispatch is paused", () => {
+    const sendMessage = vi.fn();
+    const onPathCommand = vi.fn();
+    const dispatcher = new NetworkInputActionDispatcher({
+      getProtocolVersion: () => 1,
+      getAcknowledgedTick: () => null,
+      sendMessage,
+      isDispatchPaused: () => true,
+      onPathCommand,
+    });
+
+    dispatcher.sendPathCommand({ x: 48, y: 96 });
+    dispatcher.cancelPath();
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(onPathCommand).toHaveBeenCalledTimes(2);
+    expect(onPathCommand).toHaveBeenNthCalledWith(1, { active: true, target: { x: 48, y: 96 } });
+    expect(onPathCommand).toHaveBeenNthCalledWith(2, { active: false, target: null });
   });
 });

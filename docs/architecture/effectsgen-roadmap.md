@@ -62,6 +62,9 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Pointer navigation command hooks**
   `client/main.ts` now routes canvas pointer interactions through the input dispatcher to emit `path` and `cancelPath` commands, updating `InMemoryInputStore` path state via dispatcher hooks with harness coverage validating resync pause behaviour.
 
+* 🟢 **Track pointer path targets for UI feedback**
+  `client/input.ts` persists the latest path targets, the orchestrator mirrors them into render batches, and resync handling clears stored targets so the canvas marker stays in sync with dispatcher state.
+
 ### Planned (to finish Phase 4)
 
 

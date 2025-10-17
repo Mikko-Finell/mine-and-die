@@ -22,11 +22,14 @@ export interface StaticGeometry {
   readonly style: Record<string, unknown>;
 }
 
+import type { PathTarget } from "./input";
+
 export interface RenderBatch {
   readonly keyframeId: string;
   readonly time: number;
   readonly staticGeometry: readonly StaticGeometry[];
   readonly animations: readonly AnimationFrame[];
+  readonly pathTarget: PathTarget | null;
 }
 
 export interface RenderContextProvider {
@@ -110,6 +113,10 @@ export class CanvasRenderer implements Renderer {
       this.drawGeometry(context, geometry);
     }
 
+    if (batch.pathTarget) {
+      this.drawPathTarget(context, batch.pathTarget);
+    }
+
     for (const animation of batch.animations) {
       this.drawAnimation(context, animation);
     }
@@ -155,6 +162,27 @@ export class CanvasRenderer implements Renderer {
     context.fillStyle = fill;
     context.strokeStyle = stroke;
     context.fill();
+    context.stroke();
+    context.restore();
+  }
+
+  private drawPathTarget(context: CanvasRenderingContext2D, target: PathTarget): void {
+    context.save();
+    const radius = 10;
+    const stroke = "rgba(64, 192, 255, 0.9)";
+    const fill = "rgba(64, 192, 255, 0.15)";
+    context.lineWidth = 2;
+    context.strokeStyle = stroke;
+    context.fillStyle = fill;
+    context.beginPath();
+    context.arc(target.x, target.y, radius, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.moveTo(target.x - radius, target.y);
+    context.lineTo(target.x + radius, target.y);
+    context.moveTo(target.x, target.y - radius);
+    context.lineTo(target.x, target.y + radius);
     context.stroke();
     context.restore();
   }

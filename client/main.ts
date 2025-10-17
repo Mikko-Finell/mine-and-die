@@ -109,8 +109,9 @@ class GameClientApp extends LitElement {
       },
     });
     this.inputDispatcher = this.orchestrator.createInputDispatcher({
-      onPathCommand: (active) => {
-        this.inputStore.setPathActive(active);
+      onPathCommand: (state) => {
+        this.inputStore.setPathActive(state.active);
+        this.inputStore.setPathTarget?.(state.target);
       },
     });
     this.inputController = new KeyboardInputController({

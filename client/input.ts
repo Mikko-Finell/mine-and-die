@@ -9,11 +9,22 @@ export interface PlayerIntent extends IntentVector {
   readonly facing: FacingDirection;
 }
 
+export interface PathTarget {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface PathCommandState {
+  readonly active: boolean;
+  readonly target: PathTarget | null;
+}
+
 export interface InputStateSnapshot {
   readonly pressedKeys: ReadonlySet<string>;
   readonly directionOrder: readonly string[];
   readonly currentFacing: FacingDirection;
   readonly pathActive: boolean;
+  readonly pathTarget: PathTarget | null;
 }
 
 export interface InputKeyState {
@@ -27,18 +38,22 @@ export interface InputStore {
   readonly updateFacing: (facing: FacingDirection) => void;
   readonly toggleCameraLock?: () => void;
   readonly setPathActive?: (pathActive: boolean) => void;
+  readonly setPathTarget?: (target: PathTarget | null) => void;
   readonly setKeyState?: (state: InputKeyState) => void;
+  readonly getPathTarget?: () => PathTarget | null;
 }
 
 export interface InputStoreOptions {
   readonly initialFacing?: FacingDirection;
   readonly initialPathActive?: boolean;
+  readonly initialPathTarget?: PathTarget | null;
   readonly initialPressedKeys?: Iterable<string>;
   readonly initialDirectionOrder?: readonly string[];
   readonly initialCameraLocked?: boolean;
   readonly onIntentChanged?: (intent: PlayerIntent) => void;
   readonly onFacingChanged?: (facing: FacingDirection) => void;
   readonly onPathActiveChanged?: (pathActive: boolean) => void;
+  readonly onPathTargetChanged?: (target: PathTarget | null) => void;
   readonly onCameraLockToggle?: (locked: boolean) => void;
 }
 
@@ -46,7 +61,7 @@ export interface InputActionDispatcher {
   readonly sendAction: (action: string, params?: Record<string, unknown>) => void;
   readonly cancelPath: () => void;
   readonly sendCurrentIntent: (intent: PlayerIntent) => void;
-  readonly sendPathCommand: (target: { readonly x: number; readonly y: number }) => void;
+  readonly sendPathCommand: (target: PathTarget) => void;
 }
 
 export interface InputBindings {
@@ -73,7 +88,7 @@ interface DispatcherOptions {
   readonly sendMessage: (payload: Record<string, unknown>) => void;
   readonly isDispatchPaused?: () => boolean;
   readonly onIntentDispatched?: (intent: PlayerIntent) => void;
-  readonly onPathCommand?: (pathActive: boolean) => void;
+  readonly onPathCommand?: (state: PathCommandState) => void;
 }
 
 const DEFAULT_FACING: FacingDirection = "down";
@@ -122,12 +137,14 @@ export class InMemoryInputStore implements InputStore {
   private readonly onIntentChanged?: (intent: PlayerIntent) => void;
   private readonly onFacingChanged?: (facing: FacingDirection) => void;
   private readonly onPathActiveChanged?: (pathActive: boolean) => void;
+  private readonly onPathTargetChanged?: (target: PathTarget | null) => void;
   private readonly onCameraLockToggle?: (locked: boolean) => void;
 
   private readonly pressedKeys: Set<string>;
   private directionOrder: string[];
   private currentFacing: FacingDirection;
   private pathActive: boolean;
+  private pathTarget: PathTarget | null;
   private cameraLocked: boolean;
   private lastIntent: PlayerIntent;
 
@@ -135,11 +152,13 @@ export class InMemoryInputStore implements InputStore {
     this.onIntentChanged = options.onIntentChanged;
     this.onFacingChanged = options.onFacingChanged;
     this.onPathActiveChanged = options.onPathActiveChanged;
+    this.onPathTargetChanged = options.onPathTargetChanged;
     this.onCameraLockToggle = options.onCameraLockToggle;
     this.pressedKeys = normalizeKeyCollection(options.initialPressedKeys ?? []);
     this.directionOrder = normalizeDirectionOrder(options.initialDirectionOrder ?? []);
     this.currentFacing = options.initialFacing ?? DEFAULT_FACING;
     this.pathActive = options.initialPathActive ?? false;
+    this.pathTarget = options.initialPathTarget ? { ...options.initialPathTarget } : null;
     this.cameraLocked = options.initialCameraLocked ?? false;
     this.lastIntent = { dx: 0, dy: 0, facing: this.currentFacing };
   }
@@ -150,6 +169,7 @@ export class InMemoryInputStore implements InputStore {
       directionOrder: [...this.directionOrder],
       currentFacing: this.currentFacing,
       pathActive: this.pathActive,
+      pathTarget: this.pathTarget ? { ...this.pathTarget } : null,
     };
   }
 
@@ -179,6 +199,9 @@ export class InMemoryInputStore implements InputStore {
     }
     this.pathActive = pathActive;
     this.onPathActiveChanged?.(pathActive);
+    if (!pathActive) {
+      this.setPathTarget(null);
+    }
   }
 
   setKeyState(state: InputKeyState): void {
@@ -191,12 +214,28 @@ export class InMemoryInputStore implements InputStore {
     this.directionOrder = normalizeDirectionOrder(state.directionOrder);
   }
 
+  setPathTarget(target: PathTarget | null): void {
+    const nextTarget = target ? { x: target.x, y: target.y } : null;
+    const hasChanged =
+      (this.pathTarget?.x ?? null) !== (nextTarget?.x ?? null) ||
+      (this.pathTarget?.y ?? null) !== (nextTarget?.y ?? null);
+    if (!hasChanged) {
+      return;
+    }
+    this.pathTarget = nextTarget;
+    this.onPathTargetChanged?.(this.pathTarget ? { ...this.pathTarget } : null);
+  }
+
   isCameraLocked(): boolean {
     return this.cameraLocked;
   }
 
   getLastIntent(): PlayerIntent {
     return cloneIntent(this.lastIntent);
+  }
+
+  getPathTarget(): PathTarget | null {
+    return this.pathTarget ? { ...this.pathTarget } : null;
   }
 }
 
@@ -217,28 +256,27 @@ export class NetworkInputActionDispatcher implements InputActionDispatcher {
   }
 
   cancelPath(): void {
-    if (this.isDispatchPaused()) {
-      return;
+    if (!this.isDispatchPaused()) {
+      const payload: Record<string, unknown> = { type: "cancelPath" };
+      this.dispatch(payload);
     }
-
-    const payload: Record<string, unknown> = { type: "cancelPath" };
-    this.dispatch(payload);
-    this.options.onPathCommand?.(false);
+    this.options.onPathCommand?.({ active: false, target: null });
   }
 
-  sendPathCommand(target: { readonly x: number; readonly y: number }): void {
-    if (this.isDispatchPaused()) {
-      return;
+  sendPathCommand(target: PathTarget): void {
+    if (!this.isDispatchPaused()) {
+      const payload: Record<string, unknown> = {
+        type: "path",
+        x: target.x,
+        y: target.y,
+      };
+      this.dispatch(payload);
     }
 
-    const payload: Record<string, unknown> = {
-      type: "path",
-      x: target.x,
-      y: target.y,
-    };
-
-    this.dispatch(payload);
-    this.options.onPathCommand?.(true);
+    this.options.onPathCommand?.({
+      active: true,
+      target: { x: target.x, y: target.y },
+    });
   }
 
   sendCurrentIntent(intent: PlayerIntent): void {
