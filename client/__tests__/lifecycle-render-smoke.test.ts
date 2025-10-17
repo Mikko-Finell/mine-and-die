@@ -113,6 +113,10 @@ describe("Lifecycle renderer smoke test", () => {
     const fireballParameters = {
       ...(fireballEntry.blocks.parameters as Record<string, number> | undefined),
     } as Readonly<Record<string, number>>;
+    const attackEntry = generatedEffectCatalog.attack;
+    const attackParameters = {
+      ...(attackEntry.blocks.parameters as Record<string, number> | undefined),
+    } as Readonly<Record<string, number>>;
     const fireballRadius = fireballParameters.radius ?? 12;
     const joinResponse = createJoinResponse(generatedEffectCatalog);
     const network = new HeadlessNetworkClient(
@@ -169,6 +173,43 @@ describe("Lifecycle renderer smoke test", () => {
       },
     };
 
+    const attackReach = attackParameters.reach ?? 56;
+    const attackWidth = attackParameters.width ?? 40;
+    const attackSpawn: ContractLifecycleSpawnEvent = {
+      seq: 1,
+      tick: 120,
+      instance: {
+        id: "effect-attack",
+        entryId: "attack",
+        definitionId: attackEntry.contractId,
+        definition: attackEntry.definition,
+        startTick: 120,
+        deliveryState: {
+          geometry: {
+            shape: "rect",
+            width: attackWidth,
+            height: attackReach,
+            offsetX: attackWidth / 2,
+            offsetY: -(attackReach / 2),
+          },
+          motion: {
+            positionX: 208,
+            positionY: 320,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: 1,
+          tickCadence: 1,
+        },
+        params: attackParameters,
+        colors: ["#ffffff"],
+        replication: attackEntry.definition.client,
+        end: attackEntry.definition.end,
+      },
+    };
+
     const fireballUpdate: ContractLifecycleUpdateEvent = {
       seq: 2,
       tick: 121,
@@ -192,6 +233,31 @@ describe("Lifecycle renderer smoke test", () => {
       params: { ...fireballParameters, range: 180 } as Readonly<Record<string, number>>,
     };
 
+    const attackUpdate: ContractLifecycleUpdateEvent = {
+      seq: 2,
+      tick: 121,
+      id: "effect-attack",
+      deliveryState: {
+        geometry: {
+          shape: "rect",
+          width: attackWidth,
+          height: attackReach,
+          offsetX: attackWidth,
+          offsetY: -(attackReach / 2),
+        },
+        motion: {
+          positionX: 224,
+          positionY: 320,
+          velocityX: 32,
+          velocityY: 0,
+        },
+      },
+      behaviorState: {
+        ticksRemaining: 0,
+      },
+      params: attackParameters,
+    };
+
     const fireballEnd: ContractLifecycleEndEvent = {
       seq: 3,
       tick: 124,
@@ -199,10 +265,17 @@ describe("Lifecycle renderer smoke test", () => {
       reason: "expired",
     };
 
+    const attackEnd: ContractLifecycleEndEvent = {
+      seq: 3,
+      tick: 122,
+      id: "effect-attack",
+      reason: "expired",
+    };
+
     const recordedBatch: ContractLifecycleBatch = {
-      spawns: [fireballSpawn],
-      updates: [fireballUpdate],
-      cursors: { "effect-fireball": 2 },
+      spawns: [fireballSpawn, attackSpawn],
+      updates: [fireballUpdate, attackUpdate],
+      cursors: { "effect-fireball": 2, "effect-attack": 2 },
     };
 
     network.emit({
@@ -243,9 +316,29 @@ describe("Lifecycle renderer smoke test", () => {
     expect(animation!.metadata.instance.deliveryState.motion.positionX).toBe(272);
     expect(animation!.metadata.retained).toBe(false);
 
+    const attackGeometry = activeBatch.staticGeometry.find((entry) => entry.id === "effect-attack");
+    expect(attackGeometry).toBeDefined();
+    expect(attackGeometry!.layer.id).toBe("effect-area");
+    expect(attackGeometry!.style).toMatchObject({
+      entryId: "attack",
+      managedByClient: attackEntry.managedByClient,
+    });
+
+    const attackAnimation = activeBatch.animations.find((entry) => entry.effectId === "effect-attack");
+    expect(attackAnimation).toBeDefined();
+    expect(attackAnimation!.metadata).toMatchObject({
+      contractId: attackEntry.contractId,
+      entryId: "attack",
+      managedByClient: attackEntry.managedByClient,
+      lastEventKind: "update",
+      catalog: attackEntry,
+      blocks: attackEntry.blocks,
+    });
+    expect(attackAnimation!.metadata.retained).toBe(false);
+
     const endBatch: ContractLifecycleBatch = {
-      ends: [fireballEnd],
-      cursors: { "effect-fireball": 3 },
+      ends: [fireballEnd, attackEnd],
+      cursors: { "effect-fireball": 3, "effect-attack": 3 },
     };
 
     network.emit({
@@ -261,7 +354,7 @@ describe("Lifecycle renderer smoke test", () => {
     expect(renderer.batches.length).toBeGreaterThanOrEqual(3);
     const endedBatch = renderer.batches.at(-1)!;
     expect(endedBatch.keyframeId).toBe("tick-124");
-    expect(endedBatch.staticGeometry.length).toBe(0);
+    expect(endedBatch.staticGeometry.length).toBeGreaterThan(0);
     expect(endedBatch.animations.length).toBeGreaterThan(0);
 
     const endedAnimation = endedBatch.animations.find((entry) => entry.effectId === "effect-fireball");
@@ -275,5 +368,25 @@ describe("Lifecycle renderer smoke test", () => {
       retained: false,
       catalog: fireballEntry,
     });
+
+    expect(endedBatch.staticGeometry.find((entry) => entry.id === "effect-fireball")).toBeUndefined();
+
+    const retainedGeometry = endedBatch.staticGeometry.find((entry) => entry.id === "effect-attack");
+    expect(retainedGeometry).toBeDefined();
+    expect(retainedGeometry!.style).toMatchObject({
+      entryId: "attack",
+      managedByClient: attackEntry.managedByClient,
+    });
+
+    const retainedAnimation = endedBatch.animations.find((entry) => entry.effectId === "effect-attack");
+    expect(retainedAnimation).toBeDefined();
+    expect(retainedAnimation!.metadata).toMatchObject({
+      entryId: "attack",
+      contractId: attackEntry.contractId,
+      managedByClient: attackEntry.managedByClient,
+      lastEventKind: "end",
+      catalog: attackEntry,
+    });
+    expect(retainedAnimation!.metadata.retained).toBe(true);
   });
 });
