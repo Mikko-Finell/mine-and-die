@@ -124,27 +124,27 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   }
 
   private handleNetworkMessage(message: NetworkMessageEnvelope): void {
+    if (!message.payload || typeof message.payload !== "object") {
+      return;
+    }
+
+    const payload = message.payload as Record<string, unknown>;
+    if (message.type === "keyframe") {
+      this.handleKeyframePayload(payload);
+      return;
+    }
+
     if (message.type !== "state") {
       return;
     }
 
-    const payload = message.payload as Record<string, unknown> | null;
-    if (!payload) {
-      return;
-    }
+    this.handleStatePayload(payload, message.receivedAt);
+  }
 
-    const configPayload = payload["config"];
-    if (configPayload && typeof configPayload === "object") {
-      const effectCatalogPayload = (configPayload as { readonly effectCatalog?: unknown }).effectCatalog;
-      if (effectCatalogPayload !== undefined) {
-        try {
-          const catalogSnapshot = normalizeEffectCatalog(effectCatalogPayload);
-          setEffectCatalog(catalogSnapshot);
-        } catch (error) {
-          this.reportError(error);
-          return;
-        }
-      }
+  private handleStatePayload(payload: Record<string, unknown>, receivedAt: number): void {
+    const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
+    if (!this.hydrateEffectCatalog(effectCatalogPayload)) {
+      return;
     }
 
     if (payload["resync"] === true) {
@@ -158,8 +158,34 @@ export class GameClientOrchestrator implements ClientOrchestrator {
 
     const tickValue = payload["t"];
     const tick = typeof tickValue === "number" ? tickValue : null;
-    const frameTime = tick !== null ? tick * TICK_DURATION_MS : message.receivedAt;
+    const frameTime = tick !== null ? tick * TICK_DURATION_MS : receivedAt;
     this.renderLifecycleView(frameTime);
+  }
+
+  private handleKeyframePayload(payload: Record<string, unknown>): void {
+    const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
+    this.hydrateEffectCatalog(effectCatalogPayload);
+  }
+
+  private extractEffectCatalogPayload(config: unknown): unknown {
+    if (!config || typeof config !== "object") {
+      return undefined;
+    }
+    return (config as { readonly effectCatalog?: unknown }).effectCatalog;
+  }
+
+  private hydrateEffectCatalog(effectCatalogPayload: unknown): boolean {
+    if (effectCatalogPayload === undefined) {
+      return true;
+    }
+    try {
+      const catalogSnapshot = normalizeEffectCatalog(effectCatalogPayload);
+      setEffectCatalog(catalogSnapshot);
+      return true;
+    } catch (error) {
+      this.reportError(error);
+      return false;
+    }
   }
 
   private extractLifecycleBatch(payload: Record<string, unknown>): ContractLifecycleBatch | null {

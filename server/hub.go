@@ -171,19 +171,7 @@ func (h *Hub) effectCatalogSnapshotLocked() map[string]effectCatalogMetadata {
 	if h == nil || h.world == nil || h.world.effectManager == nil {
 		return nil
 	}
-	resolver := h.world.effectManager.catalog
-	if resolver == nil {
-		return nil
-	}
-	entries := resolver.Entries()
-	if len(entries) == 0 {
-		return nil
-	}
-	catalog := make(map[string]effectCatalogMetadata, len(entries))
-	for id, entry := range entries {
-		catalog[id] = newEffectCatalogMetadata(entry)
-	}
-	return catalog
+	return snapshotEffectCatalog(h.world.effectManager.catalog)
 }
 
 // EffectCatalogSnapshot returns a cloned snapshot of the designer-authored effect catalog.
@@ -1028,23 +1016,23 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	} else {
 		patches = h.world.snapshotPatchesLocked()
 	}
-        obstacles := []Obstacle(nil)
-        if includeSnapshot {
-                obstacles = append([]Obstacle(nil), h.world.obstacles...)
-        }
-        cfg := h.config
-        tick := h.tick.Load()
-        seq, resync := h.nextStateMeta(drainPatches)
-        includeCatalog := includeSnapshot || resync
-        if includeCatalog {
-                cfg.EffectCatalog = h.effectCatalogSnapshotLocked()
-        } else {
-                cfg.EffectCatalog = nil
-        }
-        effectManagerPresent := h.world.effectManager != nil
-        effectTransportEnabled := effectManagerPresent
-        journal := &h.world.journal
-        h.mu.Unlock()
+	obstacles := []Obstacle(nil)
+	if includeSnapshot {
+		obstacles = append([]Obstacle(nil), h.world.obstacles...)
+	}
+	cfg := h.config
+	tick := h.tick.Load()
+	seq, resync := h.nextStateMeta(drainPatches)
+	includeCatalog := includeSnapshot || resync
+	if includeCatalog {
+		cfg.EffectCatalog = h.effectCatalogSnapshotLocked()
+	} else {
+		cfg.EffectCatalog = nil
+	}
+	effectManagerPresent := h.world.effectManager != nil
+	effectTransportEnabled := effectManagerPresent
+	journal := &h.world.journal
+	h.mu.Unlock()
 
 	effectBatch := EffectEventBatch{}
 	if effectManagerPresent {
@@ -1171,11 +1159,11 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		keyframeSeq = seq
 	}
 
-        currentInterval := h.CurrentKeyframeInterval()
-        msg := stateMessage{
-                Ver:              ProtocolVersion,
-                Type:             "state",
-                Players:          players,
+	currentInterval := h.CurrentKeyframeInterval()
+	msg := stateMessage{
+		Ver:              ProtocolVersion,
+		Type:             "state",
+		Players:          players,
 		NPCs:             npcs,
 		Obstacles:        obstacles,
 		EffectTriggers:   triggers,
