@@ -1,17 +1,31 @@
 import { LitElement, html } from "lit";
+import type { PropertyValues } from "lit";
 import { classMap } from "lit/directives/class-map.js";
-import {
-  WebSocketNetworkClient,
-  type NetworkClient,
-  type NetworkMessageEnvelope,
-} from "./network";
-import { setEffectCatalog } from "./effect-catalog";
+import { GameClientOrchestrator } from "./client-manager";
+import { WebSocketNetworkClient } from "./network";
+import { CanvasRenderer, type Renderer } from "./render";
+import { InMemoryWorldStateStore } from "./world-state";
 
 const HEALTH_CHECK_URL = "/health";
 const JOIN_URL = "/join";
 const WEBSOCKET_URL = "/ws";
 const HEARTBEAT_INTERVAL_MS = 2000;
 const PROTOCOL_VERSION = 1;
+
+const RENDERER_CONFIGURATION = {
+  dimensions: { width: 800, height: 600 },
+  layers: [
+    { id: "effect-area", zIndex: 1 },
+    { id: "effect-target", zIndex: 2 },
+    { id: "effect-visual", zIndex: 3 },
+  ],
+} as const;
+
+const ORCHESTRATOR_CONFIGURATION = {
+  autoConnect: true,
+  reconcileIntervalMs: 0,
+  keyframeRetryDelayMs: 1000,
+} as const;
 
 type PanelKey = "telemetry" | "world" | "inventory";
 
@@ -31,21 +45,32 @@ class GameClientApp extends LitElement {
   } as const;
 
   private clockInterval: number | undefined;
-  private networkClient: NetworkClient | null;
-  private hasLoggedInitialNetworkMessage: boolean;
-  private suppressNextDisconnectLog: boolean;
+  private readonly renderer: CanvasRenderer;
+  private readonly worldStateStore: InMemoryWorldStateStore;
+  private readonly networkClient: WebSocketNetworkClient;
+  private readonly orchestrator: GameClientOrchestrator;
 
   playerId: string | null;
 
   constructor() {
     super();
     this.clockInterval = undefined;
-    this.networkClient = null;
-    this.hasLoggedInitialNetworkMessage = false;
-    this.suppressNextDisconnectLog = false;
+    this.renderer = new CanvasRenderer(RENDERER_CONFIGURATION);
+    this.worldStateStore = new InMemoryWorldStateStore();
+    this.networkClient = new WebSocketNetworkClient({
+      joinUrl: JOIN_URL,
+      websocketUrl: WEBSOCKET_URL,
+      heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+    this.orchestrator = new GameClientOrchestrator(ORCHESTRATOR_CONFIGURATION, {
+      network: this.networkClient,
+      renderer: this.renderer,
+      worldState: this.worldStateStore,
+    });
     this.healthStatus = "Checking…";
     this.serverTime = "--";
-    this.heartbeat = "--";
+    this.heartbeat = "Disconnected";
     this.logs = [] as LogEntry[];
     this.activeTab = "telemetry";
     this.playerId = null;
@@ -72,15 +97,16 @@ class GameClientApp extends LitElement {
       window.clearInterval(this.clockInterval);
       this.clockInterval = undefined;
     }
-    if (this.networkClient) {
-      this.suppressNextDisconnectLog = true;
-      const disconnectPromise = this.networkClient.disconnect();
-      void Promise.resolve(disconnectPromise).finally(() => {
-        this.suppressNextDisconnectLog = false;
+    void this.orchestrator
+      .shutdown()
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.addLog(`Shutdown error: ${message}`);
+      })
+      .finally(() => {
+        this.playerId = null;
+        this.heartbeat = "Disconnected";
       });
-      this.networkClient = null;
-    }
-    this.hasLoggedInitialNetworkMessage = false;
   }
 
   private addLog(message: string): void {
@@ -121,74 +147,46 @@ class GameClientApp extends LitElement {
   private async joinWorld(): Promise<void> {
     this.addLog("Joining world…");
     this.heartbeat = "Connecting…";
-    this.hasLoggedInitialNetworkMessage = false;
+    this.playerId = null;
 
-    if (this.networkClient) {
-      this.suppressNextDisconnectLog = true;
-      await this.networkClient.disconnect();
-      this.suppressNextDisconnectLog = false;
+    if (this.orchestrator.getJoinResponse()) {
+      await this.orchestrator.shutdown().catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.addLog(`Reset failed before reconnect: ${message}`);
+      });
     }
 
-    const networkClient = new WebSocketNetworkClient({
-      joinUrl: JOIN_URL,
-      websocketUrl: WEBSOCKET_URL,
-      heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
-      protocolVersion: PROTOCOL_VERSION,
-    });
-
-    this.networkClient = networkClient;
+    const handlers = {
+      onReady: () => {
+        const join = this.orchestrator.getJoinResponse();
+        if (join) {
+          this.playerId = join.id;
+          this.addLog(`Joined world as ${join.id}.`);
+          const catalogSize = Object.keys(join.effectCatalog).length;
+          this.addLog(`Received ${catalogSize} effect catalog entries.`);
+        }
+        this.addLog("Connected to world stream.");
+        this.heartbeat = "Connected";
+      },
+      onError: (error: Error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.addLog(`Client error: ${message}`);
+        const join = this.orchestrator.getJoinResponse();
+        if (!join) {
+          this.playerId = null;
+          this.heartbeat = `Disconnected (${message})`;
+        } else {
+          this.heartbeat = `Error: ${message}`;
+        }
+      },
+    } satisfies Parameters<GameClientOrchestrator["boot"]>[0];
 
     try {
-      const joinResponse = await networkClient.join();
-      setEffectCatalog(joinResponse.effectCatalog);
-      this.playerId = joinResponse.id;
-      this.addLog(`Joined world as ${joinResponse.id}.`);
-      const catalogSize = Object.keys(joinResponse.effectCatalog).length;
-      this.addLog(`Received ${catalogSize} effect catalog entries.`);
-
-      await networkClient.connect({
-        onJoin: () => {
-          this.addLog("Connected to world stream.");
-          this.heartbeat = "Connected";
-        },
-        onMessage: (message) => {
-          this.handleNetworkMessage(message);
-        },
-        onDisconnect: (code, reason) => {
-          const shouldLog = !this.suppressNextDisconnectLog;
-          this.suppressNextDisconnectLog = false;
-          if (shouldLog) {
-            const reasonText = reason ? ` (${reason})` : "";
-            this.addLog(`Disconnected from server${reasonText}.`);
-          }
-          if (this.networkClient === networkClient) {
-            this.networkClient = null;
-            this.playerId = null;
-          }
-          this.hasLoggedInitialNetworkMessage = false;
-          const displayStatus = code === 1000 ? "Disconnected" : `Closed (${code ?? "--"})`;
-          this.heartbeat = displayStatus;
-        },
-        onError: (error) => {
-          this.addLog(`Network error: ${error.message}`);
-        },
-      });
+      await this.orchestrator.boot(handlers);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.playerId = null;
-      this.heartbeat = "offline";
-      this.networkClient = null;
-      this.suppressNextDisconnectLog = false;
-      this.addLog(`Failed to join world: ${message}`);
-    }
-  }
-
-  private handleNetworkMessage(message: NetworkMessageEnvelope): void {
-    const timestamp = new Date(message.receivedAt).toLocaleTimeString();
-    this.heartbeat = `${message.type || "unknown"} @ ${timestamp}`;
-    if (!this.hasLoggedInitialNetworkMessage) {
-      this.hasLoggedInitialNetworkMessage = true;
-      this.addLog(`Receiving ${message.type || "unknown"} messages from server.`);
+      this.addLog(`Failed to establish session: ${message}`);
+      this.heartbeat = `Error: ${message}`;
     }
   }
 
@@ -207,6 +205,7 @@ class GameClientApp extends LitElement {
       <app-shell
         heading="Mine &amp; Die"
         subtitle="Multiplayer sandbox in active development."
+        .renderer=${this.renderer}
         .healthStatus=${this.healthStatus}
         .logs=${this.logs}
         .serverTime=${this.serverTime}
@@ -229,6 +228,7 @@ class AppShell extends LitElement {
   static properties = {
     heading: { type: String },
     subtitle: { type: String },
+    renderer: { attribute: false },
     healthStatus: { type: String },
     logs: { attribute: false },
     serverTime: { type: String },
@@ -238,6 +238,7 @@ class AppShell extends LitElement {
 
   heading!: string;
   subtitle!: string;
+  renderer: Renderer | null;
   healthStatus!: string;
   logs!: LogEntry[];
   serverTime!: string;
@@ -248,6 +249,7 @@ class AppShell extends LitElement {
     super();
     this.heading = "";
     this.subtitle = "";
+    this.renderer = null;
     this.healthStatus = "--";
     this.logs = [];
     this.serverTime = "--";
@@ -288,6 +290,7 @@ class AppShell extends LitElement {
           </div>
         </header>
         <game-canvas
+          .renderer=${this.renderer}
           .activeTab=${this.activeTab}
           .logs=${this.logs}
           .healthStatus=${this.healthStatus}
@@ -301,6 +304,7 @@ class AppShell extends LitElement {
 
 class GameCanvas extends LitElement {
   static properties = {
+    renderer: { attribute: false },
     activeTab: { attribute: false },
     logs: { attribute: false },
     healthStatus: { type: String },
@@ -309,7 +313,9 @@ class GameCanvas extends LitElement {
   } as const;
 
   private canvasElement: HTMLCanvasElement | null = null;
+  private mountedRenderer: Renderer | null = null;
 
+  renderer: Renderer | null;
   activeTab!: PanelKey;
   logs!: LogEntry[];
   healthStatus!: string;
@@ -318,6 +324,7 @@ class GameCanvas extends LitElement {
 
   constructor() {
     super();
+    this.renderer = null;
     this.activeTab = "telemetry";
     this.logs = [];
     this.healthStatus = "--";
@@ -331,6 +338,18 @@ class GameCanvas extends LitElement {
 
   protected firstUpdated(): void {
     this.canvasElement = this.querySelector("canvas");
+    this.attachRenderer();
+  }
+
+  protected updated(changed: PropertyValues<GameCanvas>): void {
+    if (changed.has("renderer")) {
+      this.attachRenderer();
+    }
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.detachRenderer();
     if (this.canvasElement) {
       this.drawBootScreen(this.canvasElement);
     }
@@ -352,6 +371,40 @@ class GameCanvas extends LitElement {
     context.font = "24px 'Segoe UI', sans-serif";
     context.textAlign = "center";
     context.fillText("Mine & Die", width / 2, height / 2);
+  }
+
+  private attachRenderer(): void {
+    const canvas = this.canvasElement ?? (this.querySelector("canvas") as HTMLCanvasElement | null);
+    if (!canvas) {
+      return;
+    }
+    this.canvasElement = canvas;
+
+    if (!this.renderer) {
+      this.detachRenderer();
+      this.drawBootScreen(canvas);
+      return;
+    }
+
+    if (this.mountedRenderer === this.renderer) {
+      return;
+    }
+
+    this.detachRenderer();
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    this.renderer.mount({ canvas, context });
+    this.mountedRenderer = this.renderer;
+  }
+
+  private detachRenderer(): void {
+    if (this.mountedRenderer) {
+      this.mountedRenderer.unmount();
+      this.mountedRenderer = null;
+    }
   }
 
   render() {
@@ -533,7 +586,7 @@ class DebugPanel extends LitElement {
                 <span class="debug-metric__value">${this.serverTime}</span>
               </div>
               <div class="debug-metric">
-                <span class="debug-metric__label">Heartbeat RTT</span>
+                <span class="debug-metric__label">Connection status</span>
                 <span class="debug-metric__value">${this.heartbeat}</span>
               </div>
             </div>
@@ -667,7 +720,7 @@ class HudNetwork extends LitElement {
     return html`
       <div class="hud-network">
         <span class="hud-network__item">Server time: ${this.serverTime}</span>
-        <span class="hud-network__item">Heartbeat: ${this.heartbeat}</span>
+        <span class="hud-network__item">Connection: ${this.heartbeat}</span>
         <span class="hud-network__item">
           Player: ${this.playerId ? this.playerId : "—"}
         </span>

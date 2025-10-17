@@ -18,8 +18,8 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 ### In progress
 
-* 🟡 **Bootstrap orchestrator inside the live client shell**
-  `client/main.ts` should construct `GameClientOrchestrator` with `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, replacing the telemetry-only bootstrap so lifecycle playback flows through the orchestrator entry point.
+* 🟢 **Bootstrap orchestrator inside the live client shell**
+  `client/main.ts` now constructs `GameClientOrchestrator` with `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, wiring the renderer host in `<game-canvas>` so lifecycle playback flows through the orchestrator entry point.
 * 🟡 **Plumb WebSocket lifecycle events into the orchestrator**
   Extend `client/network.ts` and `client/client-manager.ts` so `state`, `keyframe`, `keyframeNack`, and disconnect messages call the orchestrator handlers, including error/reporting hooks for unexpected payloads.
 * 🟡 **Mount renderer host and expose connection state in the shell**
