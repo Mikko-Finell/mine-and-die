@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"time"
 
+	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -191,19 +192,19 @@ func (w *World) snapshotPatchesLocked() []Patch {
 	return w.journal.SnapshotPatches()
 }
 
-func (w *World) recordEffectLifecycleEvent(event EffectLifecycleEvent) {
+func (w *World) recordEffectLifecycleEvent(event effectcontract.EffectLifecycleEvent) {
 	if w == nil || event == nil || w.effectManager == nil {
 		return
 	}
 	switch e := event.(type) {
-	case EffectSpawnEvent:
+	case effectcontract.EffectSpawnEvent:
 		if producer := contractSpawnProducer(e.Instance.DefinitionID); producer != "" {
 			w.recordEffectSpawn(e.Instance.DefinitionID, producer)
 		}
 		w.journal.RecordEffectSpawn(e)
-	case EffectUpdateEvent:
+	case effectcontract.EffectUpdateEvent:
 		w.journal.RecordEffectUpdate(e)
-	case EffectEndEvent:
+	case effectcontract.EffectEndEvent:
 		w.journal.RecordEffectEnd(e)
 	}
 }
@@ -263,7 +264,7 @@ func (w *World) pruneDefeatedNPCs() {
 }
 
 // Step advances the simulation by a single tick applying all staged commands.
-func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command, emitEffectEvent func(EffectLifecycleEvent)) []string {
+func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command, emitEffectEvent func(effectcontract.EffectLifecycleEvent)) []string {
 	if dt <= 0 {
 		dt = 1.0 / float64(tickRate)
 	}
@@ -468,12 +469,12 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	if w.effectManager != nil {
 		dispatcher := w.recordEffectLifecycleEvent
 		if emitEffectEvent != nil {
-			dispatcher = func(event EffectLifecycleEvent) {
+			dispatcher = func(event effectcontract.EffectLifecycleEvent) {
 				w.recordEffectLifecycleEvent(event)
 				emitEffectEvent(event)
 			}
 		}
-		w.effectManager.RunTick(Tick(int64(tick)), now, dispatcher)
+		w.effectManager.RunTick(effectcontract.Tick(int64(tick)), now, dispatcher)
 	}
 	w.advanceEffects(now, dt)
 	w.pruneEffects(now)

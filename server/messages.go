@@ -1,5 +1,7 @@
 package main
 
+import effectcontract "mine-and-die/server/effects/contract"
+
 type joinResponse struct {
 	Ver              int                              `json:"ver"`
 	ID               string                           `json:"id"`
@@ -16,25 +18,25 @@ type joinResponse struct {
 }
 
 type stateMessage struct {
-	Ver              int                 `json:"ver"`
-	Type             string              `json:"type"`
-	Players          []Player            `json:"players,omitempty"`
-	NPCs             []NPC               `json:"npcs,omitempty"`
-	Obstacles        []Obstacle          `json:"obstacles,omitempty"`
-	EffectTriggers   []EffectTrigger     `json:"effectTriggers,omitempty"`
-	EffectSpawns     []EffectSpawnEvent  `json:"effect_spawned,omitempty"`
-	EffectUpdates    []EffectUpdateEvent `json:"effect_update,omitempty"`
-	EffectEnds       []EffectEndEvent    `json:"effect_ended,omitempty"`
-	EffectSeqCursors map[string]Seq      `json:"effect_seq_cursors,omitempty"`
-	GroundItems      []GroundItem        `json:"groundItems,omitempty"`
-	Patches          []Patch             `json:"patches"`
-	Tick             uint64              `json:"t"`
-	Sequence         uint64              `json:"sequence"`
-	KeyframeSeq      uint64              `json:"keyframeSeq"`
-	ServerTime       int64               `json:"serverTime"`
-	Config           worldConfig         `json:"config"`
-	Resync           bool                `json:"resync,omitempty"`
-	KeyframeInterval int                 `json:"keyframeInterval,omitempty"`
+	Ver              int                                `json:"ver"`
+	Type             string                             `json:"type"`
+	Players          []Player                           `json:"players,omitempty"`
+	NPCs             []NPC                              `json:"npcs,omitempty"`
+	Obstacles        []Obstacle                         `json:"obstacles,omitempty"`
+	EffectTriggers   []EffectTrigger                    `json:"effectTriggers,omitempty"`
+	EffectSpawns     []effectcontract.EffectSpawnEvent  `json:"effect_spawned,omitempty"`
+	EffectUpdates    []effectcontract.EffectUpdateEvent `json:"effect_update,omitempty"`
+	EffectEnds       []effectcontract.EffectEndEvent    `json:"effect_ended,omitempty"`
+	EffectSeqCursors map[string]effectcontract.Seq      `json:"effect_seq_cursors,omitempty"`
+	GroundItems      []GroundItem                       `json:"groundItems,omitempty"`
+	Patches          []Patch                            `json:"patches"`
+	Tick             uint64                             `json:"t"`
+	Sequence         uint64                             `json:"sequence"`
+	KeyframeSeq      uint64                             `json:"keyframeSeq"`
+	ServerTime       int64                              `json:"serverTime"`
+	Config           worldConfig                        `json:"config"`
+	Resync           bool                               `json:"resync,omitempty"`
+	KeyframeInterval int                                `json:"keyframeInterval,omitempty"`
 }
 
 type keyframeMessage struct {

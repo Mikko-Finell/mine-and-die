@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	effectcontract "mine-and-die/server/effects/contract"
 	logging "mine-and-die/server/logging"
 )
 
@@ -48,7 +49,7 @@ func TestNewMeleeIntent(t *testing.T) {
 	}
 
 	geom := intent.Geometry
-	if geom.Shape != GeometryShapeRect {
+	if geom.Shape != effectcontract.GeometryShapeRect {
 		t.Fatalf("expected rect geometry, got %q", geom.Shape)
 	}
 
@@ -131,7 +132,7 @@ func TestNewStatusVisualIntent(t *testing.T) {
 	if intent.TargetActorID != target.ID {
 		t.Fatalf("expected TargetActorID %q, got %q", target.ID, intent.TargetActorID)
 	}
-	if intent.Delivery != DeliveryKindTarget {
+	if intent.Delivery != effectcontract.DeliveryKindTarget {
 		t.Fatalf("expected DeliveryKindTarget, got %q", intent.Delivery)
 	}
 
@@ -210,7 +211,7 @@ func TestNewBloodSplatterIntent(t *testing.T) {
 	if intent.SourceActorID != "player-8" {
 		t.Fatalf("expected SourceActorID 'player-8', got %q", intent.SourceActorID)
 	}
-	if intent.Delivery != DeliveryKindVisual {
+	if intent.Delivery != effectcontract.DeliveryKindVisual {
 		t.Fatalf("expected DeliveryKindVisual, got %q", intent.Delivery)
 	}
 

@@ -3,6 +3,8 @@ package main
 import (
 	"math"
 	"time"
+
+	effectcontract "mine-and-die/server/effects/contract"
 )
 
 // durationToTicks converts a wall-clock duration into the number of simulation
@@ -47,9 +49,9 @@ func copyFloatParams(source map[string]float64) map[string]int {
 
 // NewMeleeIntent bridges the legacy melee trigger into a contract EffectIntent
 // so the EffectManager observes the same swing geometry and payload metadata.
-func NewMeleeIntent(owner *actorState) (EffectIntent, bool) {
+func NewMeleeIntent(owner *actorState) (effectcontract.EffectIntent, bool) {
 	if owner == nil || owner.ID == "" {
-		return EffectIntent{}, false
+		return effectcontract.EffectIntent{}, false
 	}
 
 	facing := owner.Facing
@@ -61,8 +63,8 @@ func NewMeleeIntent(owner *actorState) (EffectIntent, bool) {
 	centerX := rectX + rectW/2
 	centerY := rectY + rectH/2
 
-	geometry := EffectGeometry{
-		Shape:   GeometryShapeRect,
+	geometry := effectcontract.EffectGeometry{
+		Shape:   effectcontract.GeometryShapeRect,
 		Width:   quantizeWorldCoord(rectW),
 		Height:  quantizeWorldCoord(rectH),
 		OffsetX: quantizeWorldCoord(centerX - owner.X),
@@ -75,10 +77,10 @@ func NewMeleeIntent(owner *actorState) (EffectIntent, bool) {
 		"width":       int(math.Round(meleeAttackWidth)),
 	}
 
-	intent := EffectIntent{
+	intent := effectcontract.EffectIntent{
 		EntryID:       effectTypeAttack,
 		TypeID:        effectTypeAttack,
-		Delivery:      DeliveryKindArea,
+		Delivery:      effectcontract.DeliveryKindArea,
 		SourceActorID: owner.ID,
 		Geometry:      geometry,
 		DurationTicks: durationToTicks(meleeAttackDuration),
@@ -91,9 +93,9 @@ func NewMeleeIntent(owner *actorState) (EffectIntent, bool) {
 // NewProjectileIntent converts a projectile template and owner into an
 // EffectIntent that mirrors the spawn metadata used by the legacy projectile
 // systems.
-func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (EffectIntent, bool) {
+func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (effectcontract.EffectIntent, bool) {
 	if owner == nil || owner.ID == "" || tpl == nil || tpl.Type == "" {
-		return EffectIntent{}, false
+		return effectcontract.EffectIntent{}, false
 	}
 
 	facing := owner.Facing
@@ -116,14 +118,14 @@ func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (EffectInte
 
 	width, height := spawnSizeFromShape(tpl)
 
-	geometry := EffectGeometry{
-		Shape:   GeometryShapeCircle,
+	geometry := effectcontract.EffectGeometry{
+		Shape:   effectcontract.GeometryShapeCircle,
 		OffsetX: quantizeWorldCoord(centerX - owner.X),
 		OffsetY: quantizeWorldCoord(centerY - owner.Y),
 	}
 
 	if tpl.CollisionShape.UseRect {
-		geometry.Shape = GeometryShapeRect
+		geometry.Shape = effectcontract.GeometryShapeRect
 		geometry.Width = quantizeWorldCoord(width)
 		geometry.Height = quantizeWorldCoord(height)
 	} else {
@@ -152,10 +154,10 @@ func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (EffectInte
 		params["range"] = int(math.Round(tpl.MaxDistance))
 	}
 
-	intent := EffectIntent{
+	intent := effectcontract.EffectIntent{
 		EntryID:       tpl.Type,
 		TypeID:        tpl.Type,
-		Delivery:      DeliveryKindArea,
+		Delivery:      effectcontract.DeliveryKindArea,
 		SourceActorID: owner.ID,
 		Geometry:      geometry,
 		Params:        params,
@@ -166,9 +168,9 @@ func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (EffectInte
 
 // NewStatusVisualIntent converts a status-effect attachment into an
 // EffectIntent that follows the target actor for the duration of the status.
-func NewStatusVisualIntent(target *actorState, sourceID, effectType string, lifetime time.Duration) (EffectIntent, bool) {
+func NewStatusVisualIntent(target *actorState, sourceID, effectType string, lifetime time.Duration) (effectcontract.EffectIntent, bool) {
 	if target == nil || target.ID == "" || effectType == "" {
-		return EffectIntent{}, false
+		return effectcontract.EffectIntent{}, false
 	}
 
 	if lifetime <= 0 {
@@ -178,18 +180,18 @@ func NewStatusVisualIntent(target *actorState, sourceID, effectType string, life
 	width := quantizeWorldCoord(playerHalf * 2)
 	height := quantizeWorldCoord(playerHalf * 2)
 
-	geometry := EffectGeometry{
-		Shape:   GeometryShapeRect,
+	geometry := effectcontract.EffectGeometry{
+		Shape:   effectcontract.GeometryShapeRect,
 		Width:   width,
 		Height:  height,
 		OffsetX: 0,
 		OffsetY: 0,
 	}
 
-	intent := EffectIntent{
+	intent := effectcontract.EffectIntent{
 		EntryID:       effectType,
 		TypeID:        effectType,
-		Delivery:      DeliveryKindTarget,
+		Delivery:      effectcontract.DeliveryKindTarget,
 		SourceActorID: sourceID,
 		TargetActorID: target.ID,
 		Geometry:      geometry,
@@ -210,20 +212,20 @@ func NewStatusVisualIntent(target *actorState, sourceID, effectType string, life
 // NewBurningTickIntent bridges a burning status-effect tick into a contract
 // EffectIntent so the EffectManager can drive damage-over-time through hook
 // callbacks instead of the legacy status pipeline.
-func NewBurningTickIntent(target *actorState, sourceID string, delta float64) (EffectIntent, bool) {
+func NewBurningTickIntent(target *actorState, sourceID string, delta float64) (effectcontract.EffectIntent, bool) {
 	if target == nil || target.ID == "" {
-		return EffectIntent{}, false
+		return effectcontract.EffectIntent{}, false
 	}
 	if math.IsNaN(delta) || math.IsInf(delta, 0) {
-		return EffectIntent{}, false
+		return effectcontract.EffectIntent{}, false
 	}
 	rounded := int(math.Round(delta))
 	if rounded == 0 {
-		return EffectIntent{}, false
+		return effectcontract.EffectIntent{}, false
 	}
 
-	geometry := EffectGeometry{
-		Shape:   GeometryShapeRect,
+	geometry := effectcontract.EffectGeometry{
+		Shape:   effectcontract.GeometryShapeRect,
 		Width:   quantizeWorldCoord(playerHalf * 2),
 		Height:  quantizeWorldCoord(playerHalf * 2),
 		OffsetX: 0,
@@ -232,10 +234,10 @@ func NewBurningTickIntent(target *actorState, sourceID string, delta float64) (E
 
 	params := map[string]int{"healthDelta": rounded}
 
-	intent := EffectIntent{
+	intent := effectcontract.EffectIntent{
 		EntryID:       effectTypeBurningTick,
 		TypeID:        effectTypeBurningTick,
-		Delivery:      DeliveryKindTarget,
+		Delivery:      effectcontract.DeliveryKindTarget,
 		SourceActorID: sourceID,
 		TargetActorID: target.ID,
 		Geometry:      geometry,
@@ -252,16 +254,16 @@ func NewBurningTickIntent(target *actorState, sourceID string, delta float64) (E
 
 // NewBloodSplatterIntent mirrors the legacy blood decal trigger so the contract
 // manager can observe cosmetic spawns tied to melee damage.
-func NewBloodSplatterIntent(sourceID string, target *actorState) (EffectIntent, bool) {
+func NewBloodSplatterIntent(sourceID string, target *actorState) (effectcontract.EffectIntent, bool) {
 	if target == nil || target.ID == "" {
-		return EffectIntent{}, false
+		return effectcontract.EffectIntent{}, false
 	}
 
 	width := quantizeWorldCoord(playerHalf * 2)
 	height := quantizeWorldCoord(playerHalf * 2)
 
-	geometry := EffectGeometry{
-		Shape:  GeometryShapeRect,
+	geometry := effectcontract.EffectGeometry{
+		Shape:  effectcontract.GeometryShapeRect,
 		Width:  width,
 		Height: height,
 	}
@@ -271,10 +273,10 @@ func NewBloodSplatterIntent(sourceID string, target *actorState) (EffectIntent, 
 		"centerY": quantizeWorldCoord(target.Y),
 	}
 
-	intent := EffectIntent{
+	intent := effectcontract.EffectIntent{
 		EntryID:       effectTypeBloodSplatter,
 		TypeID:        effectTypeBloodSplatter,
-		Delivery:      DeliveryKindVisual,
+		Delivery:      effectcontract.DeliveryKindVisual,
 		SourceActorID: sourceID,
 		Geometry:      geometry,
 		DurationTicks: durationToTicks(bloodSplatterDuration),
