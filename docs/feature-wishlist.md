@@ -1,5 +1,20 @@
 # Feature Wishlist
 
+## Canvas Render Frame Scheduling
+Throttle canvas paints to one per animation frame by queuing the latest `RenderBatch` from WebSocket handlers and flushing inside `requestAnimationFrame`.
+
+**Implementation outline**
+1. Update `client/client-manager.ts` (the `GameClientOrchestrator`) so WebSocket payload handlers cache the newest batch, set a "paint pending" flag, and early-return if a frame is already scheduled.
+2. Add a `requestAnimationFrame` scheduler that reads the cached batch, clears the pending flag, and calls into `CanvasRenderer.renderBatch` exactly once per frame.
+3. Extend `client/render.ts` with a `renderLatestBatch` helper or idempotent guard so redundant frame callbacks do not trigger extra work when no new batch arrived.
+4. Cover bursty-network scenarios with a regression test under `client/__tests__/` to confirm multiple payloads in one frame coalesce into a single paint.
+
+**Impacted systems**
+- `client/client-manager.ts` for WebSocket handler batching and frame scheduling.
+- `client/render.ts` for storing the pending batch and exposing a frame-safe draw entry point.
+- `client/main.ts` (Lit `GameCanvas`) to ensure lifecycle hooks still initialize the renderer correctly when paints move to rAF.
+- Client runtime tests and profiling scripts (`client/__tests__/`, `client/tools/`) to validate paint cadence and guard against frame-budget regressions.
+
 ## Goblin Patrol Loot Diversion
 Patrolling goblins should detect loose gold, temporarily divert to collect it, and then rejoin their original patrol path.
 
