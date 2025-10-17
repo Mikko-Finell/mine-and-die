@@ -763,4 +763,228 @@ describe("Lifecycle renderer smoke test", () => {
       vi.useRealTimers();
     }
   });
+
+  test("requests keyframe once when patch sequence skips and clears after catching up", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    const fireballEntry = generatedEffectCatalog.fireball;
+    const fireballParameters = {
+      ...(fireballEntry.blocks.parameters as Record<string, number> | undefined),
+    } as Readonly<Record<string, number>>;
+    const keyframeSequence = 48;
+    const { network, renderer, orchestrator, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    const sendSpy = vi.spyOn(network, "send");
+
+    try {
+      const onReady = vi.fn();
+      await orchestrator.boot({ onReady });
+      expect(onReady).toHaveBeenCalledTimes(1);
+
+      const spawnTick = 200;
+      const effectId = "effect-fireball";
+      const fireballSpawn: ContractLifecycleSpawnEvent = {
+        seq: 1,
+        tick: spawnTick,
+        instance: {
+          id: effectId,
+          entryId: "fireball",
+          definitionId: fireballEntry.contractId,
+          definition: fireballEntry.definition,
+          startTick: spawnTick,
+          deliveryState: {
+            geometry: {
+              shape: "circle",
+              radius: fireballParameters.radius ?? 12,
+            },
+            motion: {
+              positionX: 256,
+              positionY: 320,
+              velocityX: 64,
+              velocityY: 0,
+            },
+          },
+          behaviorState: {
+            ticksRemaining: fireballEntry.definition.lifetimeTicks,
+            tickCadence: 1,
+          },
+          params: fireballParameters,
+          colors: ["#ffaa33"],
+          replication: fireballEntry.definition.client,
+          end: fireballEntry.definition.end,
+        },
+      };
+
+      emitLifecycleState({
+        spawns: [fireballSpawn],
+        cursors: { [effectId]: fireballSpawn.seq },
+        tick: fireballSpawn.tick,
+        sequence: fireballSpawn.seq,
+        keyframeSequence,
+        receivedAt: Date.now(),
+      });
+
+      vi.advanceTimersByTime(16);
+
+      const updateTwo: ContractLifecycleUpdateEvent = {
+        seq: 2,
+        tick: fireballSpawn.tick + 1,
+        id: effectId,
+        deliveryState: {
+          geometry: {
+            shape: "circle",
+            radius: fireballParameters.radius ?? 12,
+          },
+          motion: {
+            positionX: 288,
+            positionY: 320,
+            velocityX: 64,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: fireballEntry.definition.lifetimeTicks - 1,
+        },
+      };
+
+      emitLifecycleState({
+        updates: [updateTwo],
+        cursors: { [effectId]: updateTwo.seq },
+        tick: updateTwo.tick,
+        sequence: updateTwo.seq,
+        keyframeSequence,
+        receivedAt: Date.now(),
+      });
+
+      vi.advanceTimersByTime(16);
+
+      emitLifecycleState({
+        tick: (updateTwo.tick ?? fireballSpawn.tick) + 3,
+        sequence: 5,
+        keyframeSequence,
+        receivedAt: Date.now(),
+      });
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(sendSpy).toHaveBeenLastCalledWith({
+        type: "keyframeRequest",
+        keyframeSeq: keyframeSequence,
+        ver: 1,
+      });
+
+      const updateThree: ContractLifecycleUpdateEvent = {
+        seq: 3,
+        tick: fireballSpawn.tick + 2,
+        id: effectId,
+        deliveryState: {
+          geometry: {
+            shape: "circle",
+            radius: fireballParameters.radius ?? 12,
+          },
+          motion: {
+            positionX: 320,
+            positionY: 320,
+            velocityX: 64,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: fireballEntry.definition.lifetimeTicks - 2,
+        },
+      };
+
+      vi.advanceTimersByTime(16);
+      emitLifecycleState({
+        updates: [updateThree],
+        cursors: { [effectId]: updateThree.seq },
+        tick: updateThree.tick,
+        sequence: updateThree.seq,
+        keyframeSequence,
+        receivedAt: Date.now(),
+      });
+
+      const updateFour: ContractLifecycleUpdateEvent = {
+        seq: 4,
+        tick: fireballSpawn.tick + 3,
+        id: effectId,
+        deliveryState: {
+          geometry: {
+            shape: "circle",
+            radius: fireballParameters.radius ?? 12,
+          },
+          motion: {
+            positionX: 352,
+            positionY: 320,
+            velocityX: 64,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: fireballEntry.definition.lifetimeTicks - 3,
+        },
+      };
+
+      vi.advanceTimersByTime(16);
+      emitLifecycleState({
+        updates: [updateFour],
+        cursors: { [effectId]: updateFour.seq },
+        tick: updateFour.tick,
+        sequence: updateFour.seq,
+        keyframeSequence,
+        receivedAt: Date.now(),
+      });
+
+      const updateFive: ContractLifecycleUpdateEvent = {
+        seq: 5,
+        tick: fireballSpawn.tick + 4,
+        id: effectId,
+        deliveryState: {
+          geometry: {
+            shape: "circle",
+            radius: fireballParameters.radius ?? 12,
+          },
+          motion: {
+            positionX: 384,
+            positionY: 320,
+            velocityX: 64,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: fireballEntry.definition.lifetimeTicks - 4,
+        },
+      };
+
+      vi.advanceTimersByTime(16);
+      emitLifecycleState({
+        updates: [updateFive],
+        cursors: { [effectId]: updateFive.seq },
+        tick: updateFive.tick,
+        sequence: updateFive.seq,
+        keyframeSequence,
+        receivedAt: Date.now(),
+      });
+
+      vi.runOnlyPendingTimers();
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+
+      const finalBatch = renderer.batches.at(-1)!;
+      expect(finalBatch.keyframeId).toBe(`tick-${updateFive.tick}`);
+      const finalFrames = finalBatch.animations.filter((frame) => frame.effectId === effectId);
+      expect(finalFrames).toHaveLength(1);
+      expect(finalFrames[0].metadata.lastEventKind).toBe("update");
+      expect(finalFrames[0].metadata.instance.deliveryState.motion.positionX).toBe(
+        updateFive.deliveryState!.motion!.positionX,
+      );
+
+      const geometry = finalBatch.staticGeometry.filter((entry) => entry.id === effectId);
+      expect(geometry).toHaveLength(1);
+    } finally {
+      sendSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });

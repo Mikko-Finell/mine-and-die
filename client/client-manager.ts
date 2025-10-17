@@ -72,6 +72,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private pendingKeyframeRetry: PendingKeyframeRetry | null = null;
   private pendingKeyframeRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private lastKeyframeRequestAt = 0;
+  private lastPatchSequence: number | null = null;
+  private maxPatchSequenceSeen: number | null = null;
+  private pendingGapSequence: number | null = null;
 
   constructor(
     public readonly configuration: ClientManagerConfiguration,
@@ -188,6 +191,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       }
     }
 
+    const patchSequence = this.extractSequence(payload["sequence"]);
+    this.trackPatchSequenceProgress(patchSequence, keyframeSequence);
+
     const batch = this.extractLifecycleBatch(payload);
     if (batch) {
       this.lifecycleStore.applyBatch(batch);
@@ -213,6 +219,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.keyframeRequestInFlight = null;
     this.pendingKeyframeRetry = null;
     this.clearPendingKeyframeRetryTimer();
+    this.resetPatchSequenceTracking();
   }
 
   private handleKeyframeNackPayload(payload: Record<string, unknown>): void {
@@ -316,6 +323,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.keyframeRequestInFlight = null;
     this.pendingKeyframeRetry = null;
     this.lastKeyframeRequestAt = 0;
+    this.resetPatchSequenceTracking();
     this.clearPendingKeyframeRetryTimer();
     this.renderLifecycleView();
   }
@@ -325,6 +333,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lifecycleStore.reset();
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;
+    this.resetPatchSequenceTracking();
     this.clearPendingKeyframeRetryTimer();
   }
 
@@ -335,6 +344,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.keyframeRequestInFlight = null;
     this.pendingKeyframeRetry = null;
     this.lastKeyframeRequestAt = 0;
+    this.resetPatchSequenceTracking();
     this.renderLifecycleView();
   }
 
@@ -538,6 +548,102 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       clearTimeout(this.pendingKeyframeRetryTimer);
       this.pendingKeyframeRetryTimer = null;
     }
+  }
+
+  private trackPatchSequenceProgress(
+    patchSequence: number | null,
+    keyframeSequence: number | null,
+  ): void {
+    if (patchSequence === null) {
+      return;
+    }
+
+    this.maxPatchSequenceSeen =
+      this.maxPatchSequenceSeen === null
+        ? patchSequence
+        : Math.max(this.maxPatchSequenceSeen, patchSequence);
+
+    if (this.lastPatchSequence === null) {
+      this.lastPatchSequence = patchSequence;
+      return;
+    }
+
+    if (patchSequence <= this.lastPatchSequence) {
+      return;
+    }
+
+    const expectedNext = this.lastPatchSequence + 1;
+    if (patchSequence === expectedNext) {
+      this.lastPatchSequence = patchSequence;
+      if (this.pendingGapSequence !== null) {
+        if (this.maxPatchSequenceSeen !== null && this.lastPatchSequence >= this.maxPatchSequenceSeen) {
+          this.clearResolvedKeyframeGap();
+        } else {
+          this.pendingGapSequence = this.lastPatchSequence + 1;
+        }
+      }
+      return;
+    }
+
+    const gapStart = expectedNext;
+    if (this.pendingGapSequence === null || gapStart < this.pendingGapSequence) {
+      this.pendingGapSequence = gapStart;
+    }
+
+    const sequenceToRequest = keyframeSequence ?? this.latestKeyframeSequence ?? patchSequence;
+    this.ensureKeyframeRetry(sequenceToRequest);
+  }
+
+  private ensureKeyframeRetry(sequence: number | null): void {
+    const normalized = this.extractSequence(sequence);
+    if (normalized === null) {
+      return;
+    }
+
+    const now = Date.now();
+    const policy = resolveRetryPolicy(this.configuration);
+    const minRetryAt =
+      this.lastKeyframeRequestAt > 0 ? this.lastKeyframeRequestAt + policy.baseMs : now;
+    const retryAt = Math.max(now, minRetryAt);
+
+    if (this.pendingKeyframeRetry) {
+      const pending = this.pendingKeyframeRetry;
+      if (pending.sequence === null || normalized > pending.sequence) {
+        pending.sequence = normalized;
+        pending.attempt = 0;
+      } else if (normalized < pending.sequence) {
+        pending.sequence = normalized;
+      }
+      pending.awaitingResync = false;
+      if (pending.earliestRetryAt > retryAt) {
+        pending.earliestRetryAt = retryAt;
+      }
+      this.pendingKeyframeRetry = pending;
+    } else {
+      this.pendingKeyframeRetry = {
+        sequence: normalized,
+        earliestRetryAt: retryAt,
+        awaitingResync: false,
+        attempt: 0,
+      };
+    }
+
+    this.applyPendingKeyframeRetry();
+  }
+
+  private clearResolvedKeyframeGap(): void {
+    this.pendingGapSequence = null;
+    const pending = this.pendingKeyframeRetry;
+    if (pending && !pending.awaitingResync) {
+      this.pendingKeyframeRetry = null;
+      this.clearPendingKeyframeRetryTimer();
+    }
+  }
+
+  private resetPatchSequenceTracking(): void {
+    this.lastPatchSequence = null;
+    this.maxPatchSequenceSeen = null;
+    this.pendingGapSequence = null;
   }
 
   private selectLayer(delivery: DeliveryKind): RenderLayer {
