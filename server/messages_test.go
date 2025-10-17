@@ -92,29 +92,61 @@ func TestJoinResponseIncludesEffectCatalog(t *testing.T) {
 	}
 }
 
-func TestStateMessageConfigOmitsEffectCatalog(t *testing.T) {
-	hub := newHub()
-	hub.SetKeyframeInterval(1)
-	hub.advance(time.Now(), 1.0/float64(tickRate))
+func TestStateMessageConfigIncludesEffectCatalogOnSnapshot(t *testing.T) {
+        hub := newHub()
+        hub.SetKeyframeInterval(1)
+        hub.advance(time.Now(), 1.0/float64(tickRate))
 
-	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
-	if err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
-	}
+        data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+        if err != nil {
+                t.Fatalf("marshalState returned error: %v", err)
+        }
 
-	var payload map[string]any
-	if err := json.Unmarshal(data, &payload); err != nil {
-		t.Fatalf("failed to decode payload: %v", err)
-	}
+        var payload map[string]any
+        if err := json.Unmarshal(data, &payload); err != nil {
+                t.Fatalf("failed to decode payload: %v", err)
+        }
 
-	config, ok := payload["config"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected config to decode as object, got %T", payload["config"])
-	}
+        config, ok := payload["config"].(map[string]any)
+        if !ok {
+                t.Fatalf("expected config to decode as object, got %T", payload["config"])
+        }
 
-	if _, exists := config["effectCatalog"]; exists {
-		t.Fatalf("expected state message config to omit effectCatalog metadata")
-	}
+        catalog, exists := config["effectCatalog"].(map[string]any)
+        if !exists {
+                t.Fatalf("expected snapshot payload to include effectCatalog metadata")
+        }
+        if len(catalog) == 0 {
+                t.Fatalf("expected effectCatalog metadata to include entries")
+        }
+        if _, ok := catalog["fireball"].(map[string]any); !ok {
+                t.Fatalf("expected effectCatalog metadata to include fireball entry")
+        }
+}
+
+func TestStateMessageConfigOmitsEffectCatalogOnDelta(t *testing.T) {
+        hub := newHub()
+        hub.SetKeyframeInterval(1)
+        hub.advance(time.Now(), 1.0/float64(tickRate))
+
+        data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
+        if err != nil {
+                t.Fatalf("marshalState returned error: %v", err)
+        }
+
+        var payload map[string]any
+        if err := json.Unmarshal(data, &payload); err != nil {
+                t.Fatalf("failed to decode payload: %v", err)
+        }
+
+        config, ok := payload["config"].(map[string]any)
+        if !ok {
+                t.Fatalf("expected config to decode as object, got %T", payload["config"])
+        }
+
+        if _, exists := config["effectCatalog"]; exists {
+                t.Fatalf("expected delta payload to omit effectCatalog metadata")
+        }
 }
 
 func TestTickMonotonicity_AcrossBroadcasts(t *testing.T) {

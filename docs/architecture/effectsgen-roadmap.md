@@ -33,6 +33,9 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Snapshot and tooling updates for client-managed flows**
   Surfaced `managedByClient` from `server/effect_catalog_metadata.go` and snapshot utilities so join payloads match the generated catalog bindings without manual overrides.
 
+* 🟢 **Resync catalog snapshots mirror server metadata**
+  `server/hub.go` now attaches `snapshotEffectCatalog` output to resync/keyframe configs and the client orchestrator reuses the network payload; smoke coverage asserts the renderer hydrates with the server-sent snapshot.
+
 ### Planned (to finish Phase 4)
 
 
@@ -64,10 +67,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Add resync/keyframe coverage for canonical effect catalog metadata.**
+**Hydrate effect catalog snapshots from WebSocket keyframe replies.**
 
 **Acceptance criteria**
 
-* `server/hub.go` resync/keyframe config snapshots include the canonical effect catalog data emitted by `snapshotEffectCatalog`.
-* A client-side smoke test (e.g. `client/__tests__/lifecycle-render-smoke.test.ts`) asserts that resync hydration reuses the server-provided catalog snapshot without falling back to generated defaults.
-* Join/resync fixtures avoid manual overrides—`normalizeEffectCatalog` accepts the network payload as-is.
+* `hub.HandleKeyframeRequest` returns `keyframeMessage` payloads whose `config.effectCatalog` mirrors `snapshotEffectCatalog`.
+* The client orchestrator updates the local catalog snapshot when it receives a WebSocket keyframe response, with a headless harness test replaying the path.
+* Keyframe hydration verifies renderer batches continue to resolve catalog metadata without manual fallbacks.

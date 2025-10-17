@@ -7,7 +7,12 @@ import {
   type ContractLifecycleUpdateEvent,
   type ContractLifecycleView,
 } from "./effect-lifecycle-store";
-import { getEffectCatalogEntry, setEffectCatalog, type EffectCatalogEntryMetadata } from "./effect-catalog";
+import {
+  getEffectCatalogEntry,
+  normalizeEffectCatalog,
+  setEffectCatalog,
+  type EffectCatalogEntryMetadata,
+} from "./effect-catalog";
 import type {
   JoinResponse,
   NetworkClient,
@@ -126,6 +131,20 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     const payload = message.payload as Record<string, unknown> | null;
     if (!payload) {
       return;
+    }
+
+    const configPayload = payload["config"];
+    if (configPayload && typeof configPayload === "object") {
+      const effectCatalogPayload = (configPayload as { readonly effectCatalog?: unknown }).effectCatalog;
+      if (effectCatalogPayload !== undefined) {
+        try {
+          const catalogSnapshot = normalizeEffectCatalog(effectCatalogPayload);
+          setEffectCatalog(catalogSnapshot);
+        } catch (error) {
+          this.reportError(error);
+          return;
+        }
+      }
     }
 
     if (payload["resync"] === true) {

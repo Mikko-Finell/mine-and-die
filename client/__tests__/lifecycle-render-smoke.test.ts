@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { setEffectCatalog } from "../effect-catalog";
+import * as effectCatalogStore from "../effect-catalog";
 import {
   effectCatalog as generatedEffectCatalog,
 } from "../generated/effect-contracts";
@@ -14,7 +14,7 @@ import { createHeadlessHarness } from "./helpers/headless-harness";
 
 describe("Lifecycle renderer smoke test", () => {
   beforeEach(() => {
-    setEffectCatalog(null);
+    effectCatalogStore.setEffectCatalog(null);
   });
 
   test("replays recorded lifecycle batches and renders frames from generated metadata", async () => {
@@ -284,21 +284,44 @@ describe("Lifecycle renderer smoke test", () => {
     });
     expect(retainedAnimation!.metadata.retained).toBe(true);
 
-    const resyncTick = 130;
-    network.emit({
-      type: "state",
-      payload: {
-        resync: true,
-        t: resyncTick,
-      },
-      receivedAt: 3600,
-    });
+    const setCatalogSpy = vi.spyOn(effectCatalogStore, "setEffectCatalog");
+    const normalizeCatalogSpy = vi.spyOn(effectCatalogStore, "normalizeEffectCatalog");
 
-    expect(renderer.batches.length).toBeGreaterThanOrEqual(4);
-    const resyncBatch = renderer.batches.at(-1)!;
-    expect(resyncBatch.keyframeId).toBe("lifecycle-0");
-    expect(resyncBatch.time).toBe(resyncTick * 16);
-    expect(resyncBatch.staticGeometry).toHaveLength(0);
-    expect(resyncBatch.animations).toHaveLength(0);
+    try {
+      const resyncTick = 130;
+      const resyncCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+
+      network.emit({
+        type: "state",
+        payload: {
+          resync: true,
+          t: resyncTick,
+          config: {
+            effectCatalog: resyncCatalogPayload,
+          },
+        },
+        receivedAt: 3600,
+      });
+
+      expect(renderer.batches.length).toBeGreaterThanOrEqual(4);
+      const resyncBatch = renderer.batches.at(-1)!;
+      expect(resyncBatch.keyframeId).toBe("lifecycle-0");
+      expect(resyncBatch.time).toBe(resyncTick * 16);
+      expect(resyncBatch.staticGeometry).toHaveLength(0);
+      expect(resyncBatch.animations).toHaveLength(0);
+
+      expect(normalizeCatalogSpy).toHaveBeenCalledTimes(1);
+      expect(normalizeCatalogSpy).toHaveBeenLastCalledWith(resyncCatalogPayload);
+      const normalizedCatalog = normalizeCatalogSpy.mock.results.at(-1)?.value;
+      expect(setCatalogSpy).toHaveBeenCalledTimes(1);
+      expect(setCatalogSpy).toHaveBeenLastCalledWith(normalizedCatalog);
+
+      const activeCatalog = effectCatalogStore.getEffectCatalog();
+      expect(activeCatalog).toEqual(normalizedCatalog);
+      expect(Object.isFrozen(activeCatalog)).toBe(true);
+    } finally {
+      normalizeCatalogSpy.mockRestore();
+      setCatalogSpy.mockRestore();
+    }
   });
 });
