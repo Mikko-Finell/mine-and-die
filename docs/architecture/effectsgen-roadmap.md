@@ -21,6 +21,8 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   Orchestrator now ingests WebSocket `state` batches into `ContractLifecycleStore` and emits render batches derived from generated catalog metadata/layers.
 * 🟢 **Lifecycle renderer smoke tests**
   Headless harness replays recorded lifecycle batches and asserts renderer output derives from generated catalog metadata and managed ownership flags.
+* 🟢 **effectsgen Go toolchain compatibility**
+  Upgraded `golang.org/x/tools` (and indirect deps) so the generator builds cleanly with Go 1.24.3, restoring `npm run build` and client bundle output.
 
 ### Planned (to finish Phase 4)
 
