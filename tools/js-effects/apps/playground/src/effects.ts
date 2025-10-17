@@ -1,6 +1,7 @@
 import {
   BloodSplatterDefinition,
   FireEffectDefinition,
+  FireballEffectDefinition,
   ImpactBurstDefinition,
   MeleeSwingEffectDefinition,
   PlaceholderAuraDefinition,
@@ -40,6 +41,14 @@ export const availableEffects: AnyEffectCatalogEntry[] = [
       "A looping fire column with swirling embers and drifting sparks.",
     definition: FireEffectDefinition,
     definitionName: "FireEffectDefinition",
+  },
+  {
+    id: FireballEffectDefinition.type,
+    name: "Fireball",
+    description:
+      "A fast-moving projectile with a blazing core and fading ember trail.",
+    definition: FireballEffectDefinition,
+    definitionName: "FireballEffectDefinition",
   },
   {
     id: ImpactBurstDefinition.type,
