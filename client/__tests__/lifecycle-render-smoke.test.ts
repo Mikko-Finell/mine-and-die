@@ -388,5 +388,22 @@ describe("Lifecycle renderer smoke test", () => {
       catalog: attackEntry,
     });
     expect(retainedAnimation!.metadata.retained).toBe(true);
+
+    const resyncTick = 130;
+    network.emit({
+      type: "state",
+      payload: {
+        resync: true,
+        t: resyncTick,
+      },
+      receivedAt: 3600,
+    });
+
+    expect(renderer.batches.length).toBeGreaterThanOrEqual(4);
+    const resyncBatch = renderer.batches.at(-1)!;
+    expect(resyncBatch.keyframeId).toBe("lifecycle-0");
+    expect(resyncBatch.time).toBe(resyncTick * 16);
+    expect(resyncBatch.staticGeometry).toHaveLength(0);
+    expect(resyncBatch.animations).toHaveLength(0);
   });
 });
