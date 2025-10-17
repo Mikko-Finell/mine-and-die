@@ -4,12 +4,14 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 ## Roadmap
 
-| Phase | Goal                                     | Exit Criteria                                                                                                                                                                                               | Status         |
-| ----- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| 1     | Finalise Go contract registry            | Central Go package owns all effect contracts and validation helpers; unit coverage in place.                                                                                                                | 🟢 Done        |
-| 2     | JSON schema & catalog resolver           | JSON schema validated; loader in `server/effects` resolves designer `entryId` → contract and caches lookups.                                                                                                | 🟢 Done        |
-| 3     | `tools/effectgen` TypeScript emitter     | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks.                                                                                     | 🟢 Done        |
+| Phase | Goal                                     | Exit Criteria                                                                                                                                    | Status         |
+| ----- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
+| 1     | Finalise Go contract registry            | Central Go package owns all effect contracts and validation helpers; unit coverage in place.                                                    | 🟢 Done        |
+| 2     | JSON schema & catalog resolver           | JSON schema validated; loader in `server/effects` resolves designer `entryId` → contract and caches lookups.                                    | 🟢 Done        |
+| 3     | `tools/effectgen` TypeScript emitter     | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks.                          | 🟢 Done        |
 | 4     | Client integration of generated bindings | Client imports generated module; WebSocket lifecycle batches hydrate `ContractLifecycleStore`; renderer draws from store snapshots using generated catalog metadata; CI enforces regeneration drift checks. | 🟡 In progress |
+| 5     | Orchestrator-driven client viewport      | `client/main.ts` boots `GameClientOrchestrator` with `CanvasRenderer`/`InMemoryWorldStateStore`, forwards WebSocket traffic to the orchestrator, and mounts rendered frames on the in-app canvas with smoke coverage. | ⚪ Planned      |
+| 6     | Player input to effect triggers          | `client/input.ts` implements keyboard bindings that dispatch `input`/`action`/`path` messages through the orchestrator, server command handlers observe the intents, and end-to-end smoke tests assert user input spawns visible contract effects. | ⚪ Planned      |
 
 ## Active Work
 
@@ -45,8 +47,16 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Keyframe retry scheduling after resync fallback**
   `client/client-manager.ts` defers keyframe re-requests until resync payloads are applied, throttles retries with an exponential backoff+jitter policy exposed via `ClientManagerConfiguration.keyframeRetryPolicy`, and harness coverage asserts a single retry is issued before rendering resumes.
 
-### Planned (to finish Phase 4)
+* 🟢 **Keyframe request triggers for patch sequence gaps**
+  `client/client-manager.ts` now tracks skipped `state.sequence` values, issues a single throttled `keyframeRequest` when gaps appear, and extends the lifecycle smoke harness to assert rendering recovers after the replayed keyframe.
 
+### Planned (Phase 5)
+
+* ⚪ **Wire orchestrator into the Lit shell and renderer** — Instantiate `GameClientOrchestrator` inside `client/main.ts`, provide it with `CanvasRenderer` + `InMemoryWorldStateStore`, forward WebSocket `NetworkMessageEnvelope` payloads to the orchestrator, and mount the renderer on the `<game-canvas>` element so lifecycle batches drive on-screen frames.
+
+### Planned (Phase 6)
+
+* ⚪ **Implement keyboard input dispatch** — Finish `KeyboardInputController` in `client/input.ts`, connect it to an intent store and network dispatcher that relays `input`/`action`/`path` messages, and add harness coverage confirming a simulated input results in a server-observed effect lifecycle emission.
 
 ## Definition of Done (Phase 4)
 
@@ -76,10 +86,10 @@ Phase 4 is complete when all of the following hold:
 
 ## Suggested Next Task
 
-**Implement keyframe request triggers for patch sequence gaps.**
+**Wire orchestrator into the Lit shell and renderer.**
 
 **Acceptance criteria**
 
-* `client/client-manager.ts` (or `client/world-state.ts`) tracks the latest `sequence` cursor and requests a keyframe when incoming batches skip ahead beyond the tracked sequence.
-* Requests reuse the new retry throttle, avoid duplicates while a keyframe is in flight, and cancel when a resync or keyframe closes the gap.
-* Headless harness coverage injects a skipped sequence, asserts a single keyframe request is sent, and verifies rendering resumes without duplicated lifecycle events once the keyframe response arrives.
+* `client/main.ts` owns a single `GameClientOrchestrator` instance that receives join/connect hooks from `WebSocketNetworkClient` and routes `onMessage` envelopes into the orchestrator's keyframe/state handlers.
+* `<game-canvas>` mounts a `CanvasRenderer` supplied by the orchestrator (or a dedicated viewport module) and redraws when `requestRender` batches arrive.
+* Headless or DOM-based smoke coverage asserts that replayed lifecycle events produce the expected geometry/animation output using the canvas renderer.
