@@ -34,6 +34,8 @@ interface LogEntry {
   message: string;
 }
 
+type SessionState = "idle" | "connecting" | "connected" | "shuttingDown" | "error";
+
 class GameClientApp extends LitElement {
   static properties = {
     healthStatus: { state: true },
@@ -49,6 +51,9 @@ class GameClientApp extends LitElement {
   private readonly worldStateStore: InMemoryWorldStateStore;
   private readonly networkClient: WebSocketNetworkClient;
   private readonly orchestrator: GameClientOrchestrator;
+  private sessionState: SessionState = "idle";
+  private connectionStatus: SessionState = "idle";
+  private connectionError: string | null = null;
 
   playerId: string | null;
 
@@ -68,6 +73,9 @@ class GameClientApp extends LitElement {
       renderer: this.renderer,
       worldState: this.worldStateStore,
     });
+    this.sessionState = "idle";
+    this.connectionStatus = "idle";
+    this.connectionError = null;
     this.healthStatus = "Checking…";
     this.serverTime = "--";
     this.heartbeat = "Disconnected";
@@ -85,7 +93,7 @@ class GameClientApp extends LitElement {
     super.connectedCallback();
     this.updateServerTime();
     void this.fetchHealth();
-    void this.joinWorld();
+    this.startSession();
     this.clockInterval = window.setInterval(() => {
       this.updateServerTime();
     }, 1000);
@@ -97,16 +105,7 @@ class GameClientApp extends LitElement {
       window.clearInterval(this.clockInterval);
       this.clockInterval = undefined;
     }
-    void this.orchestrator
-      .shutdown()
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.addLog(`Shutdown error: ${message}`);
-      })
-      .finally(() => {
-        this.playerId = null;
-        this.heartbeat = "Disconnected";
-      });
+    void this.shutdownSession();
   }
 
   private addLog(message: string): void {
@@ -144,49 +143,80 @@ class GameClientApp extends LitElement {
     void this.fetchHealth();
   }
 
-  private async joinWorld(): Promise<void> {
-    this.addLog("Joining world…");
-    this.heartbeat = "Connecting…";
-    this.playerId = null;
-
-    if (this.orchestrator.getJoinResponse()) {
-      await this.orchestrator.shutdown().catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.addLog(`Reset failed before reconnect: ${message}`);
-      });
+  private startSession(): void {
+    if (this.sessionState !== "idle" && this.sessionState !== "error") {
+      return;
     }
 
-    const handlers = {
-      onReady: () => {
-        const join = this.orchestrator.getJoinResponse();
-        if (join) {
-          this.playerId = join.id;
-          this.addLog(`Joined world as ${join.id}.`);
-          const catalogSize = Object.keys(join.effectCatalog).length;
-          this.addLog(`Received ${catalogSize} effect catalog entries.`);
-        }
-        this.addLog("Connected to world stream.");
-        this.heartbeat = "Connected";
-      },
-      onError: (error: Error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.addLog(`Client error: ${message}`);
-        const join = this.orchestrator.getJoinResponse();
-        if (!join) {
-          this.playerId = null;
-          this.heartbeat = `Disconnected (${message})`;
-        } else {
+    this.sessionState = "connecting";
+    this.connectionStatus = "connecting";
+    this.connectionError = null;
+    this.heartbeat = "Connecting…";
+    this.playerId = null;
+    this.addLog("Joining world…");
+
+    void this.orchestrator
+      .boot({
+        onReady: () => {
+          this.sessionState = "connected";
+          this.connectionStatus = "connected";
+          this.connectionError = null;
+          const join = this.orchestrator.getJoinResponse();
+          if (join) {
+            this.playerId = this.orchestrator.playerId;
+            if (this.playerId) {
+              this.addLog(`Joined world as ${this.playerId}.`);
+            }
+            const catalogSize = Object.keys(join.effectCatalog).length;
+            this.addLog(`Received ${catalogSize} effect catalog entries.`);
+          }
+          this.addLog("Connected to world stream.");
+          this.heartbeat = "Connected";
+        },
+        onError: (error: Error) => {
+          if (this.sessionState === "shuttingDown") {
+            return;
+          }
+          this.sessionState = "error";
+          this.connectionStatus = "error";
+          const message = error instanceof Error ? error.message : String(error);
+          this.connectionError = message;
+          this.playerId = this.orchestrator.playerId;
+          this.addLog(`Client error: ${message}`);
           this.heartbeat = `Error: ${message}`;
-        }
-      },
-    } satisfies Parameters<GameClientOrchestrator["boot"]>[0];
+        },
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.sessionState = "error";
+        this.connectionStatus = "error";
+        this.connectionError = message;
+        this.playerId = null;
+        this.addLog(`Failed to establish session: ${message}`);
+        this.heartbeat = `Error: ${message}`;
+      });
+  }
+
+  private async shutdownSession(): Promise<void> {
+    if (this.sessionState === "shuttingDown" || this.sessionState === "idle") {
+      return;
+    }
+
+    this.sessionState = "shuttingDown";
+    this.connectionStatus = "shuttingDown";
 
     try {
-      await this.orchestrator.boot(handlers);
+      await this.orchestrator.shutdown();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.addLog(`Failed to establish session: ${message}`);
-      this.heartbeat = `Error: ${message}`;
+      this.addLog(`Shutdown error: ${message}`);
+    } finally {
+      this.sessionState = "idle";
+      this.connectionStatus = "idle";
+      this.connectionError = null;
+      this.playerId = null;
+      this.heartbeat = "Disconnected";
+      this.addLog("Disconnected from world.");
     }
   }
 
@@ -339,6 +369,9 @@ class GameCanvas extends LitElement {
   protected firstUpdated(): void {
     this.canvasElement = this.querySelector("canvas");
     this.attachRenderer();
+    if (!this.renderer && this.canvasElement) {
+      this.drawBootScreen(this.canvasElement);
+    }
   }
 
   protected updated(changed: PropertyValues<GameCanvas>): void {
@@ -394,6 +427,12 @@ class GameCanvas extends LitElement {
     const context = canvas.getContext("2d");
     if (!context) {
       return;
+    }
+
+    const dimensions = this.renderer.configuration?.dimensions;
+    if (dimensions && Number.isFinite(dimensions.width) && Number.isFinite(dimensions.height)) {
+      canvas.width = Math.max(0, Math.floor(dimensions.width));
+      canvas.height = Math.max(0, Math.floor(dimensions.height));
     }
 
     this.renderer.mount({ canvas, context });

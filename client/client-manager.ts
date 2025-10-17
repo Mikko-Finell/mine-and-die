@@ -129,6 +129,10 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     return this.joinResponse;
   }
 
+  get playerId(): string | null {
+    return this.joinResponse?.id ?? null;
+  }
+
   private createNetworkHandlers(): NetworkEventHandlers {
     return {
       onJoin: (join) => {
