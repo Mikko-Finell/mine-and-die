@@ -100,6 +100,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private pendingGapSequence: number | null = null;
   private latestAcknowledgedTick: number | null = null;
   private inputDispatchPaused = true;
+  private inputDispatcher: InputActionDispatcher | null = null;
   private pathCommandState: PathCommandState = { active: false, target: null };
   private inputDispatcherHooks: InputDispatcherHooks | null = null;
 
@@ -162,7 +163,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   createInputDispatcher(hooks: InputDispatcherHooks = {}): InputActionDispatcher {
     this.inputDispatcherHooks = hooks;
     hooks.onPathCommand?.(this.clonePathCommandState(this.pathCommandState));
-    return new NetworkInputActionDispatcher({
+    const dispatcher = new NetworkInputActionDispatcher({
       getProtocolVersion: () => this.joinResponse?.protocolVersion ?? null,
       getAcknowledgedTick: () => this.latestAcknowledgedTick,
       isDispatchPaused: () => this.inputDispatchPaused,
@@ -178,6 +179,8 @@ export class GameClientOrchestrator implements ClientOrchestrator {
         this.handlePathCommand(state);
       },
     });
+    this.inputDispatcher = dispatcher;
+    return dispatcher;
   }
 
   private createNetworkHandlers(): NetworkEventHandlers {
@@ -216,6 +219,16 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     }
     if (message.type === "keyframe") {
       this.handleKeyframePayload(payload);
+      return;
+    }
+
+    if (message.type === "commandAck") {
+      this.handleCommandAckPayload(payload);
+      return;
+    }
+
+    if (message.type === "commandReject") {
+      this.handleCommandRejectPayload(payload);
       return;
     }
 
@@ -268,10 +281,40 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.renderLifecycleView(frameTime);
 
     this.inputDispatchPaused = false;
+    this.inputDispatcher?.handleDispatchResume();
 
     if (isResync) {
       this.applyPendingKeyframeRetry();
     }
+  }
+
+  private handleCommandAckPayload(payload: Record<string, unknown>): void {
+    const sequence = this.extractSequence(payload["seq"]);
+    if (sequence === null) {
+      return;
+    }
+    const tickValue = payload["tick"];
+    let tick: number | null = null;
+    if (typeof tickValue === "number" && Number.isFinite(tickValue) && tickValue >= 0) {
+      tick = Math.floor(tickValue);
+    }
+    this.inputDispatcher?.handleCommandAck({ sequence, tick });
+  }
+
+  private handleCommandRejectPayload(payload: Record<string, unknown>): void {
+    const sequence = this.extractSequence(payload["seq"]);
+    if (sequence === null) {
+      return;
+    }
+    const reasonValue = payload["reason"];
+    const reason = typeof reasonValue === "string" && reasonValue.length > 0 ? reasonValue : "unknown";
+    const retry = payload["retry"] === true;
+    const tickValue = payload["tick"];
+    let tick: number | null = null;
+    if (typeof tickValue === "number" && Number.isFinite(tickValue) && tickValue >= 0) {
+      tick = Math.floor(tickValue);
+    }
+    this.inputDispatcher?.handleCommandReject({ sequence, reason, retry, tick });
   }
 
   private handleKeyframePayload(payload: Record<string, unknown>): void {
@@ -393,6 +436,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.clearPendingKeyframeRetryTimer();
     this.latestAcknowledgedTick = null;
     this.inputDispatchPaused = true;
+    this.inputDispatcher?.handleResync();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
     this.renderLifecycleView();
   }
@@ -407,6 +451,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.clearPendingKeyframeRetryTimer();
     this.latestAcknowledgedTick = null;
     this.inputDispatchPaused = true;
+    this.inputDispatcher?.handleResync();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
   }
 

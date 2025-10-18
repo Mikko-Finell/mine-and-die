@@ -75,6 +75,23 @@ type clientMessage struct {
 	Ack              *uint64 `json:"ack"`
 	KeyframeSeq      *uint64 `json:"keyframeSeq"`
 	KeyframeInterval *int    `json:"keyframeInterval,omitempty"`
+	CommandSeq       *uint64 `json:"seq,omitempty"`
+}
+
+type commandAckMessage struct {
+	Ver  int    `json:"ver"`
+	Type string `json:"type"`
+	Seq  uint64 `json:"seq"`
+	Tick uint64 `json:"tick,omitempty"`
+}
+
+type commandRejectMessage struct {
+	Ver    int    `json:"ver"`
+	Type   string `json:"type"`
+	Seq    uint64 `json:"seq"`
+	Reason string `json:"reason"`
+	Retry  bool   `json:"retry,omitempty"`
+	Tick   uint64 `json:"tick,omitempty"`
 }
 
 type consoleAckMessage struct {

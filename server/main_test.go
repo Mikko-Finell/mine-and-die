@@ -381,8 +381,7 @@ func TestUpdateIntentNormalizesVector(t *testing.T) {
 	playerID := "player-1"
 	hub.world.players[playerID] = newTestPlayerState(playerID)
 
-	ok := hub.UpdateIntent(playerID, 10, 0, string(FacingRight))
-	if !ok {
+	if _, ok, _ := hub.UpdateIntent(playerID, 10, 0, string(FacingRight)); !ok {
 		t.Fatalf("expected UpdateIntent to succeed for existing player")
 	}
 
@@ -447,7 +446,7 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if !hub.UpdateIntent(playerID, tc.dx, tc.dy, string(FacingRight)) {
+			if _, ok, _ := hub.UpdateIntent(playerID, tc.dx, tc.dy, string(FacingRight)); !ok {
 				t.Fatalf("UpdateIntent failed for player")
 			}
 			runAdvance(hub, 1.0/float64(tickRate))
@@ -458,7 +457,7 @@ func TestUpdateIntentDerivesFacingFromMovement(t *testing.T) {
 		})
 	}
 
-	if !hub.UpdateIntent(playerID, 0, 0, string(FacingLeft)) {
+	if _, ok, _ := hub.UpdateIntent(playerID, 0, 0, string(FacingLeft)); !ok {
 		t.Fatalf("UpdateIntent failed for stationary update")
 	}
 	runAdvance(hub, 1.0/float64(tickRate))
@@ -473,7 +472,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	player := newTestPlayerState(playerID)
 	hub.world.AddPlayer(player)
 
-	if !hub.SetPlayerPath(playerID, 400, 320) {
+	if _, ok, _ := hub.SetPlayerPath(playerID, 400, 320); !ok {
 		t.Fatalf("expected SetPlayerPath to succeed")
 	}
 	now := time.Now()
@@ -493,7 +492,7 @@ func TestPlayerPathCommands(t *testing.T) {
 		t.Fatalf("expected path follower to set intent")
 	}
 
-	if !hub.UpdateIntent(playerID, 1, 0, string(FacingRight)) {
+	if _, ok, _ := hub.UpdateIntent(playerID, 1, 0, string(FacingRight)); !ok {
 		t.Fatalf("expected UpdateIntent to succeed")
 	}
 	_, _, _, _, _ = hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
@@ -506,7 +505,7 @@ func TestPlayerPathCommands(t *testing.T) {
 		t.Fatalf("expected manual intent to persist after clearing path, got %f", state.intentX)
 	}
 
-	if !hub.SetPlayerPath(playerID, 200, 280) {
+	if _, ok, _ := hub.SetPlayerPath(playerID, 200, 280); !ok {
 		t.Fatalf("expected second SetPlayerPath to succeed")
 	}
 	_, _, _, _, _ = hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
@@ -515,7 +514,7 @@ func TestPlayerPathCommands(t *testing.T) {
 		t.Fatalf("expected path to be populated after second command")
 	}
 
-	if !hub.ClearPlayerPath(playerID) {
+	if _, ok, _ := hub.ClearPlayerPath(playerID); !ok {
 		t.Fatalf("expected ClearPlayerPath to succeed")
 	}
 	_, _, _, _, _ = hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
@@ -692,7 +691,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	attackerState.cooldowns = make(map[string]time.Time)
 	hub.world.players[attackerID] = attackerState
 
-	if !hub.HandleAction(attackerID, effectTypeAttack) {
+	if _, ok, _ := hub.HandleAction(attackerID, effectTypeAttack); !ok {
 		t.Fatalf("expected attack action to be recognized")
 	}
 
@@ -715,7 +714,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	firstTick := firstSpawn.Tick
 	hub.mu.Unlock()
 
-	hub.HandleAction(attackerID, effectTypeAttack)
+	_, _, _ = hub.HandleAction(attackerID, effectTypeAttack)
 	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
 	if len(hub.world.journal.effects.spawns) != 1 {
@@ -725,7 +724,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
 	hub.mu.Unlock()
 
-	hub.HandleAction(attackerID, effectTypeAttack)
+	_, _, _ = hub.HandleAction(attackerID, effectTypeAttack)
 	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
 	if len(hub.world.journal.effects.spawns) != 2 {
@@ -764,7 +763,7 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 	targetState.lastHeartbeat = now
 	hub.world.players[targetID] = targetState
 
-	if !hub.HandleAction(attackerID, effectTypeAttack) {
+	if _, ok, _ := hub.HandleAction(attackerID, effectTypeAttack); !ok {
 		t.Fatalf("expected melee attack to execute")
 	}
 
@@ -815,7 +814,7 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 		attacker.Facing = FacingRight
 		hub.mu.Unlock()
 
-		if !hub.HandleAction(attackerID, effectTypeAttack) {
+		if _, ok, _ := hub.HandleAction(attackerID, effectTypeAttack); !ok {
 			t.Fatalf("expected melee attack to trigger")
 		}
 		runAdvance(hub, 1.0/float64(tickRate))
@@ -895,7 +894,7 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 	hub.world.journal.DrainPatches()
 	_ = hub.world.journal.DrainEffectEvents()
 
-	if !hub.HandleAction(playerID, effectTypeAttack) {
+	if _, ok, _ := hub.HandleAction(playerID, effectTypeAttack); !ok {
 		t.Fatalf("expected melee attack command to be accepted")
 	}
 
@@ -954,7 +953,7 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 	minerState.cooldowns = make(map[string]time.Time)
 	hub.world.players[minerID] = minerState
 
-	if !hub.HandleAction(minerID, effectTypeAttack) {
+	if _, ok, _ := hub.HandleAction(minerID, effectTypeAttack); !ok {
 		t.Fatalf("expected melee attack to trigger")
 	}
 
@@ -1216,7 +1215,7 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	shooterState.cooldowns = make(map[string]time.Time)
 	hub.world.players[shooterID] = shooterState
 
-	if !hub.HandleAction(shooterID, effectTypeFireball) {
+	if _, ok, _ := hub.HandleAction(shooterID, effectTypeFireball); !ok {
 		t.Fatalf("expected fireball action to be recognized")
 	}
 
@@ -2136,7 +2135,7 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 	victimState.lastHeartbeat = now
 	hub.world.players[targetID] = victimState
 
-	if !hub.HandleAction(shooterID, effectTypeFireball) {
+	if _, ok, _ := hub.HandleAction(shooterID, effectTypeFireball); !ok {
 		t.Fatalf("expected fireball to be created")
 	}
 
@@ -2379,7 +2378,7 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 		Height: 40,
 	}}
 
-	if !hub.HandleAction(shooterID, effectTypeFireball) {
+	if _, ok, _ := hub.HandleAction(shooterID, effectTypeFireball); !ok {
 		t.Fatalf("expected fireball to be created")
 	}
 

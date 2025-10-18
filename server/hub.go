@@ -51,10 +51,11 @@ type Hub struct {
 }
 
 type subscriber struct {
-	conn    *websocket.Conn
-	mu      sync.Mutex
-	lastAck atomic.Uint64
-	limiter keyframeRateLimiter
+	conn           *websocket.Conn
+	mu             sync.Mutex
+	lastAck        atomic.Uint64
+	lastCommandSeq atomic.Uint64
+	limiter        keyframeRateLimiter
 }
 
 const (
@@ -67,6 +68,10 @@ const (
 	tickBudgetCatchupMaxTicks = 2
 	tickBudgetAlarmMinStreak  = 3
 	tickBudgetAlarmMinRatio   = 2.0
+
+	commandRejectUnknownActor  = "unknown_actor"
+	commandRejectInvalidAction = "invalid_action"
+	commandRejectQueueLimit    = "queue_limit"
 )
 
 type keyframeLookupStatus int
@@ -429,7 +434,8 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
 }
 
 // UpdateIntent stores the latest movement vector and facing for a player.
-func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool {
+func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (Command, bool, string) {
+	var zero Command
 	parsedFacing := FacingDirection("")
 	if facing != "" {
 		if face, ok := parseFacing(facing); ok {
@@ -438,7 +444,7 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool 
 	}
 
 	if !h.playerExists(playerID) {
-		return false
+		return zero, false, commandRejectUnknownActor
 	}
 
 	cmd := Command{
@@ -452,14 +458,17 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) bool 
 			Facing: parsedFacing,
 		},
 	}
-	h.enqueueCommand(cmd)
-	return true
+	if ok, reason := h.enqueueCommand(cmd); !ok {
+		return zero, false, reason
+	}
+	return cmd, true, ""
 }
 
 // SetPlayerPath queues a command that asks the server to navigate the player toward a point.
-func (h *Hub) SetPlayerPath(playerID string, x, y float64) bool {
+func (h *Hub) SetPlayerPath(playerID string, x, y float64) (Command, bool, string) {
+	var zero Command
 	if !h.playerExists(playerID) {
-		return false
+		return zero, false, commandRejectUnknownActor
 	}
 	cmd := Command{
 		OriginTick: h.tick.Load(),
@@ -471,14 +480,17 @@ func (h *Hub) SetPlayerPath(playerID string, x, y float64) bool {
 			TargetY: y,
 		},
 	}
-	h.enqueueCommand(cmd)
-	return true
+	if ok, reason := h.enqueueCommand(cmd); !ok {
+		return zero, false, reason
+	}
+	return cmd, true, ""
 }
 
 // ClearPlayerPath stops any server-driven navigation for the player.
-func (h *Hub) ClearPlayerPath(playerID string) bool {
+func (h *Hub) ClearPlayerPath(playerID string) (Command, bool, string) {
+	var zero Command
 	if !h.playerExists(playerID) {
-		return false
+		return zero, false, commandRejectUnknownActor
 	}
 	cmd := Command{
 		OriginTick: h.tick.Load(),
@@ -486,19 +498,22 @@ func (h *Hub) ClearPlayerPath(playerID string) bool {
 		Type:       CommandClearPath,
 		IssuedAt:   time.Now(),
 	}
-	h.enqueueCommand(cmd)
-	return true
+	if ok, reason := h.enqueueCommand(cmd); !ok {
+		return zero, false, reason
+	}
+	return cmd, true, ""
 }
 
 // HandleAction queues an action command for processing on the next tick.
-func (h *Hub) HandleAction(playerID, action string) bool {
+func (h *Hub) HandleAction(playerID, action string) (Command, bool, string) {
+	var zero Command
 	switch action {
 	case effectTypeAttack, effectTypeFireball:
 	default:
-		return false
+		return zero, false, commandRejectInvalidAction
 	}
 	if !h.playerExists(playerID) {
-		return false
+		return zero, false, commandRejectUnknownActor
 	}
 	cmd := Command{
 		OriginTick: h.tick.Load(),
@@ -509,8 +524,10 @@ func (h *Hub) HandleAction(playerID, action string) bool {
 			Name: action,
 		},
 	}
-	h.enqueueCommand(cmd)
-	return true
+	if ok, reason := h.enqueueCommand(cmd); !ok {
+		return zero, false, reason
+	}
+	return cmd, true, ""
 }
 
 // HandleConsoleCommand executes a debug console command for the player.
@@ -1428,7 +1445,7 @@ func (h *Hub) TelemetrySnapshot() telemetrySnapshot {
 	return h.telemetry.Snapshot()
 }
 
-func (h *Hub) enqueueCommand(cmd Command) {
+func (h *Hub) enqueueCommand(cmd Command) (bool, string) {
 	var queueLen int
 	var dropped bool
 	var dropCount uint64
@@ -1475,12 +1492,14 @@ func (h *Hub) enqueueCommand(cmd Command) {
 				commandQueuePerActorLimit,
 			)
 		}
-		return
+		return false, "queue_limit"
 	}
 
 	if commandQueueWarningStep > 0 && queueLen >= commandQueueWarningStep && queueLen%commandQueueWarningStep == 0 {
 		stdlog.Printf("[backpressure] pendingCommands=%d; investigate tick latency or raise throttle thresholds", queueLen)
 	}
+
+	return true, ""
 }
 
 func (h *Hub) drainCommands() []Command {

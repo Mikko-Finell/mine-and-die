@@ -82,8 +82,13 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 * 🟢 **Track pointer path targets for UI feedback**
   `client/input.ts` persists the latest path targets, the orchestrator mirrors them into render batches, and resync handling clears stored targets so the canvas marker stays in sync with dispatcher state.
+* 🟢 **Server tests align with command acknowledgement contract**
+  `server/main_test.go` and `server/melee_command_pipeline_test.go` now destructure `(Command, bool, string)` so the command pipeline compiles against acknowledgement and rejection envelopes.
 
-### Next Task – Sequence, buffer, and acknowledge input commands
+### Active Work – Sequence, buffer, and acknowledge input commands
+
+🟡 Wiring command sequencing and acknowledgement across `client/input.ts`, `client/client-manager.ts`, and `server/main.go`, including buffered replays after resync and rejection-triggered retries.
+  * Go test suites now build with acknowledgement-aware command helpers; follow-up work will determine whether additional logging or telemetry should emit on command rejection paths.
 
 **Acceptance criteria**
 
