@@ -96,4 +96,52 @@ describe("InMemoryInputStore", () => {
     store.setPathTarget?.({ x: 32, y: 64 });
     expect(onPathTarget).toHaveBeenCalledTimes(1);
   });
+
+  it("tracks and clears command rejection details", () => {
+    const onCommandRejection = vi.fn();
+    const store = new InMemoryInputStore({ onCommandRejectionChanged: onCommandRejection });
+
+    store.setCommandRejection?.({
+      sequence: 3,
+      reason: "queue_limit",
+      retry: false,
+      tick: 12,
+      kind: "path",
+    });
+
+    const snapshot = store.getState();
+    expect(snapshot.lastCommandRejection).toEqual({
+      sequence: 3,
+      reason: "queue_limit",
+      retry: false,
+      tick: 12,
+      kind: "path",
+    });
+    expect(onCommandRejection).toHaveBeenCalledWith({
+      sequence: 3,
+      reason: "queue_limit",
+      retry: false,
+      tick: 12,
+      kind: "path",
+    });
+
+    const mutationTarget = snapshot.lastCommandRejection;
+    if (mutationTarget) {
+      mutationTarget.reason = "mutated";
+    }
+    expect(store.getState().lastCommandRejection).toEqual({
+      sequence: 3,
+      reason: "queue_limit",
+      retry: false,
+      tick: 12,
+      kind: "path",
+    });
+
+    store.clearCommandRejection?.("action");
+    expect(store.getState().lastCommandRejection).not.toBeNull();
+
+    store.clearCommandRejection?.("path");
+    expect(store.getState().lastCommandRejection).toBeNull();
+    expect(onCommandRejection).toHaveBeenLastCalledWith(null);
+  });
 });

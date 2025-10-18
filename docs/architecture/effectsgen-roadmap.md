@@ -11,7 +11,7 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 | 3 | `tools/effectgen` TypeScript emitter | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks. | 🟢 Done |
 | 4 | Client integration of generated bindings | Generated bindings drive type authority and rendering paths in the live client; CI enforces regeneration drift checks. | 🟡 In progress |
 | 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | ⚪ Planned |
-| 6 | Input capture & command dispatch | `client/input.ts` implements `KeyboardInputController.register/unregister`; an `InputActionDispatcher` wires player intents/actions into `NetworkClient.send`, updating path/action payloads and honouring resync/ack flows in `client/client-manager.ts`. | 🟡 In progress |
+| 6 | Input capture & command dispatch | `client/input.ts` implements `KeyboardInputController.register/unregister`; an `InputActionDispatcher` wires player intents/actions into `NetworkClient.send`, updating path/action payloads and honouring resync/ack flows in `client/client-manager.ts`. | 🟢 Done |
 | 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | ⚪ Planned |
 
 ## Phase 4 – Client integration of generated bindings
@@ -85,12 +85,14 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Server tests align with command acknowledgement contract**
   `server/main_test.go` and `server/melee_command_pipeline_test.go` now destructure `(Command, bool, string)` so the command pipeline compiles against acknowledgement and rejection envelopes.
 
-### Active Work – Sequence, buffer, and acknowledge input commands
+* 🟢 **Persist command rejection telemetry in the shell**
+  `client/main.ts` now mirrors stored rejection state into the telemetry panel with styled feedback in `client/styles.css`, keeping the server-provided reason visible after the log scrolls by.
 
-🟡 Wiring command sequencing and acknowledgement across `client/input.ts`, `client/client-manager.ts`, and `server/main.go`, including buffered replays after resync and rejection-triggered retries.
-  * Go test suites now build with acknowledgement-aware command helpers; follow-up work will determine whether additional logging or telemetry should emit on command rejection paths.
-  * Ack/reject envelopes now advance the client's acknowledged tick so command metadata reflects the latest server tick without waiting for a state payload; harness coverage guards against regression.
-  * Next: surface rejection reasons through the input store so UI feedback can present failure context when retries are disabled.
+* 🟢 **Regression coverage for command lifecycle sequencing**
+  Added headless orchestrator tests in `client/__tests__/client-manager.test.ts` to lock resync replays, retriable rejection retries, and rejection clearing so dispatch behaviour stays consistent across reconnects.
+### Next Task
+
+* _Phase 7 kickoff pending; scope the effect runtime swap in `client/render.ts` and `tools/js-effects` before implementation._
 
 **Acceptance criteria**
 

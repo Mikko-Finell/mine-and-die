@@ -5,6 +5,8 @@ import { GameClientOrchestrator, type ClientHeartbeatTelemetry } from "./client-
 import {
   InMemoryInputStore,
   KeyboardInputController,
+  type CommandKind,
+  type CommandRejectionDetails,
   type InputBindings,
   type InputActionDispatcher,
 } from "./input";
@@ -56,6 +58,12 @@ interface LogEntry {
   message: string;
 }
 
+interface CommandRejectionDisplay {
+  label: string;
+  reason: string;
+  meta: string | null;
+}
+
 type SessionState = "idle" | "connecting" | "connected" | "shuttingDown" | "error";
 
 class GameClientApp extends LitElement {
@@ -65,6 +73,7 @@ class GameClientApp extends LitElement {
     heartbeat: { state: true },
     logs: { state: true },
     activeTab: { state: true },
+    commandRejection: { state: true },
     playerId: { state: true },
     worldDimensions: { state: true },
   } as const;
@@ -86,6 +95,7 @@ class GameClientApp extends LitElement {
 
   playerId: string | null;
   worldDimensions: WorldConfigurationSnapshot | null;
+  commandRejection: CommandRejectionDisplay | null;
 
   constructor() {
     super();
@@ -113,6 +123,22 @@ class GameClientApp extends LitElement {
         this.inputStore.setPathActive(state.active);
         this.inputStore.setPathTarget?.(state.target);
       },
+      onCommandRejectionChanged: (rejection) => {
+        if (!rejection) {
+          this.inputStore.clearCommandRejection?.();
+          this.updateCommandRejectionDisplay(null);
+          return;
+        }
+        if (rejection.retry) {
+          this.inputStore.clearCommandRejection?.(rejection.kind);
+          this.updateCommandRejectionDisplay(null);
+          return;
+        }
+        this.inputStore.setCommandRejection?.(rejection);
+        this.updateCommandRejectionDisplay(rejection);
+        const description = this.describeCommandKind(rejection.kind);
+        this.addLog(`${description} rejected: ${rejection.reason}`);
+      },
     });
     this.inputController = new KeyboardInputController({
       store: this.inputStore,
@@ -132,6 +158,7 @@ class GameClientApp extends LitElement {
     this.activeTab = "telemetry";
     this.playerId = null;
     this.worldDimensions = null;
+    this.commandRejection = null;
     this.addLog("Booting client…");
     this.updateHeartbeatStatus();
   }
@@ -173,6 +200,40 @@ class GameClientApp extends LitElement {
       message,
     };
     this.logs = [entry, ...this.logs].slice(0, 50);
+  }
+
+  private describeCommandKind(kind: CommandKind): string {
+    switch (kind) {
+      case "input":
+        return "Movement command";
+      case "path":
+        return "Path command";
+      case "cancelPath":
+        return "Path cancel command";
+      case "action":
+        return "Action command";
+      default:
+        return `${kind} command`;
+    }
+  }
+
+  private updateCommandRejectionDisplay(rejection: CommandRejectionDetails | null): void {
+    if (!rejection) {
+      this.commandRejection = null;
+      return;
+    }
+
+    const label = `${this.describeCommandKind(rejection.kind)} rejected`;
+    const metadata: string[] = [`seq ${rejection.sequence}`];
+    if (typeof rejection.tick === "number" && Number.isFinite(rejection.tick)) {
+      metadata.push(`tick ${Math.floor(rejection.tick)}`);
+    }
+
+    this.commandRejection = {
+      label,
+      reason: rejection.reason,
+      meta: metadata.length > 0 ? metadata.join(" · ") : null,
+    };
   }
 
   private async fetchHealth(): Promise<void> {
@@ -398,6 +459,7 @@ class GameClientApp extends LitElement {
         .serverTime=${this.serverTime}
         .heartbeat=${this.heartbeat}
         .activeTab=${this.activeTab}
+        .commandRejection=${this.commandRejection}
         .connectionStatus=${this.connectionStatus}
         .connectionError=${this.connectionError ?? ""}
         .worldDimensions=${this.worldDimensions}
@@ -427,6 +489,7 @@ class AppShell extends LitElement {
     serverTime: { type: String },
     heartbeat: { type: String },
     activeTab: { attribute: false },
+    commandRejection: { attribute: false },
     connectionStatus: { type: String },
     connectionError: { type: String },
     worldDimensions: { attribute: false },
@@ -440,6 +503,7 @@ class AppShell extends LitElement {
   serverTime!: string;
   heartbeat!: string;
   activeTab!: PanelKey;
+  commandRejection: CommandRejectionDisplay | null;
   connectionStatus!: SessionState;
   connectionError!: string;
   worldDimensions: WorldConfigurationSnapshot | null;
@@ -454,6 +518,7 @@ class AppShell extends LitElement {
     this.serverTime = "--";
     this.heartbeat = "--";
     this.activeTab = "telemetry";
+    this.commandRejection = null;
     this.connectionStatus = "idle";
     this.connectionError = "";
     this.worldDimensions = null;
@@ -539,6 +604,7 @@ class AppShell extends LitElement {
           .healthStatus=${this.healthStatus}
           .serverTime=${this.serverTime}
           .heartbeat=${this.heartbeat}
+          .commandRejection=${this.commandRejection}
           .worldDimensions=${this.worldDimensions}
         ></game-canvas>
       </main>
@@ -554,6 +620,7 @@ class GameCanvas extends LitElement {
     healthStatus: { type: String },
     serverTime: { type: String },
     heartbeat: { type: String },
+    commandRejection: { attribute: false },
     worldDimensions: { attribute: false },
   } as const;
 
@@ -567,6 +634,7 @@ class GameCanvas extends LitElement {
   healthStatus!: string;
   serverTime!: string;
   heartbeat!: string;
+  commandRejection: CommandRejectionDisplay | null;
   worldDimensions: WorldConfigurationSnapshot | null;
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
@@ -601,6 +669,7 @@ class GameCanvas extends LitElement {
     this.healthStatus = "--";
     this.serverTime = "--";
     this.heartbeat = "--";
+    this.commandRejection = null;
     this.worldDimensions = null;
   }
 
@@ -771,6 +840,7 @@ class GameCanvas extends LitElement {
           .healthStatus=${this.healthStatus}
           .serverTime=${this.serverTime}
           .heartbeat=${this.heartbeat}
+          .commandRejection=${this.commandRejection}
         ></panel-viewport>
       </section>
     `;
@@ -846,6 +916,7 @@ class PanelViewport extends LitElement {
     healthStatus: { type: String },
     serverTime: { type: String },
     heartbeat: { type: String },
+    commandRejection: { attribute: false },
   } as const;
 
   activeTab!: PanelKey;
@@ -853,6 +924,7 @@ class PanelViewport extends LitElement {
   healthStatus!: string;
   serverTime!: string;
   heartbeat!: string;
+  commandRejection: CommandRejectionDisplay | null;
 
   constructor() {
     super();
@@ -861,6 +933,7 @@ class PanelViewport extends LitElement {
     this.healthStatus = "--";
     this.serverTime = "--";
     this.heartbeat = "--";
+    this.commandRejection = null;
   }
 
   createRenderRoot(): Element | ShadowRoot {
@@ -875,6 +948,7 @@ class PanelViewport extends LitElement {
           .serverTime=${this.serverTime}
           .heartbeat=${this.heartbeat}
           .logs=${this.logs}
+          .commandRejection=${this.commandRejection}
           ?hidden=${this.activeTab !== "telemetry"}
         ></debug-panel>
         <world-controls ?hidden=${this.activeTab !== "world"}></world-controls>
@@ -890,12 +964,14 @@ class DebugPanel extends LitElement {
     serverTime: { type: String },
     heartbeat: { type: String },
     logs: { attribute: false },
+    commandRejection: { attribute: false },
   } as const;
 
   healthStatus!: string;
   serverTime!: string;
   heartbeat!: string;
   logs!: LogEntry[];
+  commandRejection: CommandRejectionDisplay | null;
 
   constructor() {
     super();
@@ -903,6 +979,7 @@ class DebugPanel extends LitElement {
     this.serverTime = "--";
     this.heartbeat = "--";
     this.logs = [];
+    this.commandRejection = null;
   }
 
   createRenderRoot(): Element | ShadowRoot {
@@ -941,6 +1018,17 @@ class DebugPanel extends LitElement {
                 <span class="debug-metric__value">${this.heartbeat}</span>
               </div>
             </div>
+            ${this.commandRejection
+              ? html`
+                  <div class="command-rejection" role="status" aria-live="polite">
+                    <span class="command-rejection__badge">${this.commandRejection.label}</span>
+                    <span class="command-rejection__reason">${this.commandRejection.reason}</span>
+                    ${this.commandRejection.meta
+                      ? html`<span class="command-rejection__meta">${this.commandRejection.meta}</span>`
+                      : null}
+                  </div>
+                `
+              : null}
           </div>
           <section>
             <h3 class="sr-only">Client console output</h3>
