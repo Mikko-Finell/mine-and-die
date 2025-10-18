@@ -107,26 +107,18 @@ Move to Phase 7.
 
 ---
 
-## [IN PROGRESS] Phase 7 — Harness and regression coverage
+## [DONE] Phase 7 — Harness and regression coverage
 
 ### Next task
 
-**Goal**
-Lock in the behavior that makes the scene playable.
+Move to Phase 8.
 
-**Exit criteria**
+### Summary
 
-* Headless harness covers:
-
-  * join → `applyKeyframe` hydrates players/NPCs/obstacles/ground items,
-  * state ticks → `applyPatchBatch` moves actors,
-  * `buildRenderBatch` includes both world and effect geometry,
-  * `CanvasRenderer.stepFrame` draws `staticGeometry` and effects in the intended order.
-* Tests exercise movement acknowledgement ticks and ensure actor positions advance only forward (no regressions).
-
-**Notes / places your team already pointed to**
-
-* You’ve already been using a headless harness for lifecycle/effect paths; extend it to assert world hydration and batch composition.
+* Headless harness coverage now asserts that join hydration seeds the world store with players, NPCs, obstacles, and ground items while rendering the background and grid layers in the initial batch (`client/__tests__/client-manager.test.ts`).
+* Lifecycle-driven tests verify that effect spawns share a render batch with hydrated world geometry and maintain z-index ordering so actor silhouettes paint before effect quads (`client/__tests__/client-manager.test.ts`).
+* `CanvasRenderer` regression coverage captures per-frame ordering by stubbing renderer internals, ensuring static world passes finish before runtime effect updates or draws execute (`client/__tests__/canvas-renderer-resize.test.ts`).
+* Existing acknowledgement telemetry tests continue to enforce monotonically advancing ticks, preventing regressions where actor movement would rewind on late acknowledgements (`client/__tests__/client-manager.test.ts`).
 
 ---
 

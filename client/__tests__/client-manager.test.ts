@@ -436,6 +436,180 @@ describe("GameClientOrchestrator", () => {
     await orchestrator.shutdown();
   });
 
+  test("hydrates world entities from join payload", async () => {
+    const { orchestrator, renderer, worldState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+      joinResponseOverrides: {
+        world: { width: 96, height: 64 },
+        players: [
+          {
+            id: "player-1",
+            x: 12,
+            y: 20,
+            facing: "down",
+            health: 8,
+            maxHealth: 12,
+          },
+        ],
+        npcs: [
+          {
+            id: "npc-1",
+            x: 28,
+            y: 36,
+            type: "goblin",
+            health: 6,
+            maxHealth: 10,
+          },
+        ],
+        obstacles: [
+          {
+            id: "obstacle-1",
+            x: 48,
+            y: 40,
+            width: 4,
+            height: 2,
+            type: "rock",
+          },
+        ],
+        groundItems: [
+          {
+            id: "item-1",
+            type: "gold",
+            fungibility_key: "gold",
+            qty: 3,
+            x: 60,
+            y: 44,
+          },
+        ],
+      },
+    });
+
+    await orchestrator.boot({});
+
+    const snapshot = worldState.snapshot();
+    expect(snapshot.keyframe).not.toBeNull();
+    expect(snapshot.keyframe?.metadata).toMatchObject({
+      source: "join",
+      world: { width: 96, height: 64 },
+      seed: "seed",
+    });
+
+    expect(snapshot.entities.get("player-1")).toMatchObject({
+      id: "player-1",
+      type: "player",
+      position: [12, 20],
+      facing: "down",
+      health: 8,
+      maxHealth: 12,
+    });
+    expect(snapshot.entities.get("npc-1")).toMatchObject({
+      id: "npc-1",
+      type: "npc",
+      position: [28, 36],
+      npcType: "goblin",
+      health: 6,
+      maxHealth: 10,
+    });
+    expect(snapshot.entities.get("obstacle-1")).toMatchObject({
+      id: "obstacle-1",
+      type: "obstacle",
+      position: [48, 40],
+      width: 4,
+      height: 2,
+      obstacleType: "rock",
+    });
+    expect(snapshot.entities.get("item-1")).toMatchObject({
+      id: "item-1",
+      type: "groundItem",
+      position: [60, 44],
+      itemType: "gold",
+      qty: 3,
+      fungibilityKey: "gold",
+    });
+
+    const batch = renderer.batches.at(-1);
+    expect(batch).toBeDefined();
+    expect(findStaticGeometry(batch, "world/background")).not.toBeNull();
+    expect(findStaticGeometry(batch, "world/grid")).not.toBeNull();
+    expect(findStaticGeometry(batch, "world/player/player-1")).not.toBeNull();
+    expect(findStaticGeometry(batch, "world/npc/npc-1")).not.toBeNull();
+    expect(findStaticGeometry(batch, "world/obstacle/obstacle-1")).not.toBeNull();
+    expect(findStaticGeometry(batch, "world/ground-item/item-1")).not.toBeNull();
+
+    await orchestrator.shutdown();
+  });
+
+  test("render batches include hydrated world geometry and active effects", async () => {
+    const attackEntry = generatedEffectCatalog.attack;
+    const { orchestrator, renderer, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+      joinResponseOverrides: {
+        players: [
+          {
+            id: "player-1",
+            x: 16,
+            y: 24,
+          },
+        ],
+      },
+    });
+
+    await orchestrator.boot({});
+
+    const spawn: ContractLifecycleSpawnEvent = {
+      seq: 1,
+      tick: 32,
+      instance: {
+        id: "effect-attack",
+        entryId: "attack",
+        definitionId: attackEntry.contractId,
+        definition: attackEntry.definition,
+        startTick: 32,
+        deliveryState: {
+          geometry: {
+            shape: "rect",
+            width: 40,
+            height: 24,
+          },
+          motion: {
+            positionX: 16,
+            positionY: 24,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: 1,
+        },
+        params: attackEntry.blocks.parameters as Readonly<Record<string, number>>,
+        replication: attackEntry.definition.client,
+        end: attackEntry.definition.end,
+      },
+    };
+
+    emitLifecycleState({
+      spawns: [spawn],
+      cursors: { "effect-attack": spawn.seq },
+      tick: spawn.tick,
+      sequence: spawn.seq,
+      keyframeSequence: 1,
+      receivedAt: spawn.tick * 16,
+    });
+
+    const batch = renderer.batches.at(-1);
+    expect(batch).toBeDefined();
+    const staticGeometry = batch!.staticGeometry;
+    const worldIds = staticGeometry.filter((entry) => entry.id.startsWith("world/")).map((entry) => entry.id);
+    expect(worldIds).toContain("world/background");
+    expect(worldIds).toContain("world/player/player-1");
+    expect(staticGeometry.some((entry) => entry.id === "effect-attack")).toBe(true);
+
+    const orderedIds = sortGeometryByRenderOrder(staticGeometry);
+    expect(orderedIds.indexOf("world/player/player-1")).toBeLessThan(orderedIds.indexOf("effect-attack"));
+
+    await orchestrator.shutdown();
+  });
+
   test("replays pending commands immediately after resync and omits stale ack metadata", async () => {
     const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
       catalog: generatedEffectCatalog,
