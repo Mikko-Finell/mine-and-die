@@ -61,7 +61,7 @@ func TestNewEffectCatalogMetadataClonesEntry(t *testing.T) {
 	}
 }
 
-func TestEffectCatalogMetadataMarshalJSONFlattensBlocks(t *testing.T) {
+func TestEffectCatalogMetadataMarshalJSONIncludesBlocksObject(t *testing.T) {
 	meta := effectCatalogMetadata{
 		ContractID: "fireball",
 		Definition: &effectcontract.EffectDefinition{
@@ -101,10 +101,20 @@ func TestEffectCatalogMetadataMarshalJSONFlattensBlocks(t *testing.T) {
 	if string(decoded["managedByClient"]) != "true" {
 		t.Fatalf("expected managedByClient to be encoded, got %s", string(decoded["managedByClient"]))
 	}
-	if string(decoded["jsEffect"]) != "\"projectile/fireball\"" {
-		t.Fatalf("expected jsEffect block to be flattened, got %s", string(decoded["jsEffect"]))
+	if _, ok := decoded["jsEffect"]; ok {
+		t.Fatalf("expected blocks to remain nested, but jsEffect was flattened")
 	}
-	if string(decoded["parameters"]) != "{\"speed\":320}" {
-		t.Fatalf("expected parameters block to be flattened, got %s", string(decoded["parameters"]))
+	var blocks map[string]json.RawMessage
+	if err := json.Unmarshal(decoded["blocks"], &blocks); err != nil {
+		t.Fatalf("expected blocks to decode as object: %v", err)
+	}
+	if string(blocks["jsEffect"]) != "\"projectile/fireball\"" {
+		t.Fatalf("expected jsEffect block to be nested, got %s", string(blocks["jsEffect"]))
+	}
+	if string(blocks["parameters"]) != "{\"speed\":320}" {
+		t.Fatalf("expected parameters block to be nested, got %s", string(blocks["parameters"]))
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("expected two nested blocks, got %d", len(blocks))
 	}
 }
