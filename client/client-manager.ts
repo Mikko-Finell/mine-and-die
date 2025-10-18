@@ -30,7 +30,15 @@ import {
   type PathTarget,
   type PlayerIntent,
 } from "./input";
-import type { RenderBatch, Renderer, StaticGeometry, AnimationFrame, RenderLayer } from "./render";
+import { translateRenderAnimation } from "./effect-runtime-adapter";
+import type {
+  RenderBatch,
+  Renderer,
+  StaticGeometry,
+  AnimationFrame,
+  RenderLayer,
+  RuntimeEffectFrame,
+} from "./render";
 import type { WorldPatchBatch, WorldStateStore, WorldKeyframe } from "./world-state";
 import type { DeliveryKind } from "./generated/effect-contracts";
 
@@ -530,6 +538,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private buildRenderBatch(view: ContractLifecycleView, time: number): RenderBatch {
     const staticGeometry: StaticGeometry[] = [];
     const animations: AnimationFrame[] = [];
+    const runtimeEffects: RuntimeEffectFrame[] = [];
     const pathTarget = this.clonePathTarget(this.pathCommandState);
 
     for (const entry of view.entries.values()) {
@@ -544,6 +553,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       const animation = this.createAnimationFrame(entry, catalogEntry, "active", time);
       if (animation) {
         animations.push(animation);
+        runtimeEffects.push(this.createRuntimeEffect(animation));
       }
     }
 
@@ -555,6 +565,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       const animation = this.createAnimationFrame(entry, catalogEntry, "ended", time);
       if (animation) {
         animations.push(animation);
+        runtimeEffects.push(this.createRuntimeEffect(animation));
       }
     }
 
@@ -565,6 +576,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       staticGeometry,
       animations,
       pathTarget,
+      runtimeEffects,
     };
   }
 
@@ -667,6 +679,13 @@ export class GameClientOrchestrator implements ClientOrchestrator {
         blocks: catalogEntry.blocks,
         renderedAt: frameTime,
       },
+    };
+  }
+
+  private createRuntimeEffect(animation: AnimationFrame): RuntimeEffectFrame {
+    return {
+      effectId: animation.effectId,
+      intent: translateRenderAnimation(animation),
     };
   }
 
