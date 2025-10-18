@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { EffectLayer } from "@js-effects/effects-lib";
+
 import { GameClientOrchestrator } from "../client-manager";
 import * as effectCatalogStore from "../effect-catalog";
 import {
   effectCatalog as generatedEffectCatalog,
+  type DeliveryKind,
 } from "../generated/effect-contracts";
 import {
   type ContractLifecycleBatch,
@@ -11,7 +14,7 @@ import {
   type ContractLifecycleSpawnEvent,
   type ContractLifecycleUpdateEvent,
 } from "../effect-lifecycle-store";
-import { CanvasRenderer } from "../render";
+import { CanvasRenderer, validateRenderLayers } from "../render";
 import { InMemoryWorldStateStore } from "../world-state";
 import {
   createHeadlessHarness,
@@ -21,6 +24,12 @@ import {
   defaultRendererConfiguration,
   HeadlessNetworkClient,
 } from "./helpers/headless-harness";
+
+const expectedRuntimeLayerByDelivery: Record<DeliveryKind, number> = {
+  area: EffectLayer.ActorOverlay,
+  target: EffectLayer.ActorOverlay,
+  visual: EffectLayer.GroundDecal,
+};
 
 describe("Lifecycle renderer smoke test", () => {
   beforeEach(() => {
@@ -40,6 +49,18 @@ describe("Lifecycle renderer smoke test", () => {
     const { network, renderer, orchestrator } = createHeadlessHarness({
       catalog: generatedEffectCatalog,
     });
+
+    expect(() => validateRenderLayers(renderer.configuration.layers)).not.toThrow();
+    const misorderedLayers = renderer.configuration.layers.map((layer) => {
+      if (layer.id === "effect-area") {
+        return { ...layer, zIndex: layer.zIndex + 10 };
+      }
+      if (layer.id === "effect-target") {
+        return { ...layer, zIndex: layer.zIndex - 10 };
+      }
+      return { ...layer };
+    });
+    expect(() => validateRenderLayers(misorderedLayers)).toThrowError(/runtime layer ordering/);
 
     const onReady = vi.fn();
     await orchestrator.boot({ onReady });
@@ -228,6 +249,13 @@ describe("Lifecycle renderer smoke test", () => {
     expect(fireballRuntime!.intent!.definition.type).toBe("fireball");
     expect(fireballRuntime!.intent!.state).toBe("active");
     expect(fireballRuntime!.intent!.retained).toBe(false);
+    const fireballInstance = fireballRuntime!.intent!.definition.create(
+      fireballRuntime!.intent!.options,
+    );
+    expect(fireballInstance.layer).toBe(
+      expectedRuntimeLayerByDelivery[fireballEntry.definition.delivery as DeliveryKind],
+    );
+    fireballInstance.dispose?.();
 
     const attackGeometry = activeBatch.staticGeometry.find((entry) => entry.id === "effect-attack");
     expect(attackGeometry).toBeDefined();
@@ -255,6 +283,13 @@ describe("Lifecycle renderer smoke test", () => {
     expect(attackRuntime!.intent!.definition.type).toBe("melee-swing");
     expect(attackRuntime!.intent!.state).toBe("active");
     expect(attackRuntime!.intent!.retained).toBe(false);
+    const attackInstance = attackRuntime!.intent!.definition.create(
+      attackRuntime!.intent!.options,
+    );
+    expect(attackInstance.layer).toBe(
+      expectedRuntimeLayerByDelivery[attackEntry.definition.delivery as DeliveryKind],
+    );
+    attackInstance.dispose?.();
 
     const endBatch: ContractLifecycleBatch = {
       ends: [fireballEnd, attackEnd],

@@ -47,9 +47,9 @@ export const defaultRendererConfiguration: RendererConfiguration = {
     height: 540,
   },
   layers: [
-    { id: "effect-area", zIndex: 1 },
-    { id: "effect-target", zIndex: 2 },
-    { id: "effect-visual", zIndex: 3 },
+    { id: "effect-visual", zIndex: 1 },
+    { id: "effect-area", zIndex: 2 },
+    { id: "effect-target", zIndex: 3 },
   ],
 };
 
