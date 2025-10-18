@@ -8,6 +8,22 @@ import {
 } from "../effect-lifecycle-store";
 import { createHeadlessHarness } from "./helpers/headless-harness";
 
+const findStaticGeometry = (batch: { readonly staticGeometry: readonly { id: string; vertices: readonly [number, number][]; style?: unknown; }[] } | undefined, id: string) =>
+  batch?.staticGeometry.find((entry) => entry.id === id) ?? null;
+
+const computeVertexCentroid = (vertices: readonly [number, number][]) => {
+  if (vertices.length === 0) {
+    return { x: 0, y: 0 };
+  }
+  let sumX = 0;
+  let sumY = 0;
+  for (const [x, y] of vertices) {
+    sumX += x;
+    sumY += y;
+  }
+  return { x: sumX / vertices.length, y: sumY / vertices.length };
+};
+
 describe("GameClientOrchestrator", () => {
   beforeEach(() => {
     setEffectCatalog(null);
@@ -400,6 +416,97 @@ describe("GameClientOrchestrator", () => {
     emitLifecycleState({ resync: true, receivedAt: 900 });
 
     expect(onCommandRejectionChanged).toHaveBeenLastCalledWith(null);
+
+    await orchestrator.shutdown();
+  });
+
+  test("applies world patches to update actor geometry", async () => {
+    const { orchestrator, renderer, emitLifecycleState, worldState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+      joinResponseOverrides: {
+        players: [
+          {
+            id: "player-1",
+            x: 12,
+            y: 18,
+            facing: "up",
+          },
+        ],
+        npcs: [
+          {
+            id: "npc-1",
+            x: 24,
+            y: 32,
+            type: "goblin",
+            health: 10,
+            maxHealth: 12,
+          },
+        ],
+      },
+    });
+
+    await orchestrator.boot({});
+
+    const initialBatch = renderer.batches.at(-1);
+    expect(initialBatch).toBeDefined();
+
+    const initialPlayerGeometry = findStaticGeometry(initialBatch, "world/player/player-1");
+    expect(initialPlayerGeometry).not.toBeNull();
+    const initialPlayerCenter = computeVertexCentroid(initialPlayerGeometry!.vertices);
+    expect(initialPlayerCenter.x).toBeCloseTo(12);
+    expect(initialPlayerCenter.y).toBeCloseTo(18);
+
+    const initialNpcGeometry = findStaticGeometry(initialBatch, "world/npc/npc-1");
+    expect(initialNpcGeometry).not.toBeNull();
+    const initialNpcCenter = computeVertexCentroid(initialNpcGeometry!.vertices);
+    expect(initialNpcCenter.x).toBeCloseTo(24);
+    expect(initialNpcCenter.y).toBeCloseTo(32);
+
+    const patchPayload: Record<string, unknown> = {
+      patches: [
+        { kind: "player_pos", entityId: "player-1", payload: { x: 40, y: 44 } },
+        { kind: "player_facing", entityId: "player-1", payload: { facing: "left" } },
+        { kind: "player_intent", entityId: "player-1", payload: { dx: -1, dy: 0 } },
+        { kind: "npc_pos", entityId: "npc-1", payload: { x: 52, y: 60 } },
+        { kind: "npc_health", entityId: "npc-1", payload: { health: 6, maxHealth: 12 } },
+      ],
+    };
+
+    emitLifecycleState({
+      payload: patchPayload,
+      tick: 20,
+      receivedAt: 20 * 16,
+    });
+
+    const updatedSnapshot = worldState.snapshot();
+    const playerState = updatedSnapshot.entities.get("player-1");
+    expect(playerState?.position).toEqual([40, 44]);
+    expect(playerState?.facing).toBe("left");
+    expect(playerState?.intent).toEqual({ dx: -1, dy: 0 });
+
+    const npcState = updatedSnapshot.entities.get("npc-1");
+    expect(npcState?.position).toEqual([52, 60]);
+    expect(npcState?.health).toBe(6);
+    expect(npcState?.maxHealth).toBe(12);
+
+    const finalBatch = renderer.batches.at(-1);
+    expect(finalBatch).toBeDefined();
+
+    const updatedPlayerGeometry = findStaticGeometry(finalBatch, "world/player/player-1");
+    expect(updatedPlayerGeometry).not.toBeNull();
+    const playerCenter = computeVertexCentroid(updatedPlayerGeometry!.vertices);
+    expect(playerCenter.x).toBeCloseTo(40);
+    expect(playerCenter.y).toBeCloseTo(44);
+    expect((updatedPlayerGeometry!.style as Record<string, unknown>).facing).toBe("left");
+    expect((updatedPlayerGeometry!.style as Record<string, unknown>).intent).toEqual({ dx: -1, dy: 0 });
+
+    const updatedNpcGeometry = findStaticGeometry(finalBatch, "world/npc/npc-1");
+    expect(updatedNpcGeometry).not.toBeNull();
+    const npcCenter = computeVertexCentroid(updatedNpcGeometry!.vertices);
+    expect(npcCenter.x).toBeCloseTo(52);
+    expect(npcCenter.y).toBeCloseTo(60);
+    expect((updatedNpcGeometry!.style as Record<string, unknown>).health).toBe(6);
+    expect((updatedNpcGeometry!.style as Record<string, unknown>).maxHealth).toBe(12);
 
     await orchestrator.shutdown();
   });
