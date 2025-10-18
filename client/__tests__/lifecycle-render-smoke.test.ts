@@ -14,7 +14,7 @@ import {
   type ContractLifecycleSpawnEvent,
   type ContractLifecycleUpdateEvent,
 } from "../effect-lifecycle-store";
-import { CanvasRenderer, validateRenderLayers } from "../render";
+import { CanvasRenderer, validateRenderLayers, type StaticGeometry } from "../render";
 import { InMemoryWorldStateStore } from "../world-state";
 import {
   createHeadlessHarness,
@@ -30,6 +30,12 @@ const expectedRuntimeLayerByDelivery: Record<DeliveryKind, number> = {
   target: EffectLayer.ActorOverlay,
   visual: EffectLayer.GroundDecal,
 };
+
+const filterEffectGeometry = (geometry: readonly StaticGeometry[]): StaticGeometry[] =>
+  geometry.filter((entry) => !entry.id.startsWith("world/"));
+
+const filterWorldGeometry = (geometry: readonly StaticGeometry[]): StaticGeometry[] =>
+  geometry.filter((entry) => entry.id.startsWith("world/"));
 
 describe("Lifecycle renderer smoke test", () => {
   beforeEach(() => {
@@ -218,7 +224,8 @@ describe("Lifecycle renderer smoke test", () => {
     expect(renderer.batches.length).toBeGreaterThanOrEqual(2);
     const activeBatch = renderer.batches.at(-1)!;
     expect(activeBatch.keyframeId).toBe("tick-121");
-    expect(activeBatch.staticGeometry.length).toBeGreaterThan(0);
+    expect(filterWorldGeometry(activeBatch.staticGeometry).length).toBeGreaterThan(0);
+    expect(filterEffectGeometry(activeBatch.staticGeometry).length).toBeGreaterThan(0);
     expect(activeBatch.animations.length).toBeGreaterThan(0);
 
     const geometry = activeBatch.staticGeometry.find((entry) => entry.id === "effect-fireball");
@@ -309,7 +316,7 @@ describe("Lifecycle renderer smoke test", () => {
     expect(renderer.batches.length).toBeGreaterThanOrEqual(3);
     const endedBatch = renderer.batches.at(-1)!;
     expect(endedBatch.keyframeId).toBe("tick-124");
-    expect(endedBatch.staticGeometry.length).toBeGreaterThan(0);
+    expect(filterEffectGeometry(endedBatch.staticGeometry).length).toBeGreaterThan(0);
     expect(endedBatch.animations.length).toBeGreaterThan(0);
 
     const endedAnimation = endedBatch.animations.find((entry) => entry.effectId === "effect-fireball");
@@ -379,7 +386,7 @@ describe("Lifecycle renderer smoke test", () => {
       const resyncBatch = renderer.batches.at(-1)!;
       expect(resyncBatch.keyframeId).toBe("lifecycle-0");
       expect(resyncBatch.time).toBe(resyncTick * 16);
-      expect(resyncBatch.staticGeometry).toHaveLength(0);
+      expect(filterEffectGeometry(resyncBatch.staticGeometry)).toHaveLength(0);
       expect(resyncBatch.animations).toHaveLength(0);
       expect(resyncBatch.runtimeEffects).toHaveLength(0);
 
@@ -588,7 +595,7 @@ describe("Lifecycle renderer smoke test", () => {
 
       lastBatch = renderer.batches.at(-1)!;
       expect(lastBatch.keyframeId).toBe("lifecycle-0");
-      expect(lastBatch.staticGeometry).toHaveLength(0);
+      expect(filterEffectGeometry(lastBatch.staticGeometry)).toHaveLength(0);
       expect(lastBatch.animations).toHaveLength(0);
 
       const resyncTick = 400;
@@ -612,7 +619,7 @@ describe("Lifecycle renderer smoke test", () => {
 
       lastBatch = renderer.batches.at(-1)!;
       expect(lastBatch.keyframeId).toBe("lifecycle-0");
-      expect(lastBatch.staticGeometry).toHaveLength(0);
+      expect(filterEffectGeometry(lastBatch.staticGeometry)).toHaveLength(0);
       expect(lastBatch.animations).toHaveLength(0);
       expect(lastBatch.time).toBe(resyncTick * 16);
 
@@ -747,7 +754,7 @@ describe("Lifecycle renderer smoke test", () => {
 
       expect(sendSpy).not.toHaveBeenCalled();
       const clearedBatch = renderer.batches.at(-1)!;
-      expect(clearedBatch.staticGeometry).toHaveLength(0);
+      expect(filterEffectGeometry(clearedBatch.staticGeometry)).toHaveLength(0);
       expect(clearedBatch.animations).toHaveLength(0);
 
       const resyncSequence = 24;
@@ -1119,7 +1126,8 @@ describe("Lifecycle renderer smoke test", () => {
     expect(renderer.batches.length).toBeGreaterThanOrEqual(2);
     const activeBatch = renderer.batches.at(-1)!;
     expect(activeBatch.keyframeId).toBe(`tick-${spawnTick}`);
-    expect(activeBatch.staticGeometry.length).toBeGreaterThan(0);
+    expect(filterWorldGeometry(activeBatch.staticGeometry).length).toBeGreaterThan(0);
+    expect(filterEffectGeometry(activeBatch.staticGeometry).length).toBeGreaterThan(0);
     expect(activeBatch.animations.length).toBeGreaterThan(0);
 
     const batchesBeforeDisconnect = renderer.batches.length;
@@ -1133,7 +1141,7 @@ describe("Lifecycle renderer smoke test", () => {
     expect(renderer.batches.length).toBe(batchesBeforeDisconnect + 1);
     const disconnectedBatch = renderer.batches.at(-1)!;
     expect(disconnectedBatch.keyframeId).toBe("lifecycle-0");
-    expect(disconnectedBatch.staticGeometry).toHaveLength(0);
+    expect(filterEffectGeometry(disconnectedBatch.staticGeometry)).toHaveLength(0);
     expect(disconnectedBatch.animations).toHaveLength(0);
     expect(disconnectedBatch.pathTarget).toBeNull();
   });
