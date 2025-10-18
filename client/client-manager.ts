@@ -68,6 +68,10 @@ const WORLD_NPC_LAYER: RenderLayer = { id: "world-npcs", zIndex: -40 };
 const WORLD_PLAYER_LAYER: RenderLayer = { id: "world-players", zIndex: -30 };
 const WORLD_GROUND_ITEM_LAYER: RenderLayer = { id: "world-ground-items", zIndex: -35 };
 
+const PLAYER_RADIUS = 14;
+const NPC_RADIUS = 14;
+const GROUND_ITEM_RADIUS = 10;
+
 export interface ClientManagerConfiguration {
   readonly autoConnect: boolean;
   readonly reconcileIntervalMs: number;
@@ -1081,7 +1085,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     entity: WorldEntityState,
     position: readonly [number, number],
   ): StaticGeometry | null {
-    const radius = 0.4;
+    const radius = PLAYER_RADIUS;
     const vertices = this.createCircleVertices(position, radius, 14);
     if (vertices.length === 0) {
       return null;
@@ -1118,7 +1122,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     entity: WorldEntityState,
     position: readonly [number, number],
   ): StaticGeometry | null {
-    const radius = 0.4;
+    const radius = NPC_RADIUS;
     const vertices = this.createCircleVertices(position, radius, 14);
     if (vertices.length === 0) {
       return null;
@@ -1192,7 +1196,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     entity: WorldEntityState,
     position: readonly [number, number],
   ): StaticGeometry | null {
-    const radius = 0.3;
+    const radius = GROUND_ITEM_RADIUS;
     const vertices = this.createDiamondVertices(position, radius);
     if (vertices.length === 0) {
       return null;
