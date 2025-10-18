@@ -13,12 +13,23 @@ import {
   setEffectCatalog,
   type EffectCatalogEntryMetadata,
 } from "./effect-catalog";
-import type {
-  HeartbeatAck,
-  JoinResponse,
-  NetworkClient,
-  NetworkEventHandlers,
-  NetworkMessageEnvelope,
+import {
+  normalizeGroundItemSnapshots,
+  normalizeNPCSnapshots,
+  normalizeNetworkPatches,
+  normalizeObstacleSnapshots,
+  normalizePlayerSnapshots,
+  type GroundItemSnapshot,
+  type HeartbeatAck,
+  type JoinResponse,
+  type NetworkClient,
+  type NetworkEventHandlers,
+  type NetworkMessageEnvelope,
+  type NetworkPatch,
+  type NPCSnapshot,
+  type ObstacleSnapshot,
+  type PlayerSnapshot,
+  type WorldConfigurationSnapshot,
 } from "./network";
 import {
   NetworkInputActionDispatcher,
@@ -39,7 +50,14 @@ import type {
   RenderLayer,
   RuntimeEffectFrame,
 } from "./render";
-import type { WorldPatchBatch, WorldStateStore, WorldKeyframe } from "./world-state";
+import type {
+  WorldEntityState,
+  WorldPatchBatch,
+  WorldPatchOperation,
+  WorldStateSnapshot,
+  WorldStateStore,
+  WorldKeyframe,
+} from "./world-state";
 import type { DeliveryKind } from "./generated/effect-contracts";
 
 export interface ClientManagerConfiguration {
@@ -90,6 +108,13 @@ interface PendingKeyframeRetry {
   attempt?: number;
 }
 
+interface WorldSnapshotPayload {
+  readonly players: readonly PlayerSnapshot[];
+  readonly npcs: readonly NPCSnapshot[];
+  readonly obstacles: readonly ObstacleSnapshot[];
+  readonly groundItems: readonly GroundItemSnapshot[];
+}
+
 const cloneCommandRejectionDetails = (rejection: CommandRejectionDetails): CommandRejectionDetails => ({
   sequence: rejection.sequence,
   reason: rejection.reason,
@@ -110,6 +135,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private lastRenderTime = -1;
   private lastRenderPathSignature = "";
   private joinResponse: JoinResponse | null = null;
+  private latestWorldSnapshot: WorldStateSnapshot | null = null;
+  private worldRenderVersion = 0;
+  private lastRenderedWorldVersion = -1;
   private latestKeyframeSequence: number | null = null;
   private keyframeRequestInFlight: number | null = null;
   private pendingKeyframeRetry: PendingKeyframeRetry | null = null;
@@ -284,7 +312,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     }
 
     const tickValue = payload["t"];
-    const tick = typeof tickValue === "number" && Number.isFinite(tickValue) ? Math.floor(tickValue) : null;
+    const tick = this.extractTick(tickValue);
     this.recordAcknowledgedTick(tick);
 
     const isResync = payload["resync"] === true;
@@ -303,12 +331,60 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     const patchSequence = this.extractSequence(payload["sequence"]);
     this.trackPatchSequenceProgress(patchSequence, keyframeSequence);
 
+    let worldStateChanged = false;
+    let worldFrameTime: number | undefined;
+    let worldKeyframeId: string | null = null;
+    const frameTime = tick !== null ? tick * TICK_DURATION_MS : receivedAt;
+
+    const worldSnapshot = this.extractWorldSnapshotFromStatePayload(payload);
+    if (worldSnapshot) {
+      const worldConfig = this.extractWorldDimensions(payload["config"]);
+      const keyframeId = this.resolveWorldKeyframeId("state", keyframeSequence, patchSequence, tick);
+      const metadata = this.createWorldMetadata({
+        source: "state",
+        world: worldConfig,
+        tick,
+        sequence: patchSequence,
+        keyframeSequence,
+      });
+      const keyframe = this.createWorldKeyframe({
+        id: keyframeId,
+        timestamp: frameTime,
+        snapshot: worldSnapshot,
+        metadata,
+      });
+      this.worldState.applyKeyframe(keyframe);
+      worldStateChanged = true;
+      worldFrameTime = frameTime;
+      worldKeyframeId = keyframeId;
+    }
+
+    if (this.payloadHasField(payload, "patches")) {
+      try {
+        const patches = normalizeNetworkPatches(payload["patches"], "state.patches");
+        const batch = this.createWorldPatchBatch(patches, {
+          keyframeId: this.resolvePatchKeyframeId(keyframeSequence, patchSequence, worldKeyframeId, "state"),
+          timestamp: frameTime,
+        });
+        if (batch) {
+          this.worldState.applyPatchBatch(batch);
+          worldStateChanged = true;
+          worldFrameTime = worldFrameTime ?? frameTime;
+        }
+      } catch (error) {
+        this.reportError(error);
+      }
+    }
+
     const batch = this.extractLifecycleBatch(payload);
     if (batch) {
       this.lifecycleStore.applyBatch(batch);
     }
 
-    const frameTime = tick !== null ? tick * TICK_DURATION_MS : receivedAt;
+    if (worldStateChanged) {
+      this.updateWorldSnapshot(worldFrameTime ?? frameTime, false);
+    }
+
     this.renderLifecycleView(frameTime);
 
     this.inputDispatchPaused = false;
@@ -357,10 +433,35 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     if (sequence !== null) {
       this.latestKeyframeSequence = sequence;
     }
+    const tick = this.extractTick(payload["t"]);
+    let worldFrameTime: number | undefined;
+    const worldSnapshot = this.extractWorldSnapshotFromKeyframePayload(payload);
+    if (worldSnapshot) {
+      const worldConfig = this.extractWorldDimensions(payload["config"]);
+      const timestamp = tick !== null ? tick * TICK_DURATION_MS : Date.now();
+      const keyframeId = this.resolveWorldKeyframeId("keyframe", sequence, null, tick);
+      const metadata = this.createWorldMetadata({
+        source: "keyframe",
+        world: worldConfig,
+        tick,
+        sequence,
+        keyframeSequence: sequence,
+      });
+      const keyframe = this.createWorldKeyframe({
+        id: keyframeId,
+        timestamp,
+        snapshot: worldSnapshot,
+        metadata,
+      });
+      this.worldState.applyKeyframe(keyframe);
+      this.updateWorldSnapshot(timestamp, false);
+      worldFrameTime = timestamp;
+    }
     this.keyframeRequestInFlight = null;
     this.pendingKeyframeRetry = null;
     this.clearPendingKeyframeRetryTimer();
     this.resetPatchSequenceTracking();
+    this.renderLifecycleView(worldFrameTime);
   }
 
   private handleKeyframeNackPayload(payload: Record<string, unknown>): void {
@@ -462,6 +563,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;
     this.lastRenderPathSignature = "";
+    this.latestWorldSnapshot = null;
+    this.worldRenderVersion = 0;
+    this.lastRenderedWorldVersion = -1;
     this.latestKeyframeSequence = null;
     this.keyframeRequestInFlight = null;
     this.pendingKeyframeRetry = null;
@@ -473,6 +577,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.inputDispatcher?.handleResync();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
     this.clearCommandRejection();
+    this.hydrateWorldFromJoin(join);
     this.renderLifecycleView();
   }
 
@@ -483,6 +588,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;
     this.lastRenderPathSignature = "";
+    this.latestWorldSnapshot = null;
+    this.worldRenderVersion = 0;
+    this.lastRenderedWorldVersion = -1;
     this.resetPatchSequenceTracking();
     this.clearPendingKeyframeRetryTimer();
     this.latestAcknowledgedTick = null;
@@ -516,28 +624,36 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   }
 
   private renderLifecycleView(frameTime?: number): void {
-    const snapshot = this.lifecycleStore.snapshot();
-    const timestamp = frameTime ?? (snapshot.lastBatchTick !== null
-      ? snapshot.lastBatchTick * TICK_DURATION_MS
+    const lifecycleSnapshot = this.lifecycleStore.snapshot();
+    const timestamp = frameTime ?? (lifecycleSnapshot.lastBatchTick !== null
+      ? lifecycleSnapshot.lastBatchTick * TICK_DURATION_MS
       : Date.now());
     const pathSignature = this.serializePathCommandState(this.pathCommandState);
+    const worldVersion = this.worldRenderVersion;
+    const worldSnapshot = this.latestWorldSnapshot;
 
     if (
-      snapshot.version === this.lastRenderVersion &&
+      lifecycleSnapshot.version === this.lastRenderVersion &&
       timestamp === this.lastRenderTime &&
-      pathSignature === this.lastRenderPathSignature
+      pathSignature === this.lastRenderPathSignature &&
+      worldVersion === this.lastRenderedWorldVersion
     ) {
       return;
     }
 
-    this.lastRenderVersion = snapshot.version;
+    this.lastRenderVersion = lifecycleSnapshot.version;
     this.lastRenderTime = timestamp;
     this.lastRenderPathSignature = pathSignature;
-    const batch = this.buildRenderBatch(snapshot, timestamp);
+    this.lastRenderedWorldVersion = worldVersion;
+    const batch = this.buildRenderBatch(lifecycleSnapshot, timestamp, worldSnapshot);
     this.renderer.renderBatch(batch);
   }
 
-  private buildRenderBatch(view: ContractLifecycleView, time: number): RenderBatch {
+  private buildRenderBatch(
+    view: ContractLifecycleView,
+    time: number,
+    _world: WorldStateSnapshot | null,
+  ): RenderBatch {
     const staticGeometry: StaticGeometry[] = [];
     const animations: AnimationFrame[] = [];
     const runtimeEffects: RuntimeEffectFrame[] = [];
@@ -689,6 +805,496 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       effectId: animation.effectId,
       intent: translateRenderAnimation(animation),
     };
+  }
+
+  private hydrateWorldFromJoin(join: JoinResponse): void {
+    const snapshot: WorldSnapshotPayload = {
+      players: join.players ?? [],
+      npcs: join.npcs ?? [],
+      obstacles: join.obstacles ?? [],
+      groundItems: join.groundItems ?? [],
+    };
+    const timestamp = Date.now();
+    const keyframeId = `join-${join.id}`;
+    const keyframe = this.createWorldKeyframe({
+      id: keyframeId,
+      timestamp,
+      snapshot,
+      metadata: this.createWorldMetadata({
+        source: "join",
+        world: join.world,
+        additional: { seed: join.seed },
+      }),
+    });
+    this.worldState.applyKeyframe(keyframe);
+
+    if (join.patches.length > 0) {
+      const batch = this.createWorldPatchBatch(join.patches, {
+        keyframeId,
+        timestamp,
+      });
+      if (batch) {
+        this.worldState.applyPatchBatch(batch);
+      }
+    }
+
+    this.updateWorldSnapshot(timestamp, false);
+  }
+
+  private createWorldKeyframe(options: {
+    readonly id: string;
+    readonly timestamp: number;
+    readonly snapshot: WorldSnapshotPayload;
+    readonly metadata: Record<string, unknown>;
+  }): WorldKeyframe {
+    const entities = this.createWorldEntities(options.snapshot);
+    return {
+      id: options.id,
+      timestamp: options.timestamp,
+      entities,
+      metadata: { ...options.metadata },
+    };
+  }
+
+  private createWorldEntities(snapshot: WorldSnapshotPayload): WorldEntityState[] {
+    const entities: WorldEntityState[] = [];
+
+    for (const player of snapshot.players) {
+      const entity = this.translatePlayerEntity(player);
+      if (entity) {
+        entities.push(entity);
+      }
+    }
+
+    for (const npc of snapshot.npcs) {
+      const entity = this.translateNPCEntity(npc);
+      if (entity) {
+        entities.push(entity);
+      }
+    }
+
+    for (const obstacle of snapshot.obstacles) {
+      const entity = this.translateObstacleEntity(obstacle);
+      if (entity) {
+        entities.push(entity);
+      }
+    }
+
+    for (const item of snapshot.groundItems) {
+      const entity = this.translateGroundItemEntity(item);
+      if (entity) {
+        entities.push(entity);
+      }
+    }
+
+    return entities;
+  }
+
+  private translatePlayerEntity(player: PlayerSnapshot): WorldEntityState | null {
+    const id = typeof player.id === "string" && player.id.length > 0 ? player.id : null;
+    const x = typeof player.x === "number" && Number.isFinite(player.x) ? player.x : null;
+    const y = typeof player.y === "number" && Number.isFinite(player.y) ? player.y : null;
+    if (!id || x === null || y === null) {
+      return null;
+    }
+
+    const entity: WorldEntityState = {
+      id,
+      type: "player",
+      position: [x, y],
+    };
+
+    if (typeof player.facing === "string" && player.facing.length > 0) {
+      entity.facing = player.facing;
+    }
+    if (typeof player.health === "number" && Number.isFinite(player.health)) {
+      entity.health = player.health;
+    }
+    if (typeof player.maxHealth === "number" && Number.isFinite(player.maxHealth)) {
+      entity.maxHealth = player.maxHealth;
+    }
+    if (player.inventory && typeof player.inventory === "object") {
+      entity.inventory = player.inventory;
+    }
+    if (player.equipment && typeof player.equipment === "object") {
+      entity.equipment = player.equipment;
+    }
+
+    return entity;
+  }
+
+  private translateNPCEntity(npc: NPCSnapshot): WorldEntityState | null {
+    const id = typeof npc.id === "string" && npc.id.length > 0 ? npc.id : null;
+    const x = typeof npc.x === "number" && Number.isFinite(npc.x) ? npc.x : null;
+    const y = typeof npc.y === "number" && Number.isFinite(npc.y) ? npc.y : null;
+    if (!id || x === null || y === null) {
+      return null;
+    }
+
+    const entity: WorldEntityState = {
+      id,
+      type: "npc",
+      position: [x, y],
+    };
+
+    if (typeof npc.facing === "string" && npc.facing.length > 0) {
+      entity.facing = npc.facing;
+    }
+    if (typeof npc.health === "number" && Number.isFinite(npc.health)) {
+      entity.health = npc.health;
+    }
+    if (typeof npc.maxHealth === "number" && Number.isFinite(npc.maxHealth)) {
+      entity.maxHealth = npc.maxHealth;
+    }
+    if (npc.inventory && typeof npc.inventory === "object") {
+      entity.inventory = npc.inventory;
+    }
+    if (npc.equipment && typeof npc.equipment === "object") {
+      entity.equipment = npc.equipment;
+    }
+    if (typeof npc.type === "string" && npc.type.length > 0) {
+      entity.npcType = npc.type;
+    }
+    if (typeof npc.aiControlled === "boolean") {
+      entity.aiControlled = npc.aiControlled;
+    }
+    if (typeof npc.experienceReward === "number" && Number.isFinite(npc.experienceReward)) {
+      entity.experienceReward = npc.experienceReward;
+    }
+
+    return entity;
+  }
+
+  private translateObstacleEntity(obstacle: ObstacleSnapshot): WorldEntityState | null {
+    const id = typeof obstacle.id === "string" && obstacle.id.length > 0 ? obstacle.id : null;
+    const x = typeof obstacle.x === "number" && Number.isFinite(obstacle.x) ? obstacle.x : null;
+    const y = typeof obstacle.y === "number" && Number.isFinite(obstacle.y) ? obstacle.y : null;
+    const width = typeof obstacle.width === "number" && Number.isFinite(obstacle.width) ? obstacle.width : null;
+    const height = typeof obstacle.height === "number" && Number.isFinite(obstacle.height) ? obstacle.height : null;
+    if (!id || x === null || y === null || width === null || height === null) {
+      return null;
+    }
+
+    const entity: WorldEntityState = {
+      id,
+      type: "obstacle",
+      position: [x, y],
+      width,
+      height,
+    };
+
+    if (typeof obstacle.type === "string" && obstacle.type.length > 0) {
+      entity.obstacleType = obstacle.type;
+    }
+
+    return entity;
+  }
+
+  private translateGroundItemEntity(item: GroundItemSnapshot): WorldEntityState | null {
+    const id = typeof item.id === "string" && item.id.length > 0 ? item.id : null;
+    const x = typeof item.x === "number" && Number.isFinite(item.x) ? item.x : null;
+    const y = typeof item.y === "number" && Number.isFinite(item.y) ? item.y : null;
+    const qty = typeof item.qty === "number" && Number.isFinite(item.qty) ? Math.floor(item.qty) : null;
+    if (!id || x === null || y === null || qty === null) {
+      return null;
+    }
+
+    const entity: WorldEntityState = {
+      id,
+      type: "groundItem",
+      position: [x, y],
+      qty,
+      itemType: item.type,
+    };
+
+    if (typeof item.fungibility_key === "string" && item.fungibility_key.length > 0) {
+      entity.fungibilityKey = item.fungibility_key;
+    }
+
+    return entity;
+  }
+
+  private createWorldPatchBatch(
+    patches: readonly NetworkPatch[],
+    options: { readonly keyframeId: string; readonly timestamp: number },
+  ): WorldPatchBatch | null {
+    if (!Array.isArray(patches) || patches.length === 0) {
+      return null;
+    }
+
+    const operations: WorldPatchOperation[] = [];
+    for (const patch of patches) {
+      const translated = this.translateNetworkPatch(patch);
+      if (translated.length > 0) {
+        operations.push(...translated);
+      }
+    }
+
+    if (operations.length === 0) {
+      return null;
+    }
+
+    return {
+      keyframeId: options.keyframeId,
+      timestamp: options.timestamp,
+      operations,
+    };
+  }
+
+  private translateNetworkPatch(patch: NetworkPatch): readonly WorldPatchOperation[] {
+    if (!patch || typeof patch !== "object") {
+      return [];
+    }
+
+    const { kind, entityId, payload } = patch;
+    if (typeof entityId !== "string" || entityId.length === 0) {
+      return [];
+    }
+
+    switch (kind) {
+      case "player_pos":
+      case "npc_pos":
+      case "ground_item_pos":
+        return this.translatePositionPatch(entityId, payload);
+      case "player_facing":
+      case "npc_facing":
+        return this.translateFacingPatch(entityId, payload);
+      case "player_intent":
+        return this.translateIntentPatch(entityId, payload);
+      case "player_health":
+      case "npc_health":
+        return this.translateHealthPatch(entityId, payload);
+      case "player_inventory":
+      case "npc_inventory":
+        return this.translateObjectPatch(entityId, "inventory", payload);
+      case "player_equipment":
+      case "npc_equipment":
+        return this.translateObjectPatch(entityId, "equipment", payload);
+      case "ground_item_qty":
+        return this.translateQuantityPatch(entityId, payload);
+      case "player_removed":
+        return [{ entityId, path: [], value: null }];
+      default:
+        return [];
+    }
+  }
+
+  private translatePositionPatch(entityId: string, payload: unknown): readonly WorldPatchOperation[] {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    const record = payload as Record<string, unknown>;
+    const x = typeof record.x === "number" && Number.isFinite(record.x) ? record.x : null;
+    const y = typeof record.y === "number" && Number.isFinite(record.y) ? record.y : null;
+    if (x === null || y === null) {
+      return [];
+    }
+    return [{ entityId, path: ["position"], value: [x, y] }];
+  }
+
+  private translateFacingPatch(entityId: string, payload: unknown): readonly WorldPatchOperation[] {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    const record = payload as Record<string, unknown>;
+    const facing = typeof record.facing === "string" && record.facing.length > 0 ? record.facing : null;
+    if (!facing) {
+      return [];
+    }
+    return [{ entityId, path: ["facing"], value: facing }];
+  }
+
+  private translateIntentPatch(entityId: string, payload: unknown): readonly WorldPatchOperation[] {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    const record = payload as Record<string, unknown>;
+    const dx = typeof record.dx === "number" && Number.isFinite(record.dx) ? record.dx : null;
+    const dy = typeof record.dy === "number" && Number.isFinite(record.dy) ? record.dy : null;
+    if (dx === null || dy === null) {
+      return [];
+    }
+    return [{ entityId, path: ["intent"], value: { dx, dy } }];
+  }
+
+  private translateHealthPatch(entityId: string, payload: unknown): readonly WorldPatchOperation[] {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    const record = payload as Record<string, unknown>;
+    const operations: WorldPatchOperation[] = [];
+    if (typeof record.health === "number" && Number.isFinite(record.health)) {
+      operations.push({ entityId, path: ["health"], value: record.health });
+    }
+    if (typeof record.maxHealth === "number" && Number.isFinite(record.maxHealth)) {
+      operations.push({ entityId, path: ["maxHealth"], value: record.maxHealth });
+    }
+    return operations;
+  }
+
+  private translateObjectPatch(
+    entityId: string,
+    key: string,
+    payload: unknown,
+  ): readonly WorldPatchOperation[] {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    return [{ entityId, path: [key], value: payload }];
+  }
+
+  private translateQuantityPatch(entityId: string, payload: unknown): readonly WorldPatchOperation[] {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    const record = payload as Record<string, unknown>;
+    const qty = typeof record.qty === "number" && Number.isFinite(record.qty) ? Math.floor(record.qty) : null;
+    if (qty === null) {
+      return [];
+    }
+    return [{ entityId, path: ["qty"], value: qty }];
+  }
+
+  private updateWorldSnapshot(frameTime?: number, immediate = true): void {
+    this.latestWorldSnapshot = this.worldState.snapshot();
+    this.worldRenderVersion += 1;
+    if (immediate) {
+      this.renderLifecycleView(frameTime);
+    }
+  }
+
+  private createWorldMetadata(options: {
+    readonly source: string;
+    readonly world?: WorldConfigurationSnapshot | null;
+    readonly tick?: number | null;
+    readonly sequence?: number | null;
+    readonly keyframeSequence?: number | null;
+    readonly additional?: Record<string, unknown>;
+  }): Record<string, unknown> {
+    const metadata: Record<string, unknown> = { source: options.source };
+    if (options.world) {
+      metadata.world = {
+        width: options.world.width,
+        height: options.world.height,
+      };
+    }
+    if (options.tick !== undefined && options.tick !== null) {
+      metadata.tick = options.tick;
+    }
+    if (options.sequence !== undefined && options.sequence !== null) {
+      metadata.sequence = options.sequence;
+    }
+    if (options.keyframeSequence !== undefined && options.keyframeSequence !== null) {
+      metadata.keyframeSequence = options.keyframeSequence;
+    }
+    if (options.additional) {
+      for (const [key, value] of Object.entries(options.additional)) {
+        metadata[key] = value;
+      }
+    }
+    return metadata;
+  }
+
+  private extractWorldSnapshotFromStatePayload(
+    payload: Record<string, unknown>,
+  ): WorldSnapshotPayload | null {
+    return this.extractWorldSnapshotFromPayload(payload, "state");
+  }
+
+  private extractWorldSnapshotFromKeyframePayload(
+    payload: Record<string, unknown>,
+  ): WorldSnapshotPayload | null {
+    return this.extractWorldSnapshotFromPayload(payload, "keyframe");
+  }
+
+  private extractWorldSnapshotFromPayload(
+    payload: Record<string, unknown>,
+    context: string,
+  ): WorldSnapshotPayload | null {
+    const hasPlayers = this.payloadHasField(payload, "players");
+    const hasNPCs = this.payloadHasField(payload, "npcs");
+    const hasObstacles = this.payloadHasField(payload, "obstacles");
+    const hasGroundItems = this.payloadHasField(payload, "groundItems");
+
+    if (!hasPlayers && !hasNPCs && !hasObstacles && !hasGroundItems) {
+      return null;
+    }
+
+    const players = hasPlayers
+      ? normalizePlayerSnapshots(payload["players"], `${context}.players`)
+      : [];
+    const npcs = hasNPCs
+      ? normalizeNPCSnapshots(payload["npcs"], `${context}.npcs`)
+      : [];
+    const obstacles = hasObstacles
+      ? normalizeObstacleSnapshots(payload["obstacles"], `${context}.obstacles`)
+      : [];
+    const groundItems = hasGroundItems
+      ? normalizeGroundItemSnapshots(payload["groundItems"], `${context}.groundItems`)
+      : [];
+
+    return { players, npcs, obstacles, groundItems };
+  }
+
+  private payloadHasField(payload: Record<string, unknown>, field: string): boolean {
+    return Object.prototype.hasOwnProperty.call(payload, field);
+  }
+
+  private extractWorldDimensions(config: unknown): WorldConfigurationSnapshot | null {
+    if (!config || typeof config !== "object") {
+      return null;
+    }
+    const record = config as Record<string, unknown>;
+    const width = typeof record.width === "number" && Number.isFinite(record.width) ? record.width : null;
+    const height = typeof record.height === "number" && Number.isFinite(record.height) ? record.height : null;
+    if (width === null || height === null) {
+      return null;
+    }
+    return { width, height };
+  }
+
+  private extractTick(value: unknown): number | null {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      return null;
+    }
+    const normalized = Math.floor(value);
+    return normalized >= 0 ? normalized : null;
+  }
+
+  private resolveWorldKeyframeId(
+    source: string,
+    keyframeSequence: number | null,
+    sequence: number | null,
+    tick: number | null,
+  ): string {
+    if (keyframeSequence !== null) {
+      return `${source}-keyframe-${keyframeSequence}`;
+    }
+    if (sequence !== null) {
+      return `${source}-sequence-${sequence}`;
+    }
+    if (tick !== null) {
+      return `${source}-tick-${tick}`;
+    }
+    return `${source}-${Date.now()}`;
+  }
+
+  private resolvePatchKeyframeId(
+    keyframeSequence: number | null,
+    sequence: number | null,
+    fallback: string | null,
+    source: string,
+  ): string {
+    if (keyframeSequence !== null) {
+      return `${source}-keyframe-${keyframeSequence}`;
+    }
+    if (sequence !== null) {
+      return `${source}-sequence-${sequence}`;
+    }
+    if (fallback) {
+      return fallback;
+    }
+    return `${source}-patch-${Date.now()}`;
   }
 
   private applyPendingKeyframeRetry(): void {

@@ -2,30 +2,20 @@
 
 This plan stitches together what your team wrote, in a clean sequence. It only references names/parts they already mentioned.
 
-## [IN PROGRESS] Phase 1 — Ingest the authoritative world stream
+## [DONE] Phase 1 — Ingest the authoritative world stream
+
+### Summary
+
+* Client join now parses full world payloads and hydrates the world store immediately.
+* State/keyframe messages build `WorldKeyframe` / `WorldPatchBatch` objects and update the store before rendering.
 
 ### Next task
 
-**Goal**
-Client actually stores the world the server already sends (100×100 field, players, NPCs, obstacles, ground items, patches).
-
-**Exit criteria**
-
-* `JoinResponse` / `WebSocketNetworkClient.join` parse and return `players`, `npcs`, `obstacles`, `groundItems`, and any initial `patches` from the server (per `server/messages.go`).
-* `GameClientOrchestrator.handleStatePayload` no longer drops world data: it forwards entity lists and the `patches` array to the world store.
-* `InMemoryWorldStateStore.applyKeyframe` is called on join/keyframe payloads; `InMemoryWorldStateStore.applyPatchBatch` is called for each state tick.
-* After applying a keyframe or patch batch, the client takes a fresh `worldState.snapshot()` and triggers a render request.
-
-**Notes / places your team already pointed to**
-
-* Parsing in `client/network.ts` (extend `JoinResponse`, update `WebSocketNetworkClient.join`).
-* Wiring in `client/client-manager.ts` (helpers to build `WorldKeyframe` / `WorldPatchBatch` and to call `applyKeyframe` / `applyPatchBatch`).
-* Patch types include `PatchPlayerPos` / `PatchPlayerIntent` (per `server/world_mutators.go`).
-* World dimensions come from join (100×100).
+Move to Phase 2.
 
 ---
 
-## [TODO] Phase 2 — Turn world state into renderable geometry
+## [IN PROGRESS] Phase 2 — Turn world state into renderable geometry
 
 ### Next task
 

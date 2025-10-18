@@ -65,6 +65,11 @@ export const createJoinResponse = (
     width: defaultRendererConfiguration.dimensions.width,
     height: defaultRendererConfiguration.dimensions.height,
   },
+  players: overrides.players ?? [],
+  npcs: overrides.npcs ?? [],
+  obstacles: overrides.obstacles ?? [],
+  groundItems: overrides.groundItems ?? [],
+  patches: overrides.patches ?? [],
   ...overrides,
 });
 
