@@ -12,7 +12,7 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 | 4 | Client integration of generated bindings | Generated bindings drive type authority and rendering paths in the live client; generation flow validates schema/catalog before emitting artifacts. | 🟢 Done |
 | 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | 🟢 Done |
 | 6 | Input capture & command dispatch | `client/input.ts` implements `KeyboardInputController.register/unregister`; an `InputActionDispatcher` wires player intents/actions into `NetworkClient.send`, updating path/action payloads and honouring resync/ack flows in `client/client-manager.ts`. | 🟢 Done |
-| 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | ⚪ Planned |
+| 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | 🟡 In progress |
 
 ## Phase 4 – Client integration of generated bindings
 
@@ -101,7 +101,7 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   Added headless orchestrator tests in `client/__tests__/client-manager.test.ts` to lock resync replays, retriable rejection retries, and rejection clearing so dispatch behaviour stays consistent across reconnects.
 ### Next Task
 
-* _Phase 7 kickoff pending; scope the effect runtime swap in `client/render.ts` and `tools/js-effects` before implementation._
+* _Phase complete; continue monitoring input/command telemetry while the playback runtime work lands in Phase 7._
 
 **Acceptance criteria**
 
@@ -113,11 +113,26 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 ### Completed Work
 
-* _Not yet started._
+* 🟢 **Canvas renderer runtime swap scaffolding**
+  Replaced the placeholder frame loop in `client/render.ts` with an `EffectManager`-driven runtime that synchronises lifecycle batches, spawns catalog-backed instances, and cleans up completed effects.
 
 ### Next Task
 
-* _Pending Phase 6 completion._
+* 🟡 **Wire orchestrator to effect runtime adapter**
+  Thread translated lifecycle batches from `client/client-manager.ts` through the new adapter so the renderer ticks real runtime instances during headless replays.
+
+### Suggested Next Task
+
+* Document runtime instance lifecycle expectations in `docs/architecture/effectsgen-spec.md` so server/client teams share the same teardown semantics.
+
+### Definition of Done
+
+Phase 7 is complete when all of the following hold:
+
+1. **Runtime swap**: The canvas renderer swaps placeholder drawing routines for the JS effects runtime backed by `tools/js-effects` definitions.
+2. **Lifecycle ownership**: Lifecycle batches spawn and dispose runtime instances according to `ContractLifecycleStore` data, including managed-by-client entries.
+3. **Resource hygiene**: Renderer disposes runtime resources on lifecycle end, resync, and disconnect, preventing leaks across frames.
+4. **End-to-end tests**: Automated playback harnesses validate that catalog-driven animations appear and settle as expected for representative `entryId` scenarios.
 
 ## Definition of Done
 
@@ -147,15 +162,6 @@ Phase 6 is complete when all of the following hold:
 2. **Command lifecycle**: `InputActionDispatcher` tracks pending commands, clears them on acknowledgement, and halts/flushes dispatch on resync events from `client/client-manager.ts`.
 3. **UI feedback loop**: `InMemoryInputStore` (or successor) exposes the data required for UI feedback (active paths, pending actions, rejection reasons) and keeps it consistent through retries.
 4. **Regression coverage**: Tests under `client/__tests__` cover happy-path dispatch, rejection retries, and resync pause behaviour for both keyboard and pointer flows.
-
-### Phase 7 – Effect runtime playback integration
-
-Phase 7 is complete when all of the following hold:
-
-1. **Runtime swap**: The canvas renderer swaps placeholder drawing routines for the JS effects runtime backed by `tools/js-effects` definitions.
-2. **Lifecycle ownership**: Lifecycle batches spawn and dispose runtime instances according to `ContractLifecycleStore` data, including managed-by-client entries.
-3. **Resource hygiene**: Renderer disposes runtime resources on lifecycle end, resync, and disconnect, preventing leaks across frames.
-4. **End-to-end tests**: Automated playback harnesses validate that catalog-driven animations appear and settle as expected for representative `entryId` scenarios.
 
 ## Reference Map (authoritative paths)
 
