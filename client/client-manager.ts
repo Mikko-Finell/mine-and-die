@@ -49,6 +49,7 @@ import type {
   AnimationFrame,
   RenderLayer,
   RuntimeEffectFrame,
+  RenderDimensions,
 } from "./render";
 import type {
   WorldEntityState,
@@ -159,6 +160,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private pathCommandState: PathCommandState = { active: false, target: null };
   private inputDispatcherHooks: InputDispatcherHooks | null = null;
   private lastCommandRejection: CommandRejectionDetails | null = null;
+  private lastSyncedRendererDimensions: RenderDimensions | null = null;
 
   constructor(
     public readonly configuration: ClientManagerConfiguration,
@@ -593,6 +595,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.inputDispatcher?.handleResync();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
     this.clearCommandRejection();
+    this.lastSyncedRendererDimensions = null;
     this.hydrateWorldFromJoin(join);
     this.renderLifecycleView();
   }
@@ -614,6 +617,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.inputDispatcher?.handleResync();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
     this.clearCommandRejection();
+    this.lastSyncedRendererDimensions = null;
   }
 
   private handleDisconnect(): void {
@@ -626,6 +630,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.resetPatchSequenceTracking();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: false });
     this.clearCommandRejection();
+    this.lastSyncedRendererDimensions = null;
     this.renderLifecycleView();
   }
 
@@ -916,6 +921,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     const geometry: StaticGeometry[] = [];
     const dimensions = this.resolveWorldDimensions(worldSnapshot);
     if (dimensions) {
+      this.syncRendererDimensions(dimensions);
       const background = this.createWorldBackgroundGeometry(dimensions);
       if (background) {
         geometry.push(background);
@@ -938,6 +944,23 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     }
 
     return geometry;
+  }
+
+  private syncRendererDimensions(dimensions: WorldConfigurationSnapshot | null): void {
+    if (!dimensions) {
+      return;
+    }
+    const { width, height } = dimensions;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return;
+    }
+    const next: RenderDimensions = { width, height };
+    const last = this.lastSyncedRendererDimensions;
+    if (last && last.width === next.width && last.height === next.height) {
+      return;
+    }
+    this.lastSyncedRendererDimensions = { ...next };
+    this.renderer.resize({ ...next });
   }
 
   private resolveWorldDimensions(worldSnapshot: WorldStateSnapshot | null): WorldConfigurationSnapshot | null {

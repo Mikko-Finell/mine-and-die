@@ -114,6 +114,46 @@ describe("GameClientOrchestrator", () => {
     expect(cleared!.animations.length).toBe(0);
   });
 
+  test("resizes renderer when authoritative world dimensions change", async () => {
+    const { orchestrator, network, renderer } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    const onLog = vi.fn();
+    await orchestrator.boot({ onLog });
+
+    expect(renderer.resizeEvents.length).toBeGreaterThan(0);
+
+    const newWidth = 144;
+    const newHeight = 192;
+    network.emit({
+      type: "state",
+      payload: {
+        players: [],
+        npcs: [],
+        obstacles: [],
+        groundItems: [],
+        config: { width: newWidth, height: newHeight },
+        t: 12,
+      },
+      receivedAt: 120,
+    });
+
+    expect(renderer.resizeEvents.at(-1)).toEqual({ width: newWidth, height: newHeight });
+    const finalBatch = renderer.batches.at(-1);
+    expect(finalBatch).toBeDefined();
+    const background = finalBatch!.staticGeometry.find((entry) => {
+      const style = entry.style as Record<string, unknown> | undefined;
+      return style?.kind === "world-background";
+    });
+    expect(background).toBeDefined();
+    expect(background!.style).toMatchObject({ width: newWidth, height: newHeight });
+
+    const lastLog = onLog.mock.calls.at(-1)?.at(0);
+    expect(typeof lastLog).toBe("string");
+    expect(String(lastLog)).toContain(`size=${newWidth}×${newHeight}`);
+  });
+
   test("effect-driven geometry renders above world actors", async () => {
     const attackEntry = generatedEffectCatalog.attack;
     const { orchestrator, network, renderer } = createHeadlessHarness({
