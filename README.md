@@ -25,6 +25,21 @@ Mine & Die is a browser-based PvP extraction prototype. A Go 1.24 server simulat
 3. **Open the client** – Visit `http://localhost:8080` in a browser. Refresh to pick up any HTML/CSS/JS edits.
 4. **Stop** – Press `Ctrl+C` in the terminal running the server.
 
+### Debug client shell
+
+The stripped-down debug bootstrap lives at [`client/debug-main.ts`](client/debug-main.ts) with an HTML host in [`client/debug.html`](client/debug.html).
+
+1. Build the bundle:
+   ```bash
+   npm run client:debug
+   ```
+2. Launch the server if it isn't already running:
+   ```bash
+   cd server
+   go run .
+   ```
+3. Open `http://localhost:8080/debug` to load the bare canvas view. The route is served by the Go file server, so any rebuild of `client/dist/debug-main.js` is picked up on refresh.
+
 ## Testing
 - Go regression tests:
   ```bash

@@ -576,6 +576,18 @@ func main() {
 	})
 
 	clientDir := filepath.Clean(filepath.Join("..", "client"))
+	debugHTML := filepath.Join(clientDir, "debug.html")
+	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/debug" && r.URL.Path != "/debug/" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		http.ServeFile(w, r, debugHTML)
+	})
 	fs := http.FileServer(http.Dir(clientDir))
 	http.Handle("/", fs)
 

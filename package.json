@@ -12,6 +12,7 @@
     "preclient:build": "npm run effects:generate",
     "client:dev": "esbuild client/main.ts --bundle --sourcemap --target=es2018 --format=esm --outfile=client/dist/main.js --watch",
     "preclient:dev": "npm run effects:generate",
+    "client:debug": "esbuild client/debug-main.ts --bundle --sourcemap --target=es2018 --format=esm --outfile=client/dist/debug-main.js",
     "build": "npm --prefix tools/js-effects run build && npm run client:build",
     "test": "vitest",
     "pretest": "npm run effects:check && npm --prefix tools/js-effects run build",
