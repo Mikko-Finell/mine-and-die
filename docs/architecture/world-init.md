@@ -1,155 +1,79 @@
-# Roadmap: “Hydrate world → translate to geometry → draw → show movement → layer effects”
+# Remove server-sent catalog: minimal, safe plan
 
-This plan stitches together what your team wrote, in a clean sequence. It only references names/parts they already mentioned.
+## Decision
 
-## [DONE] Phase 1 — Ingest the authoritative world stream
+* Canonical source of truth: the **generated client catalog**.
+* The **server will not send the catalog**; it will expose a **stable schema hash/version** only.
 
-### Summary
+**How to use this document**
+1. Pick the first thing that is not marked [IN PROGRESS] or [DONE]
+2. Start working on it
+3. When finished mark as [DONE] or [IN PRORGESS] if it's large and you were unable to compelete it
+4. Always add a next task so the next contributor can easily pick up where you left off
 
-* Client join now parses full world payloads and hydrates the world store immediately.
-* State/keyframe messages build `WorldKeyframe` / `WorldPatchBatch` objects and update the store before rendering.
+**Kickoff**
 
-### Next task
+* [DONE] Create this plan
 
-Move to Phase 2.
+***Next task**
+Start on the generator work. Describe the `next task` in one paragraph of technical detail when done.
 
----
+## What changes (conceptually)
 
-## [DONE] Phase 2 — Turn world state into renderable geometry
+**Generator**
 
-### Summary
+* [TODO] Produce a stable hash/version of the canonical catalog.
+* [TODO] Make that hash available to both client and server artifacts (no specifics on how).
 
-* `GameClientOrchestrator.buildRenderBatch` now merges `worldState.snapshot()` output into `staticGeometry`, layering a world background/grid and world entities ahead of effect geometry.
-* Static geometry entries for players, NPCs, obstacles, and ground items carry metadata (facing, health, size, quantity) so the renderer can paint accurate silhouettes on the 100×100 board.
+**Server**
 
-### Next task
+* [TODO] Stop including the catalog in join/resync responses.
+* [TODO] Include only the catalog hash/version in the handshake.
+* [TODO] (Optional) Keep a temporary debug endpoint/flag to fetch the catalog during migration; default off.
 
-Move to Phase 3.
+**Client**
 
----
+* [TODO] Remove validation of server-provided catalog.
+* [TODO] On join, compare server hash vs local generated hash.
+* [TODO] If mismatch → clear compatibility error; otherwise use the local generated catalog.
 
-## [DONE] Phase 3 — Draw the static geometry (before the effects)
+## Tests (acceptance criteria)
 
-### Summary
+* **Generator drift test:** If the generator output changes, the published hash changes in both client and server artifacts together, or CI fails.
+* **Server contract test:** Join/resync payloads contain the hash/version and **do not** contain the catalog.
+* **Client handshake tests:**
 
-* `CanvasRenderer.stepFrame` now sorts render layers and rasterizes world/static geometry before delegating to runtime effects, keeping the waypoint ring overlay intact.
-* The renderer resizes the canvas using authoritative world dimensions derived from the background geometry so the 100×100 field renders at the correct scale.
+  * Matching hash → proceeds.
+  * Mismatched hash → fails with a specific error.
+* **E2E canary:** Boot client+server built from the same commit; join succeeds without transferring a catalog.
 
-### Next task
+## CI/Quality gates
 
-Move to Phase 4.
+* Regeneration check: fail if generated artifacts changed but weren’t committed.
+* Cross-artifact check: fail if client’s hash and server’s hash disagree.
+* Size check (optional): assert join payload shrinks vs baseline.
 
----
+## Rollout sequence
 
-## [DONE] Phase 4 — Show server-driven movement
+1. Add hash emission to the generator and wire it into both sides.
+2. Teach the client to compare hashes (keep old path behind a feature flag).
+3. Flip the server to stop sending catalogs; send only the hash.
+4. Remove the old client path and the server debug flag once canary is green.
 
-### Summary
+## Migration & ops
 
-* State envelopes now translate player and NPC patches (`player_pos`, `player_facing`, `player_intent`, `npc_pos`, `npc_health`) into world-store updates every tick, keeping the authoritative snapshot in sync.
-* `buildRenderBatch` consumes the refreshed snapshot so static geometry for actors moves immediately when the server emits new coordinates and facing data.
-* Regression coverage (`client/__tests__/client-manager.test.ts`) verifies that applying movement patches updates both the store and rendered geometry for players and NPCs.
+* Short compatibility window: server can send both hash and catalog; client prefers hash path.
+* Telemetry: log both hashes on join for a week to confirm fleet alignment.
+* Clear operator message for hash mismatches (action: rebuild/update one side).
 
-### Next task
+## Risks & mitigations
 
-Move to Phase 5.
+* **Clock skew of releases:** Use the overlap window (both paths available) to avoid breakage.
+* **Hash instability:** Ensure deterministic serialization before hashing.
+* **Hidden consumers of the old endpoint:** Deprecation notice and a brief audit; cut after the window.
 
----
+## Outcome
 
-## [DONE] Phase 5 — Validate effect layering and effect-driven geometry
-
-### Next task
-
-**Goal**
-Ensure generated contracts render correctly on top of the newly visible world.
-
-**Exit criteria**
-
-* The runtime adapter continues to map catalog entries (e.g., `attack → melee/swing`) to `@js-effects/effects-lib` definitions.
-* Effect-driven geometry produced by the orchestrator remains visible with the new static pass (ordering is correct).
-* Swing/impact effects render above actors on the 100×100 field during normal play.
-
-**Notes / places your team already pointed to**
-
-* The effect pipeline from Phase 7 (earlier work) is already live; this is a layering/visibility check after Phases 2–3.
-
-### Summary
-
-* `GameClientOrchestrator` now requires explicit renderer layer mappings per delivery kind, preventing area/target effects from silently falling back to a lower z-index layer.
-* Regression coverage confirms effect-driven static geometry sorts above hydrated world actors and that missing layer configurations throw immediately.
-
----
-
-## [DONE] Phase 6 — Frame cadence, sizing, and basic observability
-
-### Next task
-
-**Goal**
-Keep the loop smooth and make debugging straightforward.
-
-**Exit criteria**
-
-* On join, log world dimensions and received entity counts; on state ticks, log applied patch batch sizes (lightweight dev logs).
-* Verify canvas resize behavior when world dimensions change (if/when you change defaults).
-* Confirm no regressions to effect playback cadence when the static pass is enabled.
-
-**Notes**
-
-* Keep this minimal (the team already has the necessary hooks); focus is on clarity during bring-up.
-
-### Summary
-
-* Join and state handlers now emit debug logs that report world dimensions, entity counts, and patch batch sizes each time snapshots or patches land.
-* Renderer integration resizes the canvas in response to authoritative world dimension changes while keeping effect playback cadence stable, with automated coverage asserting scaled output and bounded frame deltas.
-
-### Next task
-
-Move to Phase 7.
-
----
-
-## [DONE] Phase 7 — Harness and regression coverage
-
-### Next task
-
-Move to Phase 8.
-
-### Summary
-
-* Headless harness coverage now asserts that join hydration seeds the world store with players, NPCs, obstacles, and ground items while rendering the background and grid layers in the initial batch (`client/__tests__/client-manager.test.ts`).
-* Lifecycle-driven tests verify that effect spawns share a render batch with hydrated world geometry and maintain z-index ordering so actor silhouettes paint before effect quads (`client/__tests__/client-manager.test.ts`).
-* `CanvasRenderer` regression coverage captures per-frame ordering by stubbing renderer internals, ensuring static world passes finish before runtime effect updates or draws execute (`client/__tests__/canvas-renderer-resize.test.ts`).
-* Existing acknowledgement telemetry tests continue to enforce monotonically advancing ticks, preventing regressions where actor movement would rewind on late acknowledgements (`client/__tests__/client-manager.test.ts`).
-
----
-
-## [DONE] Phase 8 — Wrap-up and ready state
-
-### Next task
-
-Schedule a multiplayer QA smoke run against the dedicated server to confirm click-to-move and action effects behave under live latency.
-
-**Goal**
-Reach “playable scene” as described by the team.
-
-**Exit criteria**
-
-* On a clean client boot into a default world:
-
-  * The 100×100 board is visible,
-  * A player avatar appears,
-  * Clicking sets a path; after server acknowledgement, the pawn walks along server-driven waypoints,
-  * Contract-driven effects (e.g., melee/swing for `attack`) animate above the actor.
-* The roadmap/docs are updated to mark the above phases complete.
-
-### Summary
-
-* The client UI now opens on the world tab so the canvas immediately accepts click-to-move commands when the renderer mounts (`client/main.ts`).
-* Headless harness coverage continues to validate path acknowledgements, authoritative movement, and effect layering, confirming the scene reflects server snapshots after the world tab default change (`client/__tests__/client-manager.test.ts`).
-
----
-
-## Implementation order (dependency chain)
-
-1. **Phase 1** (ingest) → 2) **Phase 2** (translate to geometry) → 3) **Phase 3** (draw) → 4) **Phase 4** (movement) → 5) **Phase 5** (effects layering) → 6) **Phase 6** (observability) → 7) **Phase 7** (tests) → 8) **Phase 8** (wrap-up).
-
-This keeps progress “visible” as soon as possible: once Phases 1–3 land, you immediately see the world; Phase 4 makes it feel alive; Phase 5 confirms effects remain correct; Phases 6–7 harden and verify; Phase 8 declares success.
+* Smaller, simpler protocol.
+* One canonical catalog (the generated one).
+* Incompatibility detected instantly via hash, not at runtime via deep JSON checks.
