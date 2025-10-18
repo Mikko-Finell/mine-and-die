@@ -15,30 +15,20 @@ Move to Phase 2.
 
 ---
 
-## [IN PROGRESS] Phase 2 — Turn world state into renderable geometry
+## [DONE] Phase 2 — Turn world state into renderable geometry
+
+### Summary
+
+* `GameClientOrchestrator.buildRenderBatch` now merges `worldState.snapshot()` output into `staticGeometry`, layering a world background/grid and world entities ahead of effect geometry.
+* Static geometry entries for players, NPCs, obstacles, and ground items carry metadata (facing, health, size, quantity) so the renderer can paint accurate silhouettes on the 100×100 board.
 
 ### Next task
 
-**Goal**
-Translate `worldState.snapshot()` into geometry the renderer can consume, then merge with effect output.
-
-**Exit criteria**
-
-* `GameClientOrchestrator.buildRenderBatch` reads `worldState.snapshot()` each frame and produces `RenderBatch.staticGeometry` for:
-
-  * a background/tile grid sized from the join’s world dimensions,
-  * silhouettes/sprites for players and NPCs,
-  * primitives for obstacles and any ground items.
-* The result is *merged* with existing per-effect geometry and lifecycle animation intents (the effect path remains intact).
-
-**Notes / places your team already pointed to**
-
-* All of this happens in `client/client-manager.ts` inside `buildRenderBatch`.
-* The batch already has effect data; the missing piece is populating `staticGeometry` from the world snapshot.
+Move to Phase 3.
 
 ---
 
-## [TODO] Phase 3 — Draw the static geometry (before the effects)
+## [IN PROGRESS] Phase 3 — Draw the static geometry (before the effects)
 
 ### Next task
 

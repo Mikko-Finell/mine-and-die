@@ -60,6 +60,13 @@ import type {
 } from "./world-state";
 import type { DeliveryKind } from "./generated/effect-contracts";
 
+const WORLD_BACKGROUND_LAYER: RenderLayer = { id: "world-background", zIndex: -200 };
+const WORLD_GRID_LAYER: RenderLayer = { id: "world-grid", zIndex: -150 };
+const WORLD_OBSTACLE_LAYER: RenderLayer = { id: "world-obstacles", zIndex: -80 };
+const WORLD_NPC_LAYER: RenderLayer = { id: "world-npcs", zIndex: -40 };
+const WORLD_PLAYER_LAYER: RenderLayer = { id: "world-players", zIndex: -30 };
+const WORLD_GROUND_ITEM_LAYER: RenderLayer = { id: "world-ground-items", zIndex: -35 };
+
 export interface ClientManagerConfiguration {
   readonly autoConnect: boolean;
   readonly reconcileIntervalMs: number;
@@ -652,9 +659,10 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private buildRenderBatch(
     view: ContractLifecycleView,
     time: number,
-    _world: WorldStateSnapshot | null,
+    worldSnapshot: WorldStateSnapshot | null,
   ): RenderBatch {
     const staticGeometry: StaticGeometry[] = [];
+    staticGeometry.push(...this.buildWorldStaticGeometry(worldSnapshot));
     const animations: AnimationFrame[] = [];
     const runtimeEffects: RuntimeEffectFrame[] = [];
     const pathTarget = this.clonePathTarget(this.pathCommandState);
@@ -888,6 +896,358 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     }
 
     return entities;
+  }
+
+  private buildWorldStaticGeometry(worldSnapshot: WorldStateSnapshot | null): StaticGeometry[] {
+    const geometry: StaticGeometry[] = [];
+    const dimensions = this.resolveWorldDimensions(worldSnapshot);
+    if (dimensions) {
+      const background = this.createWorldBackgroundGeometry(dimensions);
+      if (background) {
+        geometry.push(background);
+      }
+      const grid = this.createWorldGridGeometry(dimensions);
+      if (grid) {
+        geometry.push(grid);
+      }
+    }
+
+    if (!worldSnapshot) {
+      return geometry;
+    }
+
+    for (const entity of worldSnapshot.entities.values()) {
+      const entries = this.createGeometryForEntity(entity);
+      for (const entry of entries) {
+        geometry.push(entry);
+      }
+    }
+
+    return geometry;
+  }
+
+  private resolveWorldDimensions(worldSnapshot: WorldStateSnapshot | null): WorldConfigurationSnapshot | null {
+    const fromSnapshot = this.extractWorldDimensionsFromSnapshot(worldSnapshot);
+    if (fromSnapshot) {
+      return fromSnapshot;
+    }
+    const joinWorld = this.joinResponse?.world;
+    if (!joinWorld) {
+      return null;
+    }
+    return { width: joinWorld.width, height: joinWorld.height };
+  }
+
+  private extractWorldDimensionsFromSnapshot(
+    worldSnapshot: WorldStateSnapshot | null,
+  ): WorldConfigurationSnapshot | null {
+    if (!worldSnapshot?.keyframe?.metadata) {
+      return null;
+    }
+    const metadata = worldSnapshot.keyframe.metadata;
+    if (!metadata || typeof metadata !== "object") {
+      return null;
+    }
+    const world = (metadata as Record<string, unknown>)["world"];
+    if (!world || typeof world !== "object") {
+      return null;
+    }
+    const record = world as Record<string, unknown>;
+    const width = typeof record.width === "number" && Number.isFinite(record.width) ? record.width : null;
+    const height = typeof record.height === "number" && Number.isFinite(record.height) ? record.height : null;
+    if (width === null || height === null) {
+      return null;
+    }
+    return { width, height };
+  }
+
+  private createWorldBackgroundGeometry(dimensions: WorldConfigurationSnapshot): StaticGeometry | null {
+    const { width, height } = dimensions;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+    const vertices: [number, number][] = [
+      [0, 0],
+      [width, 0],
+      [width, height],
+      [0, height],
+    ];
+    return {
+      id: "world/background",
+      layer: WORLD_BACKGROUND_LAYER,
+      vertices,
+      style: {
+        kind: "world-background",
+        width,
+        height,
+        origin: [0, 0],
+        fill: "#0f1218",
+        stroke: "#06080b",
+      },
+    };
+  }
+
+  private createWorldGridGeometry(dimensions: WorldConfigurationSnapshot): StaticGeometry | null {
+    const { width, height } = dimensions;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+    const vertices: [number, number][] = [
+      [0, 0],
+      [width, 0],
+      [width, height],
+      [0, height],
+    ];
+    return {
+      id: "world/grid",
+      layer: WORLD_GRID_LAYER,
+      vertices,
+      style: {
+        kind: "world-grid",
+        columns: Math.max(1, Math.floor(width)),
+        rows: Math.max(1, Math.floor(height)),
+        spacing: 1,
+        stroke: "rgba(255, 255, 255, 0.06)",
+      },
+    };
+  }
+
+  private createGeometryForEntity(entity: WorldEntityState): readonly StaticGeometry[] {
+    const position = this.extractEntityPosition(entity);
+    if (!position) {
+      return [];
+    }
+
+    switch (entity.type) {
+      case "player": {
+        const playerGeometry = this.createPlayerGeometry(entity, position);
+        return playerGeometry ? [playerGeometry] : [];
+      }
+      case "npc": {
+        const npcGeometry = this.createNPCGeometry(entity, position);
+        return npcGeometry ? [npcGeometry] : [];
+      }
+      case "obstacle": {
+        const obstacleGeometry = this.createObstacleGeometry(entity, position);
+        return obstacleGeometry ? [obstacleGeometry] : [];
+      }
+      case "groundItem": {
+        const itemGeometry = this.createGroundItemGeometry(entity, position);
+        return itemGeometry ? [itemGeometry] : [];
+      }
+      default:
+        return [];
+    }
+  }
+
+  private createPlayerGeometry(
+    entity: WorldEntityState,
+    position: readonly [number, number],
+  ): StaticGeometry | null {
+    const radius = 0.4;
+    const vertices = this.createCircleVertices(position, radius, 14);
+    if (vertices.length === 0) {
+      return null;
+    }
+    const style: Record<string, unknown> = {
+      kind: "player",
+      playerId: entity.id,
+      anchor: "center",
+      radius,
+      fill: "rgba(80, 200, 255, 0.85)",
+      stroke: "rgba(24, 136, 212, 1)",
+    };
+    if (typeof (entity as Record<string, unknown>).facing === "string") {
+      style.facing = (entity as Record<string, unknown>).facing;
+    }
+    if (typeof (entity as Record<string, unknown>).health === "number") {
+      style.health = (entity as Record<string, unknown>).health;
+    }
+    if (typeof (entity as Record<string, unknown>).maxHealth === "number") {
+      style.maxHealth = (entity as Record<string, unknown>).maxHealth;
+    }
+    if ((entity as Record<string, unknown>).intent && typeof (entity as Record<string, unknown>).intent === "object") {
+      style.intent = (entity as Record<string, unknown>).intent;
+    }
+    return {
+      id: `world/player/${entity.id}`,
+      layer: WORLD_PLAYER_LAYER,
+      vertices,
+      style,
+    };
+  }
+
+  private createNPCGeometry(
+    entity: WorldEntityState,
+    position: readonly [number, number],
+  ): StaticGeometry | null {
+    const radius = 0.4;
+    const vertices = this.createCircleVertices(position, radius, 14);
+    if (vertices.length === 0) {
+      return null;
+    }
+    const style: Record<string, unknown> = {
+      kind: "npc",
+      npcId: entity.id,
+      anchor: "center",
+      radius,
+      fill: "rgba(255, 168, 92, 0.85)",
+      stroke: "rgba(204, 108, 28, 1)",
+    };
+    if (typeof (entity as Record<string, unknown>).npcType === "string") {
+      style.npcType = (entity as Record<string, unknown>).npcType;
+    }
+    if (typeof (entity as Record<string, unknown>).facing === "string") {
+      style.facing = (entity as Record<string, unknown>).facing;
+    }
+    if (typeof (entity as Record<string, unknown>).health === "number") {
+      style.health = (entity as Record<string, unknown>).health;
+    }
+    if (typeof (entity as Record<string, unknown>).maxHealth === "number") {
+      style.maxHealth = (entity as Record<string, unknown>).maxHealth;
+    }
+    return {
+      id: `world/npc/${entity.id}`,
+      layer: WORLD_NPC_LAYER,
+      vertices,
+      style,
+    };
+  }
+
+  private createObstacleGeometry(
+    entity: WorldEntityState,
+    position: readonly [number, number],
+  ): StaticGeometry | null {
+    const width = typeof (entity as Record<string, unknown>).width === "number"
+      ? (entity as Record<string, unknown>).width
+      : null;
+    const height = typeof (entity as Record<string, unknown>).height === "number"
+      ? (entity as Record<string, unknown>).height
+      : null;
+    if (width === null || height === null || width <= 0 || height <= 0) {
+      return null;
+    }
+    const vertices = this.createRectangleVertices(position, width, height);
+    if (vertices.length === 0) {
+      return null;
+    }
+    const style: Record<string, unknown> = {
+      kind: "obstacle",
+      obstacleId: entity.id,
+      width,
+      height,
+      anchor: "center",
+      fill: "rgba(92, 104, 120, 0.9)",
+      stroke: "rgba(54, 62, 74, 1)",
+    };
+    if (typeof (entity as Record<string, unknown>).obstacleType === "string") {
+      style.obstacleType = (entity as Record<string, unknown>).obstacleType;
+    }
+    return {
+      id: `world/obstacle/${entity.id}`,
+      layer: WORLD_OBSTACLE_LAYER,
+      vertices,
+      style,
+    };
+  }
+
+  private createGroundItemGeometry(
+    entity: WorldEntityState,
+    position: readonly [number, number],
+  ): StaticGeometry | null {
+    const radius = 0.3;
+    const vertices = this.createDiamondVertices(position, radius);
+    if (vertices.length === 0) {
+      return null;
+    }
+    const style: Record<string, unknown> = {
+      kind: "ground-item",
+      itemId: entity.id,
+      anchor: "center",
+      radius,
+      fill: "rgba(192, 255, 160, 0.9)",
+      stroke: "rgba(126, 190, 94, 1)",
+    };
+    if (typeof (entity as Record<string, unknown>).itemType === "string") {
+      style.itemType = (entity as Record<string, unknown>).itemType;
+    }
+    if (typeof (entity as Record<string, unknown>).qty === "number") {
+      style.quantity = (entity as Record<string, unknown>).qty;
+    }
+    if (typeof (entity as Record<string, unknown>).fungibilityKey === "string") {
+      style.fungibilityKey = (entity as Record<string, unknown>).fungibilityKey;
+    }
+    return {
+      id: `world/ground-item/${entity.id}`,
+      layer: WORLD_GROUND_ITEM_LAYER,
+      vertices,
+      style,
+    };
+  }
+
+  private extractEntityPosition(entity: WorldEntityState): readonly [number, number] | null {
+    if (!Array.isArray(entity.position) || entity.position.length < 2) {
+      return null;
+    }
+    const [x, y] = entity.position;
+    if (typeof x !== "number" || !Number.isFinite(x) || typeof y !== "number" || !Number.isFinite(y)) {
+      return null;
+    }
+    return [x, y];
+  }
+
+  private createCircleVertices(
+    center: readonly [number, number],
+    radius: number,
+    steps: number,
+  ): [number, number][] {
+    if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(center[0]) || !Number.isFinite(center[1])) {
+      return [];
+    }
+    const clampedSteps = Math.max(8, Math.floor(steps));
+    const vertices: [number, number][] = [];
+    for (let index = 0; index < clampedSteps; index += 1) {
+      const theta = (index / clampedSteps) * Math.PI * 2;
+      const x = center[0] + Math.cos(theta) * radius;
+      const y = center[1] + Math.sin(theta) * radius;
+      vertices.push([x, y]);
+    }
+    return vertices;
+  }
+
+  private createRectangleVertices(
+    center: readonly [number, number],
+    width: number,
+    height: number,
+  ): [number, number][] {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return [];
+    }
+    const [cx, cy] = center;
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    return [
+      [cx - halfWidth, cy - halfHeight],
+      [cx + halfWidth, cy - halfHeight],
+      [cx + halfWidth, cy + halfHeight],
+      [cx - halfWidth, cy + halfHeight],
+    ];
+  }
+
+  private createDiamondVertices(
+    center: readonly [number, number],
+    radius: number,
+  ): [number, number][] {
+    if (!Number.isFinite(radius) || radius <= 0) {
+      return [];
+    }
+    const [cx, cy] = center;
+    return [
+      [cx, cy - radius],
+      [cx + radius, cy],
+      [cx, cy + radius],
+      [cx - radius, cy],
+    ];
   }
 
   private translatePlayerEntity(player: PlayerSnapshot): WorldEntityState | null {
