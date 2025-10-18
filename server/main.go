@@ -7,7 +7,6 @@ import (
 	stdlog "log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -575,7 +574,11 @@ func main() {
 		}
 	})
 
-	clientDir := filepath.Clean(filepath.Join("..", "client"))
+	clientDir, err := resolveClientAssetsDir()
+	if err != nil {
+		stdlog.Fatalf("failed to locate client assets: %v", err)
+	}
+	stdlog.Printf("serving client assets from %s", clientDir)
 	fs := http.FileServer(http.Dir(clientDir))
 	http.Handle("/", fs)
 
