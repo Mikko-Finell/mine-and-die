@@ -136,7 +136,6 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private readonly worldState: WorldStateStore;
   private readonly lifecycleStore = new ContractLifecycleStore();
   private readonly layerCache = new Map<string, RenderLayer>();
-  private readonly fallbackLayer: RenderLayer;
   private lifecycleHandlers: ClientLifecycleHandlers | null = null;
   private lastRenderVersion = -1;
   private lastRenderTime = -1;
@@ -171,8 +170,6 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.network = dependencies.network;
     this.renderer = dependencies.renderer;
     this.worldState = dependencies.worldState;
-    const [firstLayer] = this.renderer.configuration.layers;
-    this.fallbackLayer = firstLayer ?? { id: "effects", zIndex: 0 };
   }
 
   async boot(handlers: ClientLifecycleHandlers): Promise<void> {
@@ -1805,9 +1802,10 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     }
 
     const candidateIds = [delivery, `effect-${delivery}`, `effects-${delivery}`];
-    const resolved =
-      this.renderer.configuration.layers.find((layer) => candidateIds.includes(layer.id)) ??
-      this.fallbackLayer;
+    const resolved = this.renderer.configuration.layers.find((layer) => candidateIds.includes(layer.id));
+    if (!resolved) {
+      throw new Error(`Renderer configuration missing layer for ${delivery} delivery effects.`);
+    }
     this.layerCache.set(delivery, resolved);
     return resolved;
   }

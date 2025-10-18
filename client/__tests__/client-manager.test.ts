@@ -7,22 +7,11 @@ import {
   type ContractLifecycleBatch,
 } from "../effect-lifecycle-store";
 import { createHeadlessHarness } from "./helpers/headless-harness";
-
-const findStaticGeometry = (batch: { readonly staticGeometry: readonly { id: string; vertices: readonly [number, number][]; style?: unknown; }[] } | undefined, id: string) =>
-  batch?.staticGeometry.find((entry) => entry.id === id) ?? null;
-
-const computeVertexCentroid = (vertices: readonly [number, number][]) => {
-  if (vertices.length === 0) {
-    return { x: 0, y: 0 };
-  }
-  let sumX = 0;
-  let sumY = 0;
-  for (const [x, y] of vertices) {
-    sumX += x;
-    sumY += y;
-  }
-  return { x: sumX / vertices.length, y: sumY / vertices.length };
-};
+import {
+  computeVertexCentroid,
+  findStaticGeometry,
+  sortGeometryByRenderOrder,
+} from "./helpers/geometry";
 
 describe("GameClientOrchestrator", () => {
   beforeEach(() => {
@@ -123,6 +112,137 @@ describe("GameClientOrchestrator", () => {
     const cleared = renderer.batches.at(-1);
     expect(cleared).toBeDefined();
     expect(cleared!.animations.length).toBe(0);
+  });
+
+  test("effect-driven geometry renders above world actors", async () => {
+    const attackEntry = generatedEffectCatalog.attack;
+    const { orchestrator, network, renderer } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+      joinResponseOverrides: {
+        world: { width: 100, height: 100 },
+        players: [
+          {
+            id: "player-1",
+            x: 32,
+            y: 48,
+            facing: "down",
+            health: 80,
+            maxHealth: 100,
+          },
+        ],
+      },
+    });
+
+    await orchestrator.boot({});
+
+    const spawn: ContractLifecycleSpawnEvent = {
+      seq: 1,
+      tick: 12,
+      instance: {
+        id: "effect-attack",
+        entryId: "attack",
+        definitionId: attackEntry.contractId,
+        definition: attackEntry.definition,
+        startTick: 12,
+        deliveryState: {
+          geometry: {
+            shape: "rect",
+            width: 40,
+            height: 24,
+          },
+          motion: {
+            positionX: 48,
+            positionY: 64,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: 2,
+        },
+        params: attackEntry.blocks.parameters as Readonly<Record<string, number>>,
+        replication: attackEntry.definition.client,
+        end: attackEntry.definition.end,
+      },
+    };
+
+    expect(() =>
+      network.emit({
+        type: "state",
+        payload: {
+          effect_spawned: [spawn],
+          effect_seq_cursors: { [spawn.instance.id]: spawn.seq },
+          t: spawn.tick,
+        },
+        receivedAt: 500,
+      }),
+    ).not.toThrow();
+
+    expect(renderer.batches.length).toBeGreaterThan(0);
+    const lastBatch = renderer.batches.at(-1)!;
+    const playerGeometry = lastBatch.staticGeometry.find((entry) => entry.id === "world/player/player-1");
+    expect(playerGeometry).toBeDefined();
+    const effectGeometry = lastBatch.staticGeometry.find((entry) => entry.id === spawn.instance.id);
+    expect(effectGeometry).toBeDefined();
+
+    const renderOrder = sortGeometryByRenderOrder(lastBatch.staticGeometry);
+    expect(renderOrder.indexOf(spawn.instance.id)).toBeGreaterThan(renderOrder.indexOf("world/player/player-1"));
+    expect(renderOrder[0]).toBe("world/background");
+  });
+
+  test("throws when renderer configuration omits required effect layer", async () => {
+    const attackEntry = generatedEffectCatalog.attack;
+    const { orchestrator, network } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+      rendererConfiguration: {
+        layers: [{ id: "effect-visual", zIndex: 1 }],
+      },
+    });
+
+    await orchestrator.boot({});
+
+    const spawn: ContractLifecycleSpawnEvent = {
+      seq: 1,
+      tick: 4,
+      instance: {
+        id: "effect-attack",
+        entryId: "attack",
+        definitionId: attackEntry.contractId,
+        definition: attackEntry.definition,
+        startTick: 4,
+        deliveryState: {
+          geometry: {
+            shape: "rect",
+            width: 20,
+            height: 20,
+          },
+          motion: {
+            positionX: 16,
+            positionY: 16,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: 1,
+        },
+        params: attackEntry.blocks.parameters as Readonly<Record<string, number>>,
+        replication: attackEntry.definition.client,
+        end: attackEntry.definition.end,
+      },
+    };
+
+    expect(() =>
+      network.emit({
+        type: "state",
+        payload: {
+          effect_spawned: [spawn],
+          effect_seq_cursors: { [spawn.instance.id]: spawn.seq },
+          t: spawn.tick,
+        },
+        receivedAt: 500,
+      }),
+    ).toThrowError(/missing layer/);
   });
 
   test("input dispatcher attaches metadata, respects pause, and notifies hooks", async () => {
