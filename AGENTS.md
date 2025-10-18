@@ -4,9 +4,7 @@ We are now implementing the **world-init initiative** — bringing the client re
 
 This project is responsible for:
 
-* hydrating the client world state from authoritative server join/state/patch messages,
-* translating that state into `StaticGeometry` / renderable primitives,
-* and teaching the canvas renderer to actually draw the world, actors, and effects in the correct layered order.
+* simplifying the contract system
 
 This work replaces all temporary “effects-only” rendering. Once complete, the client visibly mirrors the active 100×100 world, with real actor positions driven only by server simulation.
 
