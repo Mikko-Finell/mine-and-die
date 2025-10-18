@@ -194,4 +194,68 @@ describe("GameClientOrchestrator", () => {
 
     await orchestrator.shutdown();
   });
+
+  test("acknowledgement ticks advance dispatch metadata without waiting for state", async () => {
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const dispatcher = orchestrator.createInputDispatcher();
+
+    dispatcher.sendAction("attack");
+    emitLifecycleState({ tick: 8, receivedAt: 1000 });
+
+    expect(network.sentMessages).toHaveLength(1);
+    expect(network.sentMessages[0]).toEqual({ type: "action", action: "attack", ver: 1, ack: 8, seq: 1 });
+
+    network.emit({
+      type: "commandAck",
+      payload: { seq: 1, tick: 12 },
+      receivedAt: 1100,
+    });
+
+    dispatcher.sendAction("attack");
+    expect(network.sentMessages).toHaveLength(2);
+    expect(network.sentMessages[1]).toEqual({ type: "action", action: "attack", ver: 1, ack: 12, seq: 2 });
+
+    network.emit({
+      type: "commandAck",
+      payload: { seq: 2, tick: 4 },
+      receivedAt: 1200,
+    });
+
+    dispatcher.sendAction("attack");
+    expect(network.sentMessages).toHaveLength(3);
+    expect(network.sentMessages[2]).toEqual({ type: "action", action: "attack", ver: 1, ack: 12, seq: 3 });
+
+    await orchestrator.shutdown();
+  });
+
+  test("command rejection ticks update acknowledgement metadata", async () => {
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const dispatcher = orchestrator.createInputDispatcher();
+
+    dispatcher.sendPathCommand({ x: 64, y: 32 });
+    emitLifecycleState({ tick: 5, receivedAt: 900 });
+
+    expect(network.sentMessages).toHaveLength(1);
+    expect(network.sentMessages[0]).toEqual({ type: "path", x: 64, y: 32, ver: 1, ack: 5, seq: 1 });
+
+    network.emit({
+      type: "commandReject",
+      payload: { seq: 1, reason: "queue_limit", retry: false, tick: 9 },
+      receivedAt: 950,
+    });
+
+    dispatcher.sendPathCommand({ x: 128, y: 96 });
+    expect(network.sentMessages).toHaveLength(2);
+    expect(network.sentMessages[1]).toEqual({ type: "path", x: 128, y: 96, ver: 1, ack: 9, seq: 2 });
+
+    await orchestrator.shutdown();
+  });
 });
