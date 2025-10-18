@@ -99,7 +99,26 @@ type Resolver struct {
 // DefaultPaths returns the canonical catalog locations relative to the server
 // module root. Callers may pass these to Load.
 func DefaultPaths() []string {
-	return []string{filepath.Join("..", "config", "effects", "definitions.json")}
+	candidates := []string{
+		filepath.Join("config", "effects", "definitions.json"),
+		filepath.Join("..", "config", "effects", "definitions.json"),
+	}
+
+	paths := make([]string, 0, len(candidates))
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		cleaned := filepath.Clean(candidate)
+		if _, duplicate := seen[cleaned]; duplicate {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		paths = append(paths, cleaned)
+	}
+
+	if len(paths) == 0 {
+		return []string{filepath.Join("config", "effects", "definitions.json")}
+	}
+	return paths
 }
 
 // Load constructs a Resolver backed by the provided contract registry and
