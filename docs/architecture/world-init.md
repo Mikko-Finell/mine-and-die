@@ -55,7 +55,7 @@ Move to Phase 5.
 
 ---
 
-## [TODO] Phase 5 — Validate effect layering and effect-driven geometry
+## [DONE] Phase 5 — Validate effect layering and effect-driven geometry
 
 ### Next task
 
@@ -72,9 +72,14 @@ Ensure generated contracts render correctly on top of the newly visible world.
 
 * The effect pipeline from Phase 7 (earlier work) is already live; this is a layering/visibility check after Phases 2–3.
 
+### Summary
+
+* `GameClientOrchestrator` now requires explicit renderer layer mappings per delivery kind, preventing area/target effects from silently falling back to a lower z-index layer.
+* Regression coverage confirms effect-driven static geometry sorts above hydrated world actors and that missing layer configurations throw immediately.
+
 ---
 
-## [TODO] Phase 6 — Frame cadence, sizing, and basic observability
+## [IN PROGRESS] Phase 6 — Frame cadence, sizing, and basic observability
 
 ### Next task
 
@@ -90,6 +95,10 @@ Keep the loop smooth and make debugging straightforward.
 **Notes**
 
 * Keep this minimal (the team already has the necessary hooks); focus is on clarity during bring-up.
+
+### Next task
+
+Instrument join and state handlers to emit debug logs for world dimensions, entity counts, and patch batch sizes so we can trace hydration/resync behavior while testing cadence tweaks.
 
 ---
 
