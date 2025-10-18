@@ -83,6 +83,7 @@ export interface ClientLifecycleHandlers {
   readonly onReady?: () => void;
   readonly onError?: (error: Error) => void;
   readonly onHeartbeat?: (telemetry: ClientHeartbeatTelemetry) => void;
+  readonly onLog?: (message: string) => void;
 }
 
 export interface ClientOrchestrator {
@@ -358,6 +359,12 @@ export class GameClientOrchestrator implements ClientOrchestrator {
         metadata,
       });
       this.worldState.applyKeyframe(keyframe);
+      this.logWorldSnapshot("state", worldSnapshot, {
+        world: worldConfig,
+        tick,
+        sequence: patchSequence,
+        keyframeSequence,
+      });
       worldStateChanged = true;
       worldFrameTime = frameTime;
       worldKeyframeId = keyframeId;
@@ -372,6 +379,11 @@ export class GameClientOrchestrator implements ClientOrchestrator {
         });
         if (batch) {
           this.worldState.applyPatchBatch(batch);
+          this.logPatchBatch("state", patches.length, batch.operations.length, {
+            tick,
+            sequence: patchSequence,
+            keyframeSequence,
+          });
           worldStateChanged = true;
           worldFrameTime = worldFrameTime ?? frameTime;
         }
@@ -832,6 +844,10 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       }),
     });
     this.worldState.applyKeyframe(keyframe);
+    this.logWorldSnapshot("join", snapshot, {
+      world: join.world,
+      seed: join.seed,
+    });
 
     if (join.patches.length > 0) {
       const batch = this.createWorldPatchBatch(join.patches, {
@@ -840,6 +856,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       });
       if (batch) {
         this.worldState.applyPatchBatch(batch);
+        this.logPatchBatch("join", join.patches.length, batch.operations.length, {});
       }
     }
 
@@ -1518,6 +1535,75 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     if (immediate) {
       this.renderLifecycleView(frameTime);
     }
+  }
+
+  private emitDebugLog(message: string): void {
+    this.lifecycleHandlers?.onLog?.(message);
+  }
+
+  private logWorldSnapshot(
+    source: string,
+    snapshot: WorldSnapshotPayload,
+    options: {
+      readonly world?: WorldConfigurationSnapshot | null;
+      readonly tick?: number | null;
+      readonly sequence?: number | null;
+      readonly keyframeSequence?: number | null;
+      readonly seed?: string | null;
+    } = {},
+  ): void {
+    const world = options.world ?? null;
+    const dimensions = world ? `${world.width}×${world.height}` : "unknown";
+    const summaryParts = [
+      `size=${dimensions}`,
+      `players=${snapshot.players.length}`,
+      `npcs=${snapshot.npcs.length}`,
+      `obstacles=${snapshot.obstacles.length}`,
+      `groundItems=${snapshot.groundItems.length}`,
+    ];
+    const contextParts: string[] = [];
+    if (options.seed) {
+      contextParts.push(`seed ${options.seed}`);
+    }
+    if (options.tick !== undefined && options.tick !== null) {
+      contextParts.push(`tick ${options.tick}`);
+    }
+    if (options.sequence !== undefined && options.sequence !== null) {
+      contextParts.push(`seq ${options.sequence}`);
+    }
+    if (options.keyframeSequence !== undefined && options.keyframeSequence !== null) {
+      contextParts.push(`keyframe ${options.keyframeSequence}`);
+    }
+    const suffix = contextParts.length > 0 ? ` (${contextParts.join(", ")})` : "";
+    this.emitDebugLog(`World snapshot [${source}] ${summaryParts.join(" · ")}${suffix}`);
+  }
+
+  private logPatchBatch(
+    source: string,
+    patchCount: number,
+    operationCount: number,
+    options: {
+      readonly tick?: number | null;
+      readonly sequence?: number | null;
+      readonly keyframeSequence?: number | null;
+    } = {},
+  ): void {
+    if (operationCount <= 0) {
+      return;
+    }
+    const summaryParts = [`ops=${operationCount}`, `patches=${patchCount}`];
+    const contextParts: string[] = [];
+    if (options.tick !== undefined && options.tick !== null) {
+      contextParts.push(`tick ${options.tick}`);
+    }
+    if (options.sequence !== undefined && options.sequence !== null) {
+      contextParts.push(`seq ${options.sequence}`);
+    }
+    if (options.keyframeSequence !== undefined && options.keyframeSequence !== null) {
+      contextParts.push(`keyframe ${options.keyframeSequence}`);
+    }
+    const suffix = contextParts.length > 0 ? ` (${contextParts.join(", ")})` : "";
+    this.emitDebugLog(`Patch batch [${source}] ${summaryParts.join(" · ")}${suffix}`);
   }
 
   private createWorldMetadata(options: {

@@ -329,6 +329,9 @@ class GameClientApp extends LitElement {
         onHeartbeat: (telemetry: ClientHeartbeatTelemetry) => {
           this.handleHeartbeatTelemetry(telemetry);
         },
+        onLog: (message) => {
+          this.addLog(message);
+        },
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
