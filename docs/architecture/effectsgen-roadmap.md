@@ -89,6 +89,8 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 🟡 Wiring command sequencing and acknowledgement across `client/input.ts`, `client/client-manager.ts`, and `server/main.go`, including buffered replays after resync and rejection-triggered retries.
   * Go test suites now build with acknowledgement-aware command helpers; follow-up work will determine whether additional logging or telemetry should emit on command rejection paths.
+  * Ack/reject envelopes now advance the client's acknowledged tick so command metadata reflects the latest server tick without waiting for a state payload; harness coverage guards against regression.
+  * Next: surface rejection reasons through the input store so UI feedback can present failure context when retries are disabled.
 
 **Acceptance criteria**
 

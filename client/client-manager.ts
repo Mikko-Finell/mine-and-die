@@ -252,9 +252,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
 
     const tickValue = payload["t"];
     const tick = typeof tickValue === "number" && Number.isFinite(tickValue) ? Math.floor(tickValue) : null;
-    if (tick !== null) {
-      this.latestAcknowledgedTick = tick;
-    }
+    this.recordAcknowledgedTick(tick);
 
     const isResync = payload["resync"] === true;
     if (isResync) {
@@ -298,6 +296,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     if (typeof tickValue === "number" && Number.isFinite(tickValue) && tickValue >= 0) {
       tick = Math.floor(tickValue);
     }
+    this.recordAcknowledgedTick(tick);
     this.inputDispatcher?.handleCommandAck({ sequence, tick });
   }
 
@@ -314,6 +313,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     if (typeof tickValue === "number" && Number.isFinite(tickValue) && tickValue >= 0) {
       tick = Math.floor(tickValue);
     }
+    this.recordAcknowledgedTick(tick);
     this.inputDispatcher?.handleCommandReject({ sequence, reason, retry, tick });
   }
 
@@ -847,6 +847,24 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     } catch (error) {
       this.reportError(error);
     }
+  }
+
+  private recordAcknowledgedTick(tick: number | null): void {
+    if (tick === null) {
+      return;
+    }
+    if (typeof tick !== "number" || !Number.isFinite(tick) || tick < 0) {
+      return;
+    }
+    const normalized = Math.floor(tick);
+    if (normalized < 0) {
+      return;
+    }
+    const previous = this.latestAcknowledgedTick;
+    if (previous !== null && normalized <= previous) {
+      return;
+    }
+    this.latestAcknowledgedTick = normalized;
   }
 
   private handleIntentDispatched(_intent: PlayerIntent): void {
