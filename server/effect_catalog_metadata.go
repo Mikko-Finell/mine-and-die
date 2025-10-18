@@ -59,15 +59,18 @@ func cloneEffectCatalogMetadataMap(src map[string]effectCatalogMetadata) map[str
 }
 
 func (meta effectCatalogMetadata) MarshalJSON() ([]byte, error) {
-	payload := make(map[string]any, len(meta.Blocks)+3)
-	payload["contractId"] = meta.ContractID
-	payload["managedByClient"] = meta.ManagedByClient
+	payload := map[string]any{
+		"contractId":      meta.ContractID,
+		"managedByClient": meta.ManagedByClient,
+	}
 	if meta.Definition != nil {
 		payload["definition"] = meta.Definition
 	}
+	blocks := make(map[string]json.RawMessage, len(meta.Blocks))
 	for key, raw := range meta.Blocks {
-		payload[key] = cloneRawMessage(raw)
+		blocks[key] = cloneRawMessage(raw)
 	}
+	payload["blocks"] = blocks
 	return json.Marshal(payload)
 }
 
