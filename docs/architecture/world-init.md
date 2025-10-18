@@ -79,7 +79,7 @@ Ensure generated contracts render correctly on top of the newly visible world.
 
 ---
 
-## [IN PROGRESS] Phase 6 — Frame cadence, sizing, and basic observability
+## [DONE] Phase 6 — Frame cadence, sizing, and basic observability
 
 ### Next task
 
@@ -99,14 +99,15 @@ Keep the loop smooth and make debugging straightforward.
 ### Summary
 
 * Join and state handlers now emit debug logs that report world dimensions, entity counts, and patch batch sizes each time snapshots or patches land.
+* Renderer integration resizes the canvas in response to authoritative world dimension changes while keeping effect playback cadence stable, with automated coverage asserting scaled output and bounded frame deltas.
 
 ### Next task
 
-Force a world resize (non-default dimensions) and confirm the canvas scales cleanly while observing that effect playback cadence remains stable with the new logging in place.
+Move to Phase 7.
 
 ---
 
-## [TODO] Phase 7 — Harness and regression coverage
+## [IN PROGRESS] Phase 7 — Harness and regression coverage
 
 ### Next task
 

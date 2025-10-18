@@ -113,6 +113,7 @@ export class HeadlessNetworkClient implements NetworkClient {
 export class HeadlessRenderer implements Renderer {
   public readonly configuration: RendererConfiguration;
   public readonly batches: RenderBatch[] = [];
+  public readonly resizeEvents: RenderDimensions[] = [];
 
   constructor(configuration?: Partial<RendererConfiguration>) {
     const dimensions: RenderDimensions = configuration?.dimensions ?? {
@@ -136,7 +137,9 @@ export class HeadlessRenderer implements Renderer {
     this.batches.push(batch);
   }
 
-  resize(_dimensions: RenderDimensions): void {}
+  resize(dimensions: RenderDimensions): void {
+    this.resizeEvents.push({ ...dimensions });
+  }
 
   reset(): void {}
 }
