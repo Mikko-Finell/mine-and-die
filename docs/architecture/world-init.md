@@ -122,9 +122,11 @@ Move to Phase 8.
 
 ---
 
-## [TODO] Phase 8 — Wrap-up and ready state
+## [DONE] Phase 8 — Wrap-up and ready state
 
 ### Next task
+
+Schedule a multiplayer QA smoke run against the dedicated server to confirm click-to-move and action effects behave under live latency.
 
 **Goal**
 Reach “playable scene” as described by the team.
@@ -138,6 +140,11 @@ Reach “playable scene” as described by the team.
   * Clicking sets a path; after server acknowledgement, the pawn walks along server-driven waypoints,
   * Contract-driven effects (e.g., melee/swing for `attack`) animate above the actor.
 * The roadmap/docs are updated to mark the above phases complete.
+
+### Summary
+
+* The client UI now opens on the world tab so the canvas immediately accepts click-to-move commands when the renderer mounts (`client/main.ts`).
+* Headless harness coverage continues to validate path acknowledgements, authoritative movement, and effect layering, confirming the scene reflects server snapshots after the world tab default change (`client/__tests__/client-manager.test.ts`).
 
 ---
 
