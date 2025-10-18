@@ -92,8 +92,9 @@ describe("GameClientOrchestrator", () => {
     expect(animation.metadata.catalog).toMatchObject({
       contractId: attackEntry.contractId,
     });
-    expect(finalBatch.staticGeometry[0]?.layer.id).toBe("effect-area");
-    expect(finalBatch.staticGeometry[0]?.vertices.length).toBe(4);
+    const effectGeometry = finalBatch.staticGeometry.filter((entry) => !entry.id.startsWith("world/"));
+    expect(effectGeometry[0]?.layer.id).toBe("effect-area");
+    expect(effectGeometry[0]?.vertices.length).toBe(4);
 
     network.emit({
       type: "state",

@@ -28,27 +28,20 @@ Move to Phase 3.
 
 ---
 
-## [IN PROGRESS] Phase 3 — Draw the static geometry (before the effects)
+## [DONE] Phase 3 — Draw the static geometry (before the effects)
+
+### Summary
+
+* `CanvasRenderer.stepFrame` now sorts render layers and rasterizes world/static geometry before delegating to runtime effects, keeping the waypoint ring overlay intact.
+* The renderer resizes the canvas using authoritative world dimensions derived from the background geometry so the 100×100 field renders at the correct scale.
 
 ### Next task
 
-**Goal**
-Make the canvas actually show the world and entities, then layer effects above.
-
-**Exit criteria**
-
-* `CanvasRenderer.stepFrame` iterates `RenderBatch.staticGeometry` and rasterizes those primitives (fills/strokes, polygons/rects/circles as appropriate).
-* The canvas is sized to the join’s `worldWidth` / `worldHeight` so the 100×100 map scales correctly.
-* The existing effect runtime still runs (after or before, per desired layering), and the waypoint ring draw remains intact.
-
-**Notes / places your team already pointed to**
-
-* Work in `client/render.ts` inside `CanvasRenderer.stepFrame`.
-* Today, `staticGeometry` is ignored; this phase changes that.
+Move to Phase 4.
 
 ---
 
-## [TODO] Phase 4 — Show server-driven movement
+## [IN PROGRESS] Phase 4 — Show server-driven movement
 
 ### Next task
 
