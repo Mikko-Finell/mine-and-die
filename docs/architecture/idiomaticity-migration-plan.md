@@ -17,7 +17,15 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## Phase 0 — Baseline & Safety Net
+## [IN PROGRESS] Phase 0 — Baseline & Safety Net
+
+### Work log
+
+_none_
+
+### Next task
+
+_
 
 **Objective:** Create seams and invariants before moving code.
 
@@ -54,7 +62,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## Phase 1 — Structural Extraction
+## [NOT STARTED] Phase 1 — Structural Extraction
 
 **Objective:** Separate concerns without changing runtime behavior.
 
@@ -75,7 +83,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## Phase 2 — Simulation Decomposition
+## [NOT STARTED] Phase 2 — Simulation Decomposition
 
 **Objective:** Split the monolithic simulation into smaller packages with explicit ownership.
 
@@ -102,7 +110,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## Phase 3 — IO and Concurrency Cleanup
+## [NOT STARTED] Phase 3 — IO and Concurrency Cleanup
 
 **Objective:** Push all concurrency to the perimeter.
 
@@ -120,7 +128,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## Phase 4 — Typed Contracts & Versioning
+## [NOT STARTED] Phase 4 — Typed Contracts & Versioning
 
 **Objective:** Solidify data interchange formats and backward compatibility.
 
@@ -138,7 +146,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## Phase 5 — Observability, Style, and Maintenance
+## [NOT STARTED] Phase 5 — Observability, Style, and Maintenance
 
 **Objective:** Prevent regression and ensure future maintainability.
 
