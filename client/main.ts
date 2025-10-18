@@ -1,6 +1,14 @@
 import { LitElement, html } from "lit";
 import type { PropertyValues } from "lit";
-import { classMap } from "lit/directives/class-map.js";
+import "@shoelace-style/shoelace/dist/themes/dark.css";
+import "@shoelace-style/shoelace/dist/components/button/button.js";
+import "@shoelace-style/shoelace/dist/components/card/card.js";
+import "@shoelace-style/shoelace/dist/components/input/input.js";
+import "@shoelace-style/shoelace/dist/components/tab-group/tab-group.js";
+import "@shoelace-style/shoelace/dist/components/tab/tab.js";
+import "@shoelace-style/shoelace/dist/components/tab-panel/tab-panel.js";
+import "@shoelace-style/shoelace/dist/components/tag/tag.js";
+import { setBasePath } from "@shoelace-style/shoelace/dist/utilities/base-path.js";
 import { GameClientOrchestrator, type ClientHeartbeatTelemetry } from "./client-manager";
 import {
   InMemoryInputStore,
@@ -13,6 +21,8 @@ import {
 import { WebSocketNetworkClient, type WorldConfigurationSnapshot } from "./network";
 import { CanvasRenderer, type Renderer } from "./render";
 import { InMemoryWorldStateStore } from "./world-state";
+
+setBasePath("https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/dist/");
 
 const HEALTH_CHECK_URL = "/health";
 const JOIN_URL = "/join";
@@ -48,6 +58,10 @@ const INPUT_BINDINGS: InputBindings = {
 } as const;
 
 type PanelKey = "telemetry" | "world" | "inventory";
+
+type TabGroupElement = HTMLElement & {
+  show?: (panel: string) => void;
+};
 
 type PathCommandDetail =
   | { readonly kind: "move"; readonly x: number; readonly y: number }
@@ -543,21 +557,6 @@ class AppShell extends LitElement {
     }
   }
 
-  private getConnectionStatusVariant(): string {
-    switch (this.connectionStatus) {
-      case "connected":
-        return "connected";
-      case "connecting":
-        return "connecting";
-      case "shuttingDown":
-        return "disconnecting";
-      case "error":
-        return "error";
-      default:
-        return "idle";
-    }
-  }
-
   private handleRefreshClick(): void {
     this.dispatchEvent(
       new CustomEvent("refresh-requested", {
@@ -568,35 +567,37 @@ class AppShell extends LitElement {
   }
 
   render() {
-    const statusClasses = classMap({
-      "connection-status__pill": true,
-      [`connection-status__pill--${this.getConnectionStatusVariant()}`]: true,
-    });
-
     return html`
-      <main class="page">
-        <header class="page-header">
-          <div>
-            <h1>${this.heading}</h1>
-            <p class="page-header__subtitle">${this.subtitle}</p>
-          </div>
-          <div class="page-header__controls">
-            <button
-              type="button"
-              class="interface-tabs__tab interface-tabs__tab--active"
-              @click=${this.handleRefreshClick}
-            >
-              Refresh status
-            </button>
-            <span class="hud-network__item">${this.healthStatus}</span>
-            <div class="connection-status">
-              <span class=${statusClasses}>${this.formatConnectionStatusLabel()}</span>
-              ${this.connectionError
-                ? html`<span class="connection-status__error">${this.connectionError}</span>`
-                : null}
+      <main class="app-shell">
+        <sl-card class="app-shell__header">
+          <div class="app-shell__header-content">
+            <div>
+              <h1>${this.heading}</h1>
+              <p class="app-shell__subtitle">${this.subtitle}</p>
+            </div>
+            <div class="app-shell__metrics">
+              <div class="app-shell__metric">
+                <span class="app-shell__label">Health</span>
+                <span class="app-shell__value">${this.healthStatus}</span>
+              </div>
+              <div class="app-shell__metric">
+                <span class="app-shell__label">Server time</span>
+                <span class="app-shell__value">${this.serverTime}</span>
+              </div>
+              <div class="app-shell__metric">
+                <span class="app-shell__label">Heartbeat</span>
+                <span class="app-shell__value">${this.heartbeat}</span>
+              </div>
             </div>
           </div>
-        </header>
+          <div class="app-shell__actions">
+            <sl-button size="small" @click=${this.handleRefreshClick}>Refresh status</sl-button>
+            <sl-tag size="small">${this.formatConnectionStatusLabel()}</sl-tag>
+            ${this.connectionError
+              ? html`<span class="app-shell__error">${this.connectionError}</span>`
+              : null}
+          </div>
+        </sl-card>
         <game-canvas
           .renderer=${this.renderer}
           .activeTab=${this.activeTab}
@@ -627,6 +628,7 @@ class GameCanvas extends LitElement {
   private canvasElement: HTMLCanvasElement | null = null;
   private mountedRenderer: Renderer | null = null;
   private pointerHandlersAttached = false;
+  private tabGroup: TabGroupElement | null = null;
 
   renderer: Renderer | null;
   activeTab!: PanelKey;
@@ -681,6 +683,7 @@ class GameCanvas extends LitElement {
     this.canvasElement = this.querySelector("canvas");
     this.registerPointerHandlers();
     this.attachRenderer();
+    this.syncTabGroup();
     if (!this.renderer && this.canvasElement) {
       this.drawBootScreen(this.canvasElement);
     }
@@ -690,12 +693,16 @@ class GameCanvas extends LitElement {
     if (changed.has("renderer")) {
       this.attachRenderer();
     }
+    if (changed.has("activeTab")) {
+      this.syncTabGroup();
+    }
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.unregisterPointerHandlers();
     this.detachRenderer();
+    this.tabGroup = null;
     if (this.canvasElement) {
       this.drawBootScreen(this.canvasElement);
     }
@@ -758,6 +765,34 @@ class GameCanvas extends LitElement {
       this.mountedRenderer.unmount();
       this.mountedRenderer = null;
     }
+  }
+
+  private syncTabGroup(): void {
+    const group = (this.tabGroup ?? (this.querySelector("sl-tab-group") as TabGroupElement | null)) ?? null;
+    if (!group) {
+      this.tabGroup = null;
+      return;
+    }
+    this.tabGroup = group;
+    const activePanel = (group as unknown as { activeTab?: { panel?: string | null } | null }).activeTab?.panel ?? null;
+    if (activePanel === this.activeTab) {
+      return;
+    }
+    group.show?.(this.activeTab);
+  }
+
+  private handleTabShow(event: CustomEvent<{ name: string }>): void {
+    const name = (event.detail?.name ?? "") as PanelKey;
+    if (!name || this.activeTab === name) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent<PanelKey>("tab-change", {
+        detail: name,
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private registerPointerHandlers(): void {
@@ -829,130 +864,34 @@ class GameCanvas extends LitElement {
 
   render() {
     return html`
-      <section class="play-area">
-        <div class="play-area__main">
+      <section class="game-canvas">
+        <sl-card class="canvas-card">
           <canvas width="800" height="600" aria-label="Game viewport"></canvas>
-        </div>
-        <tabs-nav .activeTab=${this.activeTab}></tabs-nav>
-        <panel-viewport
-          .activeTab=${this.activeTab}
-          .logs=${this.logs}
-          .healthStatus=${this.healthStatus}
-          .serverTime=${this.serverTime}
-          .heartbeat=${this.heartbeat}
-          .commandRejection=${this.commandRejection}
-        ></panel-viewport>
-      </section>
-    `;
-  }
-}
-
-class TabsNav extends LitElement {
-  static properties = {
-    activeTab: { attribute: false },
-  } as const;
-
-  activeTab!: PanelKey;
-
-  constructor() {
-    super();
-    this.activeTab = "telemetry";
-  }
-
-  createRenderRoot(): Element | ShadowRoot {
-    return this;
-  }
-
-  private selectTab(tab: PanelKey): void {
-    if (this.activeTab === tab) {
-      return;
-    }
-    this.dispatchEvent(
-      new CustomEvent<PanelKey>("tab-change", {
-        detail: tab,
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  render() {
-    const tabs: Array<{ id: PanelKey; label: string }> = [
-      { id: "telemetry", label: "Telemetry" },
-      { id: "world", label: "World" },
-      { id: "inventory", label: "Inventory" },
-    ];
-
-    return html`
-      <nav class="tabs-nav" aria-label="Client panels">
-        <div class="interface-tabs__list">
-          ${tabs.map((tab) => {
-            const classes = classMap({
-              "interface-tabs__tab": true,
-              "interface-tabs__tab--active": this.activeTab === tab.id,
-            });
-            return html`
-              <button
-                type="button"
-                class=${classes}
-                @click=${() => {
-                  this.selectTab(tab.id);
-                }}
-              >
-                ${tab.label}
-              </button>
-            `;
-          })}
-        </div>
-      </nav>
-    `;
-  }
-}
-
-class PanelViewport extends LitElement {
-  static properties = {
-    activeTab: { attribute: false },
-    logs: { attribute: false },
-    healthStatus: { type: String },
-    serverTime: { type: String },
-    heartbeat: { type: String },
-    commandRejection: { attribute: false },
-  } as const;
-
-  activeTab!: PanelKey;
-  logs!: LogEntry[];
-  healthStatus!: string;
-  serverTime!: string;
-  heartbeat!: string;
-  commandRejection: CommandRejectionDisplay | null;
-
-  constructor() {
-    super();
-    this.activeTab = "telemetry";
-    this.logs = [];
-    this.healthStatus = "--";
-    this.serverTime = "--";
-    this.heartbeat = "--";
-    this.commandRejection = null;
-  }
-
-  createRenderRoot(): Element | ShadowRoot {
-    return this;
-  }
-
-  render() {
-    return html`
-      <section class="panel-viewport">
-        <debug-panel
-          .healthStatus=${this.healthStatus}
-          .serverTime=${this.serverTime}
-          .heartbeat=${this.heartbeat}
-          .logs=${this.logs}
-          .commandRejection=${this.commandRejection}
-          ?hidden=${this.activeTab !== "telemetry"}
-        ></debug-panel>
-        <world-controls ?hidden=${this.activeTab !== "world"}></world-controls>
-        <inventory-panel ?hidden=${this.activeTab !== "inventory"}></inventory-panel>
+        </sl-card>
+        <sl-tab-group
+          class="game-tabs"
+          placement="top"
+          @sl-tab-show=${this.handleTabShow}
+        >
+          <sl-tab slot="nav" panel="telemetry">Telemetry</sl-tab>
+          <sl-tab slot="nav" panel="world">World</sl-tab>
+          <sl-tab slot="nav" panel="inventory">Inventory</sl-tab>
+          <sl-tab-panel name="telemetry">
+            <debug-panel
+              .healthStatus=${this.healthStatus}
+              .serverTime=${this.serverTime}
+              .heartbeat=${this.heartbeat}
+              .logs=${this.logs}
+              .commandRejection=${this.commandRejection}
+            ></debug-panel>
+          </sl-tab-panel>
+          <sl-tab-panel name="world">
+            <world-controls></world-controls>
+          </sl-tab-panel>
+          <sl-tab-panel name="inventory">
+            <inventory-panel></inventory-panel>
+          </sl-tab-panel>
+        </sl-tab-group>
       </section>
     `;
   }
@@ -992,50 +931,38 @@ class DebugPanel extends LitElement {
       .join("\n");
 
     return html`
-      <article class="debug-panel">
-        <header class="debug-panel__header">
-          <div class="debug-panel__heading">
-            <h2 class="debug-panel__title">Telemetry</h2>
-            <p class="debug-panel__subtitle">
-              Live diagnostics from the connected client instance.
-            </p>
-          </div>
-          <button class="debug-panel__toggle" type="button">Collapse</button>
-        </header>
-        <div class="debug-panel__body">
-          <div class="debug-panel__summary">
-            <div class="debug-panel__status">
-              <span class="debug-panel__status-label">Client health</span>
-              <span class="debug-panel__status-text">${this.healthStatus}</span>
-            </div>
-            <div class="debug-panel__metrics">
-              <div class="debug-metric">
-                <span class="debug-metric__label">Server time</span>
-                <span class="debug-metric__value">${this.serverTime}</span>
-              </div>
-              <div class="debug-metric">
-                <span class="debug-metric__label">Connection status</span>
-                <span class="debug-metric__value">${this.heartbeat}</span>
-              </div>
-            </div>
-            ${this.commandRejection
-              ? html`
-                  <div class="command-rejection" role="status" aria-live="polite">
-                    <span class="command-rejection__badge">${this.commandRejection.label}</span>
-                    <span class="command-rejection__reason">${this.commandRejection.reason}</span>
-                    ${this.commandRejection.meta
-                      ? html`<span class="command-rejection__meta">${this.commandRejection.meta}</span>`
-                      : null}
-                  </div>
-                `
-              : null}
-          </div>
-          <section>
-            <h3 class="sr-only">Client console output</h3>
-            <pre class="console-output">${logText || "Booting client…"}</pre>
-          </section>
+      <sl-card class="panel-card">
+        <div class="panel-card__header">
+          <h2>Telemetry</h2>
+          <p class="panel-card__description">Live diagnostics from the connected client instance.</p>
         </div>
-      </article>
+        <div class="panel-card__grid">
+          <div class="panel-card__item">
+            <span class="panel-card__label">Client health</span>
+            <span class="panel-card__value">${this.healthStatus}</span>
+          </div>
+          <div class="panel-card__item">
+            <span class="panel-card__label">Server time</span>
+            <span class="panel-card__value">${this.serverTime}</span>
+          </div>
+          <div class="panel-card__item">
+            <span class="panel-card__label">Connection</span>
+            <span class="panel-card__value">${this.heartbeat}</span>
+          </div>
+        </div>
+        ${this.commandRejection
+          ? html`
+              <div class="panel-card__alert" role="status" aria-live="polite">
+                <span class="panel-card__label">${this.commandRejection.label}</span>
+                <span class="panel-card__value">${this.commandRejection.reason}</span>
+                ${this.commandRejection.meta
+                  ? html`<span class="panel-card__meta">${this.commandRejection.meta}</span>`
+                  : null}
+              </div>
+            `
+          : null}
+        <pre class="panel-card__log">${logText || "Booting client…"}</pre>
+      </sl-card>
     `;
   }
 }
@@ -1065,21 +992,17 @@ class WorldControls extends LitElement {
 
   render() {
     return html`
-      <section class="world-controls">
-        <h2 class="world-controls__title">World controls</h2>
+      <sl-card class="panel-card">
+        <h2>World controls</h2>
         <form class="world-controls__form" @submit=${this.handleSubmit}>
-          <label class="world-controls__label">
-            World seed
-            <input
-              type="text"
-              name="seed"
-              placeholder="Leave empty for random seed"
-              class="world-controls__input"
-            />
-          </label>
-          <button type="submit" class="world-controls__submit">Reset world</button>
+          <sl-input
+            name="seed"
+            label="World seed"
+            placeholder="Leave empty for random seed"
+          ></sl-input>
+          <sl-button type="submit">Reset world</sl-button>
         </form>
-      </section>
+      </sl-card>
     `;
   }
 }
@@ -1115,20 +1038,22 @@ class InventoryPanel extends LitElement {
 
   render() {
     return html`
-      <section class="inventory-panel">
+      <sl-card class="panel-card">
         <h2>Inventory</h2>
         <div class="inventory-grid">
           ${this.items.map((item) => {
             return html`
               <div class="inventory-slot" role="listitem">
                 <span class="inventory-item-icon" aria-hidden="true">${item.icon}</span>
-                <span class="inventory-item-name">${item.name}</span>
-                <span class="inventory-item-quantity">x${item.quantity}</span>
+                <div class="inventory-item-details">
+                  <span class="inventory-item-name">${item.name}</span>
+                  <span class="inventory-item-quantity">x${item.quantity}</span>
+                </div>
               </div>
             `;
           })}
         </div>
-      </section>
+      </sl-card>
     `;
   }
 }
@@ -1178,21 +1103,17 @@ class HudNetwork extends LitElement {
 
   render() {
     return html`
-      <div class="hud-network">
-        <span class="hud-network__item hud-network__item--status">
-          Status: ${this.formatConnectionStatusLabel()}
-        </span>
-        <span class="hud-network__item">Heartbeat: ${this.heartbeat}</span>
-        <span class="hud-network__item">Server time: ${this.serverTime}</span>
-        <span class="hud-network__item">
-          Player: ${this.playerId ? this.playerId : "—"}
-        </span>
-        ${this.connectionError
-          ? html`<span class="hud-network__item hud-network__item--error">
-              ${this.connectionError}
-            </span>`
-          : null}
-      </div>
+      <sl-card class="hud-network">
+        <div class="hud-network__grid">
+          <span>Status: ${this.formatConnectionStatusLabel()}</span>
+          <span>Heartbeat: ${this.heartbeat}</span>
+          <span>Server time: ${this.serverTime}</span>
+          <span>Player: ${this.playerId ? this.playerId : "—"}</span>
+          ${this.connectionError
+            ? html`<span class="hud-network__error">${this.connectionError}</span>`
+            : null}
+        </div>
+      </sl-card>
     `;
   }
 }
@@ -1200,8 +1121,6 @@ class HudNetwork extends LitElement {
 customElements.define("game-client-app", GameClientApp);
 customElements.define("app-shell", AppShell);
 customElements.define("game-canvas", GameCanvas);
-customElements.define("tabs-nav", TabsNav);
-customElements.define("panel-viewport", PanelViewport);
 customElements.define("debug-panel", DebugPanel);
 customElements.define("world-controls", WorldControls);
 customElements.define("inventory-panel", InventoryPanel);
