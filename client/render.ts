@@ -186,6 +186,7 @@ export class CanvasRenderer implements Renderer {
 
   renderBatch(batch: RenderBatch): void {
     this.lastBatch = batch;
+    this.applyWorldDimensionsFromBatch(batch);
     this.syncEffects(batch);
   }
 
@@ -259,6 +260,11 @@ export class CanvasRenderer implements Renderer {
     context.save();
     context.clearRect(0, 0, canvas.width, canvas.height);
 
+    const batch = this.lastBatch;
+    if (batch) {
+      this.drawStaticGeometry(context, batch.staticGeometry);
+    }
+
     this.effectManager.cullByAABB({ x: 0, y: 0, w: canvas.width, h: canvas.height });
     const frameContext = {
       ctx: context,
@@ -270,10 +276,367 @@ export class CanvasRenderer implements Renderer {
     this.effectManager.drawAll(frameContext);
     context.restore();
 
-    const batch = this.lastBatch;
     if (batch?.pathTarget) {
       this.drawPathTarget(context, batch.pathTarget);
     }
+  }
+
+  private applyWorldDimensionsFromBatch(batch: RenderBatch | null): void {
+    if (!batch) {
+      return;
+    }
+
+    const dimensions = this.extractWorldDimensions(batch.staticGeometry);
+    if (!dimensions) {
+      return;
+    }
+
+    const widthChanged = dimensions.width !== this.currentDimensions.width;
+    const heightChanged = dimensions.height !== this.currentDimensions.height;
+    if (!widthChanged && !heightChanged) {
+      return;
+    }
+
+    this.currentDimensions = { ...dimensions };
+    this.configureCanvas();
+  }
+
+  private extractWorldDimensions(geometry: readonly StaticGeometry[]): RenderDimensions | null {
+    for (const entry of geometry) {
+      const dimensions = this.extractDimensionsFromEntry(entry);
+      if (dimensions) {
+        return dimensions;
+      }
+    }
+    return null;
+  }
+
+  private extractDimensionsFromEntry(entry: StaticGeometry): RenderDimensions | null {
+    const style = this.asRecord(entry.style);
+    const kind = typeof style.kind === "string" ? style.kind : null;
+    if (kind !== "world-background" && kind !== "world-grid") {
+      return null;
+    }
+
+    const bounds = this.computeBounds(entry.vertices);
+    if (!bounds) {
+      return null;
+    }
+
+    const width = this.resolveDimension(style.width, bounds.maxX - bounds.minX);
+    const height = this.resolveDimension(style.height, bounds.maxY - bounds.minY);
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
+
+    return { width, height };
+  }
+
+  private drawStaticGeometry(
+    context: CanvasRenderingContext2D,
+    geometry: readonly StaticGeometry[],
+  ): void {
+    if (!Array.isArray(geometry) || geometry.length === 0) {
+      return;
+    }
+
+    const ranked = geometry
+      .map((entry, index) => ({
+        entry,
+        index,
+        zIndex: this.resolveLayerZIndex(entry.layer),
+      }))
+      .sort((left, right) => {
+        const diff = left.zIndex - right.zIndex;
+        if (diff !== 0) {
+          return diff;
+        }
+        return left.index - right.index;
+      });
+
+    for (const { entry } of ranked) {
+      this.drawStaticGeometryEntry(context, entry);
+    }
+  }
+
+  private drawStaticGeometryEntry(
+    context: CanvasRenderingContext2D,
+    entry: StaticGeometry,
+  ): void {
+    const style = this.asRecord(entry.style);
+    const kind = typeof style.kind === "string" ? style.kind : null;
+
+    switch (kind) {
+      case "world-background":
+        this.drawWorldBackground(context, entry, style);
+        return;
+      case "world-grid":
+        this.drawWorldGrid(context, entry, style);
+        return;
+      case "player":
+      case "npc":
+        this.drawCircleGeometry(context, entry, style);
+        return;
+      default:
+        this.drawPolygonGeometry(context, entry, style);
+        return;
+    }
+  }
+
+  private drawWorldBackground(
+    context: CanvasRenderingContext2D,
+    entry: StaticGeometry,
+    style: Record<string, unknown>,
+  ): void {
+    const bounds = this.computeBounds(entry.vertices);
+    if (!bounds) {
+      return;
+    }
+
+    const origin = this.resolvePoint(style.origin) ?? [bounds.minX, bounds.minY];
+    const width = this.resolveDimension(style.width, bounds.maxX - bounds.minX);
+    const height = this.resolveDimension(style.height, bounds.maxY - bounds.minY);
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+
+    const fill = this.resolveFill(style);
+    const stroke = this.resolveStroke(style);
+    const lineWidth = this.resolveLineWidth(style, 1);
+
+    context.save();
+    if (fill) {
+      context.fillStyle = fill;
+      context.fillRect(origin[0], origin[1], width, height);
+    }
+    if (stroke && lineWidth > 0) {
+      context.lineWidth = lineWidth;
+      context.strokeStyle = stroke;
+      context.strokeRect(origin[0], origin[1], width, height);
+    }
+    context.restore();
+  }
+
+  private drawWorldGrid(
+    context: CanvasRenderingContext2D,
+    entry: StaticGeometry,
+    style: Record<string, unknown>,
+  ): void {
+    const bounds = this.computeBounds(entry.vertices);
+    if (!bounds) {
+      return;
+    }
+
+    const origin = this.resolvePoint(style.origin) ?? [bounds.minX, bounds.minY];
+    const width = this.resolveDimension(style.width, bounds.maxX - bounds.minX);
+    const height = this.resolveDimension(style.height, bounds.maxY - bounds.minY);
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+
+    const fill = this.resolveFill(style);
+    const stroke = this.resolveStroke(style) ?? "rgba(255, 255, 255, 0.06)";
+    const lineWidth = this.resolveLineWidth(style, 1);
+    const columns = this.resolveCount(style.columns, Math.max(1, Math.round(width)));
+    const rows = this.resolveCount(style.rows, Math.max(1, Math.round(height)));
+
+    context.save();
+    if (fill) {
+      context.fillStyle = fill;
+      context.fillRect(origin[0], origin[1], width, height);
+    }
+    if (stroke && lineWidth > 0) {
+      context.strokeStyle = stroke;
+      context.lineWidth = lineWidth;
+      context.beginPath();
+
+      const drawVerticalLines = Math.max(1, columns);
+      for (let column = 0; column <= drawVerticalLines; column += 1) {
+        const x = origin[0] + (width * column) / drawVerticalLines;
+        context.moveTo(x, origin[1]);
+        context.lineTo(x, origin[1] + height);
+      }
+
+      const drawHorizontalLines = Math.max(1, rows);
+      for (let row = 0; row <= drawHorizontalLines; row += 1) {
+        const y = origin[1] + (height * row) / drawHorizontalLines;
+        context.moveTo(origin[0], y);
+        context.lineTo(origin[0] + width, y);
+      }
+
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  private drawCircleGeometry(
+    context: CanvasRenderingContext2D,
+    entry: StaticGeometry,
+    style: Record<string, unknown>,
+  ): void {
+    const bounds = this.computeBounds(entry.vertices);
+    if (!bounds) {
+      return;
+    }
+
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    const radius = this.resolveDimension(style.radius, Math.min(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / 2);
+    if (radius <= 0) {
+      return;
+    }
+
+    const fill = this.resolveFill(style);
+    const stroke = this.resolveStroke(style);
+    const lineWidth = this.resolveLineWidth(style, 1);
+
+    context.save();
+    context.beginPath();
+    context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    if (fill) {
+      context.fillStyle = fill;
+      context.fill();
+    }
+    if (stroke && lineWidth > 0) {
+      context.lineWidth = lineWidth;
+      context.strokeStyle = stroke;
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  private drawPolygonGeometry(
+    context: CanvasRenderingContext2D,
+    entry: StaticGeometry,
+    style: Record<string, unknown>,
+  ): void {
+    if (!Array.isArray(entry.vertices) || entry.vertices.length === 0) {
+      return;
+    }
+
+    const fill = this.resolveFill(style);
+    const stroke = this.resolveStroke(style);
+    const lineWidth = this.resolveLineWidth(style, 1);
+    if (!fill && (!stroke || lineWidth <= 0)) {
+      return;
+    }
+
+    context.save();
+    context.beginPath();
+    const [firstX, firstY] = entry.vertices[0];
+    context.moveTo(firstX, firstY);
+    for (let index = 1; index < entry.vertices.length; index += 1) {
+      const [x, y] = entry.vertices[index];
+      context.lineTo(x, y);
+    }
+    context.closePath();
+    if (fill) {
+      context.fillStyle = fill;
+      context.fill();
+    }
+    if (stroke && lineWidth > 0) {
+      context.lineWidth = lineWidth;
+      context.strokeStyle = stroke;
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  private resolveLayerZIndex(layer: RenderLayer | undefined): number {
+    if (layer && Number.isFinite(layer.zIndex)) {
+      return layer.zIndex;
+    }
+    if (!layer) {
+      return 0;
+    }
+    const match = this.layers.find((candidate) => candidate.id === layer.id);
+    if (match && Number.isFinite(match.zIndex)) {
+      return match.zIndex;
+    }
+    return 0;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private computeBounds(
+    vertices: readonly [number, number][],
+  ): { minX: number; minY: number; maxX: number; maxY: number } | null {
+    if (!Array.isArray(vertices) || vertices.length === 0) {
+      return null;
+    }
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const [x, y] of vertices) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        continue;
+      }
+      if (x < minX) {
+        minX = x;
+      }
+      if (x > maxX) {
+        maxX = x;
+      }
+      if (y < minY) {
+        minY = y;
+      }
+      if (y > maxY) {
+        maxY = y;
+      }
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+      return null;
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  private resolveDimension(value: unknown, fallback: number): number {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+    return fallback;
+  }
+
+  private resolveLineWidth(style: Record<string, unknown>, fallback: number): number {
+    const candidate = style.lineWidth;
+    if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0) {
+      return candidate;
+    }
+    return fallback;
+  }
+
+  private resolveFill(style: Record<string, unknown>): string | null {
+    const { fill } = style;
+    return typeof fill === "string" && fill.length > 0 ? fill : null;
+  }
+
+  private resolveStroke(style: Record<string, unknown>): string | null {
+    const { stroke } = style;
+    return typeof stroke === "string" && stroke.length > 0 ? stroke : null;
+  }
+
+  private resolvePoint(value: unknown): [number, number] | null {
+    if (!Array.isArray(value) || value.length < 2) {
+      return null;
+    }
+    const [x, y] = value;
+    if (typeof x !== "number" || !Number.isFinite(x) || typeof y !== "number" || !Number.isFinite(y)) {
+      return null;
+    }
+    return [x, y];
+  }
+
+  private resolveCount(value: unknown, fallback: number): number {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+    return Math.max(1, Math.floor(fallback));
   }
 
   private syncEffects(batch: RenderBatch | null): void {
