@@ -641,7 +641,7 @@ class GameCanvas extends LitElement {
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     if (event.button === 0) {
-      if (this.activeTab !== "telemetry") {
+      if (this.activeTab !== "world") {
         return;
       }
       event.preventDefault();
@@ -774,11 +774,9 @@ class GameCanvas extends LitElement {
       return;
     }
     this.tabGroup = group;
-    const activePanel = (group as unknown as { activeTab?: { panel?: string | null } | null }).activeTab?.panel ?? null;
-    if (activePanel === this.activeTab) {
-      return;
+    if (typeof group.show === "function") {
+      group.show(this.activeTab);
     }
-    group.show?.(this.activeTab);
   }
 
   private handleTabShow(event: CustomEvent<{ name: string }>): void {
@@ -871,6 +869,7 @@ class GameCanvas extends LitElement {
         <sl-tab-group
           class="game-tabs"
           placement="top"
+          aria-label="Client panels"
           @sl-tab-show=${this.handleTabShow}
         >
           <sl-tab slot="nav" panel="telemetry">Telemetry</sl-tab>
