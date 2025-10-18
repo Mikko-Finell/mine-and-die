@@ -16,6 +16,7 @@ let cancelAnimationFrameMock: ReturnType<typeof vi.fn<[number], void>>;
 let rafCallbacks: FrameRequestCallback[];
 
 const worldLayer: RenderLayer = { id: "world-background", zIndex: -200 };
+const worldGridLayer: RenderLayer = { id: "world-grid", zIndex: -150 };
 const effectVisualLayer: RenderLayer = { id: "effect-visual", zIndex: 10 };
 const effectAreaLayer: RenderLayer = { id: "effect-area", zIndex: 20 };
 const effectTargetLayer: RenderLayer = { id: "effect-target", zIndex: 30 };
@@ -145,5 +146,122 @@ describe("CanvasRenderer", () => {
 
     renderer.unmount();
     expect(cancelAnimationFrameMock).toHaveBeenCalled();
+  });
+
+  test("draws world geometry before effect updates each frame", () => {
+    const renderer = new CanvasRenderer({
+      dimensions: { width: 128, height: 128 },
+      layers: [worldLayer, effectVisualLayer, effectAreaLayer, effectTargetLayer],
+    });
+
+    const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
+    const context = createContext(canvas);
+    (canvas as unknown as { getContext: (type: string) => CanvasRenderingContext2D | null }).getContext = vi.fn(
+      () => context,
+    );
+
+    const staticOrder: string[] = [];
+    const effectOrder: string[] = [];
+    const internals = renderer as unknown as {
+      effectManager: {
+        spawn: (intent: unknown) => void;
+        removeInstance: (id: string) => void;
+        clear: () => void;
+        cullByAABB: (bounds: unknown) => void;
+        updateAll: (frame: unknown) => void;
+        drawAll: (frame: unknown) => void;
+      };
+      drawPolygon: (
+        ctx: CanvasRenderingContext2D,
+        entry: StaticGeometry,
+        style: Record<string, unknown> | null,
+      ) => void;
+      drawWorldGrid: (
+        ctx: CanvasRenderingContext2D,
+        entry: StaticGeometry,
+        style: Record<string, unknown>,
+      ) => void;
+    };
+
+    internals.effectManager = {
+      spawn: vi.fn(),
+      removeInstance: vi.fn(),
+      clear: vi.fn(),
+      cullByAABB: vi.fn(() => {
+        effectOrder.push("cull");
+      }),
+      updateAll: vi.fn(() => {
+        effectOrder.push(`update:${staticOrder.length}`);
+      }),
+      drawAll: vi.fn(() => {
+        effectOrder.push(`draw:${staticOrder.length}`);
+      }),
+    };
+
+    internals.drawPolygon = vi.fn((_, entry) => {
+      staticOrder.push(entry.id);
+    });
+    internals.drawWorldGrid = vi.fn(() => {
+      staticOrder.push("world/grid");
+    });
+
+    const batch: RenderBatch = {
+      keyframeId: "test-world",
+      time: 0,
+      staticGeometry: [
+        {
+          id: "world/background",
+          layer: worldLayer,
+          vertices: [
+            [0, 0],
+            [128, 0],
+            [128, 128],
+            [0, 128],
+          ],
+          style: { kind: "world-background", width: 128, height: 128 },
+        },
+        {
+          id: "world/grid",
+          layer: worldGridLayer,
+          vertices: [
+            [0, 0],
+            [128, 0],
+            [128, 128],
+            [0, 128],
+          ],
+          style: { kind: "world-grid", columns: 8, rows: 8, spacing: 16 },
+        },
+        {
+          id: "effect-geometry",
+          layer: effectAreaLayer,
+          vertices: [
+            [48, 48],
+            [80, 48],
+            [80, 80],
+            [48, 80],
+          ],
+          style: { kind: "effect" },
+        },
+      ],
+      animations: [],
+      pathTarget: null,
+    };
+
+    renderer.renderBatch(batch);
+    renderer.mount({ canvas, context });
+
+    const stepFrame = (timestamp: number): void => {
+      const callback = rafCallbacks.shift();
+      expect(callback).toBeDefined();
+      callback?.(timestamp);
+    };
+
+    stepFrame(0);
+
+    expect(staticOrder[0]).toBe("world/background");
+    expect(staticOrder).toContain("world/grid");
+    expect(staticOrder).toContain("effect-geometry");
+    expect(effectOrder).toEqual(["cull", "update:3", "draw:3"]);
+    renderer.unmount();
   });
 });
