@@ -109,6 +109,21 @@ renderer translates those batches into effect runtime calls, spawning instances
 on `spawn`, reconciling `update` payloads, and disposing instances on `end` or
 when the lifecycle store resets.
 
+### Catalog distribution policy
+
+The generated TypeScript artifacts are the only catalog payloads the client
+needs. We do **not** stream catalog snapshots or updates from the server; the
+checked-in output from `effectsgen` already contains the authoritative data for
+runtime usage. Until we intentionally revisit the contract, assume that shipping
+a fresh build (with regenerated artifacts) is the required workflow for catalog
+changes.
+
+Future niceties like hot reload, live catalog streaming, or runtime editing are
+explicitly out of scope for the current initiative. The architecture should not
+carry extra code paths, toggleable transports, or invalidation hooks in
+anticipation of those features. If we ever need them, we will design the
+contract extensions deliberately when that roadmap becomes active.
+
 ## Lifecycle and Resync Semantics
 
 - **Spawn** – Creates a runtime instance keyed by catalog ID and payload
