@@ -258,4 +258,148 @@ describe("GameClientOrchestrator", () => {
 
     await orchestrator.shutdown();
   });
+
+  test("replays pending commands immediately after resync and omits stale ack metadata", async () => {
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const dispatcher = orchestrator.createInputDispatcher();
+
+    dispatcher.sendAction("attack");
+    emitLifecycleState({ tick: 5, receivedAt: 1000 });
+
+    expect(network.sentMessages).toHaveLength(1);
+    expect(network.sentMessages[0]).toEqual({ type: "action", action: "attack", ver: 1, ack: 5, seq: 1 });
+
+    emitLifecycleState({ resync: true, receivedAt: 1500 });
+
+    expect(network.sentMessages).toHaveLength(2);
+    expect(network.sentMessages[1]).toEqual({ type: "action", action: "attack", ver: 1, seq: 1 });
+    expect(network.sentMessages[1]).not.toHaveProperty("ack");
+
+    network.emit({
+      type: "commandAck",
+      payload: { seq: 1, tick: 12 },
+      receivedAt: 1600,
+    });
+
+    dispatcher.sendAction("attack");
+
+    expect(network.sentMessages).toHaveLength(3);
+    expect(network.sentMessages[2]).toEqual({ type: "action", action: "attack", ver: 1, ack: 12, seq: 2 });
+
+    await orchestrator.shutdown();
+  });
+
+  test("retriable command rejections are retried without surfacing telemetry", async () => {
+    vi.useFakeTimers();
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const onCommandRejectionChanged = vi.fn();
+    const dispatcher = orchestrator.createInputDispatcher({ onCommandRejectionChanged });
+
+    try {
+      dispatcher.sendAction("attack");
+      emitLifecycleState({ tick: 3, receivedAt: 700 });
+
+      expect(network.sentMessages).toHaveLength(1);
+      expect(network.sentMessages[0]).toEqual({ type: "action", action: "attack", ver: 1, ack: 3, seq: 1 });
+
+      network.emit({
+        type: "commandReject",
+        payload: { seq: 1, reason: "queue_limit", retry: true, tick: 7 },
+        receivedAt: 750,
+      });
+
+      expect(onCommandRejectionChanged).not.toHaveBeenCalled();
+      expect(network.sentMessages).toHaveLength(1);
+
+      vi.advanceTimersByTime(50);
+
+      expect(network.sentMessages).toHaveLength(2);
+      expect(network.sentMessages[1]).toEqual({ type: "action", action: "attack", ver: 1, ack: 7, seq: 1 });
+    } finally {
+      await orchestrator.shutdown();
+      vi.useRealTimers();
+    }
+  });
+
+  test("forwards non-retryable command rejections through hooks", async () => {
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const onCommandRejectionChanged = vi.fn();
+    const dispatcher = orchestrator.createInputDispatcher({ onCommandRejectionChanged });
+
+    dispatcher.sendPathCommand({ x: 48, y: 32 });
+    emitLifecycleState({ tick: 4, receivedAt: 800 });
+
+    network.emit({
+      type: "commandReject",
+      payload: { seq: 1, reason: "queue_limit", retry: false, tick: 6 },
+      receivedAt: 850,
+    });
+
+    expect(onCommandRejectionChanged).toHaveBeenLastCalledWith({
+      sequence: 1,
+      reason: "queue_limit",
+      retry: false,
+      tick: 6,
+      kind: "path",
+    });
+
+    dispatcher.sendPathCommand({ x: 96, y: 64 });
+    network.emit({
+      type: "commandAck",
+      payload: { seq: 2, tick: 10 },
+      receivedAt: 900,
+    });
+
+    expect(onCommandRejectionChanged).toHaveBeenLastCalledWith(null);
+
+    await orchestrator.shutdown();
+  });
+
+  test("resync clears stored command rejections", async () => {
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const onCommandRejectionChanged = vi.fn();
+    const dispatcher = orchestrator.createInputDispatcher({ onCommandRejectionChanged });
+
+    dispatcher.sendPathCommand({ x: 48, y: 32 });
+    emitLifecycleState({ tick: 4, receivedAt: 800 });
+
+    expect(network.sentMessages).toHaveLength(1);
+    expect(network.sentMessages[0]).toEqual({ type: "path", x: 48, y: 32, ver: 1, ack: 4, seq: 1 });
+
+    network.emit({
+      type: "commandReject",
+      payload: { seq: 1, reason: "queue_limit", retry: false, tick: 6 },
+      receivedAt: 850,
+    });
+
+    expect(onCommandRejectionChanged).toHaveBeenLastCalledWith({
+      sequence: 1,
+      reason: "queue_limit",
+      retry: false,
+      tick: 6,
+      kind: "path",
+    });
+
+    emitLifecycleState({ resync: true, receivedAt: 900 });
+
+    expect(onCommandRejectionChanged).toHaveBeenLastCalledWith(null);
+
+    await orchestrator.shutdown();
+  });
 });
