@@ -107,9 +107,9 @@ class GameClientApp extends LitElement {
   private heartbeatAcknowledged = false;
   private inputRegistered = false;
 
-  playerId: string | null;
-  worldDimensions: WorldConfigurationSnapshot | null;
-  commandRejection: CommandRejectionDisplay | null;
+  declare playerId: string | null;
+  declare worldDimensions: WorldConfigurationSnapshot | null;
+  declare commandRejection: CommandRejectionDisplay | null;
 
   constructor() {
     super();
@@ -512,18 +512,18 @@ class AppShell extends LitElement {
     worldDimensions: { attribute: false },
   } as const;
 
-  heading!: string;
-  subtitle!: string;
-  renderer: Renderer | null;
-  healthStatus!: string;
-  logs!: LogEntry[];
-  serverTime!: string;
-  heartbeat!: string;
-  activeTab!: PanelKey;
-  commandRejection: CommandRejectionDisplay | null;
-  connectionStatus!: SessionState;
-  connectionError!: string;
-  worldDimensions: WorldConfigurationSnapshot | null;
+  declare heading: string;
+  declare subtitle: string;
+  declare renderer: Renderer | null;
+  declare healthStatus: string;
+  declare logs: LogEntry[];
+  declare serverTime: string;
+  declare heartbeat: string;
+  declare activeTab: PanelKey;
+  declare commandRejection: CommandRejectionDisplay | null;
+  declare connectionStatus: SessionState;
+  declare connectionError: string;
+  declare worldDimensions: WorldConfigurationSnapshot | null;
 
   constructor() {
     super();
@@ -633,14 +633,14 @@ class GameCanvas extends LitElement {
   private pointerHandlersAttached = false;
   private tabGroup: TabGroupElement | null = null;
 
-  renderer: Renderer | null;
-  activeTab!: PanelKey;
-  logs!: LogEntry[];
-  healthStatus!: string;
-  serverTime!: string;
-  heartbeat!: string;
-  commandRejection: CommandRejectionDisplay | null;
-  worldDimensions: WorldConfigurationSnapshot | null;
+  declare renderer: Renderer | null;
+  declare activeTab: PanelKey;
+  declare logs: LogEntry[];
+  declare healthStatus: string;
+  declare serverTime: string;
+  declare heartbeat: string;
+  declare commandRejection: CommandRejectionDisplay | null;
+  declare worldDimensions: WorldConfigurationSnapshot | null;
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     if (event.button === 0) {
@@ -908,11 +908,11 @@ class DebugPanel extends LitElement {
     commandRejection: { attribute: false },
   } as const;
 
-  healthStatus!: string;
-  serverTime!: string;
-  heartbeat!: string;
-  logs!: LogEntry[];
-  commandRejection: CommandRejectionDisplay | null;
+  declare healthStatus: string;
+  declare serverTime: string;
+  declare heartbeat: string;
+  declare logs: LogEntry[];
+  declare commandRejection: CommandRejectionDisplay | null;
 
   constructor() {
     super();
@@ -1021,7 +1021,7 @@ class InventoryPanel extends LitElement {
     items: { attribute: false },
   } as const;
 
-  items!: InventoryItem[];
+  declare items: InventoryItem[];
 
   constructor() {
     super();
@@ -1069,11 +1069,11 @@ class HudNetwork extends LitElement {
     connectionError: { type: String },
   } as const;
 
-  serverTime!: string;
-  heartbeat!: string;
-  playerId!: string;
-  connectionStatus!: SessionState;
-  connectionError!: string;
+  declare serverTime: string;
+  declare heartbeat: string;
+  declare playerId: string;
+  declare connectionStatus: SessionState;
+  declare connectionError: string;
 
   constructor() {
     super();
