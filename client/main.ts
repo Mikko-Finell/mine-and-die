@@ -169,7 +169,7 @@ class GameClientApp extends LitElement {
     this.serverTime = "--";
     this.heartbeat = "Disconnected";
     this.logs = [] as LogEntry[];
-    this.activeTab = "telemetry";
+    this.activeTab = "world";
     this.playerId = null;
     this.worldDimensions = null;
     this.commandRejection = null;
@@ -534,7 +534,7 @@ class AppShell extends LitElement {
     this.logs = [];
     this.serverTime = "--";
     this.heartbeat = "--";
-    this.activeTab = "telemetry";
+    this.activeTab = "world";
     this.commandRejection = null;
     this.connectionStatus = "idle";
     this.connectionError = "";
@@ -669,7 +669,7 @@ class GameCanvas extends LitElement {
   constructor() {
     super();
     this.renderer = null;
-    this.activeTab = "telemetry";
+    this.activeTab = "world";
     this.logs = [];
     this.healthStatus = "--";
     this.serverTime = "--";
