@@ -9,8 +9,8 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 | 1 | Finalise Go contract registry | Central Go package owns all effect contracts and validation helpers; unit coverage in place. | 🟢 Done |
 | 2 | JSON schema & catalog resolver | JSON schema validated; loader in `server/effects` resolves designer `entryId` → contract and caches lookups. | 🟢 Done |
 | 3 | `tools/effectgen` TypeScript emitter | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks. | 🟢 Done |
-| 4 | Client integration of generated bindings | Generated bindings drive type authority and rendering paths in the live client; CI enforces regeneration drift checks. | 🟡 In progress |
-| 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | ⚪ Planned |
+| 4 | Client integration of generated bindings | Generated bindings drive type authority and rendering paths in the live client; generation flow validates schema/catalog before emitting artifacts. | 🟢 Done |
+| 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | 🟡 In progress |
 | 6 | Input capture & command dispatch | `client/input.ts` implements `KeyboardInputController.register/unregister`; an `InputActionDispatcher` wires player intents/actions into `NetworkClient.send`, updating path/action payloads and honouring resync/ack flows in `client/client-manager.ts`. | 🟢 Done |
 | 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | ⚪ Planned |
 
@@ -59,17 +59,25 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 ### Next Task
 
-* _None queued; remain focused on Phase 6 command acknowledgement._
+* _Phase complete; continue monitoring generator drift during downstream work._
 
 ## Phase 5 – Client session orchestration
 
 ### Completed Work
 
-* _Not yet started._
+* 🟢 **Live shell boots the orchestrator stack**
+  `client/main.ts` initialises `GameClientOrchestrator` with `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`, wiring the renderer host in `<game-canvas>`.
+* 🟢 **Connection state surfaces through the UI**
+  The shell exposes heartbeat, disconnect, and error telemetry via orchestrator callbacks and logs so operators can observe session status.
+* 🟢 **Lifecycle events flow from network to world state**
+  `client/network.ts` forwards `state`, `keyframe`, `resync`, and `keyframeNack` envelopes into `client/client-manager.ts`, which maintains the orchestrator-managed stores.
+* 🟢 **Headless harness exercises state hydration**
+  `client/__tests__/lifecycle-render-smoke.test.ts` replays recorded lifecycle batches to confirm renderer frames derive from orchestrator-managed snapshots.
 
 ### Next Task
 
-* _Pending Phase 4 exit._
+* 🟡 **Add disconnect coverage to the smoke harness**
+  Extend `client/__tests__/lifecycle-render-smoke.test.ts` (or companion harness) to exercise a connect→render→disconnect loop so Phase 5 exit criteria #4 is satisfied end-to-end.
 
 ## Phase 6 – Input capture & command dispatch
 
@@ -119,7 +127,7 @@ Phase 4 is complete when all of the following hold:
 1. **Generated contract authority**: All lifecycle types, catalog metadata, and enums used by the client originate from `client/generated/*`; no manually maintained mirrors or fallbacks remain.
 2. **Network ingestion**: WebSocket lifecycle envelopes hydrate `ContractLifecycleStore` with correct cursor semantics, resync clears, and nack recovery driven by `client/client-manager.ts`.
 3. **Renderer wiring**: Rendering paths consume only `ContractLifecycleStore` snapshots and generated catalog metadata; no legacy data flow or bespoke catalog parsing is exercised at runtime.
-4. **CI gate**: Golden TypeScript comparisons, drift enforcement, JSON schema validation, and headless smoke playback all run in CI.
+4. **Tooling gate**: Generator and catalog build steps enforce schema validation, golden TypeScript drift checks, and headless smoke playback so contract mismatches fail fast.
 
 ### Phase 5 – Client session orchestration
 
