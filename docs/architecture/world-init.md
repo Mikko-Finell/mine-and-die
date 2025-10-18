@@ -41,23 +41,17 @@ Move to Phase 4.
 
 ---
 
-## [IN PROGRESS] Phase 4 — Show server-driven movement
+## [DONE] Phase 4 — Show server-driven movement
+
+### Summary
+
+* State envelopes now translate player and NPC patches (`player_pos`, `player_facing`, `player_intent`, `npc_pos`, `npc_health`) into world-store updates every tick, keeping the authoritative snapshot in sync.
+* `buildRenderBatch` consumes the refreshed snapshot so static geometry for actors moves immediately when the server emits new coordinates and facing data.
+* Regression coverage (`client/__tests__/client-manager.test.ts`) verifies that applying movement patches updates both the store and rendered geometry for players and NPCs.
 
 ### Next task
 
-**Goal**
-Make the pawn move according to server-authoritative patches and acknowledged paths.
-
-**Exit criteria**
-
-* World patches from state envelopes (e.g., `PatchPlayerPos`, `PatchPlayerIntent`) are actually applied to the store each tick.
-* `buildRenderBatch` pulls positions from `worldState.snapshot()` so the player/NPC geometry updates as patches land.
-* Clicking to set a path (already wired through the client input → hub) results in visible movement as soon as the server accepts waypoints and emits position patches.
-
-**Notes / places your team already pointed to**
-
-* Path command plumbing is already in place server-side (`CommandSetPath`), with collision/path resolution and patch emission each tick.
-* The missing piece was the client storing patches and pushing updated coordinates into the batch.
+Move to Phase 5.
 
 ---
 
