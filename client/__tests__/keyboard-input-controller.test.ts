@@ -96,6 +96,7 @@ const createTestStore = (snapshot?: Partial<InputStateSnapshot>): TestStoreConte
     currentFacing,
     pathActive,
     pathTarget,
+    lastCommandRejection: snapshot?.lastCommandRejection ?? null,
   };
 
   const store: InputStore = {
@@ -105,6 +106,7 @@ const createTestStore = (snapshot?: Partial<InputStateSnapshot>): TestStoreConte
       currentFacing,
       pathActive,
       pathTarget,
+      lastCommandRejection: baseSnapshot.lastCommandRejection,
     }),
     setIntent: (intent) => {
       intents.push(intent);

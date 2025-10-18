@@ -19,12 +19,27 @@ export interface PathCommandState {
   readonly target: PathTarget | null;
 }
 
+export interface CommandRejectionDetails {
+  readonly sequence: number;
+  readonly reason: string;
+  readonly retry: boolean;
+  readonly tick: number | null;
+  readonly kind: CommandKind;
+}
+
+export interface CommandAcknowledgementDetails {
+  readonly sequence: number;
+  readonly tick: number | null;
+  readonly kind: CommandKind;
+}
+
 export interface InputStateSnapshot {
   readonly pressedKeys: ReadonlySet<string>;
   readonly directionOrder: readonly string[];
   readonly currentFacing: FacingDirection;
   readonly pathActive: boolean;
   readonly pathTarget: PathTarget | null;
+  readonly lastCommandRejection: CommandRejectionDetails | null;
 }
 
 export interface InputKeyState {
@@ -41,6 +56,8 @@ export interface InputStore {
   readonly setPathTarget?: (target: PathTarget | null) => void;
   readonly setKeyState?: (state: InputKeyState) => void;
   readonly getPathTarget?: () => PathTarget | null;
+  readonly setCommandRejection?: (rejection: CommandRejectionDetails | null) => void;
+  readonly clearCommandRejection?: (kind?: CommandKind) => void;
 }
 
 export interface InputStoreOptions {
@@ -50,11 +67,13 @@ export interface InputStoreOptions {
   readonly initialPressedKeys?: Iterable<string>;
   readonly initialDirectionOrder?: readonly string[];
   readonly initialCameraLocked?: boolean;
+  readonly initialCommandRejection?: CommandRejectionDetails | null;
   readonly onIntentChanged?: (intent: PlayerIntent) => void;
   readonly onFacingChanged?: (facing: FacingDirection) => void;
   readonly onPathActiveChanged?: (pathActive: boolean) => void;
   readonly onPathTargetChanged?: (target: PathTarget | null) => void;
   readonly onCameraLockToggle?: (locked: boolean) => void;
+  readonly onCommandRejectionChanged?: (rejection: CommandRejectionDetails | null) => void;
 }
 
 export interface CommandAcknowledgement {
@@ -105,9 +124,12 @@ interface DispatcherOptions {
   readonly isDispatchPaused?: () => boolean;
   readonly onIntentDispatched?: (intent: PlayerIntent) => void;
   readonly onPathCommand?: (state: PathCommandState) => void;
+  readonly onCommandRejected?: (rejection: CommandRejectionDetails) => void;
+  readonly onCommandAcknowledged?: (ack: CommandAcknowledgementDetails) => void;
+  readonly onCommandsReset?: () => void;
 }
 
-type CommandKind = "input" | "path" | "cancelPath" | "action";
+export type CommandKind = "input" | "path" | "cancelPath" | "action";
 
 interface PendingCommandEntry {
   readonly sequence: number;
@@ -166,12 +188,48 @@ const normalizeKeyCollection = (keys: Iterable<string>): Set<string> => {
 const normalizeDirectionOrder = (keys: readonly string[]): string[] =>
   keys.map((key) => key.toLowerCase()).filter((key) => key.length > 0);
 
+const sanitizeTick = (value: unknown): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const normalized = Math.floor(value);
+  return Number.isFinite(normalized) ? normalized : null;
+};
+
+const cloneCommandRejectionDetails = (rejection: CommandRejectionDetails): CommandRejectionDetails => ({
+  sequence: rejection.sequence,
+  reason: rejection.reason,
+  retry: rejection.retry,
+  tick: sanitizeTick(rejection.tick),
+  kind: rejection.kind,
+});
+
+const areCommandRejectionsEqual = (
+  a: CommandRejectionDetails | null,
+  b: CommandRejectionDetails | null,
+): boolean => {
+  if (!a && !b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    a.sequence === b.sequence &&
+    a.reason === b.reason &&
+    a.retry === b.retry &&
+    a.tick === b.tick &&
+    a.kind === b.kind
+  );
+};
+
 export class InMemoryInputStore implements InputStore {
   private readonly onIntentChanged?: (intent: PlayerIntent) => void;
   private readonly onFacingChanged?: (facing: FacingDirection) => void;
   private readonly onPathActiveChanged?: (pathActive: boolean) => void;
   private readonly onPathTargetChanged?: (target: PathTarget | null) => void;
   private readonly onCameraLockToggle?: (locked: boolean) => void;
+  private readonly onCommandRejectionChanged?: (rejection: CommandRejectionDetails | null) => void;
 
   private readonly pressedKeys: Set<string>;
   private directionOrder: string[];
@@ -180,6 +238,7 @@ export class InMemoryInputStore implements InputStore {
   private pathTarget: PathTarget | null;
   private cameraLocked: boolean;
   private lastIntent: PlayerIntent;
+  private lastCommandRejection: CommandRejectionDetails | null;
 
   constructor(options: InputStoreOptions = {}) {
     this.onIntentChanged = options.onIntentChanged;
@@ -187,6 +246,7 @@ export class InMemoryInputStore implements InputStore {
     this.onPathActiveChanged = options.onPathActiveChanged;
     this.onPathTargetChanged = options.onPathTargetChanged;
     this.onCameraLockToggle = options.onCameraLockToggle;
+    this.onCommandRejectionChanged = options.onCommandRejectionChanged;
     this.pressedKeys = normalizeKeyCollection(options.initialPressedKeys ?? []);
     this.directionOrder = normalizeDirectionOrder(options.initialDirectionOrder ?? []);
     this.currentFacing = options.initialFacing ?? DEFAULT_FACING;
@@ -194,6 +254,9 @@ export class InMemoryInputStore implements InputStore {
     this.pathTarget = options.initialPathTarget ? { ...options.initialPathTarget } : null;
     this.cameraLocked = options.initialCameraLocked ?? false;
     this.lastIntent = { dx: 0, dy: 0, facing: this.currentFacing };
+    this.lastCommandRejection = options.initialCommandRejection
+      ? cloneCommandRejectionDetails(options.initialCommandRejection)
+      : null;
   }
 
   getState(): InputStateSnapshot {
@@ -203,6 +266,9 @@ export class InMemoryInputStore implements InputStore {
       currentFacing: this.currentFacing,
       pathActive: this.pathActive,
       pathTarget: this.pathTarget ? { ...this.pathTarget } : null,
+      lastCommandRejection: this.lastCommandRejection
+        ? cloneCommandRejectionDetails(this.lastCommandRejection)
+        : null,
     };
   }
 
@@ -270,6 +336,26 @@ export class InMemoryInputStore implements InputStore {
   getPathTarget(): PathTarget | null {
     return this.pathTarget ? { ...this.pathTarget } : null;
   }
+
+  setCommandRejection(rejection: CommandRejectionDetails | null): void {
+    const next = rejection ? cloneCommandRejectionDetails(rejection) : null;
+    if (areCommandRejectionsEqual(this.lastCommandRejection, next)) {
+      return;
+    }
+    this.lastCommandRejection = next;
+    const snapshot = next ? cloneCommandRejectionDetails(next) : null;
+    this.onCommandRejectionChanged?.(snapshot);
+  }
+
+  clearCommandRejection(kind?: CommandKind): void {
+    if (!this.lastCommandRejection) {
+      return;
+    }
+    if (kind && this.lastCommandRejection.kind !== kind) {
+      return;
+    }
+    this.setCommandRejection(null);
+  }
 }
 
 export class NetworkInputActionDispatcher implements InputActionDispatcher {
@@ -329,8 +415,11 @@ export class NetworkInputActionDispatcher implements InputActionDispatcher {
     if (index === -1) {
       return;
     }
+    const entry = this.pendingCommands[index];
     this.clearRetry(sequence);
+    const normalizedTick = sanitizeTick(ack?.tick ?? null);
     this.pendingCommands.splice(index, 1);
+    this.options.onCommandAcknowledged?.({ sequence, tick: normalizedTick, kind: entry.kind });
     this.flushPending();
   }
 
@@ -345,7 +434,18 @@ export class NetworkInputActionDispatcher implements InputActionDispatcher {
     }
     const entry = this.pendingCommands[entryIndex];
     this.clearRetry(sequence);
-    if (!rejection?.retry) {
+    const shouldRetry = rejection?.retry === true;
+    const tick = sanitizeTick(rejection?.tick ?? null);
+    const reason =
+      typeof rejection?.reason === "string" && rejection.reason.length > 0 ? rejection.reason : "unknown";
+    this.options.onCommandRejected?.({
+      sequence,
+      reason,
+      retry: shouldRetry,
+      tick,
+      kind: entry.kind,
+    });
+    if (!shouldRetry) {
       this.pendingCommands.splice(entryIndex, 1);
       this.flushPending();
       return;
@@ -366,6 +466,7 @@ export class NetworkInputActionDispatcher implements InputActionDispatcher {
       entry.retries = 0;
       entry.lastAttemptAt = 0;
     }
+    this.options.onCommandsReset?.();
   }
 
   handleDispatchResume(): void {

@@ -258,4 +258,117 @@ describe("GameClientOrchestrator", () => {
 
     await orchestrator.shutdown();
   });
+
+  test("forwards non-retryable command rejections through hooks", async () => {
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const onCommandRejectionChanged = vi.fn();
+    const dispatcher = orchestrator.createInputDispatcher({ onCommandRejectionChanged });
+
+    dispatcher.sendPathCommand({ x: 48, y: 32 });
+    emitLifecycleState({ tick: 4, receivedAt: 800 });
+
+    network.emit({
+      type: "commandReject",
+      payload: { seq: 1, reason: "queue_limit", retry: false, tick: 6 },
+      receivedAt: 850,
+    });
+
+    expect(onCommandRejectionChanged).toHaveBeenLastCalledWith({
+      sequence: 1,
+      reason: "queue_limit",
+      retry: false,
+      tick: 6,
+      kind: "path",
+    });
+
+    dispatcher.sendPathCommand({ x: 96, y: 64 });
+    network.emit({
+      type: "commandAck",
+      payload: { seq: 2, tick: 10 },
+      receivedAt: 900,
+    });
+
+    expect(onCommandRejectionChanged).toHaveBeenLastCalledWith(null);
+
+    await orchestrator.shutdown();
+  });
+
+  test("replays pending commands across resync before accepting new dispatches", async () => {
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    await orchestrator.boot({});
+    const dispatcher = orchestrator.createInputDispatcher();
+
+    dispatcher.sendAction("attack");
+    dispatcher.sendPathCommand({ x: 64, y: 32 });
+
+    expect(network.sentMessages).toHaveLength(0);
+
+    emitLifecycleState({ tick: 6, receivedAt: 1000 });
+
+    expect(network.sentMessages).toHaveLength(2);
+    expect(network.sentMessages[0]).toEqual({ type: "action", action: "attack", ver: 1, ack: 6, seq: 1 });
+    expect(network.sentMessages[1]).toEqual({ type: "path", x: 64, y: 32, ver: 1, ack: 6, seq: 2 });
+
+    emitLifecycleState({ resync: true, receivedAt: 1200 });
+
+    expect(network.sentMessages).toHaveLength(4);
+    expect(network.sentMessages[2]).toEqual({ type: "action", action: "attack", ver: 1, seq: 1 });
+    expect(network.sentMessages[3]).toEqual({ type: "path", x: 64, y: 32, ver: 1, seq: 2 });
+
+    dispatcher.sendAction("attack");
+
+    expect(network.sentMessages).toHaveLength(5);
+    expect(network.sentMessages[4]).toEqual({ type: "action", action: "attack", ver: 1, seq: 3 });
+
+    await orchestrator.shutdown();
+  });
+
+  test("retries rejected commands with updated acknowledgement metadata", async () => {
+    vi.useFakeTimers();
+    const { orchestrator, network, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    try {
+      await orchestrator.boot({});
+      const dispatcher = orchestrator.createInputDispatcher();
+
+      dispatcher.sendAction("attack");
+      emitLifecycleState({ tick: 5, receivedAt: 900 });
+
+      expect(network.sentMessages).toHaveLength(1);
+      expect(network.sentMessages[0]).toEqual({ type: "action", action: "attack", ver: 1, ack: 5, seq: 1 });
+
+      network.sentMessages.length = 0;
+
+      network.emit({
+        type: "commandReject",
+        payload: { seq: 1, reason: "queue_limit", retry: true, tick: 9 },
+        receivedAt: 950,
+      });
+
+      expect(network.sentMessages).toHaveLength(0);
+
+      vi.advanceTimersByTime(50);
+
+      expect(network.sentMessages).toHaveLength(1);
+      expect(network.sentMessages[0]).toEqual({ type: "action", action: "attack", ver: 1, ack: 9, seq: 1 });
+
+      network.emit({
+        type: "commandAck",
+        payload: { seq: 1, tick: 12 },
+        receivedAt: 1000,
+      });
+    } finally {
+      vi.useRealTimers();
+      await orchestrator.shutdown();
+    }
+  });
 });

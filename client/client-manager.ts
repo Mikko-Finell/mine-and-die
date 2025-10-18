@@ -22,6 +22,9 @@ import type {
 } from "./network";
 import {
   NetworkInputActionDispatcher,
+  type CommandAcknowledgementDetails,
+  type CommandKind,
+  type CommandRejectionDetails,
   type InputActionDispatcher,
   type PathCommandState,
   type PathTarget,
@@ -62,6 +65,7 @@ export interface ClientOrchestrator {
 export interface InputDispatcherHooks {
   readonly onIntentDispatched?: (intent: PlayerIntent) => void;
   readonly onPathCommand?: (state: PathCommandState) => void;
+  readonly onCommandRejectionChanged?: (rejection: CommandRejectionDetails | null) => void;
 }
 
 export interface ClientHeartbeatTelemetry {
@@ -77,6 +81,14 @@ interface PendingKeyframeRetry {
   awaitingResync: boolean;
   attempt?: number;
 }
+
+const cloneCommandRejectionDetails = (rejection: CommandRejectionDetails): CommandRejectionDetails => ({
+  sequence: rejection.sequence,
+  reason: rejection.reason,
+  retry: rejection.retry,
+  tick: rejection.tick,
+  kind: rejection.kind,
+});
 
 export class GameClientOrchestrator implements ClientOrchestrator {
   private readonly network: NetworkClient;
@@ -103,6 +115,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private inputDispatcher: InputActionDispatcher | null = null;
   private pathCommandState: PathCommandState = { active: false, target: null };
   private inputDispatcherHooks: InputDispatcherHooks | null = null;
+  private lastCommandRejection: CommandRejectionDetails | null = null;
 
   constructor(
     public readonly configuration: ClientManagerConfiguration,
@@ -163,6 +176,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   createInputDispatcher(hooks: InputDispatcherHooks = {}): InputActionDispatcher {
     this.inputDispatcherHooks = hooks;
     hooks.onPathCommand?.(this.clonePathCommandState(this.pathCommandState));
+    if (this.lastCommandRejection) {
+      hooks.onCommandRejectionChanged?.(cloneCommandRejectionDetails(this.lastCommandRejection));
+    }
     const dispatcher = new NetworkInputActionDispatcher({
       getProtocolVersion: () => this.joinResponse?.protocolVersion ?? null,
       getAcknowledgedTick: () => this.latestAcknowledgedTick,
@@ -177,6 +193,15 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       onPathCommand: (state) => {
         hooks.onPathCommand?.(state);
         this.handlePathCommand(state);
+      },
+      onCommandRejected: (rejection) => {
+        this.handleCommandRejection(rejection);
+      },
+      onCommandAcknowledged: (ack) => {
+        this.handleCommandAcknowledgement(ack);
+      },
+      onCommandsReset: () => {
+        this.handleCommandReset();
       },
     });
     this.inputDispatcher = dispatcher;
@@ -438,6 +463,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.inputDispatchPaused = true;
     this.inputDispatcher?.handleResync();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
+    this.clearCommandRejection();
     this.renderLifecycleView();
   }
 
@@ -453,6 +479,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.inputDispatchPaused = true;
     this.inputDispatcher?.handleResync();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: true });
+    this.clearCommandRejection();
   }
 
   private handleDisconnect(): void {
@@ -464,6 +491,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
     this.lastKeyframeRequestAt = 0;
     this.resetPatchSequenceTracking();
     this.applyPathCommandState({ active: false, target: null }, { notifyHooks: false });
+    this.clearCommandRejection();
     this.renderLifecycleView();
   }
 
@@ -873,6 +901,34 @@ export class GameClientOrchestrator implements ClientOrchestrator {
 
   private handlePathCommand(state: PathCommandState): void {
     this.applyPathCommandState(state, { notifyHooks: false });
+  }
+
+  private handleCommandRejection(rejection: CommandRejectionDetails): void {
+    if (rejection.retry) {
+      return;
+    }
+    const snapshot = cloneCommandRejectionDetails(rejection);
+    this.lastCommandRejection = snapshot;
+    this.inputDispatcherHooks?.onCommandRejectionChanged?.(cloneCommandRejectionDetails(snapshot));
+  }
+
+  private handleCommandAcknowledgement(ack: CommandAcknowledgementDetails): void {
+    this.clearCommandRejection(ack.kind);
+  }
+
+  private handleCommandReset(): void {
+    this.clearCommandRejection();
+  }
+
+  private clearCommandRejection(kind?: CommandKind): void {
+    if (!this.lastCommandRejection) {
+      return;
+    }
+    if (kind && this.lastCommandRejection.kind !== kind) {
+      return;
+    }
+    this.lastCommandRejection = null;
+    this.inputDispatcherHooks?.onCommandRejectionChanged?.(null);
   }
 
   private applyPathCommandState(state: PathCommandState, options: { notifyHooks: boolean }): void {

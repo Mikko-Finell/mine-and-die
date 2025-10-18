@@ -233,4 +233,42 @@ describe("NetworkInputActionDispatcher", () => {
 
     vi.useRealTimers();
   });
+
+  it("notifies rejection listeners with command metadata", () => {
+    const sendMessage = vi.fn();
+    const onCommandRejected = vi.fn();
+    const dispatcher = new NetworkInputActionDispatcher({
+      getProtocolVersion: () => 1,
+      getAcknowledgedTick: () => 0,
+      sendMessage,
+      onCommandRejected,
+    });
+
+    dispatcher.sendPathCommand({ x: 5, y: 10 });
+    dispatcher.handleCommandReject({ sequence: 1, reason: "queue_limit", retry: false, tick: 7 });
+
+    expect(onCommandRejected).toHaveBeenCalledWith({
+      sequence: 1,
+      reason: "queue_limit",
+      retry: false,
+      tick: 7,
+      kind: "path",
+    });
+  });
+
+  it("notifies acknowledgement listeners with command metadata", () => {
+    const sendMessage = vi.fn();
+    const onCommandAcknowledged = vi.fn();
+    const dispatcher = new NetworkInputActionDispatcher({
+      getProtocolVersion: () => 1,
+      getAcknowledgedTick: () => 0,
+      sendMessage,
+      onCommandAcknowledged,
+    });
+
+    dispatcher.sendAction("attack");
+    dispatcher.handleCommandAck({ sequence: 1, tick: 9 });
+
+    expect(onCommandAcknowledged).toHaveBeenCalledWith({ sequence: 1, tick: 9, kind: "action" });
+  });
 });
