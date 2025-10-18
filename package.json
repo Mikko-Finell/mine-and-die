@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@js-effects/effects-lib": "workspace:*",
+    "@shoelace-style/shoelace": "^2.20.1",
     "lit": "^3.2.0"
   },
   "devDependencies": {
