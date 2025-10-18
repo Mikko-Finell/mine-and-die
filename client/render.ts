@@ -1,6 +1,11 @@
-import { EffectManager, type EffectInstance as RuntimeEffectInstance } from "@js-effects/effects-lib";
+import {
+  EffectLayer,
+  EffectManager,
+  type EffectInstance as RuntimeEffectInstance,
+} from "@js-effects/effects-lib";
 import { translateRenderAnimation, type EffectSpawnIntent } from "./effect-runtime-adapter";
 import type { PathTarget } from "./input";
+import type { DeliveryKind } from "./generated/effect-contracts";
 
 export interface RenderDimensions {
   readonly width: number;
@@ -50,6 +55,76 @@ export interface RendererConfiguration {
   readonly layers: readonly RenderLayer[];
 }
 
+const deliveryKinds: readonly DeliveryKind[] = ["visual", "area", "target"];
+
+const deliveryLayerCandidates: Record<DeliveryKind, readonly string[]> = {
+  area: ["area", "effect-area", "effects-area"],
+  target: ["target", "effect-target", "effects-target"],
+  visual: ["visual", "effect-visual", "effects-visual"],
+} as const;
+
+const runtimeLayerRank: Record<DeliveryKind, number> = {
+  area: EffectLayer.ActorOverlay,
+  target: EffectLayer.ActorOverlay,
+  visual: EffectLayer.GroundDecal,
+};
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+export const validateRenderLayers = (layers: readonly RenderLayer[]): void => {
+  if (!Array.isArray(layers)) {
+    throw new Error("Renderer layers must be provided as an array.");
+  }
+
+  const groundLayer = EffectLayer.GroundDecal;
+  const actorLayer = EffectLayer.ActorOverlay;
+  if (!isFiniteNumber(groundLayer) || !isFiniteNumber(actorLayer)) {
+    throw new Error("Effect runtime layers are unavailable; rebuild @js-effects/effects-lib.");
+  }
+  if (groundLayer >= actorLayer) {
+    throw new Error("Effect runtime layer ordering changed; GroundDecal must sort before ActorOverlay.");
+  }
+
+  const resolved = deliveryKinds.map((delivery) => {
+    const layer = layers.find((candidate) => deliveryLayerCandidates[delivery].includes(candidate.id));
+    if (!layer) {
+      throw new Error(`Renderer configuration missing layer for ${delivery} delivery effects.`);
+    }
+    if (!isFiniteNumber(layer.zIndex)) {
+      throw new Error(`Renderer layer ${layer.id} must declare a finite zIndex.`);
+    }
+    return { delivery, layer };
+  });
+
+  const rankFor = (delivery: DeliveryKind): number => deliveryKinds.indexOf(delivery);
+  const runtimeSorted = [...resolved].sort((left, right) => {
+    const diff = runtimeLayerRank[left.delivery] - runtimeLayerRank[right.delivery];
+    if (diff !== 0) {
+      return diff;
+    }
+    return rankFor(left.delivery) - rankFor(right.delivery);
+  });
+  const renderSorted = [...resolved].sort((left, right) => {
+    const diff = left.layer.zIndex - right.layer.zIndex;
+    if (diff !== 0) {
+      return diff;
+    }
+    return rankFor(left.delivery) - rankFor(right.delivery);
+  });
+
+  for (let index = 0; index < runtimeSorted.length; index += 1) {
+    const expected = runtimeSorted[index];
+    const actual = renderSorted[index];
+    if (expected.delivery !== actual.delivery) {
+      throw new Error(
+        `Renderer layer ordering for ${actual.delivery} conflicts with runtime layer ordering; ` +
+          `expected ${expected.delivery} effects to render earlier.`,
+      );
+    }
+  }
+};
+
 export interface Renderer {
   readonly configuration: RendererConfiguration;
   readonly mount: (provider: RenderContextProvider) => void;
@@ -86,6 +161,7 @@ export class CanvasRenderer implements Renderer {
   constructor(configuration: RendererConfiguration) {
     this.currentDimensions = { ...configuration.dimensions };
     this.layers = configuration.layers.map((layer) => ({ ...layer }));
+    validateRenderLayers(this.layers);
   }
 
   get configuration(): RendererConfiguration {

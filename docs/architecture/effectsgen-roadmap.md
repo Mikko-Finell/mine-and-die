@@ -12,7 +12,7 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 | 4 | Client integration of generated bindings | Generated bindings drive type authority and rendering paths in the live client; generation flow validates schema/catalog before emitting artifacts. | 🟢 Done |
 | 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | 🟢 Done |
 | 6 | Input capture & command dispatch | `client/input.ts` implements `KeyboardInputController.register/unregister`; an `InputActionDispatcher` wires player intents/actions into `NetworkClient.send`, updating path/action payloads and honouring resync/ack flows in `client/client-manager.ts`. | 🟢 Done |
-| 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | 🟡 In progress |
+| 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | 🟢 Done |
 
 ## Phase 4 – Client integration of generated bindings
 
@@ -124,10 +124,12 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 * 🟢 **Retained runtime cleanup parity**
   `client/render.ts` exposes `reset()` so the orchestrator clears retained runtime instances on resync/disconnect, and playback coverage in `client/__tests__/lifecycle-render-smoke.test.ts` exercises managed-by-client retention teardown.
 
+* 🟢 **Runtime layer ordering verification**
+  Added `validateRenderLayers` guardrails in `client/render.ts` and smoke test assertions so catalog delivery layers stay aligned with the `@js-effects/effects-lib` draw ordering.
+
 ### Next Task
 
-* ⚪ **Runtime layer ordering verification**
-  Confirm catalog layer metadata matches the JS runtime draw ordering and add assertions or coverage in `client/render.ts` and `client/__tests__/lifecycle-render-smoke.test.ts` to prevent regressions.
+* _Phase complete; maintain the new runtime layer assertions while monitoring downstream generator drift._
 
 ### Definition of Done
 
