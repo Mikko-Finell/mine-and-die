@@ -301,25 +301,180 @@ func main() {
 				hub.RecordAck(playerID, *msg.Ack)
 			}
 
+			normalizedSeq := uint64(0)
+			if msg.CommandSeq != nil && *msg.CommandSeq > 0 {
+				normalizedSeq = *msg.CommandSeq
+			}
+
+			writeJSON := func(payload any) bool {
+				data, err := json.Marshal(payload)
+				if err != nil {
+					stdlog.Printf("failed to marshal response for %s: %v", playerID, err)
+					return true
+				}
+				sub.mu.Lock()
+				conn.SetWriteDeadline(time.Now().Add(writeWait))
+				err = conn.WriteMessage(websocket.TextMessage, data)
+				sub.mu.Unlock()
+				if err != nil {
+					players, npcs := hub.Disconnect(playerID)
+					if players != nil {
+						hub.forceKeyframe()
+						go hub.broadcastState(players, npcs, nil, nil)
+					}
+					return false
+				}
+				return true
+			}
+
+			sendDuplicateAck := func() bool {
+				if normalizedSeq == 0 {
+					return true
+				}
+				ack := commandAckMessage{Ver: ProtocolVersion, Type: "commandAck", Seq: normalizedSeq}
+				return writeJSON(ack)
+			}
+
+			sendCommandAck := func(cmd Command) bool {
+				if normalizedSeq == 0 {
+					return true
+				}
+				ack := commandAckMessage{Ver: ProtocolVersion, Type: "commandAck", Seq: normalizedSeq}
+				if cmd.OriginTick > 0 {
+					ack.Tick = cmd.OriginTick
+				}
+				if !writeJSON(ack) {
+					return false
+				}
+				sub.lastCommandSeq.Store(normalizedSeq)
+				return true
+			}
+
+			sendCommandReject := func(reason string, retry bool) bool {
+				if normalizedSeq == 0 {
+					return true
+				}
+				reject := commandRejectMessage{
+					Ver:    ProtocolVersion,
+					Type:   "commandReject",
+					Seq:    normalizedSeq,
+					Reason: reason,
+				}
+				if retry {
+					reject.Retry = true
+				}
+				return writeJSON(reject)
+			}
+
 			switch msg.Type {
 			case "input":
-				if !hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing) {
-					stdlog.Printf("input ignored for unknown player %s", playerID)
+				if normalizedSeq > 0 {
+					if last := sub.lastCommandSeq.Load(); last > 0 && normalizedSeq <= last {
+						if !sendDuplicateAck() {
+							return
+						}
+						continue
+					}
+				}
+				cmd, ok, reason := hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing)
+				if normalizedSeq > 0 {
+					if ok {
+						if !sendCommandAck(cmd) {
+							return
+						}
+					} else {
+						retry := reason == commandRejectQueueLimit
+						if !sendCommandReject(reason, retry) {
+							return
+						}
+					}
+				}
+				if !ok {
+					if reason == commandRejectUnknownActor {
+						stdlog.Printf("input ignored for unknown player %s", playerID)
+					}
 				}
 			case "path":
-				if !hub.SetPlayerPath(playerID, msg.X, msg.Y) {
+				if normalizedSeq > 0 {
+					if last := sub.lastCommandSeq.Load(); last > 0 && normalizedSeq <= last {
+						if !sendDuplicateAck() {
+							return
+						}
+						continue
+					}
+				}
+				cmd, ok, reason := hub.SetPlayerPath(playerID, msg.X, msg.Y)
+				if normalizedSeq > 0 {
+					if ok {
+						if !sendCommandAck(cmd) {
+							return
+						}
+					} else {
+						retry := reason == commandRejectQueueLimit
+						if !sendCommandReject(reason, retry) {
+							return
+						}
+					}
+				}
+				if !ok && reason == commandRejectUnknownActor {
 					stdlog.Printf("path request ignored for unknown player %s", playerID)
 				}
 			case "cancelPath":
-				if !hub.ClearPlayerPath(playerID) {
+				if normalizedSeq > 0 {
+					if last := sub.lastCommandSeq.Load(); last > 0 && normalizedSeq <= last {
+						if !sendDuplicateAck() {
+							return
+						}
+						continue
+					}
+				}
+				cmd, ok, reason := hub.ClearPlayerPath(playerID)
+				if normalizedSeq > 0 {
+					if ok {
+						if !sendCommandAck(cmd) {
+							return
+						}
+					} else {
+						retry := reason == commandRejectQueueLimit
+						if !sendCommandReject(reason, retry) {
+							return
+						}
+					}
+				}
+				if !ok && reason == commandRejectUnknownActor {
 					stdlog.Printf("cancelPath ignored for unknown player %s", playerID)
 				}
 			case "action":
 				if msg.Action == "" {
 					continue
 				}
-				if !hub.HandleAction(playerID, msg.Action) {
-					stdlog.Printf("unknown action %q from %s", msg.Action, playerID)
+				if normalizedSeq > 0 {
+					if last := sub.lastCommandSeq.Load(); last > 0 && normalizedSeq <= last {
+						if !sendDuplicateAck() {
+							return
+						}
+						continue
+					}
+				}
+				cmd, ok, reason := hub.HandleAction(playerID, msg.Action)
+				if normalizedSeq > 0 {
+					if ok {
+						if !sendCommandAck(cmd) {
+							return
+						}
+					} else {
+						retry := reason == commandRejectQueueLimit
+						if !sendCommandReject(reason, retry) {
+							return
+						}
+					}
+				}
+				if !ok {
+					if reason == commandRejectInvalidAction {
+						stdlog.Printf("unknown action %q from %s", msg.Action, playerID)
+					} else if reason == commandRejectUnknownActor {
+						stdlog.Printf("action ignored for unknown player %s", playerID)
+					}
 				}
 			case "heartbeat":
 				now := time.Now()

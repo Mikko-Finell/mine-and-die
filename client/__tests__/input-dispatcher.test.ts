@@ -21,16 +21,18 @@ describe("NetworkInputActionDispatcher", () => {
       facing: "right",
       ver: 1,
       ack: 42,
+      seq: 1,
     });
   });
 
   it("skips dispatch when paused", () => {
     const sendMessage = vi.fn();
+    let paused = true;
     const dispatcher = new NetworkInputActionDispatcher({
       getProtocolVersion: () => 1,
       getAcknowledgedTick: () => 10,
       sendMessage,
-      isDispatchPaused: () => true,
+      isDispatchPaused: () => paused,
     });
 
     dispatcher.sendAction("attack");
@@ -39,6 +41,15 @@ describe("NetworkInputActionDispatcher", () => {
     dispatcher.sendPathCommand({ x: 100, y: 200 });
 
     expect(sendMessage).not.toHaveBeenCalled();
+
+    paused = false;
+    dispatcher.handleDispatchResume();
+
+    expect(sendMessage).toHaveBeenCalledTimes(4);
+    expect(sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: "action", seq: 1 }));
+    expect(sendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ type: "input", seq: 2 }));
+    expect(sendMessage).toHaveBeenNthCalledWith(3, expect.objectContaining({ type: "cancelPath", seq: 3 }));
+    expect(sendMessage).toHaveBeenNthCalledWith(4, expect.objectContaining({ type: "path", seq: 4 }));
   });
 
   it("omits ack when no tick is available", () => {
@@ -57,6 +68,7 @@ describe("NetworkInputActionDispatcher", () => {
       dy: -1,
       facing: "up",
       ver: 3,
+      seq: 1,
     });
   });
 
@@ -74,6 +86,7 @@ describe("NetworkInputActionDispatcher", () => {
       type: "cancelPath",
       ver: 5,
       ack: 128,
+      seq: 1,
     });
   });
 
@@ -93,6 +106,7 @@ describe("NetworkInputActionDispatcher", () => {
       y: 144,
       ver: 7,
       ack: 256,
+      seq: 1,
     });
   });
 
@@ -112,6 +126,10 @@ describe("NetworkInputActionDispatcher", () => {
     dispatcher.cancelPath();
     dispatcher.sendPathCommand({ x: 12, y: 24 });
 
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: "input", seq: 1 }));
+    expect(sendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ type: "cancelPath", seq: 2 }));
+    expect(sendMessage).toHaveBeenNthCalledWith(3, expect.objectContaining({ type: "path", seq: 3 }));
     expect(onIntent).toHaveBeenCalledTimes(1);
     expect(onIntent).toHaveBeenCalledWith({ dx: 0.5, dy: 0, facing: "right" });
     expect(onPathCommand).toHaveBeenCalledTimes(2);
@@ -122,11 +140,12 @@ describe("NetworkInputActionDispatcher", () => {
   it("notifies path command hooks even when dispatch is paused", () => {
     const sendMessage = vi.fn();
     const onPathCommand = vi.fn();
+    let paused = true;
     const dispatcher = new NetworkInputActionDispatcher({
       getProtocolVersion: () => 1,
       getAcknowledgedTick: () => null,
       sendMessage,
-      isDispatchPaused: () => true,
+      isDispatchPaused: () => paused,
       onPathCommand,
     });
 
@@ -137,5 +156,81 @@ describe("NetworkInputActionDispatcher", () => {
     expect(onPathCommand).toHaveBeenCalledTimes(2);
     expect(onPathCommand).toHaveBeenNthCalledWith(1, { active: true, target: { x: 48, y: 96 } });
     expect(onPathCommand).toHaveBeenNthCalledWith(2, { active: false, target: null });
+
+    paused = false;
+    dispatcher.handleDispatchResume();
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: "path", seq: 1 }));
+    expect(sendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ type: "cancelPath", seq: 2 }));
+  });
+
+  it("increments sequence identifiers and clears pending commands on acknowledgement", () => {
+    const sendMessage = vi.fn();
+    const dispatcher = new NetworkInputActionDispatcher({
+      getProtocolVersion: () => 1,
+      getAcknowledgedTick: () => 5,
+      sendMessage,
+    });
+
+    dispatcher.sendAction("attack");
+    dispatcher.sendPathCommand({ x: 10, y: 20 });
+
+    expect(sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: "action", seq: 1 }));
+    expect(sendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ type: "path", seq: 2 }));
+
+    dispatcher.handleCommandAck({ sequence: 1, tick: 8 });
+
+    dispatcher.sendCurrentIntent({ dx: 0, dy: 1, facing: "down" });
+
+    expect(sendMessage).toHaveBeenNthCalledWith(3, expect.objectContaining({ type: "input", seq: 3 }));
+  });
+
+  it("replays pending commands after resync before sending new input", () => {
+    const sendMessage = vi.fn();
+    const dispatcher = new NetworkInputActionDispatcher({
+      getProtocolVersion: () => 2,
+      getAcknowledgedTick: () => 11,
+      sendMessage,
+    });
+
+    dispatcher.sendAction("attack");
+    dispatcher.sendPathCommand({ x: 64, y: 32 });
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    sendMessage.mockClear();
+
+    dispatcher.handleResync();
+    dispatcher.handleDispatchResume();
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: "action", seq: 1 }));
+    expect(sendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ type: "path", seq: 2 }));
+
+    dispatcher.sendCurrentIntent({ dx: 1, dy: 0, facing: "right" });
+    expect(sendMessage).toHaveBeenNthCalledWith(3, expect.objectContaining({ type: "input", seq: 3 }));
+  });
+
+  it("retries rejected commands when instructed to retry", () => {
+    vi.useFakeTimers();
+    const sendMessage = vi.fn();
+    const dispatcher = new NetworkInputActionDispatcher({
+      getProtocolVersion: () => 1,
+      getAcknowledgedTick: () => 9,
+      sendMessage,
+    });
+
+    dispatcher.sendAction("attack");
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    sendMessage.mockClear();
+
+    dispatcher.handleCommandReject({ sequence: 1, reason: "queue_limit", retry: true });
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(50);
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "action", seq: 1 }));
+
+    vi.useRealTimers();
   });
 });

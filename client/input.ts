@@ -57,11 +57,27 @@ export interface InputStoreOptions {
   readonly onCameraLockToggle?: (locked: boolean) => void;
 }
 
+export interface CommandAcknowledgement {
+  readonly sequence: number;
+  readonly tick?: number | null;
+}
+
+export interface CommandRejection {
+  readonly sequence: number;
+  readonly reason: string;
+  readonly retry: boolean;
+  readonly tick?: number | null;
+}
+
 export interface InputActionDispatcher {
   readonly sendAction: (action: string, params?: Record<string, unknown>) => void;
   readonly cancelPath: () => void;
   readonly sendCurrentIntent: (intent: PlayerIntent) => void;
   readonly sendPathCommand: (target: PathTarget) => void;
+  readonly handleCommandAck: (ack: CommandAcknowledgement) => void;
+  readonly handleCommandReject: (rejection: CommandRejection) => void;
+  readonly handleResync: () => void;
+  readonly handleDispatchResume: () => void;
 }
 
 export interface InputBindings {
@@ -90,6 +106,23 @@ interface DispatcherOptions {
   readonly onIntentDispatched?: (intent: PlayerIntent) => void;
   readonly onPathCommand?: (state: PathCommandState) => void;
 }
+
+type CommandKind = "input" | "path" | "cancelPath" | "action";
+
+interface PendingCommandEntry {
+  readonly sequence: number;
+  readonly kind: CommandKind;
+  payload: Record<string, unknown>;
+  sent: boolean;
+  retries: number;
+  lastAttemptAt: number;
+  intent?: PlayerIntent;
+  pathTarget?: PathTarget | null;
+}
+
+const COMMAND_RETRY_BASE_DELAY_MS = 50;
+const COMMAND_RETRY_MAX_DELAY_MS = 400;
+const COMMAND_RETRY_MULTIPLIER = 2;
 
 const DEFAULT_FACING: FacingDirection = "down";
 
@@ -240,39 +273,38 @@ export class InMemoryInputStore implements InputStore {
 }
 
 export class NetworkInputActionDispatcher implements InputActionDispatcher {
+  private nextSequence = 1;
+  private readonly pendingCommands: PendingCommandEntry[] = [];
+  private readonly retryTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  private lastIntent: PlayerIntent | null = null;
+
   constructor(private readonly options: DispatcherOptions) {}
 
   sendAction(action: string, params?: Record<string, unknown>): void {
-    if (!action || this.isDispatchPaused()) {
+    if (!action) {
       return;
     }
-
     const payload: Record<string, unknown> = { type: "action", action };
     if (params && typeof params === "object") {
       payload.params = params;
     }
-
-    this.dispatch(payload);
+    this.queueCommand("action", payload);
   }
 
   cancelPath(): void {
-    if (!this.isDispatchPaused()) {
-      const payload: Record<string, unknown> = { type: "cancelPath" };
-      this.dispatch(payload);
-    }
+    this.queueCommand("cancelPath", { type: "cancelPath" });
     this.options.onPathCommand?.({ active: false, target: null });
   }
 
   sendPathCommand(target: PathTarget): void {
-    if (!this.isDispatchPaused()) {
-      const payload: Record<string, unknown> = {
-        type: "path",
-        x: target.x,
-        y: target.y,
-      };
-      this.dispatch(payload);
+    if (!Number.isFinite(target?.x) || !Number.isFinite(target?.y)) {
+      return;
     }
-
+    this.queueCommand(
+      "path",
+      { type: "path", x: target.x, y: target.y },
+      { pathTarget: { x: target.x, y: target.y } },
+    );
     this.options.onPathCommand?.({
       active: true,
       target: { x: target.x, y: target.y },
@@ -280,29 +312,164 @@ export class NetworkInputActionDispatcher implements InputActionDispatcher {
   }
 
   sendCurrentIntent(intent: PlayerIntent): void {
+    const dx = clampFinite(intent.dx);
+    const dy = clampFinite(intent.dy);
+    const snapshot: PlayerIntent = { dx, dy, facing: intent.facing };
+    this.lastIntent = cloneIntent(snapshot);
+    this.queueCommand("input", { type: "input", dx, dy, facing: intent.facing }, { intent: snapshot });
+    this.options.onIntentDispatched?.(cloneIntent(snapshot));
+  }
+
+  handleCommandAck(ack: CommandAcknowledgement): void {
+    const sequence = this.normalizeSequence(ack?.sequence);
+    if (sequence === null) {
+      return;
+    }
+    const index = this.pendingCommands.findIndex((entry) => entry.sequence === sequence);
+    if (index === -1) {
+      return;
+    }
+    this.clearRetry(sequence);
+    this.pendingCommands.splice(index, 1);
+    this.flushPending();
+  }
+
+  handleCommandReject(rejection: CommandRejection): void {
+    const sequence = this.normalizeSequence(rejection?.sequence);
+    if (sequence === null) {
+      return;
+    }
+    const entryIndex = this.pendingCommands.findIndex((candidate) => candidate.sequence === sequence);
+    if (entryIndex === -1) {
+      return;
+    }
+    const entry = this.pendingCommands[entryIndex];
+    this.clearRetry(sequence);
+    if (!rejection?.retry) {
+      this.pendingCommands.splice(entryIndex, 1);
+      this.flushPending();
+      return;
+    }
+    entry.sent = false;
+    const nextAttempt = Math.min(entry.retries + 1, 100);
+    entry.retries = nextAttempt;
+    this.scheduleRetry(entry, nextAttempt);
+  }
+
+  handleResync(): void {
+    for (const timer of this.retryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.retryTimers.clear();
+    for (const entry of this.pendingCommands) {
+      entry.sent = false;
+      entry.retries = 0;
+      entry.lastAttemptAt = 0;
+    }
+  }
+
+  handleDispatchResume(): void {
+    this.flushPending();
+  }
+
+  private queueCommand(
+    kind: CommandKind,
+    payload: Record<string, unknown>,
+    extras: { intent?: PlayerIntent; pathTarget?: PathTarget | null } = {},
+  ): void {
+    const sequence = this.nextSequence++;
+    const entry: PendingCommandEntry = {
+      sequence,
+      kind,
+      payload: { ...payload },
+      sent: false,
+      retries: 0,
+      lastAttemptAt: 0,
+      intent: extras.intent ? cloneIntent(extras.intent) : extras.intent,
+      pathTarget: extras.pathTarget ? { ...extras.pathTarget } : extras.pathTarget ?? null,
+    };
+    this.pendingCommands.push(entry);
+    this.flushPending();
+  }
+
+  private flushPending(): void {
     if (this.isDispatchPaused()) {
       return;
     }
-
-    const dx = clampFinite(intent.dx);
-    const dy = clampFinite(intent.dy);
-    const payload: Record<string, unknown> = {
-      type: "input",
-      dx,
-      dy,
-      facing: intent.facing,
-    };
-
-    this.dispatch(payload);
-    this.options.onIntentDispatched?.({ dx, dy, facing: intent.facing });
+    for (const entry of this.pendingCommands) {
+      if (entry.sent || this.retryTimers.has(entry.sequence)) {
+        continue;
+      }
+      this.refreshEntryPayload(entry);
+      this.dispatch(entry);
+      if (this.isDispatchPaused()) {
+        return;
+      }
+    }
   }
 
-  private isDispatchPaused(): boolean {
-    return this.options.isDispatchPaused?.() === true;
+  private dispatch(entry: PendingCommandEntry): void {
+    if (this.isDispatchPaused()) {
+      entry.sent = false;
+      return;
+    }
+    const message = this.attachMetadata({ ...entry.payload }, entry.sequence);
+    this.options.sendMessage(message);
+    entry.sent = true;
+    entry.lastAttemptAt = Date.now();
   }
 
-  private dispatch(message: Record<string, unknown>): void {
-    const payload: Record<string, unknown> = { ...message };
+  private refreshEntryPayload(entry: PendingCommandEntry): void {
+    switch (entry.kind) {
+      case "input": {
+        const intent = entry.intent ?? this.lastIntent;
+        if (intent) {
+          const dx = clampFinite(intent.dx);
+          const dy = clampFinite(intent.dy);
+          entry.payload = { type: "input", dx, dy, facing: intent.facing };
+        }
+        break;
+      }
+      case "path": {
+        const target = entry.pathTarget;
+        if (target) {
+          entry.payload = { type: "path", x: target.x, y: target.y };
+        }
+        break;
+      }
+      case "cancelPath": {
+        entry.payload = { type: "cancelPath" };
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  private scheduleRetry(entry: PendingCommandEntry, attempt: number): void {
+    let delay = COMMAND_RETRY_BASE_DELAY_MS * Math.pow(COMMAND_RETRY_MULTIPLIER, Math.max(1, attempt) - 1);
+    if (!Number.isFinite(delay)) {
+      delay = COMMAND_RETRY_MAX_DELAY_MS;
+    }
+    delay = Math.min(delay, COMMAND_RETRY_MAX_DELAY_MS);
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(entry.sequence);
+      entry.sent = false;
+      this.refreshEntryPayload(entry);
+      this.flushPending();
+    }, delay);
+    this.retryTimers.set(entry.sequence, timer);
+  }
+
+  private clearRetry(sequence: number): void {
+    const timer = this.retryTimers.get(sequence);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.retryTimers.delete(sequence);
+    }
+  }
+
+  private attachMetadata(payload: Record<string, unknown>, sequence: number): Record<string, unknown> {
     const version = this.options.getProtocolVersion();
     if (typeof version === "number" && Number.isFinite(version)) {
       payload.ver = Math.floor(version);
@@ -311,8 +478,20 @@ export class NetworkInputActionDispatcher implements InputActionDispatcher {
     if (typeof ack === "number" && Number.isFinite(ack) && ack >= 0) {
       payload.ack = Math.floor(ack);
     }
+    payload.seq = sequence;
+    return payload;
+  }
 
-    this.options.sendMessage(payload);
+  private normalizeSequence(value: unknown): number | null {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return null;
+    }
+    const normalized = Math.floor(value);
+    return normalized > 0 ? normalized : null;
+  }
+
+  private isDispatchPaused(): boolean {
+    return this.options.isDispatchPaused?.() === true;
   }
 }
 

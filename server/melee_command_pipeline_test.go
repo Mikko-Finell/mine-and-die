@@ -15,7 +15,7 @@ func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
 	attacker.Facing = FacingRight
 	hub.world.players[attackerID] = attacker
 
-	if accepted := hub.HandleAction(attackerID, effectTypeAttack); !accepted {
+	if _, ok, _ := hub.HandleAction(attackerID, effectTypeAttack); !ok {
 		t.Fatalf("expected melee attack command to be accepted")
 	}
 
