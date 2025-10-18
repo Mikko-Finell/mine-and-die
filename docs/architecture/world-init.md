@@ -58,7 +58,7 @@ Start on the generator work. Describe the `next task` in one paragraph of techni
 1. Add hash emission to the generator and wire it into both sides.
 2. Teach the client to compare hashes (keep old path behind a feature flag).
 3. Flip the server to stop sending catalogs; send only the hash.
-4. Remove the old client path and the server debug flag once canary is green.
+4. Remove the old client path and the server feature flag once canary is green.
 
 ## Migration & ops
 
