@@ -363,6 +363,7 @@ export class WebSocketNetworkClient implements NetworkClient {
       readonly obstacles?: unknown;
       readonly groundItems?: unknown;
       readonly patches?: unknown;
+      readonly effectCatalog?: unknown;
     };
 
     if (typeof joinPayload.id !== "string" || joinPayload.id.length === 0) {
@@ -395,7 +396,12 @@ export class WebSocketNetworkClient implements NetworkClient {
       throw new Error("Join response missing protocol version.");
     }
 
-    const effectCatalog = normalizeEffectCatalog(config.effectCatalog);
+    const effectCatalogSource = joinPayload.effectCatalog ?? config.effectCatalog;
+    if (effectCatalogSource === undefined) {
+      throw new Error("Join response missing effect catalog metadata.");
+    }
+
+    const effectCatalog = normalizeEffectCatalog(effectCatalogSource);
 
     if (joinPayload.ver !== this.configuration.protocolVersion) {
       throw new Error(
