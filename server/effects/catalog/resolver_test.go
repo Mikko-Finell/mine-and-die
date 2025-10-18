@@ -471,11 +471,13 @@ func TestResolverRejectsUnknownContract(t *testing.T) {
 
 func TestDefaultPaths(t *testing.T) {
 	paths := DefaultPaths()
-	if len(paths) != 1 {
-		t.Fatalf("expected single default path")
+	if len(paths) == 0 {
+		t.Fatalf("expected at least one default path")
 	}
-	if filepath.Base(paths[0]) != "definitions.json" {
-		t.Fatalf("unexpected default path: %s", paths[0])
+	for _, path := range paths {
+		if filepath.Base(path) != "definitions.json" {
+			t.Fatalf("unexpected default path: %s", path)
+		}
 	}
 }
 
