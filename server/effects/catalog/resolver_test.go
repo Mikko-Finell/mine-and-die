@@ -2,7 +2,11 @@ package catalog
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -471,11 +475,72 @@ func TestResolverRejectsUnknownContract(t *testing.T) {
 
 func TestDefaultPaths(t *testing.T) {
 	paths := DefaultPaths()
-	if len(paths) != 1 {
-		t.Fatalf("expected single default path")
+	if len(paths) == 0 {
+		t.Fatalf("expected default paths to include at least one candidate")
 	}
-	if filepath.Base(paths[0]) != "definitions.json" {
-		t.Fatalf("unexpected default path: %s", paths[0])
+
+	expected := map[string]bool{
+		filepath.Join("config", "effects", "definitions.json"):       false,
+		filepath.Join("..", "config", "effects", "definitions.json"): false,
+	}
+
+	for _, path := range paths {
+		if filepath.Base(path) != "definitions.json" {
+			t.Fatalf("unexpected default path %q", path)
+		}
+		if _, ok := expected[path]; ok {
+			expected[path] = true
+		}
+	}
+
+	if !expected[filepath.Join("config", "effects", "definitions.json")] {
+		t.Fatalf("expected config/effects/definitions.json to be included in default paths")
+	}
+	if !expected[filepath.Join("..", "config", "effects", "definitions.json")] {
+		t.Fatalf("expected ../config/effects/definitions.json to be included in default paths")
+	}
+}
+
+func TestDefaultPathsResolveFromRepoRoot(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatalf("failed to determine caller path")
+	}
+
+	packageDir := filepath.Dir(file)
+	repoRoot := filepath.Clean(filepath.Join(packageDir, "..", "..", ".."))
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(cwd)
+	}()
+
+	if err := os.Chdir(repoRoot); err != nil {
+		t.Fatalf("failed to change directory to repo root: %v", err)
+	}
+
+	paths := DefaultPaths()
+	var resolved bool
+	for _, path := range paths {
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			if errors.Is(statErr, fs.ErrNotExist) {
+				continue
+			}
+			t.Fatalf("stat %q failed: %v", path, statErr)
+		}
+		if info.IsDir() {
+			continue
+		}
+		resolved = true
+		break
+	}
+
+	if !resolved {
+		t.Fatalf("expected at least one default path to resolve from repo root; paths=%v", paths)
 	}
 }
 
