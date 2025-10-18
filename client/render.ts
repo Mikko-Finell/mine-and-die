@@ -56,6 +56,7 @@ export interface Renderer {
   readonly unmount: () => void;
   readonly renderBatch: (batch: RenderBatch) => void;
   readonly resize: (dimensions: RenderDimensions) => void;
+  readonly reset: () => void;
 }
 
 interface ActiveEffectState {
@@ -103,10 +104,8 @@ export class CanvasRenderer implements Renderer {
 
   unmount(): void {
     this.stopLoop();
-    this.clearEffects();
-    this.effectManager.clear();
+    this.reset();
     this.provider = null;
-    this.lastBatch = null;
   }
 
   renderBatch(batch: RenderBatch): void {
@@ -117,6 +116,12 @@ export class CanvasRenderer implements Renderer {
   resize(dimensions: RenderDimensions): void {
     this.currentDimensions = { ...dimensions };
     this.configureCanvas();
+  }
+
+  reset(): void {
+    this.clearEffects();
+    this.effectManager.clear();
+    this.lastBatch = null;
   }
 
   private configureCanvas(): void {

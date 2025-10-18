@@ -121,11 +121,13 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   Captured spawn/update/end plus resync/disconnect expectations in `docs/architecture/effectsgen-spec.md` so server and client teams agree on teardown semantics.
 * 🟢 **Resync/disconnect runtime disposal coverage**
   Added a CanvasRenderer-focused smoke replay in `client/__tests__/lifecycle-render-smoke.test.ts` that asserts resync and disconnect batches clear `EffectManager` instances.
+* 🟢 **Retained runtime cleanup parity**
+  `client/render.ts` exposes `reset()` so the orchestrator clears retained runtime instances on resync/disconnect, and playback coverage in `client/__tests__/lifecycle-render-smoke.test.ts` exercises managed-by-client retention teardown.
 
 ### Next Task
 
-* ⚪ **Retained runtime cleanup parity**
-  Audit managed-by-client retention semantics so resync/disconnect flows also clear runtime instances that should not persist, updating `client/render.ts` and playback coverage as needed.
+* ⚪ **Runtime layer ordering verification**
+  Confirm catalog layer metadata matches the JS runtime draw ordering and add assertions or coverage in `client/render.ts` and `client/__tests__/lifecycle-render-smoke.test.ts` to prevent regressions.
 
 ### Definition of Done
 

@@ -132,6 +132,8 @@ export class HeadlessRenderer implements Renderer {
   }
 
   resize(_dimensions: RenderDimensions): void {}
+
+  reset(): void {}
 }
 
 export interface HeadlessHarnessOptions {
