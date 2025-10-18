@@ -32,6 +32,12 @@ export interface RenderBatch {
   readonly staticGeometry: readonly StaticGeometry[];
   readonly animations: readonly AnimationFrame[];
   readonly pathTarget: PathTarget | null;
+  readonly runtimeEffects?: readonly RuntimeEffectFrame[];
+}
+
+export interface RuntimeEffectFrame {
+  readonly effectId: string;
+  readonly intent: EffectSpawnIntent | null;
 }
 
 export interface RenderContextProvider {
@@ -195,10 +201,18 @@ export class CanvasRenderer implements Renderer {
       return;
     }
 
+    const runtimeOverrides = batch.runtimeEffects
+      ? new Map(batch.runtimeEffects.map((entry) => [entry.effectId, entry.intent]))
+      : null;
     const seen = new Set<string>();
 
     for (const animation of batch.animations) {
-      const intent = translateRenderAnimation(animation);
+      let intent: EffectSpawnIntent | null;
+      if (runtimeOverrides && runtimeOverrides.has(animation.effectId)) {
+        intent = runtimeOverrides.get(animation.effectId) ?? null;
+      } else {
+        intent = translateRenderAnimation(animation);
+      }
       if (!intent) {
         this.removeEffect(animation.effectId);
         continue;

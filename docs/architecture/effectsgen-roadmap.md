@@ -115,15 +115,17 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 
 * 🟢 **Canvas renderer runtime swap scaffolding**
   Replaced the placeholder frame loop in `client/render.ts` with an `EffectManager`-driven runtime that synchronises lifecycle batches, spawns catalog-backed instances, and cleans up completed effects.
+* 🟢 **Runtime adapter wired through orchestrator batches**
+  `client/client-manager.ts` now derives effect runtime intents via `translateRenderAnimation`, threads them through `RenderBatch.runtimeEffects`, and `client/render.ts` consumes the precomputed results with headless smoke coverage ensuring spawn/end state maps stay in sync.
+* 🟢 **Runtime lifecycle contract documentation**
+  Captured spawn/update/end plus resync/disconnect expectations in `docs/architecture/effectsgen-spec.md` so server and client teams agree on teardown semantics.
+* 🟢 **Resync/disconnect runtime disposal coverage**
+  Added a CanvasRenderer-focused smoke replay in `client/__tests__/lifecycle-render-smoke.test.ts` that asserts resync and disconnect batches clear `EffectManager` instances.
 
 ### Next Task
 
-* 🟡 **Wire orchestrator to effect runtime adapter**
-  Thread translated lifecycle batches from `client/client-manager.ts` through the new adapter so the renderer ticks real runtime instances during headless replays.
-
-### Suggested Next Task
-
-* Document runtime instance lifecycle expectations in `docs/architecture/effectsgen-spec.md` so server/client teams share the same teardown semantics.
+* ⚪ **Retained runtime cleanup parity**
+  Audit managed-by-client retention semantics so resync/disconnect flows also clear runtime instances that should not persist, updating `client/render.ts` and playback coverage as needed.
 
 ### Definition of Done
 

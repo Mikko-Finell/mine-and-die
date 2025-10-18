@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { GameClientOrchestrator } from "../client-manager";
 import * as effectCatalogStore from "../effect-catalog";
 import {
   effectCatalog as generatedEffectCatalog,
@@ -10,7 +11,16 @@ import {
   type ContractLifecycleSpawnEvent,
   type ContractLifecycleUpdateEvent,
 } from "../effect-lifecycle-store";
-import { createHeadlessHarness } from "./helpers/headless-harness";
+import { CanvasRenderer } from "../render";
+import { InMemoryWorldStateStore } from "../world-state";
+import {
+  createHeadlessHarness,
+  createJoinResponse,
+  defaultNetworkConfiguration,
+  defaultOrchestratorConfiguration,
+  defaultRendererConfiguration,
+  HeadlessNetworkClient,
+} from "./helpers/headless-harness";
 
 describe("Lifecycle renderer smoke test", () => {
   beforeEach(() => {
@@ -211,6 +221,14 @@ describe("Lifecycle renderer smoke test", () => {
     expect(animation!.metadata.instance.deliveryState.motion.positionX).toBe(272);
     expect(animation!.metadata.retained).toBe(false);
 
+    expect(activeBatch.runtimeEffects).toBeDefined();
+    const fireballRuntime = activeBatch.runtimeEffects!.find((entry) => entry.effectId === "effect-fireball");
+    expect(fireballRuntime).toBeDefined();
+    expect(fireballRuntime!.intent).not.toBeNull();
+    expect(fireballRuntime!.intent!.definition.type).toBe("fireball");
+    expect(fireballRuntime!.intent!.state).toBe("active");
+    expect(fireballRuntime!.intent!.retained).toBe(false);
+
     const attackGeometry = activeBatch.staticGeometry.find((entry) => entry.id === "effect-attack");
     expect(attackGeometry).toBeDefined();
     expect(attackGeometry!.layer.id).toBe("effect-area");
@@ -230,6 +248,13 @@ describe("Lifecycle renderer smoke test", () => {
       blocks: attackEntry.blocks,
     });
     expect(attackAnimation!.metadata.retained).toBe(false);
+
+    const attackRuntime = activeBatch.runtimeEffects!.find((entry) => entry.effectId === "effect-attack");
+    expect(attackRuntime).toBeDefined();
+    expect(attackRuntime!.intent).not.toBeNull();
+    expect(attackRuntime!.intent!.definition.type).toBe("melee-swing");
+    expect(attackRuntime!.intent!.state).toBe("active");
+    expect(attackRuntime!.intent!.retained).toBe(false);
 
     const endBatch: ContractLifecycleBatch = {
       ends: [fireballEnd, attackEnd],
@@ -264,6 +289,12 @@ describe("Lifecycle renderer smoke test", () => {
       catalog: fireballEntry,
     });
 
+    const endedRuntime = endedBatch.runtimeEffects!.find((entry) => entry.effectId === "effect-fireball");
+    expect(endedRuntime).toBeDefined();
+    expect(endedRuntime!.intent).not.toBeNull();
+    expect(endedRuntime!.intent!.state).toBe("ended");
+    expect(endedRuntime!.intent!.retained).toBe(false);
+
     expect(endedBatch.staticGeometry.find((entry) => entry.id === "effect-fireball")).toBeUndefined();
 
     const retainedGeometry = endedBatch.staticGeometry.find((entry) => entry.id === "effect-attack");
@@ -283,6 +314,12 @@ describe("Lifecycle renderer smoke test", () => {
       catalog: attackEntry,
     });
     expect(retainedAnimation!.metadata.retained).toBe(true);
+
+    const retainedRuntime = endedBatch.runtimeEffects!.find((entry) => entry.effectId === "effect-attack");
+    expect(retainedRuntime).toBeDefined();
+    expect(retainedRuntime!.intent).not.toBeNull();
+    expect(retainedRuntime!.intent!.state).toBe("ended");
+    expect(retainedRuntime!.intent!.retained).toBe(true);
 
     const setCatalogSpy = vi.spyOn(effectCatalogStore, "setEffectCatalog");
     const normalizeCatalogSpy = vi.spyOn(effectCatalogStore, "normalizeEffectCatalog");
@@ -309,6 +346,7 @@ describe("Lifecycle renderer smoke test", () => {
       expect(resyncBatch.time).toBe(resyncTick * 16);
       expect(resyncBatch.staticGeometry).toHaveLength(0);
       expect(resyncBatch.animations).toHaveLength(0);
+      expect(resyncBatch.runtimeEffects).toHaveLength(0);
 
       expect(normalizeCatalogSpy).toHaveBeenCalledTimes(1);
       expect(normalizeCatalogSpy).toHaveBeenLastCalledWith(resyncCatalogPayload);
@@ -1063,5 +1101,122 @@ describe("Lifecycle renderer smoke test", () => {
     expect(disconnectedBatch.staticGeometry).toHaveLength(0);
     expect(disconnectedBatch.animations).toHaveLength(0);
     expect(disconnectedBatch.pathTarget).toBeNull();
+  });
+
+  test("disposes runtime instances on resync and disconnect replays", async () => {
+    const fireballEntry = generatedEffectCatalog.fireball;
+    const fireballParameters = {
+      ...(fireballEntry.blocks.parameters as Record<string, number> | undefined),
+    } as Readonly<Record<string, number>>;
+    const renderer = new CanvasRenderer({
+      dimensions: { ...defaultRendererConfiguration.dimensions },
+      layers: defaultRendererConfiguration.layers.map((layer) => ({ ...layer })),
+    });
+    const effectManager = {
+      spawn: vi.fn(() => ({})),
+      removeInstance: vi.fn(),
+      clear: vi.fn(),
+      cullByAABB: vi.fn(),
+      updateAll: vi.fn(),
+      drawAll: vi.fn(),
+    };
+    const rendererInternals = renderer as unknown as {
+      effectManager: typeof effectManager;
+      activeEffects: Map<string, { retained: boolean }>;
+    };
+    rendererInternals.effectManager = effectManager;
+    const activeEffects = rendererInternals.activeEffects;
+
+    const joinResponse = createJoinResponse(generatedEffectCatalog);
+    const network = new HeadlessNetworkClient(
+      { ...defaultNetworkConfiguration },
+      joinResponse,
+    );
+    const worldState = new InMemoryWorldStateStore();
+    const orchestrator = new GameClientOrchestrator(
+      { ...defaultOrchestratorConfiguration },
+      { network, renderer, worldState },
+    );
+
+    const effectId = "effect-fireball";
+    const emitSpawn = (seq: number, tick: number): void => {
+      const spawn: ContractLifecycleSpawnEvent = {
+        seq,
+        tick,
+        instance: {
+          id: effectId,
+          entryId: "fireball",
+          definitionId: fireballEntry.contractId,
+          definition: fireballEntry.definition,
+          startTick: tick,
+          deliveryState: {
+            geometry: {
+              shape: "circle",
+              radius: fireballParameters.radius ?? 12,
+              offsetX: 0,
+              offsetY: 0,
+            },
+            motion: {
+              positionX: 256,
+              positionY: 320,
+              velocityX: 0,
+              velocityY: 0,
+            },
+          },
+          behaviorState: {
+            ticksRemaining: fireballEntry.definition.lifetimeTicks,
+            tickCadence: 1,
+          },
+          params: fireballParameters,
+          colors: ["#ffaa33"],
+          replication: fireballEntry.definition.client,
+          end: fireballEntry.definition.end,
+        },
+      };
+
+      network.emit({
+        type: "state",
+        payload: {
+          effect_spawned: [spawn],
+          effect_seq_cursors: { [effectId]: seq },
+          t: tick,
+        },
+        receivedAt: tick * 16,
+      });
+    };
+
+    try {
+      const onReady = vi.fn();
+      await orchestrator.boot({ onReady });
+      expect(onReady).toHaveBeenCalledTimes(1);
+
+      emitSpawn(1, 120);
+      expect(effectManager.spawn).toHaveBeenCalledTimes(1);
+      expect(activeEffects.size).toBe(1);
+
+      const resyncCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+      network.emit({
+        type: "state",
+        payload: {
+          resync: true,
+          t: 180,
+          config: { effectCatalog: resyncCatalogPayload },
+        },
+        receivedAt: 3600,
+      });
+
+      expect(effectManager.removeInstance).toHaveBeenCalledTimes(1);
+      expect(activeEffects.size).toBe(0);
+
+      emitSpawn(1, 200);
+      expect(effectManager.spawn).toHaveBeenCalledTimes(2);
+      expect(activeEffects.size).toBe(1);
+
+      network.simulateDisconnect();
+      expect(effectManager.removeInstance).toHaveBeenCalledTimes(2);
+      expect(activeEffects.size).toBe(0);
+    } finally {
+      await orchestrator.shutdown();
+    }
   });
 });

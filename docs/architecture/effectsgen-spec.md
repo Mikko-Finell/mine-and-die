@@ -200,6 +200,39 @@ for reproducibility.
 * Unsupported Go field types report a descriptive error listing the offending
   struct and field.
 
+## Runtime lifecycle semantics
+
+### Instance lifecycle
+
+1. **Spawn** – `GameClientOrchestrator` builds render batches from
+   `ContractLifecycleStore` snapshots. Each animation entry is translated into a
+   runtime intent via `translateRenderAnimation` in
+   [`client/effect-runtime-adapter.ts`](../../client/effect-runtime-adapter.ts)
+   and attached to the batch as `runtimeEffects`. The `CanvasRenderer` consumes
+   these intents and calls `EffectManager.spawn`, caching the returned runtime
+   instance alongside the effect signature.
+2. **Update** – When lifecycle updates change delivery state or metadata, the
+   translator emits an intent with an updated signature. The renderer compares
+   the signature against the active instance and, if it differs, disposes the
+   old instance before spawning a fresh one so option changes take effect.
+3. **End** – End events produce intents with `state: "ended"`. Entries marked as
+   retained (e.g. client-managed decals) keep their runtime instance alive until
+   a later batch replaces or clears them; non-retained entries trigger immediate
+   removal through `EffectManager.removeInstance`.
+
+### Store resets and session teardown
+
+* **Resync payloads** – When a WebSocket `state` message arrives with
+  `resync: true`, `GameClientOrchestrator` clears the lifecycle store and renders
+  an empty frame. The renderer receives a batch without animations, walks the
+  cached runtime instances, and removes any non-retained entries so the runtime
+  matches the freshly reset store.
+* **Disconnects and shutdown** – Network disconnects route through
+  `GameClientOrchestrator.handleDisconnect`, which reuses the resync clearing
+  path before requesting another render. The renderer sees an empty batch and
+  removes active instances; `CanvasRenderer.unmount` also calls `EffectManager.clear`
+  to guarantee teardown when the canvas is destroyed.
+
 ## Server Runtime Integration
 
 1. On startup, the server imports `server/effects/contract` to compile payload
