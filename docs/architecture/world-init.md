@@ -96,9 +96,13 @@ Keep the loop smooth and make debugging straightforward.
 
 * Keep this minimal (the team already has the necessary hooks); focus is on clarity during bring-up.
 
+### Summary
+
+* Join and state handlers now emit debug logs that report world dimensions, entity counts, and patch batch sizes each time snapshots or patches land.
+
 ### Next task
 
-Instrument join and state handlers to emit debug logs for world dimensions, entity counts, and patch batch sizes so we can trace hydration/resync behavior while testing cadence tweaks.
+Force a world resize (non-default dimensions) and confirm the canvas scales cleanly while observing that effect playback cadence remains stable with the new logging in place.
 
 ---
 
