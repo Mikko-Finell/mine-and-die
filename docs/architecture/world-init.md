@@ -49,9 +49,9 @@ Start on the generator work. Describe the `next task` in one paragraph of techni
 
 ## CI/Quality gates
 
-* Regeneration check: fail if generated artifacts changed but weren’t committed.
-* Cross-artifact check: fail if client’s hash and server’s hash disagree.
-* Size check (optional): assert join payload shrinks vs baseline.
+* [TODO] Regeneration check: fail if generated artifacts changed but weren’t committed.
+* [TODO] Cross-artifact check: fail if client’s hash and server’s hash disagree.
+* [TODO] Size check (optional): assert join payload shrinks vs baseline.
 
 ## Rollout sequence
 
@@ -62,9 +62,9 @@ Start on the generator work. Describe the `next task` in one paragraph of techni
 
 ## Migration & ops
 
-* Short compatibility window: server can send both hash and catalog; client prefers hash path.
-* Telemetry: log both hashes on join for a week to confirm fleet alignment.
-* Clear operator message for hash mismatches (action: rebuild/update one side).
+* [TODO] Short compatibility window: server can send both hash and catalog; client prefers hash path.
+* [TODO] Telemetry: log both hashes on join for a week to confirm fleet alignment.
+* [TODO] Clear operator message for hash mismatches (action: rebuild/update one side).
 
 ## Risks & mitigations
 
