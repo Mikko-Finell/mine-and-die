@@ -457,6 +457,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   private prepareForSession(join: JoinResponse): void {
     setEffectCatalog(join.effectCatalog);
     this.worldState.reset();
+    this.renderer.reset();
     this.lifecycleStore.reset();
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;
@@ -477,6 +478,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
 
   private handleResync(): void {
     this.worldState.reset();
+    this.renderer.reset();
     this.lifecycleStore.reset();
     this.lastRenderVersion = -1;
     this.lastRenderTime = -1;

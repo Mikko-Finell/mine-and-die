@@ -1108,12 +1108,33 @@ describe("Lifecycle renderer smoke test", () => {
     const fireballParameters = {
       ...(fireballEntry.blocks.parameters as Record<string, number> | undefined),
     } as Readonly<Record<string, number>>;
+    const attackEntry = generatedEffectCatalog.attack;
+    expect(attackEntry.managedByClient).toBe(true);
+    const attackParameters = {
+      ...(attackEntry.blocks.parameters as Record<string, number> | undefined),
+    } as Readonly<Record<string, number>>;
+    const attackReach = attackParameters.reach ?? 56;
+    const attackWidth = attackParameters.width ?? 40;
+    const attackLifetimeTicks = Math.max(1, attackEntry.definition.lifetimeTicks ?? 0);
     const renderer = new CanvasRenderer({
       dimensions: { ...defaultRendererConfiguration.dimensions },
       layers: defaultRendererConfiguration.layers.map((layer) => ({ ...layer })),
     });
+    const fireballEffectId = "effect-fireball";
+    const attackEffectId = "effect-attack";
+    const fireballRuntimeInstance = { effectId: fireballEffectId };
+    const attackRuntimeInstance = { effectId: attackEffectId };
     const effectManager = {
-      spawn: vi.fn(() => ({})),
+      spawn: vi.fn((_definition: unknown, options: Record<string, unknown>) => {
+        const effectId = options.effectId as string | undefined;
+        if (effectId === fireballEffectId) {
+          return fireballRuntimeInstance;
+        }
+        if (effectId === attackEffectId) {
+          return attackRuntimeInstance;
+        }
+        return {};
+      }),
       removeInstance: vi.fn(),
       clear: vi.fn(),
       cullByAABB: vi.fn(),
@@ -1138,13 +1159,12 @@ describe("Lifecycle renderer smoke test", () => {
       { network, renderer, worldState },
     );
 
-    const effectId = "effect-fireball";
-    const emitSpawn = (seq: number, tick: number): void => {
+    const emitFireballSpawn = (seq: number, tick: number): void => {
       const spawn: ContractLifecycleSpawnEvent = {
         seq,
         tick,
         instance: {
-          id: effectId,
+          id: fireballEffectId,
           entryId: "fireball",
           definitionId: fireballEntry.contractId,
           definition: fireballEntry.definition,
@@ -1178,7 +1198,72 @@ describe("Lifecycle renderer smoke test", () => {
         type: "state",
         payload: {
           effect_spawned: [spawn],
-          effect_seq_cursors: { [effectId]: seq },
+          effect_seq_cursors: { [fireballEffectId]: seq },
+          t: tick,
+        },
+        receivedAt: tick * 16,
+      });
+    };
+
+    const emitAttackSpawn = (seq: number, tick: number): void => {
+      const spawn: ContractLifecycleSpawnEvent = {
+        seq,
+        tick,
+        instance: {
+          id: attackEffectId,
+          entryId: "attack",
+          definitionId: attackEntry.contractId,
+          definition: attackEntry.definition,
+          startTick: tick,
+          deliveryState: {
+            geometry: {
+              shape: "rect",
+              width: attackWidth,
+              height: attackReach,
+              offsetX: attackWidth / 2,
+              offsetY: -(attackReach / 2),
+            },
+            motion: {
+              positionX: 208,
+              positionY: 320,
+              velocityX: 0,
+              velocityY: 0,
+            },
+          },
+          behaviorState: {
+            ticksRemaining: attackLifetimeTicks,
+            tickCadence: 1,
+          },
+          params: attackParameters,
+          colors: ["#ffffff"],
+          replication: attackEntry.definition.client,
+          end: attackEntry.definition.end,
+        },
+      };
+
+      network.emit({
+        type: "state",
+        payload: {
+          effect_spawned: [spawn],
+          effect_seq_cursors: { [attackEffectId]: seq },
+          t: tick,
+        },
+        receivedAt: tick * 16,
+      });
+    };
+
+    const emitAttackEnd = (seq: number, tick: number): void => {
+      const endEvent: ContractLifecycleEndEvent = {
+        seq,
+        tick,
+        id: attackEffectId,
+      };
+
+      network.emit({
+        type: "state",
+        payload: {
+          effect_ended: [endEvent],
+          effect_seq_cursors: { [attackEffectId]: seq },
           t: tick,
         },
         receivedAt: tick * 16,
@@ -1190,9 +1275,14 @@ describe("Lifecycle renderer smoke test", () => {
       await orchestrator.boot({ onReady });
       expect(onReady).toHaveBeenCalledTimes(1);
 
-      emitSpawn(1, 120);
-      expect(effectManager.spawn).toHaveBeenCalledTimes(1);
-      expect(activeEffects.size).toBe(1);
+      emitFireballSpawn(1, 120);
+      emitAttackSpawn(1, 120);
+      expect(effectManager.spawn).toHaveBeenCalledTimes(2);
+      expect(activeEffects.size).toBe(2);
+
+      emitAttackEnd(2, 124);
+      expect(effectManager.removeInstance).not.toHaveBeenCalled();
+      expect(activeEffects.get(attackEffectId)?.retained).toBe(true);
 
       const resyncCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
       network.emit({
@@ -1205,15 +1295,20 @@ describe("Lifecycle renderer smoke test", () => {
         receivedAt: 3600,
       });
 
-      expect(effectManager.removeInstance).toHaveBeenCalledTimes(1);
+      expect(effectManager.removeInstance).toHaveBeenCalledTimes(2);
+      expect(new Set(effectManager.removeInstance.mock.calls.map((call) => call[0]))).toEqual(
+        new Set([fireballRuntimeInstance, attackRuntimeInstance]),
+      );
       expect(activeEffects.size).toBe(0);
 
-      emitSpawn(1, 200);
-      expect(effectManager.spawn).toHaveBeenCalledTimes(2);
+      emitAttackSpawn(3, 200);
+      emitAttackEnd(4, 204);
+      expect(effectManager.spawn).toHaveBeenCalledTimes(3);
       expect(activeEffects.size).toBe(1);
+      expect(activeEffects.get(attackEffectId)?.retained).toBe(true);
 
       network.simulateDisconnect();
-      expect(effectManager.removeInstance).toHaveBeenCalledTimes(2);
+      expect(effectManager.removeInstance).toHaveBeenCalledTimes(3);
       expect(activeEffects.size).toBe(0);
     } finally {
       await orchestrator.shutdown();
