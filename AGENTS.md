@@ -1,63 +1,44 @@
-We are working on a re-write of the client app and to improve the server's contract.
+# Instructions
 
-Goals:
+We are now implementing the **world-init initiative** — bringing the client renderer fully online against authoritative world state streamed from the server.
 
-- The client shall only send inputs and render the world according to the authoritive commands received from server. The client is allowed to lerp movement for smoothing.
-- Any configs or rules the client needs to use must be either read from a shared source that the server also reads from, or it must be sent by the server.
-- The client must never use heuristics to infer positions, movement, ids, etc.
-- The client must never use normalization of server data, feature flags, combatibility layers, shims, or anything of that nature.
-- Do not bloat the client code with safety checks for server data. If the contract states a field has a certain type, that's what it will have.
+This project is responsible for:
 
-Do not trust the docs, they are probably outdated.
+* hydrating the client world state from authoritative server join/state/patch messages,
+* translating that state into `StaticGeometry` / renderable primitives,
+* and teaching the canvas renderer to actually draw the world, actors, and effects in the correct layered order.
 
-You are responsible for implementing the **effectsgen initiative** — a project for unifying and generating effect contracts between the Go server and the TypeScript client.
+This work replaces all temporary “effects-only” rendering. Once complete, the client visibly mirrors the active 100×100 world, with real actor positions driven only by server simulation.
 
-Start by reading `docs/architecture/effectsgen-roadmap.md` and `docs/architecture/effectsgen-spec.md`.
-Then continue the work outlined there. If you discover new requirements, inconsistencies, or edge cases during your work, add them directly to `effectsgen-roadmap.md` unless they block the active task.
+Start by reading `docs/architecture/effects.md` and `docs/architecture/world-init.md`.
 
 ---
 
-# Using `effectsgen-roadmap.md`
+### Core rules
 
-This file is the single source of truth for all ongoing work related to the **effect contract generation pipeline**.
-Keep it up to date as you progress — no other tracker or issue list is required.
-
----
-
-### Updating the document
-
-* When you begin a task, update the **Roadmap** or **Active Work** tables with the current phase, status symbol, and a short one-line summary of what’s happening.
-* If you add a new subtask, keep it concise: title, purpose, and where in the code or spec it belongs (e.g., `server/effects/contract/registry.go`, `client/generated/effect-contracts.ts`).
-* When a phase or item is complete, change its status to 🟢 and leave the short description intact for auditability.
-* If something is blocked or deferred, set 🔴 Blocked and add a short reason (dependency, spec gap, or test coverage missing).
-* Always update the file after completing, starting, or reprioritising a task — treat it as the authoritative state of the project.
+* The client **sends only inputs** — movement and action intents.
+  All authoritative world state comes **from the server only**.
+* It is allowed to **lerp for visual smoothness**, but **never extrapolate or infer** missing data.
+* The client must **not normalize, patch, mask, or reinterpret** anything sent by the server.
+* **No fallback logic**, feature flags, or compatibility layers allowed. We fix the code, not shape the data.
+* **If the server contract states a field exists with type X, it exists and is type X. Code accordingly.**
 
 ---
 
-### Status symbols
+### You are working inside `docs/architecture/world-init.md`
 
-| Symbol         | Meaning                                            |
-| -------------- | -------------------------------------------------- |
-| ⚪ Planned      | Logged, not yet started                            |
-| 🟡 In progress | Being designed or implemented                      |
-| 🟢 Done        | Completed, merged, and validated                   |
-| 🔴 Blocked     | Waiting on dependency, spec clarification, or test |
+This file is the **single source of truth for progress**. It replaces all tickets/spreadsheets/Notion boards for this initiative.
+
+It tracks the exact order of implementation, from first hydration to fully visible live movement.
 
 ---
 
-### Writing style
+### Workflow rules
 
-* Be **short and concrete** — describe what’s being implemented, not what might be.
-* Reference **files or packages**, not line numbers (they change often).
-* When relevant, note the **entry point** or **artifact** being produced (e.g. CLI tool, schema file, generated TS output).
-* Anyone should be able to open `effectsgen-roadmap.md` and instantly see what’s active, what’s next, and where to contribute.
-
----
-
-### Quick workflow
-
-1. Read the relevant spec and roadmap section.
-2. Make progress on the next 🟡 item.
-3. Update the roadmap with your change.
-4. Run and verify generator/tests before marking 🟢 Done.
-5. Suggest the next logical step at the bottom of the document when you finish a phase.
+* Look for the next proposed task and start working on it. 
+* The current phase is always the one marked `[IN PROGRES]`.
+  Read it, do it, update it immediately when progress is made.
+* When you've finished a task propose the most logical next task in `### Next task` under that phase so the next contributor can easily continue the work.
+* When a phase is truly finished end-to-end, mark it `[DONE]` — **never before it is actually visible/tested.**
+* If you discover a missing step, **append it as its own phase** `[TODO]` or `[IN PROGRESS]`. Do not silently improvise.
+* If something is blocked by something *external*, mark it `[BLOCKED]` and state the exact reason.
