@@ -662,68 +662,6 @@ func (w *World) triggerFireball(actorID string, now time.Time) bool {
 	return w.effectManager != nil
 }
 
-func (w *World) buildProjectileEffect(owner *actorState, actorID string, tpl *ProjectileTemplate, now time.Time, effectID string) *effectState {
-	if owner == nil || tpl == nil {
-		return nil
-	}
-
-	facing := owner.Facing
-	if facing == "" {
-		facing = defaultFacing
-	}
-	dirX, dirY := facingToVector(facing)
-	if dirX == 0 && dirY == 0 {
-		dirX, dirY = 0, 1
-	}
-
-	spawnRadius := sanitizedSpawnRadius(tpl.SpawnRadius)
-	spawnOffset := tpl.SpawnOffset
-	if spawnOffset == 0 {
-		spawnOffset = ownerHalfExtent(owner) + spawnRadius
-	}
-
-	centerX := owner.X + dirX*spawnOffset
-	centerY := owner.Y + dirY*spawnOffset
-	width, height := spawnSizeFromShape(tpl)
-
-	lifetime := effectLifetime(tpl)
-	params := mergeParams(tpl.Params, map[string]float64{
-		"speed":  tpl.Speed,
-		"radius": spawnRadius,
-		"dx":     dirX,
-		"dy":     dirY,
-	})
-
-	effect := &effectState{
-		ID:       effectID,
-		Type:     tpl.Type,
-		Owner:    actorID,
-		Start:    now.UnixMilli(),
-		Duration: lifetime.Milliseconds(),
-		X:        centerX - width/2,
-		Y:        centerY - height/2,
-		Width:    width,
-		Height:   height,
-		Params:   params,
-		Instance: effectcontract.EffectInstance{
-			ID:           effectID,
-			DefinitionID: tpl.Type,
-			OwnerActorID: actorID,
-			StartTick:    effectcontract.Tick(int64(w.currentTick)),
-		},
-		expiresAt: now.Add(lifetime),
-		Projectile: &ProjectileState{
-			Template:       tpl,
-			VelocityUnitX:  dirX,
-			VelocityUnitY:  dirY,
-			RemainingRange: tpl.MaxDistance,
-		},
-		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
-	}
-
-	return effect
-}
-
 func (w *World) spawnContractProjectileFromInstance(instance *effectcontract.EffectInstance, owner *actorState, tpl *ProjectileTemplate, now time.Time) *effectState {
 	if w == nil || instance == nil || owner == nil || tpl == nil {
 		return nil
