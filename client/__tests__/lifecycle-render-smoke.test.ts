@@ -987,4 +987,81 @@ describe("Lifecycle renderer smoke test", () => {
       vi.useRealTimers();
     }
   });
+
+  test("clears lifecycle state when the network disconnects after rendering", async () => {
+    const fireballEntry = generatedEffectCatalog.fireball;
+    const fireballParameters = {
+      ...(fireballEntry.blocks.parameters as Record<string, number> | undefined),
+    } as Readonly<Record<string, number>>;
+    const { network, renderer, orchestrator, emitLifecycleState } = createHeadlessHarness({
+      catalog: generatedEffectCatalog,
+    });
+
+    const onReady = vi.fn();
+    const onError = vi.fn();
+    await orchestrator.boot({ onReady, onError });
+    expect(onReady).toHaveBeenCalledTimes(1);
+
+    const spawnTick = 48;
+    const fireballSpawn: ContractLifecycleSpawnEvent = {
+      seq: 1,
+      tick: spawnTick,
+      instance: {
+        id: "effect-fireball",
+        entryId: "fireball",
+        definitionId: fireballEntry.contractId,
+        definition: fireballEntry.definition,
+        startTick: spawnTick,
+        deliveryState: {
+          geometry: {
+            shape: "circle",
+            radius: fireballParameters.radius ?? 12,
+          },
+          motion: {
+            positionX: 320,
+            positionY: 256,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: fireballEntry.definition.lifetimeTicks,
+          tickCadence: 1,
+        },
+        params: fireballParameters,
+        colors: ["#ffaa33"],
+        replication: fireballEntry.definition.client,
+        end: fireballEntry.definition.end,
+      },
+    };
+
+    emitLifecycleState({
+      spawns: [fireballSpawn],
+      cursors: { "effect-fireball": fireballSpawn.seq },
+      tick: fireballSpawn.tick,
+      sequence: fireballSpawn.seq,
+      receivedAt: Date.now(),
+    });
+
+    expect(renderer.batches.length).toBeGreaterThanOrEqual(2);
+    const activeBatch = renderer.batches.at(-1)!;
+    expect(activeBatch.keyframeId).toBe(`tick-${spawnTick}`);
+    expect(activeBatch.staticGeometry.length).toBeGreaterThan(0);
+    expect(activeBatch.animations.length).toBeGreaterThan(0);
+
+    const batchesBeforeDisconnect = renderer.batches.length;
+    network.simulateDisconnect(4000, "closing-time");
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const disconnectError = onError.mock.calls.at(-1)?.at(0);
+    expect(disconnectError).toBeInstanceOf(Error);
+    expect((disconnectError as Error).message).toBe("Disconnected from server (closing-time) [4000]");
+
+    expect(renderer.batches.length).toBe(batchesBeforeDisconnect + 1);
+    const disconnectedBatch = renderer.batches.at(-1)!;
+    expect(disconnectedBatch.keyframeId).toBe("lifecycle-0");
+    expect(disconnectedBatch.staticGeometry).toHaveLength(0);
+    expect(disconnectedBatch.animations).toHaveLength(0);
+    expect(disconnectedBatch.pathTarget).toBeNull();
+  });
 });

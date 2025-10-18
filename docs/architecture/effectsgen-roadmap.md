@@ -10,7 +10,7 @@ This document tracks the engineering work required to deliver the `effectsgen` t
 | 2 | JSON schema & catalog resolver | JSON schema validated; loader in `server/effects` resolves designer `entryId` → contract and caches lookups. | 🟢 Done |
 | 3 | `tools/effectgen` TypeScript emitter | Deterministic TS output for payloads/enums/catalog metadata with golden-file tests; generator wired to CI drift checks. | 🟢 Done |
 | 4 | Client integration of generated bindings | Generated bindings drive type authority and rendering paths in the live client; generation flow validates schema/catalog before emitting artifacts. | 🟢 Done |
-| 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | 🟡 In progress |
+| 5 | Client session orchestration | `client/main.ts` boots a `GameClientOrchestrator` backed by `WebSocketNetworkClient`, `InMemoryWorldStateStore`, and `CanvasRenderer`; UI mounts the renderer output and forwards lifecycle/keyframe events from network handlers. | 🟢 Done |
 | 6 | Input capture & command dispatch | `client/input.ts` implements `KeyboardInputController.register/unregister`; an `InputActionDispatcher` wires player intents/actions into `NetworkClient.send`, updating path/action payloads and honouring resync/ack flows in `client/client-manager.ts`. | 🟢 Done |
 | 7 | Effect runtime playback integration | Replace placeholder canvas drawing with the JS effects runtime so lifecycle batches spawn catalog-driven animations via `tools/js-effects` definitions; renderer disposes instances on end events and reconciles `ContractLifecycleStore` state. | ⚪ Planned |
 
@@ -73,11 +73,12 @@ This document tracks the engineering work required to deliver the `effectsgen` t
   `client/network.ts` forwards `state`, `keyframe`, `resync`, and `keyframeNack` envelopes into `client/client-manager.ts`, which maintains the orchestrator-managed stores.
 * 🟢 **Headless harness exercises state hydration**
   `client/__tests__/lifecycle-render-smoke.test.ts` replays recorded lifecycle batches to confirm renderer frames derive from orchestrator-managed snapshots.
+* 🟢 **Disconnect smoke coverage for orchestrator loop**
+  Added a connect→render→disconnect replay in `client/__tests__/lifecycle-render-smoke.test.ts` so the renderer clears lifecycle state and telemetry propagates the disconnect error.
 
 ### Next Task
 
-* 🟡 **Add disconnect coverage to the smoke harness**
-  Extend `client/__tests__/lifecycle-render-smoke.test.ts` (or companion harness) to exercise a connect→render→disconnect loop so Phase 5 exit criteria #4 is satisfied end-to-end.
+* _Phase complete; monitor orchestrator smoke coverage as downstream phases evolve._
 
 ## Phase 6 – Input capture & command dispatch
 

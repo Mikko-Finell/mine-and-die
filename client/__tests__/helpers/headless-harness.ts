@@ -97,6 +97,12 @@ export class HeadlessNetworkClient implements NetworkClient {
   emit(message: NetworkMessageEnvelope): void {
     this.handlers?.onMessage?.(message);
   }
+
+  simulateDisconnect(code?: number, reason?: string): void {
+    const handlers = this.handlers;
+    this.handlers = null;
+    handlers?.onDisconnect?.(code, reason);
+  }
 }
 
 export class HeadlessRenderer implements Renderer {
