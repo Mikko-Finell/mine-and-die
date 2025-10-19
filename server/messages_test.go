@@ -73,12 +73,27 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 	}
 }
 
-func TestJoinResponseIncludesEffectCatalog(t *testing.T) {
+func TestJoinResponseOmitsEffectCatalogByDefault(t *testing.T) {
 	hub := newHub()
 	join := hub.Join()
 
+	if join.EffectCatalog != nil && len(join.EffectCatalog) > 0 {
+		t.Fatalf("expected join response to omit effect catalog by default")
+	}
+
+	if join.EffectCatalogHash != effectcontract.EffectCatalogHash {
+		t.Fatalf("expected join response to include catalog hash %q, got %q", effectcontract.EffectCatalogHash, join.EffectCatalogHash)
+	}
+}
+
+func TestJoinResponseIncludesEffectCatalogWhenTransmissionEnabled(t *testing.T) {
+	hubCfg := defaultHubConfig()
+	hubCfg.SendEffectCatalog = true
+	hub := newHubWithConfig(hubCfg)
+	join := hub.Join()
+
 	if len(join.EffectCatalog) == 0 {
-		t.Fatalf("expected join response to include effect catalog entries")
+		t.Fatalf("expected join response to include effect catalog entries when enabled")
 	}
 
 	if join.EffectCatalogHash != effectcontract.EffectCatalogHash {
@@ -87,32 +102,17 @@ func TestJoinResponseIncludesEffectCatalog(t *testing.T) {
 
 	entry, ok := join.EffectCatalog["fireball"]
 	if !ok {
-		t.Fatalf("expected catalog to include fireball entry")
+		t.Fatalf("expected catalog to include fireball entry when enabled")
 	}
 	if entry.ContractID == "" {
-		t.Fatalf("expected catalog entry to include contract id")
+		t.Fatalf("expected catalog entry to include contract id when enabled")
 	}
 	if entry.Definition == nil || entry.Definition.TypeID == "" {
-		t.Fatalf("expected catalog entry to include definition metadata")
+		t.Fatalf("expected catalog entry to include definition metadata when enabled")
 	}
 }
 
-func TestJoinResponseOmitsEffectCatalogWhenTransmissionDisabled(t *testing.T) {
-	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = false
-	hub := newHubWithConfig(hubCfg)
-	join := hub.Join()
-
-	if join.EffectCatalog != nil && len(join.EffectCatalog) > 0 {
-		t.Fatalf("expected join response to omit effect catalog when disabled")
-	}
-
-	if join.EffectCatalogHash != effectcontract.EffectCatalogHash {
-		t.Fatalf("expected join response to include catalog hash %q, got %q", effectcontract.EffectCatalogHash, join.EffectCatalogHash)
-	}
-}
-
-func TestStateMessageConfigIncludesEffectCatalogOnSnapshot(t *testing.T) {
+func TestStateMessageConfigOmitsEffectCatalogOnSnapshotByDefault(t *testing.T) {
 	hub := newHub()
 	hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
@@ -132,15 +132,8 @@ func TestStateMessageConfigIncludesEffectCatalogOnSnapshot(t *testing.T) {
 		t.Fatalf("expected config to decode as object, got %T", payload["config"])
 	}
 
-	catalog, exists := config["effectCatalog"].(map[string]any)
-	if !exists {
-		t.Fatalf("expected snapshot payload to include effectCatalog metadata")
-	}
-	if len(catalog) == 0 {
-		t.Fatalf("expected effectCatalog metadata to include entries")
-	}
-	if _, ok := catalog["fireball"].(map[string]any); !ok {
-		t.Fatalf("expected effectCatalog metadata to include fireball entry")
+	if _, exists := config["effectCatalog"]; exists {
+		t.Fatalf("expected snapshot payload to omit effectCatalog metadata by default")
 	}
 }
 
@@ -169,9 +162,9 @@ func TestStateMessageConfigOmitsEffectCatalogOnDelta(t *testing.T) {
 	}
 }
 
-func TestStateMessageConfigOmitsEffectCatalogWhenTransmissionDisabled(t *testing.T) {
+func TestStateMessageConfigIncludesEffectCatalogWhenTransmissionEnabled(t *testing.T) {
 	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = false
+	hubCfg.SendEffectCatalog = true
 	hub := newHubWithConfig(hubCfg)
 	hub.SetKeyframeInterval(1)
 	hub.advance(time.Now(), 1.0/float64(tickRate))
@@ -191,8 +184,15 @@ func TestStateMessageConfigOmitsEffectCatalogWhenTransmissionDisabled(t *testing
 		t.Fatalf("expected config to decode as object, got %T", payload["config"])
 	}
 
-	if _, exists := config["effectCatalog"]; exists {
-		t.Fatalf("expected snapshot payload to omit effectCatalog when disabled")
+	catalog, exists := config["effectCatalog"].(map[string]any)
+	if !exists {
+		t.Fatalf("expected snapshot payload to include effectCatalog metadata when enabled")
+	}
+	if len(catalog) == 0 {
+		t.Fatalf("expected effectCatalog metadata to include entries when enabled")
+	}
+	if _, ok := catalog["fireball"].(map[string]any); !ok {
+		t.Fatalf("expected effectCatalog metadata to include fireball entry when enabled")
 	}
 }
 
@@ -749,8 +749,37 @@ func TestHandleKeyframeRequestReturnsSnapshot(t *testing.T) {
 	}
 }
 
-func TestHandleKeyframeRequestReturnsCatalogSnapshot(t *testing.T) {
+func TestHandleKeyframeRequestOmitsCatalogByDefault(t *testing.T) {
 	hub := newHub()
+	hub.SetKeyframeInterval(1)
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state payload: %v", err)
+	}
+
+	snapshot, nack, ok := hub.HandleKeyframeRequest("player-1", nil, msg.Sequence)
+	if !ok {
+		t.Fatalf("expected handle to succeed")
+	}
+	if nack != nil {
+		t.Fatalf("expected ack response, got nack: %+v", nack)
+	}
+
+	if snapshot.Config.EffectCatalog != nil {
+		t.Fatalf("expected keyframe config to omit effect catalog by default")
+	}
+}
+
+func TestHandleKeyframeRequestReturnsCatalogSnapshotWhenTransmissionEnabled(t *testing.T) {
+	hubCfg := defaultHubConfig()
+	hubCfg.SendEffectCatalog = true
+	hub := newHubWithConfig(hubCfg)
 	hub.SetKeyframeInterval(1)
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
@@ -778,7 +807,7 @@ func TestHandleKeyframeRequestReturnsCatalogSnapshot(t *testing.T) {
 	}
 
 	if snapshot.Config.EffectCatalog == nil {
-		t.Fatalf("expected keyframe config to include effect catalog snapshot")
+		t.Fatalf("expected keyframe config to include effect catalog snapshot when enabled")
 	}
 
 	if !reflect.DeepEqual(snapshot.Config.EffectCatalog, expected) {
@@ -786,37 +815,10 @@ func TestHandleKeyframeRequestReturnsCatalogSnapshot(t *testing.T) {
 	}
 }
 
-func TestHandleKeyframeRequestOmitsCatalogWhenTransmissionDisabled(t *testing.T) {
-	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = false
-	hub := newHubWithConfig(hubCfg)
-	hub.SetKeyframeInterval(1)
-
-	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
-	if err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
-	}
-
-	var msg stateMessage
-	if err := json.Unmarshal(data, &msg); err != nil {
-		t.Fatalf("failed to decode state payload: %v", err)
-	}
-
-	snapshot, nack, ok := hub.HandleKeyframeRequest("player-1", nil, msg.Sequence)
-	if !ok {
-		t.Fatalf("expected handle to succeed")
-	}
-	if nack != nil {
-		t.Fatalf("expected ack response, got nack: %+v", nack)
-	}
-
-	if snapshot.Config.EffectCatalog != nil {
-		t.Fatalf("expected keyframe config to omit effect catalog when disabled")
-	}
-}
-
 func TestHandleKeyframeRequestClonesCatalogSnapshot(t *testing.T) {
-	hub := newHub()
+	hubCfg := defaultHubConfig()
+	hubCfg.SendEffectCatalog = true
+	hub := newHubWithConfig(hubCfg)
 	hub.SetKeyframeInterval(1)
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
@@ -878,7 +880,9 @@ func TestHandleKeyframeRequestClonesCatalogSnapshot(t *testing.T) {
 
 func TestHandleKeyframeRequestExpired(t *testing.T) {
 	t.Setenv(envJournalCapacity, "1")
-	hub := newHub()
+	hubCfg := defaultHubConfig()
+	hubCfg.SendEffectCatalog = true
+	hub := newHubWithConfig(hubCfg)
 	hub.SetKeyframeInterval(1)
 
 	expectedCatalog := snapshotEffectCatalog(hub.world.effectManager.catalog)
@@ -950,7 +954,9 @@ func TestHandleKeyframeRequestExpired(t *testing.T) {
 }
 
 func TestHandleKeyframeRequestRateLimited(t *testing.T) {
-	hub := newHub()
+	hubCfg := defaultHubConfig()
+	hubCfg.SendEffectCatalog = true
+	hub := newHubWithConfig(hubCfg)
 	sub := &subscriber{limiter: newKeyframeRateLimiter(1, 1)}
 	sub.limiter.allow(time.Now())
 
