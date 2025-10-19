@@ -6,7 +6,7 @@
 * The **server will not send the catalog**; it will expose a **stable schema hash/version** only.
 
 **How to use this document**
-1. Pick the first thing that is not marked [IN PROGRESS] or [DONE]
+1. Pick the first thing that is not marked [DONE]
 2. Start working on it
 3. When finished mark as [DONE] or [IN PRORGESS] if it's large and you were unable to compelete it
 4. Always add a next task so the next contributor can easily pick up where you left off
