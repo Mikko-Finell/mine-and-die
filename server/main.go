@@ -41,6 +41,14 @@ func main() {
 			stdlog.Printf("invalid KEYFRAME_INTERVAL_TICKS=%q: %v", raw, err)
 		}
 	}
+	if raw := os.Getenv("DISABLE_EFFECT_CATALOG_TRANSMISSION"); raw != "" {
+		disabled, err := strconv.ParseBool(raw)
+		if err != nil {
+			stdlog.Printf("invalid DISABLE_EFFECT_CATALOG_TRANSMISSION=%q: %v", raw, err)
+		} else if disabled {
+			hubCfg.SendEffectCatalog = false
+		}
+	}
 
 	hub := newHubWithConfig(hubCfg, router)
 	stop := make(chan struct{})
