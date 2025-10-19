@@ -32,6 +32,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Updated console `drop_gold`/`pickup_gold` broadcasts to pull ground-item
   snapshots via `sim.Engine`, keeping manual debug flows off the legacy `World`
   reads when fanning out state.
+- Added a regression test to ensure the `drop_gold` console command broadcasts
+  ground items from the `sim.Engine` snapshot, protecting the new read path from
+  future regressions.
 
 ### Next task
 
@@ -44,7 +47,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       so state fan-out no longer reads the legacy world directly.
 - [x] Update hub console command flows that broadcast ground-item changes to
       source snapshots via `sim.Engine` instead of accessing `World`.
-- [ ] Add a hub console command test proving ground-item broadcasts consult the
+- [x] Add a hub console command test proving ground-item broadcasts consult the
+      `sim.Engine` snapshot instead of reading `World` directly.
+- [ ] Add a hub console command test proving gold pickup broadcasts consult the
       `sim.Engine` snapshot instead of reading `World` directly.
 
 - [ ] Objective: Create seams and invariants before moving code.
