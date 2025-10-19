@@ -170,9 +170,20 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       refactors can consume the logger, metrics, clock, and RNG without touching
       hub internals.
 
-- [ ] Switch hub consumers that need logging, metrics, clock, or RNG access to
+- [x] Switch hub consumers that need logging, metrics, clock, or RNG access to
       pull them from `sim.Engine.Deps()` so future refactors can stop reaching
       through hub fields for infrastructure.
+
+- [x] Route hub telemetry counters through `sim.Engine.Deps().Metrics` so
+      instrumentation can drop direct `logging.Publisher` dependencies next.
+- [x] Introduce a metrics-backed telemetry adapter so hub tick budget and
+      broadcast instrumentation no longer depend on `logging.Publisher`
+      helpers directly.
+- [x] Expand the telemetry metrics adapter to surface keyframe and effect
+      counters through `logging.Metrics` so diagnostics can observe them
+      without hub snapshots.
+- [ ] Publish effect parity aggregates through `logging.Metrics` so telemetry
+      consumers can inspect hit/miss rates without pulling hub snapshots.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
@@ -205,7 +216,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 - [x] Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
 
-- [ ] Pass injected dependencies (`Logger`, `Metrics`, `Clock`, `RNG`) via a `Deps` struct.
+- [x] Pass injected dependencies (`Logger`, `Metrics`, `Clock`, `RNG`) via a `Deps` struct.
 
 - [x] Add adapter coverage for journal effect batches so the façade captures the
       exact record layout before we split packages.

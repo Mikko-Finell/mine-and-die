@@ -4,12 +4,215 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	"mine-and-die/server/logging"
 )
+
+const (
+	metricKeyBroadcastTotal            = "telemetry_broadcast_total"
+	metricKeyBroadcastBytesTotal       = "telemetry_broadcast_bytes_total"
+	metricKeyBroadcastEntitiesTotal    = "telemetry_broadcast_entities_total"
+	metricKeyBroadcastLastBytes        = "telemetry_broadcast_last_bytes"
+	metricKeyBroadcastLastEntities     = "telemetry_broadcast_last_entities"
+	metricKeyTickDurationMillis        = "telemetry_tick_duration_millis"
+	metricKeyTickTotal                 = "telemetry_tick_total"
+	metricKeyTickBudgetOverrunTotal    = "telemetry_tick_budget_overrun_total"
+	metricKeyTickBudgetOverrunLastMs   = "telemetry_tick_budget_overrun_last_millis"
+	metricKeyTickBudgetBudgetMillis    = "telemetry_tick_budget_overrun_budget_millis"
+	metricKeyTickBudgetStreakCurrent   = "telemetry_tick_budget_overrun_current_streak"
+	metricKeyTickBudgetStreakMax       = "telemetry_tick_budget_overrun_max_streak"
+	metricKeyTickBudgetRatioBits       = "telemetry_tick_budget_overrun_ratio_bits"
+	metricKeyTickBudgetAlarmTotal      = "telemetry_tick_budget_alarm_total"
+	metricKeyTickBudgetAlarmLastTick   = "telemetry_tick_budget_alarm_last_tick"
+	metricKeyTickBudgetAlarmRatioBits  = "telemetry_tick_budget_alarm_last_ratio_bits"
+	metricKeyKeyframeJournalSize       = "telemetry_keyframe_journal_size"
+	metricKeyKeyframeOldestSequence    = "telemetry_keyframe_oldest_sequence"
+	metricKeyKeyframeNewestSequence    = "telemetry_keyframe_newest_sequence"
+	metricKeyKeyframeRequestsTotal     = "telemetry_keyframe_requests_total"
+	metricKeyKeyframeRequestLatencyMs  = "telemetry_keyframe_request_latency_millis"
+	metricKeyKeyframeNackExpiredTotal  = "telemetry_keyframe_nacks_expired_total"
+	metricKeyKeyframeNackRateLimited   = "telemetry_keyframe_nacks_rate_limited_total"
+	metricKeyEffectsActiveGauge        = "telemetry_effects_active_gauge"
+	metricKeyEffectsSpawnedTotalPrefix = "telemetry_effects_spawned_total"
+	metricKeyEffectsUpdatedTotalPrefix = "telemetry_effects_updated_total"
+	metricKeyEffectsEndedTotalPrefix   = "telemetry_effects_ended_total"
+	metricKeyEffectsSpatialOverflow    = "telemetry_effects_spatial_overflow_total"
+	metricKeyEffectTriggersEnqueued    = "telemetry_effect_triggers_enqueued_total"
+)
+
+type telemetryMetricsAdapter struct {
+	metrics *logging.Metrics
+}
+
+func (a *telemetryMetricsAdapter) Attach(metrics *logging.Metrics) {
+	a.metrics = metrics
+}
+
+func (a *telemetryMetricsAdapter) add(key string, delta uint64) {
+	if a == nil || a.metrics == nil || key == "" || delta == 0 {
+		return
+	}
+	a.metrics.TelemetryAdd(key, delta)
+}
+
+func (a *telemetryMetricsAdapter) store(key string, value uint64) {
+	if a == nil || a.metrics == nil || key == "" {
+		return
+	}
+	a.metrics.TelemetryStore(key, value)
+}
+
+func (a *telemetryMetricsAdapter) layeredKey(base, primary, secondary string) string {
+	if base == "" {
+		return ""
+	}
+	normalizedPrimary := normalizeMetricKey(primary)
+	normalizedSecondary := ""
+	if secondary != "" {
+		normalizedSecondary = normalizeMetricKey(secondary)
+	}
+	var b strings.Builder
+	// account for slashes and normalized values when sizing the builder
+	length := len(base) + 1 + len(normalizedPrimary)
+	if normalizedSecondary != "" {
+		length += 1 + len(normalizedSecondary)
+	}
+	b.Grow(length)
+	b.WriteString(base)
+	b.WriteByte('/')
+	b.WriteString(normalizedPrimary)
+	if normalizedSecondary != "" {
+		b.WriteByte('/')
+		b.WriteString(normalizedSecondary)
+	}
+	return b.String()
+}
+
+func (a *telemetryMetricsAdapter) RecordBroadcast(bytes, entities int) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	if bytes < 0 {
+		bytes = 0
+	}
+	if entities < 0 {
+		entities = 0
+	}
+	a.metrics.TelemetryAdd(metricKeyBroadcastTotal, 1)
+	a.metrics.TelemetryAdd(metricKeyBroadcastBytesTotal, uint64(bytes))
+	a.metrics.TelemetryAdd(metricKeyBroadcastEntitiesTotal, uint64(entities))
+	a.metrics.TelemetryStore(metricKeyBroadcastLastBytes, uint64(bytes))
+	a.metrics.TelemetryStore(metricKeyBroadcastLastEntities, uint64(entities))
+}
+
+func (a *telemetryMetricsAdapter) RecordTickDuration(duration time.Duration, total uint64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	millis := duration.Milliseconds()
+	if millis < 0 {
+		millis = 0
+	}
+	a.metrics.TelemetryStore(metricKeyTickDurationMillis, uint64(millis))
+	a.metrics.TelemetryStore(metricKeyTickTotal, total)
+}
+
+func (a *telemetryMetricsAdapter) RecordTickBudgetOverrun(duration, budget time.Duration, ratio float64, streak, max uint64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	millis := duration.Milliseconds()
+	if millis < 0 {
+		millis = 0
+	}
+	budgetMillis := budget.Milliseconds()
+	if budgetMillis < 0 {
+		budgetMillis = 0
+	}
+	a.metrics.TelemetryAdd(metricKeyTickBudgetOverrunTotal, 1)
+	a.metrics.TelemetryStore(metricKeyTickBudgetOverrunLastMs, uint64(millis))
+	a.metrics.TelemetryStore(metricKeyTickBudgetBudgetMillis, uint64(budgetMillis))
+	a.metrics.TelemetryStore(metricKeyTickBudgetStreakCurrent, streak)
+	a.metrics.TelemetryStore(metricKeyTickBudgetStreakMax, max)
+	a.metrics.TelemetryStore(metricKeyTickBudgetRatioBits, math.Float64bits(ratio))
+}
+
+func (a *telemetryMetricsAdapter) ResetTickBudgetStreak() {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	a.metrics.TelemetryStore(metricKeyTickBudgetStreakCurrent, 0)
+}
+
+func (a *telemetryMetricsAdapter) RecordTickBudgetAlarm(tick uint64, ratio float64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	a.metrics.TelemetryAdd(metricKeyTickBudgetAlarmTotal, 1)
+	a.metrics.TelemetryStore(metricKeyTickBudgetAlarmLastTick, tick)
+	a.metrics.TelemetryStore(metricKeyTickBudgetAlarmRatioBits, math.Float64bits(ratio))
+}
+
+func (a *telemetryMetricsAdapter) RecordKeyframeJournal(size uint64, oldest, newest uint64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	a.store(metricKeyKeyframeJournalSize, size)
+	a.store(metricKeyKeyframeOldestSequence, oldest)
+	a.store(metricKeyKeyframeNewestSequence, newest)
+}
+
+func (a *telemetryMetricsAdapter) RecordKeyframeRequest(success bool, latencyMillis uint64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	a.add(metricKeyKeyframeRequestsTotal, 1)
+	if success {
+		a.store(metricKeyKeyframeRequestLatencyMs, latencyMillis)
+	}
+}
+
+func (a *telemetryMetricsAdapter) IncrementKeyframeExpired() {
+	a.add(metricKeyKeyframeNackExpiredTotal, 1)
+}
+
+func (a *telemetryMetricsAdapter) IncrementKeyframeRateLimited() {
+	a.add(metricKeyKeyframeNackRateLimited, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordEffectsActive(count uint64) {
+	a.store(metricKeyEffectsActiveGauge, count)
+}
+
+func (a *telemetryMetricsAdapter) RecordEffectSpawned(effectType, producer string) {
+	key := a.layeredKey(metricKeyEffectsSpawnedTotalPrefix, effectType, producer)
+	a.add(key, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordEffectUpdated(effectType, mutation string) {
+	key := a.layeredKey(metricKeyEffectsUpdatedTotalPrefix, effectType, mutation)
+	a.add(key, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordEffectEnded(effectType, reason string) {
+	key := a.layeredKey(metricKeyEffectsEndedTotalPrefix, effectType, reason)
+	a.add(key, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordEffectSpatialOverflow(effectType string) {
+	key := a.layeredKey(metricKeyEffectsSpatialOverflow, effectType, "")
+	a.add(key, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordEffectTrigger(triggerType string) {
+	key := a.layeredKey(metricKeyEffectTriggersEnqueued, triggerType, "")
+	a.add(key, 1)
+}
 
 type simpleCounter struct {
 	data sync.Map
@@ -248,6 +451,9 @@ func normalizeMetricKey(value string) string {
 }
 
 type telemetryCounters struct {
+	metrics        *logging.Metrics
+	metricsAdapter telemetryMetricsAdapter
+
 	bytesSent                    atomic.Uint64
 	entitiesSent                 atomic.Uint64
 	tickDurationMillis           atomic.Int64
@@ -331,12 +537,21 @@ type telemetryTickBudgetSnapshot struct {
 	LastAlarmRatio    float64           `json:"lastAlarmRatio,omitempty"`
 }
 
-func newTelemetryCounters() *telemetryCounters {
-	t := &telemetryCounters{}
+func newTelemetryCounters(metrics *logging.Metrics) *telemetryCounters {
+	t := &telemetryCounters{metrics: metrics}
+	t.metricsAdapter.Attach(metrics)
 	if os.Getenv("DEBUG_TELEMETRY") == "1" {
 		t.debug = true
 	}
 	return t
+}
+
+func (t *telemetryCounters) AttachMetrics(metrics *logging.Metrics) {
+	if t == nil {
+		return
+	}
+	t.metrics = metrics
+	t.metricsAdapter.Attach(metrics)
 }
 
 func (t *telemetryCounters) RecordBroadcast(bytes, entities int) {
@@ -350,6 +565,7 @@ func (t *telemetryCounters) RecordBroadcast(bytes, entities int) {
 	t.entitiesSent.Add(uint64(entities))
 	t.lastBroadcastBytes.Store(uint64(bytes))
 	t.lastBroadcastEntities.Store(uint64(entities))
+	t.metricsAdapter.RecordBroadcast(bytes, entities)
 }
 
 func (t *telemetryCounters) RecordTickDuration(duration time.Duration) {
@@ -358,7 +574,8 @@ func (t *telemetryCounters) RecordTickDuration(duration time.Duration) {
 		millis = 0
 	}
 	t.tickDurationMillis.Store(millis)
-	t.totalTicks.Add(1)
+	total := t.totalTicks.Add(1)
+	t.metricsAdapter.RecordTickDuration(duration, total)
 	if t.debug {
 		effects := t.effectsActiveGauge.Load()
 		spawned := t.effectsSpawnedTotal.snapshot()
@@ -409,6 +626,12 @@ func (t *telemetryCounters) RecordTickBudgetOverrun(duration, budget time.Durati
 			break
 		}
 	}
+	ratio := float64(0)
+	if budget > 0 {
+		ratio = float64(duration) / float64(budget)
+	}
+	maxStreak := t.tickBudgetMaxConsecutiveOverruns.Load()
+	t.metricsAdapter.RecordTickBudgetOverrun(duration, budget, ratio, streak, maxStreak)
 	return streak
 }
 
@@ -422,6 +645,7 @@ func (t *telemetryCounters) RecordTickBudgetAlarm(tick uint64, ratio float64) {
 	}
 	bits := math.Float64bits(ratio)
 	t.tickBudgetLastAlarmRatio.Store(bits)
+	t.metricsAdapter.RecordTickBudgetAlarm(tick, ratio)
 }
 
 func (t *telemetryCounters) ResetTickBudgetOverrunStreak() {
@@ -429,6 +653,7 @@ func (t *telemetryCounters) ResetTickBudgetOverrunStreak() {
 		return
 	}
 	t.tickBudgetConsecutiveOverruns.Store(0)
+	t.metricsAdapter.ResetTickBudgetStreak()
 }
 
 func (t *telemetryCounters) RecordKeyframeJournal(size int, oldest, newest uint64) {
@@ -438,25 +663,31 @@ func (t *telemetryCounters) RecordKeyframeJournal(size int, oldest, newest uint6
 	t.keyframeJournalSize.Store(uint64(size))
 	t.keyframeOldestSequence.Store(oldest)
 	t.keyframeNewestSequence.Store(newest)
+	t.metricsAdapter.RecordKeyframeJournal(uint64(size), oldest, newest)
 }
 
 func (t *telemetryCounters) RecordKeyframeRequest(latency time.Duration, success bool) {
 	t.keyframeRequests.Add(1)
+	var latencyMillis uint64
 	if success {
-		millis := latency.Milliseconds()
-		if millis < 0 {
-			millis = 0
+		raw := latency.Milliseconds()
+		if raw < 0 {
+			raw = 0
 		}
-		t.keyframeRequestLatencyMillis.Store(uint64(millis))
+		latencyMillis = uint64(raw)
+		t.keyframeRequestLatencyMillis.Store(latencyMillis)
 	}
+	t.metricsAdapter.RecordKeyframeRequest(success, latencyMillis)
 }
 
 func (t *telemetryCounters) IncrementKeyframeExpired() {
 	t.keyframeNacksExpired.Add(1)
+	t.metricsAdapter.IncrementKeyframeExpired()
 }
 
 func (t *telemetryCounters) IncrementKeyframeRateLimited() {
 	t.keyframeNacksRateLimited.Add(1)
+	t.metricsAdapter.IncrementKeyframeRateLimited()
 }
 
 func (t *telemetryCounters) RecordEffectSpawned(effectType, producer string) {
@@ -464,6 +695,7 @@ func (t *telemetryCounters) RecordEffectSpawned(effectType, producer string) {
 		return
 	}
 	t.effectsSpawnedTotal.add(effectType, producer, 1)
+	t.metricsAdapter.RecordEffectSpawned(effectType, producer)
 }
 
 func (t *telemetryCounters) RecordEffectUpdated(effectType, mutation string) {
@@ -471,6 +703,7 @@ func (t *telemetryCounters) RecordEffectUpdated(effectType, mutation string) {
 		return
 	}
 	t.effectsUpdatedTotal.add(effectType, mutation, 1)
+	t.metricsAdapter.RecordEffectUpdated(effectType, mutation)
 }
 
 func (t *telemetryCounters) RecordEffectEnded(effectType, reason string) {
@@ -478,6 +711,7 @@ func (t *telemetryCounters) RecordEffectEnded(effectType, reason string) {
 		return
 	}
 	t.effectsEndedTotal.add(effectType, reason, 1)
+	t.metricsAdapter.RecordEffectEnded(effectType, reason)
 }
 
 func (t *telemetryCounters) RecordEffectSpatialOverflow(effectType string) {
@@ -485,6 +719,7 @@ func (t *telemetryCounters) RecordEffectSpatialOverflow(effectType string) {
 		return
 	}
 	t.effectsSpatialOverflow.add(effectType, 1)
+	t.metricsAdapter.RecordEffectSpatialOverflow(effectType)
 }
 
 func (t *telemetryCounters) RecordEffectsActive(count int) {
@@ -495,6 +730,7 @@ func (t *telemetryCounters) RecordEffectsActive(count int) {
 		count = 0
 	}
 	t.effectsActiveGauge.Store(int64(count))
+	t.metricsAdapter.RecordEffectsActive(uint64(count))
 }
 
 func (t *telemetryCounters) RecordEffectTrigger(triggerType string) {
@@ -502,6 +738,7 @@ func (t *telemetryCounters) RecordEffectTrigger(triggerType string) {
 		return
 	}
 	t.triggerEnqueued.add(triggerType, 1)
+	t.metricsAdapter.RecordEffectTrigger(triggerType)
 }
 
 func (t *telemetryCounters) RecordJournalDrop(reason string) {

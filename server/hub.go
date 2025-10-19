@@ -22,7 +22,6 @@ import (
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
 	loggingnetwork "mine-and-die/server/logging/network"
-	loggingsimulation "mine-and-die/server/logging/simulation"
 	stats "mine-and-die/server/stats"
 )
 
@@ -56,6 +55,47 @@ type Hub struct {
 	pendingCommands        []sim.Command // staged commands applied in order at the next simulation step
 	pendingCommandsByActor map[string]int
 	droppedCommandsByActor map[string]uint64
+}
+
+func (h *Hub) engineDeps() sim.Deps {
+	if h == nil || h.engine == nil {
+		return sim.Deps{}
+	}
+	return h.engine.Deps()
+}
+
+func (h *Hub) logger() *stdlog.Logger {
+	deps := h.engineDeps()
+	if deps.Logger != nil {
+		return deps.Logger
+	}
+	return stdlog.Default()
+}
+
+func (h *Hub) logf(format string, args ...any) {
+	logger := h.logger()
+	if logger == nil {
+		return
+	}
+	logger.Printf(format, args...)
+}
+
+func (h *Hub) now() time.Time {
+	if h == nil {
+		return time.Now()
+	}
+	deps := h.engineDeps()
+	if deps.Clock != nil {
+		return deps.Clock.Now()
+	}
+	return time.Now()
+}
+
+func (h *Hub) attachTelemetryMetrics() {
+	if h == nil || h.telemetry == nil {
+		return
+	}
+	h.telemetry.AttachMetrics(h.engineDeps().Metrics)
 }
 
 type subscriber struct {
@@ -195,7 +235,7 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 		droppedCommandsByActor:  make(map[string]uint64),
 		config:                  cfg,
 		publisher:               pub,
-		telemetry:               newTelemetryCounters(),
+		telemetry:               newTelemetryCounters(engineDeps.Metrics),
 		defaultKeyframeInterval: interval,
 		resubscribeBaselines:    nil,
 	}
@@ -203,6 +243,7 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 	hub.world.journal.AttachTelemetry(hub.telemetry)
 	hub.keyframeInterval.Store(int64(interval))
 	hub.forceKeyframe()
+	hub.attachTelemetryMetrics()
 	return hub
 }
 
@@ -274,7 +315,7 @@ func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTrigger
 		return players, npcs, triggers, groundItems
 	}
 
-	now := time.Now()
+	now := h.now()
 	players, npcs := h.world.Snapshot(now)
 	if players == nil {
 		players = make([]Player, 0)
@@ -369,7 +410,7 @@ func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 func (h *Hub) Join() joinResponse {
 	id := h.nextID.Add(1)
 	playerID := fmt.Sprintf("player-%d", id)
-	now := time.Now()
+	now := h.now()
 
 	player := h.seedPlayerState(playerID, now)
 
@@ -409,7 +450,7 @@ func (h *Hub) Join() joinResponse {
 // ResetWorld replaces the current world with a freshly generated instance.
 func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 	cfg = cfg.normalized()
-	now := time.Now()
+	now := h.now()
 
 	h.commandsMu.Lock()
 	h.pendingCommands = nil
@@ -436,6 +477,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 		h.engine = h.adapter
 	}
 	h.config = cfg
+	h.attachTelemetryMetrics()
 	var players []Player
 	var npcs []NPC
 	if h.engine != nil {
@@ -471,7 +513,7 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 		return nil, nil, nil, nil, false
 	}
 
-	state.lastHeartbeat = time.Now()
+	state.lastHeartbeat = h.now()
 
 	if existing, ok := h.subscribers[playerID]; ok {
 		existing.conn.Close()
@@ -532,7 +574,7 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
 			snapshot := h.engine.Snapshot()
 			players, npcs = legacyActorsFromSimSnapshot(snapshot)
 		} else {
-			now := time.Now()
+			now := h.now()
 			players, npcs = h.world.Snapshot(now)
 		}
 	}
@@ -576,7 +618,7 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (sim.
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
 		Type:       sim.CommandMove,
-		IssuedAt:   time.Now(),
+		IssuedAt:   h.now(),
 		Move: &sim.MoveCommand{
 			DX:     dx,
 			DY:     dy,
@@ -599,7 +641,7 @@ func (h *Hub) SetPlayerPath(playerID string, x, y float64) (sim.Command, bool, s
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
 		Type:       sim.CommandSetPath,
-		IssuedAt:   time.Now(),
+		IssuedAt:   h.now(),
 		Path: &sim.PathCommand{
 			TargetX: x,
 			TargetY: y,
@@ -621,7 +663,7 @@ func (h *Hub) ClearPlayerPath(playerID string) (sim.Command, bool, string) {
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
 		Type:       sim.CommandClearPath,
-		IssuedAt:   time.Now(),
+		IssuedAt:   h.now(),
 	}
 	if ok, reason := h.enqueueCommand(cmd); !ok {
 		return zero, false, reason
@@ -644,7 +686,7 @@ func (h *Hub) HandleAction(playerID, action string) (sim.Command, bool, string) 
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
 		Type:       sim.CommandAction,
-		IssuedAt:   time.Now(),
+		IssuedAt:   h.now(),
 		Action: &sim.ActionCommand{
 			Name: action,
 		},
@@ -950,7 +992,7 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 	ticker := time.NewTicker(time.Second / tickRate)
 	defer ticker.Stop()
 
-	last := time.Now()
+	last := h.now()
 	tickBudget := time.Second / time.Duration(tickRate)
 	budgetSeconds := 1.0 / float64(tickRate)
 	maxDtSeconds := budgetSeconds
@@ -961,9 +1003,10 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 		select {
 		case <-stop:
 			return
-		case now := <-ticker.C:
-			tickStart := time.Now()
-			dt := now.Sub(last).Seconds()
+		case <-ticker.C:
+			tickStart := h.now()
+			current := h.now()
+			dt := current.Sub(last).Seconds()
 			clamped := false
 			if dt <= 0 {
 				dt = budgetSeconds
@@ -971,14 +1014,14 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 				dt = maxDtSeconds
 				clamped = true
 			}
-			last = now
+			last = current
 
-			players, npcs, triggers, groundItems, toClose := h.advance(now, dt)
+			players, npcs, triggers, groundItems, toClose := h.advance(current, dt)
 			for _, sub := range toClose {
 				sub.conn.Close()
 			}
 			h.broadcastState(players, npcs, triggers, groundItems)
-			duration := time.Since(tickStart)
+			duration := h.now().Sub(tickStart)
 			if h.telemetry != nil {
 				h.telemetry.RecordTickDuration(duration)
 			}
@@ -988,33 +1031,13 @@ func (h *Hub) RunSimulation(stop <-chan struct{}) {
 				if h.telemetry != nil {
 					streak = h.telemetry.RecordTickBudgetOverrun(duration, tickBudget)
 				}
-				stdlog.Printf(
+				h.logf(
 					"[tick] budget overrun: duration=%s budget=%s ratio=%.2f streak=%d",
 					duration,
 					tickBudget,
 					ratio,
 					streak,
 				)
-				if h.publisher != nil {
-					extra := map[string]any{
-						"ratio":        ratio,
-						"dtSeconds":    dt,
-						"clamped":      clamped,
-						"maxDtSeconds": maxDtSeconds,
-					}
-					loggingsimulation.TickBudgetOverrun(
-						context.Background(),
-						h.publisher,
-						h.tick.Load(),
-						loggingsimulation.TickBudgetOverrunPayload{
-							DurationMillis: duration.Milliseconds(),
-							BudgetMillis:   tickBudget.Milliseconds(),
-							Ratio:          ratio,
-							Streak:         streak,
-						},
-						extra,
-					)
-				}
 				if (ratio >= tickBudgetAlarmMinRatio || streak >= tickBudgetAlarmMinStreak) && h.tickBudgetAlarmTriggered.CompareAndSwap(false, true) {
 					h.handleTickBudgetAlarm(duration, tickBudget, ratio, streak, dt, clamped, maxDtSeconds)
 				}
@@ -1037,7 +1060,7 @@ func (h *Hub) handleTickBudgetAlarm(duration, budget time.Duration, ratio float6
 	h.forceKeyframe()
 
 	tick := h.tick.Load()
-	stdlog.Printf(
+	h.logf(
 		"[tick] budget alarm triggered: scheduling resync ratio=%.2f streak=%d dt=%.4f clamped=%t",
 		ratio,
 		streak,
@@ -1047,31 +1070,6 @@ func (h *Hub) handleTickBudgetAlarm(duration, budget time.Duration, ratio float6
 
 	if h.telemetry != nil {
 		h.telemetry.RecordTickBudgetAlarm(tick, ratio)
-	}
-
-	if h.publisher != nil {
-		extra := map[string]any{
-			"ratio":        ratio,
-			"dtSeconds":    dt,
-			"clamped":      clamped,
-			"maxDtSeconds": maxDtSeconds,
-			"alarm":        true,
-		}
-		loggingsimulation.TickBudgetAlarm(
-			context.Background(),
-			h.publisher,
-			tick,
-			loggingsimulation.TickBudgetAlarmPayload{
-				DurationMillis:  duration.Milliseconds(),
-				BudgetMillis:    budget.Milliseconds(),
-				Ratio:           ratio,
-				Streak:          streak,
-				ResyncScheduled: true,
-				ThresholdRatio:  tickBudgetAlarmMinRatio,
-				ThresholdStreak: tickBudgetAlarmMinStreak,
-			},
-			extra,
-		)
 	}
 }
 
@@ -1417,11 +1415,11 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 			h.telemetry.RecordKeyframeJournal(record.Size, record.OldestSequence, record.NewestSequence)
 		}
 		if h.telemetry != nil && h.telemetry.DebugEnabled() {
-			stdlog.Printf("[journal] add sequence=%d tick=%d size=%d", seq, tick, record.Size)
+			h.logf("[journal] add sequence=%d tick=%d size=%d", seq, tick, record.Size)
 			for _, eviction := range record.Evicted {
-				stdlog.Printf("[journal] evict sequence=%d tick=%d size=%d reason=%s", eviction.Sequence, eviction.Tick, record.Size, eviction.Reason)
+				h.logf("[journal] evict sequence=%d tick=%d size=%d reason=%s", eviction.Sequence, eviction.Tick, record.Size, eviction.Reason)
 			}
-			stdlog.Printf("[journal] window size=%d oldest=%d newest=%d", record.Size, record.OldestSequence, record.NewestSequence)
+			h.logf("[journal] window size=%d oldest=%d newest=%d", record.Size, record.OldestSequence, record.NewestSequence)
 		}
 	} else if keyframeSeq == 0 {
 		keyframeSeq = seq
@@ -1440,7 +1438,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		Tick:             tick,
 		Sequence:         seq,
 		KeyframeSeq:      keyframeSeq,
-		ServerTime:       time.Now().UnixMilli(),
+		ServerTime:       h.now().UnixMilli(),
 		Config:           cfg,
 		KeyframeInterval: currentInterval,
 	}
@@ -1500,9 +1498,9 @@ func (h *Hub) scheduleResyncIfNeeded() (bool, resyncSignal) {
 
 	summary := signal.summary()
 	if summary == "" {
-		stdlog.Printf("[effects] scheduling resync (journal hint)")
+		h.logf("[effects] scheduling resync (journal hint)")
 	} else {
-		stdlog.Printf("[effects] scheduling resync (journal hint): %s", summary)
+		h.logf("[effects] scheduling resync (journal hint): %s", summary)
 	}
 	return true, signal
 }
@@ -1567,13 +1565,13 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 		return keyframeMessage{}, nil, false
 	}
 
-	now := time.Now()
+	now := h.now()
 	if sub != nil && !sub.limiter.allow(now) {
 		if h.telemetry != nil {
 			h.telemetry.RecordKeyframeRequest(0, false)
 			h.telemetry.IncrementKeyframeRateLimited()
 		}
-		stdlog.Printf("[keyframe] rate_limited player=%s sequence=%d", playerID, sequence)
+		h.logf("[keyframe] rate_limited player=%s sequence=%d", playerID, sequence)
 		nack := &keyframeNackMessage{
 			Ver:      ProtocolVersion,
 			Type:     "keyframeNack",
@@ -1587,20 +1585,20 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 	}
 
 	snapshot, status := h.lookupKeyframe(sequence)
-	latency := time.Since(now)
+	latency := h.now().Sub(now)
 	switch status {
 	case keyframeLookupFound:
 		if h.telemetry != nil {
 			h.telemetry.RecordKeyframeRequest(latency, true)
 		}
-		stdlog.Printf("[keyframe] served player=%s sequence=%d tick=%d latency_ms=%d", playerID, snapshot.Sequence, snapshot.Tick, latency.Milliseconds())
+		h.logf("[keyframe] served player=%s sequence=%d tick=%d latency_ms=%d", playerID, snapshot.Sequence, snapshot.Tick, latency.Milliseconds())
 		return snapshot, nil, true
 	case keyframeLookupExpired:
 		if h.telemetry != nil {
 			h.telemetry.RecordKeyframeRequest(latency, false)
 			h.telemetry.IncrementKeyframeExpired()
 		}
-		stdlog.Printf("[keyframe] expired player=%s sequence=%d", playerID, sequence)
+		h.logf("[keyframe] expired player=%s sequence=%d", playerID, sequence)
 		nack := &keyframeNackMessage{
 			Ver:      ProtocolVersion,
 			Type:     "keyframeNack",
@@ -1625,7 +1623,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 	includeSnapshot := h.shouldIncludeSnapshot()
 	data, entities, err := h.marshalState(players, npcs, triggers, groundItems, true, includeSnapshot)
 	if err != nil {
-		stdlog.Printf("failed to marshal state message: %v", err)
+		h.logf("failed to marshal state message: %v", err)
 		return
 	}
 
@@ -1645,7 +1643,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 		}
 	}
 	if len(matched) > 0 {
-		stdlog.Printf(
+		h.logf(
 			"[network] broadcasting payload markers=%s bytes=%d entities=%d snapshot=%t",
 			strings.Join(matched, ","),
 			len(data),
@@ -1663,11 +1661,11 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 
 	for id, sub := range subs {
 		sub.mu.Lock()
-		sub.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		sub.conn.SetWriteDeadline(h.now().Add(writeWait))
 		err := sub.conn.WriteMessage(websocket.TextMessage, data)
 		sub.mu.Unlock()
 		if err != nil {
-			stdlog.Printf("failed to send update to %s: %v", id, err)
+			h.logf("failed to send update to %s: %v", id, err)
 			players, npcs := h.Disconnect(id)
 			if players != nil {
 				h.forceKeyframe()
@@ -1726,7 +1724,7 @@ func (h *Hub) enqueueCommand(cmd sim.Command) (bool, string) {
 			h.telemetry.RecordCommandDropped("limit_exceeded", string(cmd.Type))
 		}
 		if dropCount > 0 && dropCount&(dropCount-1) == 0 {
-			stdlog.Printf(
+			h.logf(
 				"[backpressure] dropping command actor=%s type=%s count=%d limit=%d",
 				cmd.ActorID,
 				cmd.Type,
@@ -1738,7 +1736,7 @@ func (h *Hub) enqueueCommand(cmd sim.Command) (bool, string) {
 	}
 
 	if commandQueueWarningStep > 0 && queueLen >= commandQueueWarningStep && queueLen%commandQueueWarningStep == 0 {
-		stdlog.Printf("[backpressure] pendingCommands=%d; investigate tick latency or raise throttle thresholds", queueLen)
+		h.logf("[backpressure] pendingCommands=%d; investigate tick latency or raise throttle thresholds", queueLen)
 	}
 
 	return true, ""
