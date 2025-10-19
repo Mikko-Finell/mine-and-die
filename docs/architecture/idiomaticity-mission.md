@@ -142,8 +142,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       façade.
 - [x] Switch hub resubscribe baselines to cache `patches.PlayerView` values so
       façade types flow through without legacy conversions.
-- [ ] Persist the hub's resubscribe baseline map using `patches.PlayerView` data and
+- [x] Persist the hub's resubscribe baseline map using `patches.PlayerView` data and
       update any callers still referencing legacy player views.
+- [x] Teach the hub resubscribe flow to clone the persisted `patches.PlayerView`
+      baselines when staging replay payloads so reconnects no longer depend on
+      legacy player structs.
+- [ ] Integrate the cloned resubscribe baselines into the replay packaging so
+      reconnect payloads are staged from the façade types end-to-end.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
