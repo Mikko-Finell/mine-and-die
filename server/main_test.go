@@ -2407,6 +2407,56 @@ func TestConsolePickupGoldBroadcastsGroundItemsFromSimEngine(t *testing.T) {
 	engine.AllowFurtherSnapshots()
 }
 
+func TestRunSimulationBroadcastsGroundItemsFromSimEngine(t *testing.T) {
+	hub := newHubWithFullWorld()
+
+	player := newTestPlayerState("player-sim-broadcast")
+	hub.world.AddPlayer(player)
+	if stack := hub.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: 9}, "world"); stack == nil {
+		t.Fatalf("expected world ground item to seed test scenario")
+	}
+
+	snapshot := sim.Snapshot{GroundItems: []sim.GroundItem{{
+		ID:             "engine-ground",
+		Type:           sim.ItemType(ItemTypeGold),
+		FungibilityKey: "engine-fungibility",
+		X:              12,
+		Y:              34,
+		Qty:            5,
+	}}}
+	engine := newRecordingSimEngine(snapshot)
+	hub.engine = engine
+	t.Cleanup(engine.AllowFurtherSnapshots)
+
+	players, npcs, triggers, groundItems, toClose := hub.advance(time.Now(), 1.0/float64(tickRate))
+	if len(toClose) != 0 {
+		t.Fatalf("expected no subscribers to close during advance, got %d", len(toClose))
+	}
+
+	includeSnapshot := hub.shouldIncludeSnapshot()
+	engine.AllowFurtherSnapshots()
+	data, _, err := hub.marshalState(players, npcs, triggers, groundItems, true, includeSnapshot)
+	if err != nil {
+		t.Fatalf("failed to marshal state payload: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode broadcast payload: %v", err)
+	}
+
+	if len(msg.GroundItems) != len(snapshot.GroundItems) {
+		t.Fatalf("expected %d ground items from engine snapshot, got %d", len(snapshot.GroundItems), len(msg.GroundItems))
+	}
+	if msg.GroundItems[0].ID != snapshot.GroundItems[0].ID {
+		t.Fatalf("expected broadcast ground item id %q, got %q", snapshot.GroundItems[0].ID, msg.GroundItems[0].ID)
+	}
+
+	if calls := engine.Calls(); calls < 1 {
+		t.Fatalf("expected engine snapshot to be consulted at least once, got %d", calls)
+	}
+}
+
 func TestDeathDropsPlayerInventory(t *testing.T) {
 	hub := newHubWithFullWorld()
 	attacker := newTestPlayerState("player-attacker")
