@@ -70,6 +70,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   matches the legacy journal window and eviction metadata exactly.
 - Exercised the determinism harness with per-tick keyframe capture to prove the
   golden patch and journal checksums remain stable.
+- Routed hub patch restoration and adapter regression to rely on
+  `sim.Engine`, keeping rollback flows behind the façade.
 
 ### Next task
 
@@ -114,10 +116,14 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       contract before switching hub lookups to the façade.
 - [x] Route keyframe recording through `sim.Engine` so hub state fan-out stops
       writing to the legacy journal directly when capturing frames.
-- [ ] Route patch restoration through `sim.Engine` so hub error handling stops
+- [x] Route patch restoration through `sim.Engine` so hub error handling stops
       writing directly to the legacy journal when replaying patches.
-- [ ] Add adapter regression coverage for patch restoration once the façade
+- [x] Add adapter regression coverage for patch restoration once the façade
       handles the replay path.
+
+- [ ] Lock tick/RNG/sequence numbering semantics behind the façade with
+      regression coverage so deterministic sequencing stays frozen before
+      moving code.
 
 - [ ] Objective: Create seams and invariants before moving code.
 

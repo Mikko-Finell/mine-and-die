@@ -80,6 +80,14 @@ func (a *legacyEngineAdapter) DrainPatches() []sim.Patch {
 	return simPatchesFromLegacy(patches)
 }
 
+func (a *legacyEngineAdapter) RestorePatches(patches []sim.Patch) {
+	if a == nil || a.world == nil {
+		return
+	}
+	legacy := legacyPatchesFromSim(patches)
+	a.world.journal.RestorePatches(legacy)
+}
+
 func (a *legacyEngineAdapter) DrainEffectEvents() sim.EffectEventBatch {
 	if a == nil || a.world == nil {
 		return sim.EffectEventBatch{}

@@ -104,6 +104,8 @@ func (e *recordingSimEngine) Snapshot() sim.Snapshot {
 
 func (e *recordingSimEngine) DrainPatches() []sim.Patch { return nil }
 
+func (e *recordingSimEngine) RestorePatches([]sim.Patch) {}
+
 func (e *recordingSimEngine) DrainEffectEvents() sim.EffectEventBatch {
 	return sim.EffectEventBatch{}
 }
