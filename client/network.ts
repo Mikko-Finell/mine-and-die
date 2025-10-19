@@ -1,6 +1,5 @@
 import {
   getEffectCatalog,
-  normalizeEffectCatalog,
   type EffectCatalogSnapshot,
 } from "./effect-catalog";
 import { effectCatalogHash } from "./generated/effect-contracts-hash";
@@ -381,7 +380,6 @@ export class WebSocketNetworkClient implements NetworkClient {
       readonly seed?: unknown;
       readonly width?: unknown;
       readonly height?: unknown;
-      readonly effectCatalog?: unknown;
     };
     if (typeof config.seed !== "string" || config.seed.length === 0) {
       throw new Error("Join response missing world seed.");
@@ -410,11 +408,7 @@ export class WebSocketNetworkClient implements NetworkClient {
       );
     }
 
-    const effectCatalogPayload = config.effectCatalog;
-    const effectCatalog =
-      effectCatalogPayload === undefined
-        ? getEffectCatalog()
-        : normalizeEffectCatalog(effectCatalogPayload);
+    const effectCatalog = getEffectCatalog();
 
     if (joinPayload.ver !== this.configuration.protocolVersion) {
       throw new Error(

@@ -18,7 +18,7 @@
 * [DONE] Add a server-side guard that keeps sending the catalog for now but allows us to toggle it off while always shipping the new hash (join + resync/keyframe paths). The guard is default-on (env: `DISABLE_EFFECT_CATALOG_TRANSMISSION=true` to cut over) and covered by join/resync/keyframe tests for both modes.
 
 **Next task**
-Delete the client-side effect catalog hydration/validation path so joins and resyncs rely solely on the generated catalog, then remove the temporary server transmission flag.
+Clear the compatibility error path when hashes mismatch so operators see a precise rebuild/update instruction, while continuing to use the local generated catalog on success.
 
 ## What changes (conceptually)
 
@@ -30,12 +30,12 @@ Delete the client-side effect catalog hydration/validation path so joins and res
 **Server**
 
 * [DONE] Stop including the catalog in join/resync responses.
-* [DONE] Include only the catalog hash/version in the handshake. (Catalog transmission is now opt-in via `DISABLE_EFFECT_CATALOG_TRANSMISSION=false`.)
+* [DONE] Include only the catalog hash/version in the handshake.
 * [TODO] (Optional) Keep a temporary debug endpoint/flag to fetch the catalog during migration; default off.
 
 **Client**
 
-* [TODO] Remove validation of server-provided catalog.
+* [DONE] Remove validation of server-provided catalog.
 * [DONE] On join, compare server hash vs local generated hash.
 * [TODO] If mismatch → clear compatibility error; otherwise use the local generated catalog.
 

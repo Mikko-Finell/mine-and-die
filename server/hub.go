@@ -41,8 +41,6 @@ type Hub struct {
 	lastKeyframeSeq         atomic.Uint64
 	lastKeyframeTick        atomic.Uint64
 
-	sendEffectCatalog atomic.Bool
-
 	resyncNext               atomic.Bool
 	forceKeyframeNext        atomic.Bool
 	tickBudgetAlarmTriggered atomic.Bool
@@ -128,12 +126,11 @@ func (l *keyframeRateLimiter) allow(now time.Time) bool {
 }
 
 type hubConfig struct {
-	KeyframeInterval  int
-	SendEffectCatalog bool
+	KeyframeInterval int
 }
 
 func defaultHubConfig() hubConfig {
-	return hubConfig{KeyframeInterval: 30, SendEffectCatalog: false}
+	return hubConfig{KeyframeInterval: 30}
 }
 
 // newHub creates a hub with empty maps and a freshly generated world.
@@ -172,16 +169,8 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 	hub.world.telemetry = hub.telemetry
 	hub.world.journal.AttachTelemetry(hub.telemetry)
 	hub.keyframeInterval.Store(int64(interval))
-	hub.sendEffectCatalog.Store(hubCfg.SendEffectCatalog)
 	hub.forceKeyframe()
 	return hub
-}
-
-func (h *Hub) shouldSendEffectCatalog() bool {
-	if h == nil {
-		return false
-	}
-	return h.sendEffectCatalog.Load()
 }
 
 func (h *Hub) effectCatalogSnapshotLocked() map[string]effectCatalogMetadata {
@@ -199,11 +188,6 @@ func (h *Hub) resyncConfigSnapshot() worldConfig {
 	defer h.mu.Unlock()
 
 	cfg := h.config
-	if h.shouldSendEffectCatalog() {
-		cfg.EffectCatalog = h.effectCatalogSnapshotLocked()
-	} else {
-		cfg.EffectCatalog = nil
-	}
 	return cfg
 }
 
@@ -285,13 +269,6 @@ func (h *Hub) Join() joinResponse {
 	groundItems := h.world.GroundItemsSnapshot()
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
-	var catalog map[string]effectCatalogMetadata
-	if h.shouldSendEffectCatalog() {
-		catalog = h.effectCatalogSnapshotLocked()
-		cfg.EffectCatalog = cloneEffectCatalogMetadataMap(catalog)
-	} else {
-		cfg.EffectCatalog = nil
-	}
 	h.mu.Unlock()
 
 	logginglifecycle.PlayerJoined(
@@ -316,7 +293,6 @@ func (h *Hub) Join() joinResponse {
 		Config:            cfg,
 		Resync:            true,
 		KeyframeInterval:  h.CurrentKeyframeInterval(),
-		EffectCatalog:     catalog,
 		EffectCatalogHash: effectcontract.EffectCatalogHash,
 	}
 }
@@ -1083,12 +1059,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	cfg := h.config
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
-	includeCatalog := (includeSnapshot || resync) && h.shouldSendEffectCatalog()
-	if includeCatalog {
-		cfg.EffectCatalog = h.effectCatalogSnapshotLocked()
-	} else {
-		cfg.EffectCatalog = nil
-	}
 	effectManagerPresent := h.world.effectManager != nil
 	effectTransportEnabled := effectManagerPresent
 	journal := &h.world.journal
@@ -1312,11 +1282,6 @@ func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupSt
 	frame, ok := journal.KeyframeBySequence(sequence)
 	if ok {
 		config := frame.Config
-		if h.shouldSendEffectCatalog() {
-			config.EffectCatalog = cloneEffectCatalogMetadataMap(frame.Config.EffectCatalog)
-		} else {
-			config.EffectCatalog = nil
-		}
 		snapshot := keyframeMessage{
 			Ver:         ProtocolVersion,
 			Type:        "keyframe",

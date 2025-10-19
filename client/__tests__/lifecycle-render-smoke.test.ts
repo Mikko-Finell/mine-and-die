@@ -363,49 +363,31 @@ describe("Lifecycle renderer smoke test", () => {
     expect(retainedRuntime!.intent!.state).toBe("ended");
     expect(retainedRuntime!.intent!.retained).toBe(true);
 
-    const setCatalogSpy = vi.spyOn(effectCatalogStore, "setEffectCatalog");
-    const normalizeCatalogSpy = vi.spyOn(effectCatalogStore, "normalizeEffectCatalog");
+    const resyncTick = 130;
 
-    try {
-      const resyncTick = 130;
-      const resyncCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+    network.emit({
+      type: "state",
+      payload: {
+        resync: true,
+        t: resyncTick,
+      },
+      receivedAt: 3600,
+    });
 
-      network.emit({
-        type: "state",
-        payload: {
-          resync: true,
-          t: resyncTick,
-          config: {
-            effectCatalog: resyncCatalogPayload,
-          },
-        },
-        receivedAt: 3600,
-      });
+    expect(renderer.batches.length).toBeGreaterThanOrEqual(4);
+    const resyncBatch = renderer.batches.at(-1)!;
+    expect(resyncBatch.keyframeId).toBe("lifecycle-0");
+    expect(resyncBatch.time).toBe(resyncTick * 16);
+    expect(filterEffectGeometry(resyncBatch.staticGeometry)).toHaveLength(0);
+    expect(resyncBatch.animations).toHaveLength(0);
+    expect(resyncBatch.runtimeEffects).toHaveLength(0);
 
-      expect(renderer.batches.length).toBeGreaterThanOrEqual(4);
-      const resyncBatch = renderer.batches.at(-1)!;
-      expect(resyncBatch.keyframeId).toBe("lifecycle-0");
-      expect(resyncBatch.time).toBe(resyncTick * 16);
-      expect(filterEffectGeometry(resyncBatch.staticGeometry)).toHaveLength(0);
-      expect(resyncBatch.animations).toHaveLength(0);
-      expect(resyncBatch.runtimeEffects).toHaveLength(0);
-
-      expect(normalizeCatalogSpy).toHaveBeenCalledTimes(1);
-      expect(normalizeCatalogSpy).toHaveBeenLastCalledWith(resyncCatalogPayload);
-      const normalizedCatalog = normalizeCatalogSpy.mock.results.at(-1)?.value;
-      expect(setCatalogSpy).toHaveBeenCalledTimes(1);
-      expect(setCatalogSpy).toHaveBeenLastCalledWith(normalizedCatalog);
-
-      const activeCatalog = effectCatalogStore.getEffectCatalog();
-      expect(activeCatalog).toEqual(normalizedCatalog);
-      expect(Object.isFrozen(activeCatalog)).toBe(true);
-    } finally {
-      normalizeCatalogSpy.mockRestore();
-      setCatalogSpy.mockRestore();
-    }
+    const activeCatalog = effectCatalogStore.getEffectCatalog();
+    expect(activeCatalog).toEqual(generatedEffectCatalog);
+    expect(Object.isFrozen(activeCatalog)).toBe(true);
   });
 
-  test("hydrates effect catalog snapshot from keyframe responses", async () => {
+  test("renders keyframe responses using the local catalog snapshot", async () => {
     const fireballEntry = generatedEffectCatalog.fireball;
     const fireballParameters = {
       ...(fireballEntry.blocks.parameters as Record<string, number> | undefined),
@@ -418,94 +400,65 @@ describe("Lifecycle renderer smoke test", () => {
     await orchestrator.boot({ onReady });
     expect(onReady).toHaveBeenCalledTimes(1);
 
-    const setCatalogSpy = vi.spyOn(effectCatalogStore, "setEffectCatalog");
-    const normalizeCatalogSpy = vi.spyOn(effectCatalogStore, "normalizeEffectCatalog");
-
-    try {
-      setCatalogSpy.mockClear();
-      normalizeCatalogSpy.mockClear();
-
-      const keyframeCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
-
-      network.emit({
-        type: "keyframe",
-        payload: {
-          config: {
-            effectCatalog: keyframeCatalogPayload,
-          },
-        },
-        receivedAt: 2000,
-      });
-
-      expect(normalizeCatalogSpy).toHaveBeenCalledTimes(1);
-      expect(normalizeCatalogSpy).toHaveBeenLastCalledWith(keyframeCatalogPayload);
-      const normalizedCatalog = normalizeCatalogSpy.mock.results.at(-1)?.value;
-      expect(setCatalogSpy).toHaveBeenCalledTimes(1);
-      expect(setCatalogSpy).toHaveBeenLastCalledWith(normalizedCatalog);
-
-      const fireballSpawn: ContractLifecycleSpawnEvent = {
-        seq: 1,
-        tick: 64,
-        instance: {
-          id: "effect-fireball",
-          entryId: "fireball",
-          definitionId: fireballEntry.contractId,
-          definition: fireballEntry.definition,
-          startTick: 64,
-          deliveryState: {
-            geometry: {
-              shape: "circle",
-              radius: fireballParameters.radius ?? 12,
-              offsetX: 0,
-              offsetY: 0,
-            },
-            motion: {
-              positionX: 192,
-              positionY: 256,
-              velocityX: 0,
-              velocityY: 0,
-            },
-          },
-          behaviorState: {
-            ticksRemaining: fireballEntry.definition.lifetimeTicks,
-            tickCadence: 1,
-          },
-          params: fireballParameters,
-          colors: ["#ffaa33"],
-          replication: fireballEntry.definition.client,
-          end: fireballEntry.definition.end,
-        },
-      };
-
-      network.emit({
-        type: "state",
-        payload: {
-          effect_spawned: [fireballSpawn],
-          effect_seq_cursors: { "effect-fireball": fireballSpawn.seq },
-          t: fireballSpawn.tick,
-        },
-        receivedAt: 2400,
-      });
-
-      expect(renderer.batches.length).toBeGreaterThan(0);
-      const lastBatch = renderer.batches.at(-1)!;
-      const geometry = lastBatch.staticGeometry.find((entry) => entry.id === "effect-fireball");
-      expect(geometry).toBeDefined();
-      expect(geometry!.style).toMatchObject({
+    const fireballSpawn: ContractLifecycleSpawnEvent = {
+      seq: 1,
+      tick: 64,
+      instance: {
+        id: "effect-fireball",
         entryId: "fireball",
-        managedByClient: fireballEntry.managedByClient,
-      });
-      const animation = lastBatch.animations.find((entry) => entry.effectId === "effect-fireball");
-      expect(animation).toBeDefined();
-      expect(animation!.metadata).toMatchObject({
-        contractId: fireballEntry.contractId,
-        entryId: "fireball",
-        catalog: fireballEntry,
-      });
-    } finally {
-      normalizeCatalogSpy.mockRestore();
-      setCatalogSpy.mockRestore();
-    }
+        definitionId: fireballEntry.contractId,
+        definition: fireballEntry.definition,
+        startTick: 64,
+        deliveryState: {
+          geometry: {
+            shape: "circle",
+            radius: fireballParameters.radius ?? 12,
+            offsetX: 0,
+            offsetY: 0,
+          },
+          motion: {
+            positionX: 192,
+            positionY: 256,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        },
+        behaviorState: {
+          ticksRemaining: fireballEntry.definition.lifetimeTicks,
+          tickCadence: 1,
+        },
+        params: fireballParameters,
+        colors: ["#ffaa33"],
+        replication: fireballEntry.definition.client,
+        end: fireballEntry.definition.end,
+      },
+    };
+
+    network.emit({
+      type: "state",
+      payload: {
+        effect_spawned: [fireballSpawn],
+        effect_seq_cursors: { "effect-fireball": fireballSpawn.seq },
+        t: fireballSpawn.tick,
+      },
+      receivedAt: 2400,
+    });
+
+    expect(renderer.batches.length).toBeGreaterThan(0);
+    const lastBatch = renderer.batches.at(-1)!;
+    const geometry = lastBatch.staticGeometry.find((entry) => entry.id === "effect-fireball");
+    expect(geometry).toBeDefined();
+    expect(geometry!.style).toMatchObject({
+      entryId: "fireball",
+      managedByClient: fireballEntry.managedByClient,
+    });
+    const animation = lastBatch.animations.find((entry) => entry.effectId === "effect-fireball");
+    expect(animation).toBeDefined();
+    expect(animation!.metadata).toMatchObject({
+      contractId: fireballEntry.contractId,
+      entryId: "fireball",
+      catalog: fireballEntry,
+    });
   });
 
   test("resets lifecycle store when keyframe requests are nacked and recovers on resync", async () => {
@@ -567,63 +520,37 @@ describe("Lifecycle renderer smoke test", () => {
     let lastBatch = renderer.batches.at(-1)!;
     expect(lastBatch.animations.some((frame) => frame.effectId === fireballSpawn.instance.id)).toBe(true);
 
-    const setCatalogSpy = vi.spyOn(effectCatalogStore, "setEffectCatalog");
-    const normalizeCatalogSpy = vi.spyOn(effectCatalogStore, "normalizeEffectCatalog");
+    const resyncTick = 400;
 
-    try {
-      setCatalogSpy.mockClear();
-      normalizeCatalogSpy.mockClear();
+    network.emit({
+      type: "keyframeNack",
+      payload: {
+        resync: true,
+      },
+      receivedAt: 2600,
+    });
 
-      const resyncCatalogPayload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+    lastBatch = renderer.batches.at(-1)!;
+    expect(lastBatch.keyframeId).toBe("lifecycle-0");
+    expect(filterEffectGeometry(lastBatch.staticGeometry)).toHaveLength(0);
+    expect(lastBatch.animations).toHaveLength(0);
 
-      network.emit({
-        type: "keyframeNack",
-        payload: {
-          config: {
-            effectCatalog: resyncCatalogPayload,
-          },
-          resync: true,
-        },
-        receivedAt: 2600,
-      });
+    network.emit({
+      type: "state",
+      payload: {
+        resync: true,
+        t: resyncTick,
+      },
+      receivedAt: 3000,
+    });
 
-      expect(normalizeCatalogSpy).toHaveBeenCalledTimes(1);
-      expect(normalizeCatalogSpy).toHaveBeenLastCalledWith(resyncCatalogPayload);
-      const normalizedCatalog = normalizeCatalogSpy.mock.results.at(-1)?.value;
-      expect(setCatalogSpy).toHaveBeenCalledTimes(1);
-      expect(setCatalogSpy).toHaveBeenLastCalledWith(normalizedCatalog);
+    lastBatch = renderer.batches.at(-1)!;
+    expect(lastBatch.keyframeId).toBe("lifecycle-0");
+    expect(filterEffectGeometry(lastBatch.staticGeometry)).toHaveLength(0);
+    expect(lastBatch.animations).toHaveLength(0);
+    expect(lastBatch.time).toBe(resyncTick * 16);
 
-      lastBatch = renderer.batches.at(-1)!;
-      expect(lastBatch.keyframeId).toBe("lifecycle-0");
-      expect(filterEffectGeometry(lastBatch.staticGeometry)).toHaveLength(0);
-      expect(lastBatch.animations).toHaveLength(0);
-
-      const resyncTick = 400;
-      network.emit({
-        type: "state",
-        payload: {
-          resync: true,
-          t: resyncTick,
-          config: {
-            effectCatalog: resyncCatalogPayload,
-          },
-        },
-        receivedAt: 3000,
-      });
-
-      expect(normalizeCatalogSpy).toHaveBeenCalledTimes(2);
-      expect(normalizeCatalogSpy).toHaveBeenLastCalledWith(resyncCatalogPayload);
-      const resyncedCatalog = normalizeCatalogSpy.mock.results.at(-1)?.value;
-      expect(setCatalogSpy).toHaveBeenCalledTimes(2);
-      expect(setCatalogSpy).toHaveBeenLastCalledWith(resyncedCatalog);
-
-      lastBatch = renderer.batches.at(-1)!;
-      expect(lastBatch.keyframeId).toBe("lifecycle-0");
-      expect(filterEffectGeometry(lastBatch.staticGeometry)).toHaveLength(0);
-      expect(lastBatch.animations).toHaveLength(0);
-      expect(lastBatch.time).toBe(resyncTick * 16);
-
-      const postResyncSpawn: ContractLifecycleSpawnEvent = {
+    const postResyncSpawn: ContractLifecycleSpawnEvent = {
         seq: 11,
         tick: resyncTick + 4,
         instance: {
@@ -652,10 +579,6 @@ describe("Lifecycle renderer smoke test", () => {
         catalog: fireballEntry,
         lastEventKind: "spawn",
       });
-    } finally {
-      normalizeCatalogSpy.mockRestore();
-      setCatalogSpy.mockRestore();
-    }
   });
 
   test("retries keyframe requests after resync fallback before resuming rendering", async () => {

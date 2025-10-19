@@ -2,7 +2,7 @@ import {
   GameClientOrchestrator,
   type ClientManagerConfiguration,
 } from "../../client-manager";
-import { normalizeEffectCatalog } from "../../effect-catalog";
+import { getEffectCatalog } from "../../effect-catalog";
 import type { EffectCatalogEntry } from "../../generated/effect-contracts";
 import { effectCatalogHash as generatedEffectCatalogHash } from "../../generated/effect-contracts-hash";
 import type {
@@ -55,7 +55,7 @@ export const defaultRendererConfiguration: RendererConfiguration = {
 };
 
 export const createJoinResponse = (
-  catalog: Record<string, EffectCatalogEntry>,
+  _catalog: Record<string, EffectCatalogEntry>,
   overrides: Partial<Omit<JoinResponse, "effectCatalog">> = {},
 ): JoinResponse => ({
   id: "player",
@@ -63,7 +63,7 @@ export const createJoinResponse = (
   protocolVersion: 1,
   effectCatalogHash:
     overrides.effectCatalogHash ?? generatedEffectCatalogHash,
-  effectCatalog: normalizeEffectCatalog(catalog),
+  effectCatalog: getEffectCatalog(),
   world: (overrides.world as WorldConfigurationSnapshot | undefined) ?? {
     width: defaultRendererConfiguration.dimensions.width,
     height: defaultRendererConfiguration.dimensions.height,

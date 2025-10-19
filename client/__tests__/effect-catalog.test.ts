@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getEffectCatalog,
-  normalizeEffectCatalog,
   setEffectCatalog,
   subscribeEffectCatalog,
   type EffectCatalogSnapshot,
@@ -18,23 +17,14 @@ describe("effect catalog store", () => {
     setEffectCatalog(null);
   });
 
-  test("normalizes join payloads against generated metadata", () => {
-    const payload = JSON.parse(JSON.stringify(generatedEffectCatalog));
+  test("exposes a frozen snapshot of the generated metadata", () => {
+    const snapshot = getEffectCatalog();
+    expect(snapshot).toEqual(generatedEffectCatalog);
+    expect(Object.isFrozen(snapshot)).toBe(true);
 
-    const normalized = normalizeEffectCatalog(payload);
-    expect(normalized).toEqual(generatedEffectCatalog);
-    expect(normalized).not.toBe(payload);
-    expect(Object.isFrozen(normalized)).toBe(true);
-
-    const subsequent = normalizeEffectCatalog(payload);
-    expect(subsequent).not.toBe(normalized);
-
-    expect(() => normalizeEffectCatalog({})).toThrowError(/effect catalog mismatch/i);
-    expect(() => normalizeEffectCatalog(null)).toThrowError(/must be an object/i);
-
-    const mutated = JSON.parse(JSON.stringify(generatedEffectCatalog));
-    mutated.attack.managedByClient = false;
-    expect(() => normalizeEffectCatalog(mutated)).toThrowError(/does not match generated metadata/i);
+    const clone = JSON.parse(JSON.stringify(snapshot));
+    clone.attack.blocks.jsEffect = "mutated";
+    expect(snapshot.attack.blocks.jsEffect).toBe("melee/swing");
   });
 
   test("notifies subscribers immediately and on subsequent updates", () => {

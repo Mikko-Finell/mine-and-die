@@ -9,7 +9,6 @@ import {
 } from "./effect-lifecycle-store";
 import {
   getEffectCatalogEntry,
-  normalizeEffectCatalog,
   setEffectCatalog,
   type EffectCatalogEntryMetadata,
 } from "./effect-catalog";
@@ -308,11 +307,6 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   }
 
   private handleStatePayload(payload: Record<string, unknown>, receivedAt: number): void {
-    const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
-    if (!this.hydrateEffectCatalog(effectCatalogPayload)) {
-      return;
-    }
-
     const keyframeSequence = this.extractSequence(payload["keyframeSeq"]);
     if (keyframeSequence !== null) {
       this.latestKeyframeSequence = keyframeSequence;
@@ -445,8 +439,6 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   }
 
   private handleKeyframePayload(payload: Record<string, unknown>): void {
-    const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
-    this.hydrateEffectCatalog(effectCatalogPayload);
     const sequence = this.extractSequence(payload["sequence"]);
     if (sequence !== null) {
       this.latestKeyframeSequence = sequence;
@@ -483,11 +475,9 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   }
 
   private handleKeyframeNackPayload(payload: Record<string, unknown>): void {
-    const effectCatalogPayload = this.extractEffectCatalogPayload(payload["config"]);
     const sequence = this.extractSequence(payload["sequence"]);
     const resyncRequested = payload["resync"] === true;
     this.handleResync();
-    this.hydrateEffectCatalog(effectCatalogPayload);
     this.keyframeRequestInFlight = null;
     const now = Date.now();
     const policy = resolveRetryPolicy(this.configuration);
@@ -504,27 +494,6 @@ export class GameClientOrchestrator implements ClientOrchestrator {
       this.applyPendingKeyframeRetry();
     }
     this.renderLifecycleView();
-  }
-
-  private extractEffectCatalogPayload(config: unknown): unknown {
-    if (!config || typeof config !== "object") {
-      return undefined;
-    }
-    return (config as { readonly effectCatalog?: unknown }).effectCatalog;
-  }
-
-  private hydrateEffectCatalog(effectCatalogPayload: unknown): boolean {
-    if (effectCatalogPayload === undefined) {
-      return true;
-    }
-    try {
-      const catalogSnapshot = normalizeEffectCatalog(effectCatalogPayload);
-      setEffectCatalog(catalogSnapshot);
-      return true;
-    } catch (error) {
-      this.reportError(error);
-      return false;
-    }
   }
 
   private extractLifecycleBatch(payload: Record<string, unknown>): ContractLifecycleBatch | null {
@@ -574,7 +543,7 @@ export class GameClientOrchestrator implements ClientOrchestrator {
   }
 
   private prepareForSession(join: JoinResponse): void {
-    setEffectCatalog(join.effectCatalog);
+    setEffectCatalog(null);
     this.worldState.reset();
     this.renderer.reset();
     this.lifecycleStore.reset();

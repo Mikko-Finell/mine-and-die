@@ -6,7 +6,6 @@ import (
 	"errors"
 	stdlog "log"
 	"math"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -73,42 +72,31 @@ func TestStateMessage_ContainsTick(t *testing.T) {
 	}
 }
 
-func TestJoinResponseOmitsEffectCatalogByDefault(t *testing.T) {
+func TestJoinResponseAdvertisesHashOnly(t *testing.T) {
 	hub := newHub()
 	join := hub.Join()
 
-	if join.EffectCatalog != nil && len(join.EffectCatalog) > 0 {
-		t.Fatalf("expected join response to omit effect catalog by default")
-	}
-
-	if join.EffectCatalogHash != effectcontract.EffectCatalogHash {
-		t.Fatalf("expected join response to include catalog hash %q, got %q", effectcontract.EffectCatalogHash, join.EffectCatalogHash)
-	}
-}
-
-func TestJoinResponseIncludesEffectCatalogWhenTransmissionEnabled(t *testing.T) {
-	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = true
-	hub := newHubWithConfig(hubCfg)
-	join := hub.Join()
-
-	if len(join.EffectCatalog) == 0 {
-		t.Fatalf("expected join response to include effect catalog entries when enabled")
-	}
-
 	if join.EffectCatalogHash != effectcontract.EffectCatalogHash {
 		t.Fatalf("expected join response to include catalog hash %q, got %q", effectcontract.EffectCatalogHash, join.EffectCatalogHash)
 	}
 
-	entry, ok := join.EffectCatalog["fireball"]
+	data, err := json.Marshal(join)
+	if err != nil {
+		t.Fatalf("failed to encode join response: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode join response: %v", err)
+	}
+
+	config, ok := payload["config"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected catalog to include fireball entry when enabled")
+		t.Fatalf("expected join config to decode as object, got %T", payload["config"])
 	}
-	if entry.ContractID == "" {
-		t.Fatalf("expected catalog entry to include contract id when enabled")
-	}
-	if entry.Definition == nil || entry.Definition.TypeID == "" {
-		t.Fatalf("expected catalog entry to include definition metadata when enabled")
+
+	if _, exists := config["effectCatalog"]; exists {
+		t.Fatalf("expected join config to omit effectCatalog payload")
 	}
 }
 
@@ -159,40 +147,6 @@ func TestStateMessageConfigOmitsEffectCatalogOnDelta(t *testing.T) {
 
 	if _, exists := config["effectCatalog"]; exists {
 		t.Fatalf("expected delta payload to omit effectCatalog metadata")
-	}
-}
-
-func TestStateMessageConfigIncludesEffectCatalogWhenTransmissionEnabled(t *testing.T) {
-	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = true
-	hub := newHubWithConfig(hubCfg)
-	hub.SetKeyframeInterval(1)
-	hub.advance(time.Now(), 1.0/float64(tickRate))
-
-	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
-	if err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(data, &payload); err != nil {
-		t.Fatalf("failed to decode payload: %v", err)
-	}
-
-	config, ok := payload["config"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected config to decode as object, got %T", payload["config"])
-	}
-
-	catalog, exists := config["effectCatalog"].(map[string]any)
-	if !exists {
-		t.Fatalf("expected snapshot payload to include effectCatalog metadata when enabled")
-	}
-	if len(catalog) == 0 {
-		t.Fatalf("expected effectCatalog metadata to include entries when enabled")
-	}
-	if _, ok := catalog["fireball"].(map[string]any); !ok {
-		t.Fatalf("expected effectCatalog metadata to include fireball entry when enabled")
 	}
 }
 
@@ -771,244 +725,22 @@ func TestHandleKeyframeRequestOmitsCatalogByDefault(t *testing.T) {
 		t.Fatalf("expected ack response, got nack: %+v", nack)
 	}
 
-	if snapshot.Config.EffectCatalog != nil {
-		t.Fatalf("expected keyframe config to omit effect catalog by default")
-	}
-}
-
-func TestHandleKeyframeRequestReturnsCatalogSnapshotWhenTransmissionEnabled(t *testing.T) {
-	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = true
-	hub := newHubWithConfig(hubCfg)
-	hub.SetKeyframeInterval(1)
-
-	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	data, err = json.Marshal(snapshot)
 	if err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
+		t.Fatalf("failed to encode keyframe snapshot: %v", err)
 	}
 
-	var msg stateMessage
-	if err := json.Unmarshal(data, &msg); err != nil {
-		t.Fatalf("failed to decode state payload: %v", err)
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode keyframe snapshot: %v", err)
 	}
 
-	snapshot, nack, ok := hub.HandleKeyframeRequest("player-1", nil, msg.Sequence)
+	config, ok := payload["config"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected handle to succeed")
-	}
-	if nack != nil {
-		t.Fatalf("expected ack response, got nack: %+v", nack)
+		t.Fatalf("expected keyframe config to decode as object, got %T", payload["config"])
 	}
 
-	resolver := hub.world.effectManager.catalog
-	expected := snapshotEffectCatalog(resolver)
-	if len(expected) == 0 {
-		t.Fatalf("expected effect catalog snapshot to contain entries")
-	}
-
-	if snapshot.Config.EffectCatalog == nil {
-		t.Fatalf("expected keyframe config to include effect catalog snapshot when enabled")
-	}
-
-	if !reflect.DeepEqual(snapshot.Config.EffectCatalog, expected) {
-		t.Fatalf("unexpected effect catalog snapshot: got %+v want %+v", snapshot.Config.EffectCatalog, expected)
-	}
-}
-
-func TestHandleKeyframeRequestClonesCatalogSnapshot(t *testing.T) {
-	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = true
-	hub := newHubWithConfig(hubCfg)
-	hub.SetKeyframeInterval(1)
-
-	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
-	if err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
-	}
-
-	var msg stateMessage
-	if err := json.Unmarshal(data, &msg); err != nil {
-		t.Fatalf("failed to decode state payload: %v", err)
-	}
-
-	snapshot, nack, ok := hub.HandleKeyframeRequest("player-1", nil, msg.Sequence)
-	if !ok {
-		t.Fatalf("expected handle to succeed")
-	}
-	if nack != nil {
-		t.Fatalf("expected ack response, got nack: %+v", nack)
-	}
-
-	expected := snapshotEffectCatalog(hub.world.effectManager.catalog)
-	if !reflect.DeepEqual(snapshot.Config.EffectCatalog, expected) {
-		t.Fatalf("unexpected effect catalog snapshot: got %+v want %+v", snapshot.Config.EffectCatalog, expected)
-	}
-
-	frame, found := hub.world.journal.KeyframeBySequence(msg.Sequence)
-	if !found {
-		t.Fatalf("expected journal to retain keyframe %d", msg.Sequence)
-	}
-	if frame.Config.EffectCatalog == nil {
-		t.Fatalf("expected journal keyframe to include effect catalog")
-	}
-	if snapshot.Config.EffectCatalog == nil {
-		t.Fatalf("expected keyframe response to include effect catalog")
-	}
-
-	const effectID = "fireball"
-	frameMeta, ok := frame.Config.EffectCatalog[effectID]
-	if !ok {
-		t.Fatalf("expected journal keyframe to include %s metadata", effectID)
-	}
-	responseMeta, ok := snapshot.Config.EffectCatalog[effectID]
-	if !ok {
-		t.Fatalf("expected keyframe response to include %s metadata", effectID)
-	}
-	if frameMeta.Definition == nil || responseMeta.Definition == nil {
-		t.Fatalf("expected %s metadata to include definition", effectID)
-	}
-	if frameMeta.Definition == responseMeta.Definition {
-		t.Fatalf("expected keyframe response to clone definition metadata")
-	}
-
-	originalFrameMeta := frameMeta
-	snapshot.Config.EffectCatalog[effectID] = effectCatalogMetadata{}
-	if !reflect.DeepEqual(frame.Config.EffectCatalog[effectID], originalFrameMeta) {
-		t.Fatalf("expected journal keyframe metadata to remain unchanged after mutating response")
-	}
-}
-
-func TestHandleKeyframeRequestExpired(t *testing.T) {
-	t.Setenv(envJournalCapacity, "1")
-	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = true
-	hub := newHubWithConfig(hubCfg)
-	hub.SetKeyframeInterval(1)
-
-	expectedCatalog := snapshotEffectCatalog(hub.world.effectManager.catalog)
-	if len(expectedCatalog) == 0 {
-		t.Fatalf("expected effect catalog snapshot to contain entries")
-	}
-
-	first, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
-	if err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
-	}
-	var firstMsg stateMessage
-	if err := json.Unmarshal(first, &firstMsg); err != nil {
-		t.Fatalf("failed to decode payload: %v", err)
-	}
-
-	if _, _, err := hub.marshalState(nil, nil, nil, nil, true, true); err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
-	}
-
-	_, nack, ok := hub.HandleKeyframeRequest("player-2", nil, firstMsg.Sequence)
-	if !ok {
-		t.Fatalf("expected handler to respond")
-	}
-	if nack == nil {
-		t.Fatalf("expected nack when sequence expired")
-	}
-	if nack.Reason != "expired" {
-		t.Fatalf("expected expired reason, got %s", nack.Reason)
-	}
-	if !nack.Resync {
-		t.Fatalf("expected nack to request resync")
-	}
-	if !reflect.DeepEqual(nack.Config.EffectCatalog, expectedCatalog) {
-		t.Fatalf("unexpected effect catalog snapshot on nack: got %+v want %+v", nack.Config.EffectCatalog, expectedCatalog)
-	}
-
-	data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
-	if err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
-	}
-
-	var msg stateMessage
-	if err := json.Unmarshal(data, &msg); err != nil {
-		t.Fatalf("failed to decode payload: %v", err)
-	}
-
-	if !msg.Resync {
-		t.Fatalf("expected follow-up state payload to request resync")
-	}
-	if msg.Config.EffectCatalog == nil {
-		t.Fatalf("expected resync payload to include effect catalog snapshot")
-	}
-	for id, expected := range expectedCatalog {
-		actual, ok := msg.Config.EffectCatalog[id]
-		if !ok {
-			t.Fatalf("expected resync catalog to include %s", id)
-		}
-		if actual.ContractID != expected.ContractID {
-			t.Fatalf("unexpected contract id for %s: got %s want %s", id, actual.ContractID, expected.ContractID)
-		}
-		if actual.ManagedByClient != expected.ManagedByClient {
-			t.Fatalf("unexpected managed flag for %s: got %t want %t", id, actual.ManagedByClient, expected.ManagedByClient)
-		}
-		if expected.Definition != nil && actual.Definition == nil {
-			t.Fatalf("expected resync catalog %s to include definition", id)
-		}
-	}
-}
-
-func TestHandleKeyframeRequestRateLimited(t *testing.T) {
-	hubCfg := defaultHubConfig()
-	hubCfg.SendEffectCatalog = true
-	hub := newHubWithConfig(hubCfg)
-	sub := &subscriber{limiter: newKeyframeRateLimiter(1, 1)}
-	sub.limiter.allow(time.Now())
-
-	_, nack, ok := hub.HandleKeyframeRequest("player-3", sub, 5)
-	if !ok {
-		t.Fatalf("expected handler to respond to rate limited request")
-	}
-	if nack == nil {
-		t.Fatalf("expected nack when rate limited")
-	}
-	if nack.Reason != "rate_limited" {
-		t.Fatalf("expected rate_limited reason, got %s", nack.Reason)
-	}
-	if nack.Sequence != 5 {
-		t.Fatalf("expected nack sequence 5, got %d", nack.Sequence)
-	}
-	if !nack.Resync {
-		t.Fatalf("expected rate limited nack to request resync")
-	}
-	expectedCatalog := snapshotEffectCatalog(hub.world.effectManager.catalog)
-	if !reflect.DeepEqual(nack.Config.EffectCatalog, expectedCatalog) {
-		t.Fatalf("unexpected effect catalog snapshot on rate limit nack: got %+v want %+v", nack.Config.EffectCatalog, expectedCatalog)
-	}
-
-	data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
-	if err != nil {
-		t.Fatalf("marshalState returned error: %v", err)
-	}
-
-	var msg stateMessage
-	if err := json.Unmarshal(data, &msg); err != nil {
-		t.Fatalf("failed to decode payload: %v", err)
-	}
-	if !msg.Resync {
-		t.Fatalf("expected resync broadcast after rate limited nack")
-	}
-	if msg.Config.EffectCatalog == nil {
-		t.Fatalf("expected resync broadcast to include effect catalog snapshot")
-	}
-	for id, expected := range expectedCatalog {
-		actual, ok := msg.Config.EffectCatalog[id]
-		if !ok {
-			t.Fatalf("expected resync catalog to include %s", id)
-		}
-		if actual.ContractID != expected.ContractID {
-			t.Fatalf("unexpected contract id for %s: got %s want %s", id, actual.ContractID, expected.ContractID)
-		}
-		if actual.ManagedByClient != expected.ManagedByClient {
-			t.Fatalf("unexpected managed flag for %s: got %t want %t", id, actual.ManagedByClient, expected.ManagedByClient)
-		}
-		if expected.Definition != nil && actual.Definition == nil {
-			t.Fatalf("expected resync catalog %s to include definition", id)
-		}
+	if _, exists := config["effectCatalog"]; exists {
+		t.Fatalf("expected keyframe config to omit effectCatalog metadata")
 	}
 }
