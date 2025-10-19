@@ -1191,7 +1191,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	seq, resync := h.nextStateMeta(drainPatches)
 	effectManagerPresent := h.world.effectManager != nil
 	engine := h.engine
-	journal := &h.world.journal
 	effectTransportEnabled := effectManagerPresent && engine != nil
 	h.mu.Unlock()
 
@@ -1297,16 +1296,31 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 
 	keyframeSeq := h.lastKeyframeSeq.Load()
 	if includeSnapshot {
-		frame := keyframe{
+		simFrame := sim.Keyframe{
 			Tick:        tick,
 			Sequence:    seq,
-			Players:     players,
-			NPCs:        npcs,
-			Obstacles:   obstacles,
-			GroundItems: groundItems,
-			Config:      cfg,
+			Players:     simPlayersFromLegacy(players),
+			NPCs:        simNPCsFromLegacy(npcs),
+			Obstacles:   simObstaclesFromLegacy(obstacles),
+			GroundItems: simGroundItemsFromLegacy(groundItems),
+			Config:      simWorldConfigFromLegacy(cfg),
 		}
-		record := journal.RecordKeyframe(frame)
+		var record sim.KeyframeRecordResult
+		if engine != nil {
+			record = engine.RecordKeyframe(simFrame)
+		} else {
+			legacyFrame := keyframe{
+				Tick:        tick,
+				Sequence:    seq,
+				Players:     players,
+				NPCs:        npcs,
+				Obstacles:   obstacles,
+				GroundItems: groundItems,
+				Config:      cfg,
+			}
+			legacyRecord := h.world.journal.RecordKeyframe(legacyFrame)
+			record = simKeyframeRecordResultFromLegacy(legacyRecord)
+		}
 		h.lastKeyframeSeq.Store(seq)
 		h.lastKeyframeTick.Store(tick)
 		keyframeSeq = seq

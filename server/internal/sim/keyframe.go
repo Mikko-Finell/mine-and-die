@@ -40,3 +40,18 @@ type Keyframe struct {
 	Config      WorldConfig  `json:"config"`
 	RecordedAt  time.Time    `json:"recordedAt"`
 }
+
+// KeyframeEviction describes a keyframe removed from the buffer and why it was dropped.
+type KeyframeEviction struct {
+	Sequence uint64 `json:"sequence"`
+	Tick     uint64 `json:"tick"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// KeyframeRecordResult reports journal state after storing a keyframe.
+type KeyframeRecordResult struct {
+	Size           int                `json:"size"`
+	OldestSequence uint64             `json:"oldestSequence"`
+	NewestSequence uint64             `json:"newestSequence"`
+	Evicted        []KeyframeEviction `json:"evicted,omitempty"`
+}

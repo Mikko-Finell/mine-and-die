@@ -115,6 +115,15 @@ func (a *legacyEngineAdapter) ConsumeEffectResyncHint() (sim.EffectResyncSignal,
 	return simEffectResyncSignalFromLegacy(signal), true
 }
 
+func (a *legacyEngineAdapter) RecordKeyframe(frame sim.Keyframe) sim.KeyframeRecordResult {
+	if a == nil || a.world == nil {
+		return sim.KeyframeRecordResult{}
+	}
+	legacy := legacyKeyframeFromSim(frame)
+	record := a.world.journal.RecordKeyframe(legacy)
+	return simKeyframeRecordResultFromLegacy(record)
+}
+
 func (a *legacyEngineAdapter) KeyframeBySequence(sequence uint64) (sim.Keyframe, bool) {
 	if a == nil || a.world == nil {
 		return sim.Keyframe{}, false
@@ -405,6 +414,40 @@ func legacyKeyframeFromSim(frame sim.Keyframe) keyframe {
 		GroundItems: legacyGroundItemsFromSim(frame.GroundItems),
 		Config:      legacyWorldConfigFromSim(frame.Config),
 		RecordedAt:  frame.RecordedAt,
+	}
+}
+
+func simKeyframeRecordResultFromLegacy(result keyframeRecordResult) sim.KeyframeRecordResult {
+	evicted := make([]sim.KeyframeEviction, len(result.Evicted))
+	for i, eviction := range result.Evicted {
+		evicted[i] = sim.KeyframeEviction{
+			Sequence: eviction.Sequence,
+			Tick:     eviction.Tick,
+			Reason:   eviction.Reason,
+		}
+	}
+	return sim.KeyframeRecordResult{
+		Size:           result.Size,
+		OldestSequence: result.OldestSequence,
+		NewestSequence: result.NewestSequence,
+		Evicted:        evicted,
+	}
+}
+
+func legacyKeyframeRecordResultFromSim(result sim.KeyframeRecordResult) keyframeRecordResult {
+	evicted := make([]journalEviction, len(result.Evicted))
+	for i, eviction := range result.Evicted {
+		evicted[i] = journalEviction{
+			Sequence: eviction.Sequence,
+			Tick:     eviction.Tick,
+			Reason:   eviction.Reason,
+		}
+	}
+	return keyframeRecordResult{
+		Size:           result.Size,
+		OldestSequence: result.OldestSequence,
+		NewestSequence: result.NewestSequence,
+		Evicted:        evicted,
 	}
 }
 

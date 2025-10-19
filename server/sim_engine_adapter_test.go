@@ -222,6 +222,110 @@ func TestSimKeyframeConversionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSimKeyframeRecordResultConversionRoundTrip(t *testing.T) {
+	legacyResult := keyframeRecordResult{
+		Size:           4,
+		OldestSequence: 10,
+		NewestSequence: 13,
+		Evicted: []journalEviction{{
+			Sequence: 3,
+			Tick:     120,
+			Reason:   "expired",
+		}, {
+			Sequence: 4,
+			Tick:     130,
+			Reason:   "count",
+		}},
+	}
+
+	simResult := simKeyframeRecordResultFromLegacy(legacyResult)
+	roundTrip := legacyKeyframeRecordResultFromSim(simResult)
+
+	if !reflect.DeepEqual(legacyResult, roundTrip) {
+		t.Fatalf("keyframe record result round trip mismatch\nlegacy: %#v\nround: %#v", legacyResult, roundTrip)
+	}
+
+	if len(simResult.Evicted) == 0 {
+		t.Fatalf("expected converted record result to include evictions")
+	}
+
+	simResult.Evicted[0].Reason = "mutated"
+	if legacyResult.Evicted[0].Reason != "expired" {
+		t.Fatalf("expected keyframe record result conversion to deep copy evictions, got %q", legacyResult.Evicted[0].Reason)
+	}
+}
+
+func TestHubAdapterKeyframeRecordingMatchesJournal(t *testing.T) {
+	t.Setenv(envJournalCapacity, "2")
+	t.Setenv(envJournalMaxAgeMS, "5")
+
+	capacity, maxAge := journalConfig()
+	expected := newJournal(capacity, maxAge)
+
+	hub := newHub()
+	hub.world.journal = newJournal(capacity, maxAge)
+
+	adapter, ok := hub.engine.(*legacyEngineAdapter)
+	if !ok || adapter == nil {
+		t.Fatalf("expected hub engine to be legacy adapter")
+	}
+
+	cases := []struct {
+		sequence uint64
+		tick     uint64
+		wait     time.Duration
+	}{
+		{sequence: 1, tick: 100},
+		{sequence: 2, tick: 110},
+		{sequence: 3, tick: 120, wait: 15 * time.Millisecond},
+		{sequence: 4, tick: 130},
+	}
+
+	for _, tc := range cases {
+		if tc.wait > 0 {
+			time.Sleep(tc.wait)
+		}
+
+		want := simKeyframeRecordResultFromLegacy(expected.RecordKeyframe(keyframe{Sequence: tc.sequence, Tick: tc.tick}))
+		got := adapter.RecordKeyframe(sim.Keyframe{Sequence: tc.sequence, Tick: tc.tick})
+
+		if got.Size != want.Size {
+			t.Fatalf("unexpected journal size for seq %d: want %d got %d", tc.sequence, want.Size, got.Size)
+		}
+		if got.OldestSequence != want.OldestSequence {
+			t.Fatalf("unexpected oldest sequence for seq %d: want %d got %d", tc.sequence, want.OldestSequence, got.OldestSequence)
+		}
+		if got.NewestSequence != want.NewestSequence {
+			t.Fatalf("unexpected newest sequence for seq %d: want %d got %d", tc.sequence, want.NewestSequence, got.NewestSequence)
+		}
+		if len(got.Evicted) != len(want.Evicted) {
+			t.Fatalf("unexpected eviction count for seq %d: want %d got %d", tc.sequence, len(want.Evicted), len(got.Evicted))
+		}
+		for idx := range want.Evicted {
+			expectedEviction := want.Evicted[idx]
+			actualEviction := got.Evicted[idx]
+			if actualEviction.Sequence != expectedEviction.Sequence || actualEviction.Tick != expectedEviction.Tick || actualEviction.Reason != expectedEviction.Reason {
+				t.Fatalf(
+					"unexpected eviction at seq %d index %d: want {seq:%d tick:%d reason:%s} got {seq:%d tick:%d reason:%s}",
+					tc.sequence,
+					idx,
+					expectedEviction.Sequence,
+					expectedEviction.Tick,
+					expectedEviction.Reason,
+					actualEviction.Sequence,
+					actualEviction.Tick,
+					actualEviction.Reason,
+				)
+			}
+		}
+
+		size, oldest, newest := hub.world.journal.KeyframeWindow()
+		if size != got.Size || oldest != got.OldestSequence || newest != got.NewestSequence {
+			t.Fatalf("unexpected adapter window after seq %d: size=%d oldest=%d newest=%d want size=%d oldest=%d newest=%d", tc.sequence, size, oldest, newest, got.Size, got.OldestSequence, got.NewestSequence)
+		}
+	}
+}
+
 func TestSimEffectEventBatchConversionRoundTrip(t *testing.T) {
 	legacyBatch := EffectEventBatch{
 		Spawns: []effectcontract.EffectSpawnEvent{{
