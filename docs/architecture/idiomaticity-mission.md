@@ -108,6 +108,7 @@ _none_
   - [ ] Carve out `stats/` for actor stats.
   - [ ] Carve out `items/` for items and equipment.
   - [ ] Carve out `ai/` for NPC logic and behaviors.
+  - [ ] Others as needed. Possibly `net/` etc if it makes sense.
 - [ ] Route mutations only through `journal` APIs to record diffs.
 - [ ] Keep each subsystem ≤300 LOC per file with dedicated unit tests.
 
