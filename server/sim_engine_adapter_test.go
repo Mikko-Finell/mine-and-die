@@ -94,18 +94,30 @@ func TestSimSnapshotConversionRoundTrip(t *testing.T) {
 		Params:   map[string]float64{"radius": 3.5},
 		Colors:   []string{"#ff0000", "#ffaa00"},
 	}}
+	legacyObstacles := []Obstacle{{
+		ID:     "obstacle-1",
+		Type:   "rock",
+		X:      2,
+		Y:      3,
+		Width:  1,
+		Height: 1,
+	}}
+	aliveEffects := []string{"effect-1", "effect-2"}
 
 	snapshot := sim.Snapshot{
-		Players:      simPlayersFromLegacy(legacyPlayers),
-		NPCs:         simNPCsFromLegacy(legacyNPCs),
-		GroundItems:  simGroundItemsFromLegacy(legacyGround),
-		EffectEvents: simEffectTriggersFromLegacy(legacyEffects),
+		Players:        simPlayersFromLegacy(legacyPlayers),
+		NPCs:           simNPCsFromLegacy(legacyNPCs),
+		GroundItems:    simGroundItemsFromLegacy(legacyGround),
+		EffectEvents:   simEffectTriggersFromLegacy(legacyEffects),
+		Obstacles:      simObstaclesFromLegacy(legacyObstacles),
+		AliveEffectIDs: append([]string(nil), aliveEffects...),
 	}
 
 	roundPlayers := legacyPlayersFromSim(snapshot.Players)
 	roundNPCs := legacyNPCsFromSim(snapshot.NPCs)
 	roundGround := legacyGroundItemsFromSim(snapshot.GroundItems)
 	roundEffects := legacyEffectTriggersFromSim(snapshot.EffectEvents)
+	roundObstacles := legacyObstaclesFromSim(snapshot.Obstacles)
 
 	if !reflect.DeepEqual(legacyPlayers, roundPlayers) {
 		t.Fatalf("player snapshot round trip mismatch\nlegacy: %#v\nround: %#v", legacyPlayers, roundPlayers)
@@ -118,6 +130,12 @@ func TestSimSnapshotConversionRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(legacyEffects, roundEffects) {
 		t.Fatalf("effect trigger snapshot round trip mismatch\nlegacy: %#v\nround: %#v", legacyEffects, roundEffects)
+	}
+	if !reflect.DeepEqual(legacyObstacles, roundObstacles) {
+		t.Fatalf("obstacle snapshot round trip mismatch\nlegacy: %#v\nround: %#v", legacyObstacles, roundObstacles)
+	}
+	if !reflect.DeepEqual(aliveEffects, snapshot.AliveEffectIDs) {
+		t.Fatalf("alive effect IDs should copy legacy slice, got %#v", snapshot.AliveEffectIDs)
 	}
 
 	snapshot.Players[0].Inventory.Slots[0].Item.Quantity = 999
@@ -132,6 +150,34 @@ func TestSimSnapshotConversionRoundTrip(t *testing.T) {
 	}
 	if legacyEffects[0].Colors[0] != "#ff0000" {
 		t.Fatalf("effect trigger colors should be copied, got %v", legacyEffects[0].Colors)
+	}
+	snapshot.AliveEffectIDs[0] = "mutated"
+	if aliveEffects[0] != "effect-1" {
+		t.Fatalf("alive effect ID conversion should copy data")
+	}
+}
+
+func TestSimAliveEffectIDsFromLegacy(t *testing.T) {
+	if ids := simAliveEffectIDsFromLegacy(nil); ids != nil {
+		t.Fatalf("expected nil slice for nil effects, got %#v", ids)
+	}
+
+	effects := []*effectState{
+		{ID: "effect-1"},
+		nil,
+		{ID: ""},
+		{ID: "effect-2"},
+	}
+
+	ids := simAliveEffectIDsFromLegacy(effects)
+	expected := []string{"effect-1", "effect-2"}
+	if !reflect.DeepEqual(expected, ids) {
+		t.Fatalf("expected %v, got %v", expected, ids)
+	}
+
+	effects[0].ID = "mutated"
+	if ids[0] != "effect-1" {
+		t.Fatalf("conversion should copy IDs, got %v", ids[0])
 	}
 }
 

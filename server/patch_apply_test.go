@@ -412,3 +412,59 @@ func TestApplyPatchesDuplicatePatchesLastWriteWins(t *testing.T) {
 		t.Fatalf("base snapshot mutated during duplicate patch replay")
 	}
 }
+
+func TestApplyPatchesUpdatesEquipment(t *testing.T) {
+	base := map[string]PlayerPatchView{
+		"player-1": {
+			Player: Player{Actor: Actor{ID: "player-1", Equipment: Equipment{Slots: []EquippedItem{{
+				Slot: EquipSlotBody,
+				Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1},
+			}}}}},
+		},
+	}
+
+	patches := []Patch{{
+		Kind:     PatchPlayerEquipment,
+		EntityID: "player-1",
+		Payload: EquipmentPayload{Slots: []EquippedItem{
+			{
+				Slot: EquipSlotBody,
+				Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1},
+			},
+			{
+				Slot: EquipSlotMainHand,
+				Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1},
+			},
+		}},
+	}}
+
+	frozen := capturePlayerViewsFromMap(base)
+	replayed, err := ApplyPatches(base, patches)
+	if err != nil {
+		t.Fatalf("apply patches failed: %v", err)
+	}
+
+	replayedView, ok := replayed["player-1"]
+	if !ok {
+		t.Fatalf("expected player-1 in replayed snapshot")
+	}
+
+	expected := Equipment{Slots: []EquippedItem{
+		{
+			Slot: EquipSlotBody,
+			Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1},
+		},
+		{
+			Slot: EquipSlotMainHand,
+			Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1},
+		},
+	}}
+
+	if !equipmentsEqual(expected, replayedView.Equipment) {
+		t.Fatalf("expected equipment update to replay, got %+v", replayedView.Equipment)
+	}
+
+	if !playerViewMapsEqual(base, frozen) {
+		t.Fatalf("base snapshot mutated during equipment patch replay")
+	}
+}

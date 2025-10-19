@@ -131,8 +131,17 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       moving code.
 - [x] Add regression coverage for state broadcast metadata so tick, sequence,
       and resync packaging stays stable before adjusting hub marshaling.
-- [ ] Route hub state marshaling through `sim.Engine` snapshots so outbound
+- [x] Route hub state marshaling through `sim.Engine` snapshots so outbound
       payload assembly stops depending on legacy world structures.
+
+- [x] Stand up `internal/sim/patches` with apply/snapshot round-trip coverage so
+      patch application semantics are frozen before pulling more hub code
+      behind the façade.
+- [x] Route hub patch replay and resubscribe flows through
+      `internal/sim/patches.ApplyPlayers` so diff rehydration stays behind the
+      façade.
+- [ ] Switch hub resubscribe baselines to cache `patches.PlayerView` values so
+      façade types flow through without legacy conversions.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
@@ -163,7 +172,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
     - Journal record format — journal round-trip tests in place.
   - [x] Lock tick, RNG, and sequence numbering rules.
 
-- [ ] Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
+- [x] Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
 
 - [ ] Pass injected dependencies (`Logger`, `Metrics`, `Clock`, `RNG`) via a `Deps` struct.
 
