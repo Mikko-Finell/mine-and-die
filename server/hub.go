@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -27,6 +28,8 @@ import (
 type Hub struct {
 	mu          sync.Mutex
 	world       *World
+	engine      sim.Engine
+	adapter     *legacyEngineAdapter
 	subscribers map[string]*subscriber
 	config      worldConfig
 	publisher   logging.Publisher
@@ -155,8 +158,12 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 	world := newWorld(cfg, pub)
 	cfg = world.config
 
+	engineAdapter := newLegacyEngineAdapter(world)
+
 	hub := &Hub{
 		world:                   world,
+		engine:                  engineAdapter,
+		adapter:                 engineAdapter,
 		subscribers:             make(map[string]*subscriber),
 		pendingCommands:         make([]Command, 0),
 		pendingCommandsByActor:  make(map[string]int),
@@ -320,6 +327,12 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 		newW.AddPlayer(h.seedPlayerState(id, now))
 	}
 	h.world = newW
+	if h.adapter != nil {
+		h.adapter.SetWorld(newW)
+	}
+	if h.adapter != nil {
+		h.engine = h.adapter
+	}
 	h.config = cfg
 	players, npcs := h.world.Snapshot(now)
 	h.mu.Unlock()
@@ -784,15 +797,25 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigger, []GroundItem, []*subscriber) {
 	tick := h.tick.Add(1)
 	commands := h.drainCommands()
+	simCommands := simCommandsFromLegacy(commands)
 
 	h.mu.Lock()
-	removed := h.world.Step(tick, now, dt, commands, nil)
-	players, npcs := h.world.Snapshot(now)
+	if h.adapter != nil {
+		h.adapter.PrepareStep(tick, now, dt, nil)
+	}
+	var snapshot sim.Snapshot
+	var removed []string
+	if h.engine != nil {
+		_ = h.engine.Apply(simCommands)
+		h.engine.Step()
+		snapshot = h.engine.Snapshot()
+	}
+	if h.adapter != nil {
+		removed = h.adapter.RemovedPlayers()
+	}
 	if h.telemetry != nil {
 		h.telemetry.RecordEffectsActive(len(h.world.effects))
 	}
-	groundItems := h.world.GroundItemsSnapshot()
-	triggers := h.world.flushEffectTriggersLocked()
 	toClose := make([]*subscriber, 0, len(removed))
 	for _, id := range removed {
 		if sub, ok := h.subscribers[id]; ok {
@@ -801,6 +824,11 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigg
 		}
 	}
 	h.mu.Unlock()
+
+	players := legacyPlayersFromSim(snapshot.Players)
+	npcs := legacyNPCsFromSim(snapshot.NPCs)
+	triggers := legacyEffectTriggersFromSim(snapshot.EffectEvents)
+	groundItems := legacyGroundItemsFromSim(snapshot.GroundItems)
 
 	return players, npcs, triggers, groundItems, toClose
 }
