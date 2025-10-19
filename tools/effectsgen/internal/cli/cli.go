@@ -20,11 +20,17 @@ func Execute(stdout io.Writer, stderr io.Writer, args []string) error {
 	var registryPath string
 	var definitionsPath string
 	var outputPath string
+	var hashGoPath string
+	var hashGoPackage string
+	var hashTSPath string
 
 	flagSet.StringVar(&contractsDir, "contracts", "", "Path to the Go contracts package directory.")
 	flagSet.StringVar(&registryPath, "registry", "", "Path to the Go registry source file.")
 	flagSet.StringVar(&definitionsPath, "definitions", "", "Path to the JSON catalog definitions file.")
 	flagSet.StringVar(&outputPath, "out", "", "Path to the generated TypeScript output file.")
+	flagSet.StringVar(&hashGoPath, "hash-go", "", "Path to the generated Go catalog hash file.")
+	flagSet.StringVar(&hashGoPackage, "hash-go-pkg", "", "Go package name for the generated catalog hash file.")
+	flagSet.StringVar(&hashTSPath, "hash-ts", "", "Path to the generated TypeScript catalog hash file.")
 
 	flagSet.Usage = func() {
 		fmt.Fprintf(stderr, "Usage of %s:\n", flagSet.Name())
@@ -54,6 +60,18 @@ func Execute(stdout io.Writer, stderr io.Writer, args []string) error {
 		flagSet.Usage()
 		return fmt.Errorf("effectsgen: missing required flag --out")
 	}
+	if hashGoPath == "" {
+		flagSet.Usage()
+		return fmt.Errorf("effectsgen: missing required flag --hash-go")
+	}
+	if hashGoPackage == "" {
+		flagSet.Usage()
+		return fmt.Errorf("effectsgen: missing required flag --hash-go-pkg")
+	}
+	if hashTSPath == "" {
+		flagSet.Usage()
+		return fmt.Errorf("effectsgen: missing required flag --hash-ts")
+	}
 
 	if extra := flagSet.Args(); len(extra) > 0 {
 		flagSet.Usage()
@@ -61,10 +79,13 @@ func Execute(stdout io.Writer, stderr io.Writer, args []string) error {
 	}
 
 	options := pipeline.Options{
-		ContractsDir:    contractsDir,
-		RegistryPath:    registryPath,
-		DefinitionsPath: definitionsPath,
-		OutputPath:      outputPath,
+		ContractsDir:     contractsDir,
+		RegistryPath:     registryPath,
+		DefinitionsPath:  definitionsPath,
+		OutputPath:       outputPath,
+		HashGoOutputPath: hashGoPath,
+		HashGoPackage:    hashGoPackage,
+		HashTSOutputPath: hashTSPath,
 	}
 
 	return pipeline.Run(options)

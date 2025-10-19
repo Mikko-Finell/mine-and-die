@@ -3,18 +3,19 @@ package main
 import effectcontract "mine-and-die/server/effects/contract"
 
 type joinResponse struct {
-	Ver              int                              `json:"ver"`
-	ID               string                           `json:"id"`
-	Players          []Player                         `json:"players"`
-	NPCs             []NPC                            `json:"npcs"`
-	Obstacles        []Obstacle                       `json:"obstacles"`
-	EffectTriggers   []EffectTrigger                  `json:"effectTriggers,omitempty"`
-	GroundItems      []GroundItem                     `json:"groundItems,omitempty"`
-	Patches          []Patch                          `json:"patches,omitempty"`
-	Config           worldConfig                      `json:"config"`
-	Resync           bool                             `json:"resync"`
-	KeyframeInterval int                              `json:"keyframeInterval,omitempty"`
-	EffectCatalog    map[string]effectCatalogMetadata `json:"effectCatalog,omitempty"`
+	Ver               int                              `json:"ver"`
+	ID                string                           `json:"id"`
+	Players           []Player                         `json:"players"`
+	NPCs              []NPC                            `json:"npcs"`
+	Obstacles         []Obstacle                       `json:"obstacles"`
+	EffectTriggers    []EffectTrigger                  `json:"effectTriggers,omitempty"`
+	GroundItems       []GroundItem                     `json:"groundItems,omitempty"`
+	Patches           []Patch                          `json:"patches,omitempty"`
+	Config            worldConfig                      `json:"config"`
+	Resync            bool                             `json:"resync"`
+	KeyframeInterval  int                              `json:"keyframeInterval,omitempty"`
+	EffectCatalog     map[string]effectCatalogMetadata `json:"effectCatalog,omitempty"`
+	EffectCatalogHash string                           `json:"effectCatalogHash"`
 }
 
 type stateMessage struct {

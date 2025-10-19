@@ -2,6 +2,7 @@ import {
   normalizeEffectCatalog,
   type EffectCatalogSnapshot,
 } from "./effect-catalog";
+import { effectCatalogHash } from "./generated/effect-contracts-hash";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -281,6 +282,7 @@ export interface JoinResponse {
   readonly id: string;
   readonly seed: string;
   readonly protocolVersion: number;
+  readonly effectCatalogHash: string;
   readonly effectCatalog: EffectCatalogSnapshot;
   readonly world: WorldConfigurationSnapshot;
   readonly players: readonly PlayerSnapshot[];
@@ -358,6 +360,7 @@ export class WebSocketNetworkClient implements NetworkClient {
       readonly ver?: unknown;
       readonly id?: unknown;
       readonly config?: unknown;
+      readonly effectCatalogHash?: unknown;
       readonly players?: unknown;
       readonly npcs?: unknown;
       readonly obstacles?: unknown;
@@ -395,6 +398,17 @@ export class WebSocketNetworkClient implements NetworkClient {
       throw new Error("Join response missing protocol version.");
     }
 
+    const catalogHash = readString(
+      joinPayload.effectCatalogHash,
+      "join.effectCatalogHash",
+    );
+
+    if (catalogHash !== effectCatalogHash) {
+      throw new Error(
+        `Effect catalog mismatch: expected hash ${effectCatalogHash}, received ${catalogHash}.`,
+      );
+    }
+
     const effectCatalog = normalizeEffectCatalog(config.effectCatalog);
 
     if (joinPayload.ver !== this.configuration.protocolVersion) {
@@ -418,6 +432,7 @@ export class WebSocketNetworkClient implements NetworkClient {
       id: joinPayload.id,
       seed: config.seed,
       protocolVersion: joinPayload.ver,
+      effectCatalogHash: catalogHash,
       effectCatalog,
       world,
       players,

@@ -81,6 +81,10 @@ func TestJoinResponseIncludesEffectCatalog(t *testing.T) {
 		t.Fatalf("expected join response to include effect catalog entries")
 	}
 
+	if join.EffectCatalogHash != effectcontract.EffectCatalogHash {
+		t.Fatalf("expected join response to include catalog hash %q, got %q", effectcontract.EffectCatalogHash, join.EffectCatalogHash)
+	}
+
 	entry, ok := join.EffectCatalog["fireball"]
 	if !ok {
 		t.Fatalf("expected catalog to include fireball entry")
