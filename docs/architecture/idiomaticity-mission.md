@@ -72,6 +72,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   golden patch and journal checksums remain stable.
 - Routed hub patch restoration and adapter regression to rely on
   `sim.Engine`, keeping rollback flows behind the façade.
+- Added façade regression coverage for keyframe sequencing and journal effect
+  batches so tick, RNG seed, and sequence semantics remain locked before
+  moving simulation code.
+- Added state broadcast metadata regression tests so tick/sequence/resync
+  packaging stays pinned ahead of hub marshaling changes.
 
 ### Next task
 
@@ -121,9 +126,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Add adapter regression coverage for patch restoration once the façade
       handles the replay path.
 
-- [ ] Lock tick/RNG/sequence numbering semantics behind the façade with
+- [x] Lock tick/RNG/sequence numbering semantics behind the façade with
       regression coverage so deterministic sequencing stays frozen before
       moving code.
+- [x] Add regression coverage for state broadcast metadata so tick, sequence,
+      and resync packaging stays stable before adjusting hub marshaling.
+- [ ] Route hub state marshaling through `sim.Engine` snapshots so outbound
+      payload assembly stops depending on legacy world structures.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
@@ -152,7 +161,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Lock the patch format via adapter round-trip tests.
   - [x] Lock the journal record format.
     - Journal record format — journal round-trip tests in place.
-  - [ ] Lock tick, RNG, and sequence numbering rules.
+  - [x] Lock tick, RNG, and sequence numbering rules.
 
 - [ ] Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
 
