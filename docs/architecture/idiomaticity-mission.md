@@ -140,8 +140,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Route hub patch replay and resubscribe flows through
       `internal/sim/patches.ApplyPlayers` so diff rehydration stays behind the
       façade.
-- [ ] Switch hub resubscribe baselines to cache `patches.PlayerView` values so
+- [x] Switch hub resubscribe baselines to cache `patches.PlayerView` values so
       façade types flow through without legacy conversions.
+- [ ] Persist the hub's resubscribe baseline map using `patches.PlayerView` data and
+      update any callers still referencing legacy player views.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
