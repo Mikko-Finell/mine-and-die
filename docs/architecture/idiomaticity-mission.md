@@ -77,7 +77,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Promote the determinism harness into a golden test that asserts the
       recorded checksums against the committed baseline constants.
 
-- [x] Introduce the `internal/sim.Engine` interface in its own package along
+- [ ] Introduce the `internal/sim.Engine` interface in its own package along
       with façade command/snapshot/patch types so callers can stop reaching into
       the legacy hub and world directly.
 
@@ -107,6 +107,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Lock the command schema.
   - [x] Lock the patch format via adapter round-trip tests.
   - [ ] Lock the journal record format.
+    - Journal record format — pending journal round-trip tests.
   - [ ] Lock tick, RNG, and sequence numbering rules.
 
 - [ ] Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
