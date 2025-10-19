@@ -367,6 +367,24 @@ func legacyPatchesFromSim(patches []sim.Patch) []Patch {
 	return converted
 }
 
+func simEffectEventBatchFromLegacy(batch EffectEventBatch) sim.EffectEventBatch {
+	return sim.EffectEventBatch{
+		Spawns:      cloneSpawnEvents(batch.Spawns),
+		Updates:     cloneUpdateEvents(batch.Updates),
+		Ends:        cloneEndEvents(batch.Ends),
+		LastSeqByID: copySeqMap(batch.LastSeqByID),
+	}
+}
+
+func legacyEffectEventBatchFromSim(batch sim.EffectEventBatch) EffectEventBatch {
+	return EffectEventBatch{
+		Spawns:      cloneSpawnEvents(batch.Spawns),
+		Updates:     cloneUpdateEvents(batch.Updates),
+		Ends:        cloneEndEvents(batch.Ends),
+		LastSeqByID: copySeqMap(batch.LastSeqByID),
+	}
+}
+
 func convertPatchPayloadFromSim(payload any) any {
 	switch value := payload.(type) {
 	case sim.PositionPayload:

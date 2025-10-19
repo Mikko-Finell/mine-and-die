@@ -53,6 +53,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   façade data contract cannot drift silently.
 - Updated hub command ingestion to stage `internal/sim.Command` values end-to-end
   so non-simulation surfaces stop depending on the legacy hub command structs.
+- Added adapter round-trip coverage for effect journal batches so the façade's
+  record layout matches the legacy journal before we carve out packages.
 
 ### Next task
 
@@ -82,9 +84,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Introduce the `internal/sim.Engine` interface in its own package along
       with façade command/snapshot/patch types so callers can stop reaching into
       the legacy hub and world directly.
-- [ ] Add journal round-trip coverage that proves `sim.Engine` exposes the same
+- [x] Add journal round-trip coverage that proves `sim.Engine` exposes the same
       effect batch layout as the legacy journal so the façade's record format is
       locked down before carving packages.
+- [ ] Expose effect batch draining through `sim.Engine` and route hub broadcast
+      and resync flows through the façade so non-simulation callers stop
+      touching the legacy journal directly.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
@@ -111,15 +116,15 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
   - [x] Lock the command schema.
   - [x] Lock the patch format via adapter round-trip tests.
-  - [ ] Lock the journal record format.
-    - Journal record format — pending journal round-trip tests.
+  - [x] Lock the journal record format.
+    - Journal record format — journal round-trip tests in place.
   - [ ] Lock tick, RNG, and sequence numbering rules.
 
 - [ ] Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
 
 - [ ] Pass injected dependencies (`Logger`, `Metrics`, `Clock`, `RNG`) via a `Deps` struct.
 
-- [ ] Add adapter coverage for journal effect batches so the façade captures the
+- [x] Add adapter coverage for journal effect batches so the façade captures the
       exact record layout before we split packages.
 
 *Outcome:* Simulation has a narrow interface and deterministic baseline; tests ensure safety.
