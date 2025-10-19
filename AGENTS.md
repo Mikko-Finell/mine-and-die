@@ -1,7 +1,3 @@
-Understood — going much leaner and staying strictly engineering-ops style.
-
----
-
 ### Instructions (minimal, mission-driving)
 
 We are executing the **IDIOM mission** — progressively refactoring the server into small, idiomatic Go packages while preserving exact simulation behavior.
