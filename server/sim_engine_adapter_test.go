@@ -167,6 +167,139 @@ func TestSimPatchConversionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSimKeyframeConversionRoundTripPreservesSequencing(t *testing.T) {
+	recorded := time.Unix(1700000000, 0).UTC()
+	legacy := keyframe{
+		Tick:     123,
+		Sequence: 456,
+		Players: []Player{{
+			Actor: Actor{ID: "player-1", X: 1, Y: 2, Facing: FacingUp},
+		}},
+		NPCs: []NPC{{
+			Actor: Actor{ID: "npc-1", X: 5, Y: -3, Facing: FacingLeft},
+			Type:  NPCTypeGoblin,
+		}},
+		Obstacles: []Obstacle{{
+			ID: "obstacle-1", Type: "rock", X: 10, Y: 20, Width: 3, Height: 4,
+		}},
+		GroundItems: []GroundItem{{
+			ID:             "ground-1",
+			Type:           ItemType("potion"),
+			FungibilityKey: "potion-small",
+			X:              6,
+			Y:              7,
+			Qty:            2,
+		}},
+		Config: worldConfig{
+			Obstacles:      true,
+			ObstaclesCount: 5,
+			GoldMines:      true,
+			GoldMineCount:  2,
+			NPCs:           true,
+			GoblinCount:    3,
+			RatCount:       4,
+			NPCCount:       7,
+			Lava:           true,
+			LavaCount:      1,
+			Seed:           "deterministic-seed",
+			Width:          128,
+			Height:         256,
+		},
+		RecordedAt: recorded,
+	}
+
+	simFrame := simKeyframeFromLegacy(legacy)
+	if simFrame.Tick != legacy.Tick {
+		t.Fatalf("expected tick %d, got %d", legacy.Tick, simFrame.Tick)
+	}
+	if simFrame.Sequence != legacy.Sequence {
+		t.Fatalf("expected sequence %d, got %d", legacy.Sequence, simFrame.Sequence)
+	}
+	if simFrame.Config.Seed != legacy.Config.Seed {
+		t.Fatalf("expected seed %q, got %q", legacy.Config.Seed, simFrame.Config.Seed)
+	}
+
+	simFrame.Config.Seed = "mutated-seed"
+	if legacy.Config.Seed != "deterministic-seed" {
+		t.Fatalf("legacy seed mutated unexpectedly: %q", legacy.Config.Seed)
+	}
+
+	roundTrip := legacyKeyframeFromSim(simKeyframeFromLegacy(legacy))
+	if !reflect.DeepEqual(legacy, roundTrip) {
+		t.Fatalf("keyframe round trip mismatch\nlegacy: %#v\nround-trip: %#v", legacy, roundTrip)
+	}
+}
+
+func TestSimKeyframeRecordResultRoundTripPreservesSequences(t *testing.T) {
+	legacy := keyframeRecordResult{
+		Size:           3,
+		OldestSequence: 100,
+		NewestSequence: 102,
+		Evicted: []journalEviction{{
+			Sequence: 90,
+			Tick:     450,
+			Reason:   "expired",
+		}},
+	}
+
+	simResult := simKeyframeRecordResultFromLegacy(legacy)
+	if simResult.OldestSequence != legacy.OldestSequence || simResult.NewestSequence != legacy.NewestSequence {
+		t.Fatalf("expected sequences %d-%d, got %d-%d", legacy.OldestSequence, legacy.NewestSequence, simResult.OldestSequence, simResult.NewestSequence)
+	}
+
+	if len(simResult.Evicted) != len(legacy.Evicted) {
+		t.Fatalf("expected %d evictions, got %d", len(legacy.Evicted), len(simResult.Evicted))
+	}
+
+	simResult.Evicted[0].Reason = "mutated"
+	if legacy.Evicted[0].Reason != "expired" {
+		t.Fatalf("legacy eviction mutated unexpectedly: %q", legacy.Evicted[0].Reason)
+	}
+
+	roundTrip := legacyKeyframeRecordResultFromSim(simKeyframeRecordResultFromLegacy(legacy))
+	if !reflect.DeepEqual(legacy, roundTrip) {
+		t.Fatalf("keyframe record result round trip mismatch\nlegacy: %#v\nround-trip: %#v", legacy, roundTrip)
+	}
+}
+
+func TestSimEffectEventBatchConversionRoundTripPreservesSequences(t *testing.T) {
+	legacy := EffectEventBatch{
+		Spawns: []effectcontract.EffectSpawnEvent{{
+			Instance: effectcontract.EffectInstance{ID: "effect-1", DefinitionID: "fireball"},
+			Tick:     12,
+			Seq:      1,
+		}},
+		Updates: []effectcontract.EffectUpdateEvent{{
+			ID:   "effect-1",
+			Seq:  2,
+			Tick: effectcontract.Tick(13),
+		}},
+		Ends: []effectcontract.EffectEndEvent{{
+			ID:   "effect-1",
+			Seq:  3,
+			Tick: effectcontract.Tick(14),
+		}},
+		LastSeqByID: map[string]effectcontract.Seq{
+			"effect-1": 3,
+		},
+	}
+
+	simBatch := simEffectEventBatchFromLegacy(legacy)
+	if !reflect.DeepEqual(legacy.LastSeqByID, simBatch.LastSeqByID) {
+		t.Fatalf("expected seq map %#v, got %#v", legacy.LastSeqByID, simBatch.LastSeqByID)
+	}
+
+	simBatch.LastSeqByID["effect-1"] = 99
+	if legacy.LastSeqByID["effect-1"] != 3 {
+		t.Fatalf("legacy sequence mutated unexpectedly: %d", legacy.LastSeqByID["effect-1"])
+	}
+
+	roundTrip := legacyEffectEventBatchFromSim(simEffectEventBatchFromLegacy(legacy))
+	if !reflect.DeepEqual(legacy, roundTrip) {
+		t.Fatalf("effect batch round trip mismatch\nlegacy: %#v\nround-trip: %#v", legacy, roundTrip)
+	}
+}
+
 func TestLegacyAdapterRestorePatches(t *testing.T) {
 	hub := newHub()
 

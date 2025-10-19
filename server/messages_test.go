@@ -547,6 +547,142 @@ func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 	assertResyncFlag(t, data, false)
 }
 
+func TestMarshalStateMetadataAcrossHandshakeAndDelta(t *testing.T) {
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+	dt := 1.0 / float64(tickRate)
+
+	now := time.Now()
+	hub.advance(now, dt)
+
+	decode := func(raw []byte) stateMessage {
+		var msg stateMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			t.Fatalf("failed to decode state payload: %v", err)
+		}
+		return msg
+	}
+
+	handshakeData, _, err := hub.marshalState(nil, nil, nil, nil, false, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error during handshake: %v", err)
+	}
+
+	handshake := decode(handshakeData)
+	if !handshake.Resync {
+		t.Fatalf("expected handshake broadcast to request resync")
+	}
+	if handshake.Sequence == 0 {
+		t.Fatalf("expected handshake broadcast to assign sequence")
+	}
+	if handshake.KeyframeSeq != handshake.Sequence {
+		t.Fatalf("expected handshake keyframe sequence to match broadcast sequence, got %d vs %d", handshake.KeyframeSeq, handshake.Sequence)
+	}
+	if handshake.Tick != hub.tick.Load() {
+		t.Fatalf("unexpected handshake tick: got %d want %d", handshake.Tick, hub.tick.Load())
+	}
+
+	nextNow := now.Add(2 * time.Millisecond)
+	hub.advance(nextNow, dt)
+
+	deltaData, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error during delta broadcast: %v", err)
+	}
+
+	delta := decode(deltaData)
+	if delta.Resync {
+		t.Fatalf("expected steady delta broadcast to omit resync flag")
+	}
+	if delta.Sequence <= handshake.Sequence {
+		t.Fatalf("expected delta sequence to advance beyond handshake, got %d after %d", delta.Sequence, handshake.Sequence)
+	}
+	if delta.Tick <= handshake.Tick {
+		t.Fatalf("expected delta tick to advance beyond handshake, got %d after %d", delta.Tick, handshake.Tick)
+	}
+	if delta.KeyframeSeq != handshake.Sequence {
+		t.Fatalf("expected delta to reference handshake keyframe sequence, got %d want %d", delta.KeyframeSeq, handshake.Sequence)
+	}
+}
+
+func TestMarshalStateMetadataForcedResync(t *testing.T) {
+	hub := newHub()
+	hub.SetKeyframeInterval(1)
+	dt := 1.0 / float64(tickRate)
+	now := time.Now()
+
+	hub.advance(now, dt)
+
+	decode := func(raw []byte) stateMessage {
+		var msg stateMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			t.Fatalf("failed to decode state payload: %v", err)
+		}
+		return msg
+	}
+
+	bootstrapData, _, err := hub.marshalState(nil, nil, nil, nil, false, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error during bootstrap: %v", err)
+	}
+	bootstrap := decode(bootstrapData)
+
+	steadyNow := now.Add(2 * time.Millisecond)
+	hub.advance(steadyNow, dt)
+
+	steadyData, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error during steady delta: %v", err)
+	}
+	steady := decode(steadyData)
+
+	hub.resyncNext.Store(true)
+	resyncNow := steadyNow.Add(2 * time.Millisecond)
+	hub.advance(resyncNow, dt)
+
+	resyncData, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error during forced resync: %v", err)
+	}
+	resync := decode(resyncData)
+	if !resync.Resync {
+		t.Fatalf("expected forced resync broadcast to include resync flag")
+	}
+	if resync.Sequence <= steady.Sequence {
+		t.Fatalf("expected forced resync sequence to advance, got %d after %d", resync.Sequence, steady.Sequence)
+	}
+	if resync.Tick <= steady.Tick {
+		t.Fatalf("expected forced resync tick to advance, got %d after %d", resync.Tick, steady.Tick)
+	}
+	if resync.KeyframeSeq != resync.Sequence {
+		t.Fatalf("expected forced resync to record fresh keyframe sequence, got %d want %d", resync.KeyframeSeq, resync.Sequence)
+	}
+
+	followNow := resyncNow.Add(2 * time.Millisecond)
+	hub.advance(followNow, dt)
+
+	followData, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
+	if err != nil {
+		t.Fatalf("marshalState returned error during follow-up delta: %v", err)
+	}
+	follow := decode(followData)
+	if follow.Resync {
+		t.Fatalf("expected follow-up delta to clear resync flag")
+	}
+	if follow.Sequence <= resync.Sequence {
+		t.Fatalf("expected follow-up sequence to advance after resync, got %d after %d", follow.Sequence, resync.Sequence)
+	}
+	if follow.Tick <= resync.Tick {
+		t.Fatalf("expected follow-up tick to advance after resync, got %d after %d", follow.Tick, resync.Tick)
+	}
+	if follow.KeyframeSeq != resync.Sequence {
+		t.Fatalf("expected follow-up delta to reference last resync keyframe, got %d want %d", follow.KeyframeSeq, resync.Sequence)
+	}
+	if bootstrap.Sequence == 0 || steady.Sequence == 0 {
+		t.Fatalf("expected bootstrap and steady broadcasts to assign sequences")
+	}
+}
+
 func TestHubSchedulesResyncAfterJournalHint(t *testing.T) {
 	event := effectcontract.EffectUpdateEvent{Tick: 1, ID: "effect-x"}
 
