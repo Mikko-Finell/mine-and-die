@@ -119,6 +119,10 @@ func TestSimSnapshotConversionRoundTrip(t *testing.T) {
 		t.Fatalf("effect trigger snapshot round trip mismatch\nlegacy: %#v\nround: %#v", legacyEffects, roundEffects)
 	}
 
+	snapshot.Players[0].Inventory.Slots[0].Item.Quantity = 999
+	if legacyQty := legacyPlayers[0].Inventory.Slots[0].Item.Quantity; legacyQty != 30 {
+		t.Fatalf("player inventory conversion should deep copy slots, got %v", legacyQty)
+	}
 	if &legacyEffects[0] == &roundEffects[0] {
 		t.Fatalf("effect trigger conversion should copy data")
 	}
