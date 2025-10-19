@@ -41,12 +41,24 @@ type harnessTick struct {
 	Commands []Command
 }
 
-func TestDeterminismHarnessProducesBaseline(t *testing.T) {
+func TestDeterminismHarnessGolden(t *testing.T) {
 	baseline := runDeterminismHarness(t)
-	if baseline != determinismHarnessBaselineRecord {
-		t.Fatalf("determinism harness drift: expected %+v, got %+v", determinismHarnessBaselineRecord, baseline)
-	}
+
+	assertDeterminismBaselineField(t, "seed", baseline.Seed, determinismHarnessBaselineRecord.Seed)
+	assertDeterminismBaselineField(t, "ticks", baseline.Ticks, determinismHarnessBaselineRecord.Ticks)
+	assertDeterminismBaselineField(t, "patch checksum", baseline.PatchChecksum, determinismHarnessBaselineRecord.PatchChecksum)
+	assertDeterminismBaselineField(t, "journal checksum", baseline.JournalChecksum, determinismHarnessBaselineRecord.JournalChecksum)
+	assertDeterminismBaselineField(t, "total patches", baseline.TotalPatches, determinismHarnessBaselineRecord.TotalPatches)
+	assertDeterminismBaselineField(t, "total journal events", baseline.TotalJournalEvents, determinismHarnessBaselineRecord.TotalJournalEvents)
+
 	t.Logf("determinism harness baseline: seed=%s patch=%s journal=%s patches=%d journal_events=%d", baseline.Seed, baseline.PatchChecksum, baseline.JournalChecksum, baseline.TotalPatches, baseline.TotalJournalEvents)
+}
+
+func assertDeterminismBaselineField[T comparable](t *testing.T, field string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("determinism harness drift: %s mismatch: expected %v, got %v", field, want, got)
+	}
 }
 
 func runDeterminismHarness(t *testing.T) determinismBaseline {

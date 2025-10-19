@@ -21,6 +21,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ### Work log
 
+- Promoted the determinism harness into a golden test that fails when the patch
+  or journal checksum drifts, giving us a CI guardrail for simulation parity.
 - Initialized `internal/sim` package with façade types that mirror the current
   command, snapshot, and patch payloads. This scaffolding will let us convert
   external callers over without touching the legacy world structs yet.
@@ -69,8 +71,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       checksums for the upcoming golden test.
 - [x] Capture the harness' recorded patch and journal checksums as constants so
       the forthcoming golden test can assert against a committed baseline.
-- [ ] Promote the determinism harness into a golden test that asserts the
+- [x] Promote the determinism harness into a golden test that asserts the
       recorded checksums against the committed baseline constants.
+
+- [ ] Introduce the `internal/sim.Engine` interface in its own package along
+      with façade command/snapshot/patch types so callers can stop reaching into
+      the legacy hub and world directly.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
