@@ -222,6 +222,18 @@ func legacyNPCsFromSim(npcs []sim.NPC) []NPC {
 	return converted
 }
 
+func legacyActorsFromSimSnapshot(snapshot sim.Snapshot) ([]Player, []NPC) {
+	players := legacyPlayersFromSim(snapshot.Players)
+	if players == nil {
+		players = make([]Player, 0)
+	}
+	npcs := legacyNPCsFromSim(snapshot.NPCs)
+	if npcs == nil {
+		npcs = make([]NPC, 0)
+	}
+	return players, npcs
+}
+
 func simGroundItemsFromLegacy(items []GroundItem) []sim.GroundItem {
 	if len(items) == 0 {
 		return nil

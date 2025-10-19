@@ -390,7 +390,14 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 		h.engine = h.adapter
 	}
 	h.config = cfg
-	players, npcs := h.world.Snapshot(now)
+	var players []Player
+	var npcs []NPC
+	if h.engine != nil {
+		snapshot := h.engine.Snapshot()
+		players, npcs = legacyActorsFromSimSnapshot(snapshot)
+	} else {
+		players, npcs = h.world.Snapshot(now)
+	}
 	h.mu.Unlock()
 
 	h.tick.Store(0)
@@ -474,8 +481,13 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
 	var players []Player
 	var npcs []NPC
 	if removed {
-		now := time.Now()
-		players, npcs = h.world.Snapshot(now)
+		if h.engine != nil {
+			snapshot := h.engine.Snapshot()
+			players, npcs = legacyActorsFromSimSnapshot(snapshot)
+		} else {
+			now := time.Now()
+			players, npcs = h.world.Snapshot(now)
+		}
 	}
 	h.mu.Unlock()
 
