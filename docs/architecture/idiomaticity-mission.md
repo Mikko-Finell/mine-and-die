@@ -77,6 +77,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   moving simulation code.
 - Added state broadcast metadata regression tests so tick/sequence/resync
   packaging stays pinned ahead of hub marshaling changes.
+- Removed the hub's legacy world fallback for resubscribe baseline capture so
+  reconnect caching depends entirely on `sim.Engine` snapshots.
 
 ### Next task
 
@@ -156,8 +158,21 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Refresh resubscribe baseline fallbacks from `sim.Engine` snapshots when
       patch application fails so hub recovery stays off `World` state.
 
-- [ ] Remove the legacy world fallback from resubscribe baseline capture so
+- [x] Remove the legacy world fallback from resubscribe baseline capture so
       reconnect caching relies exclusively on `sim.Engine` snapshots.
+- [x] Introduce a `sim.Deps` struct that carries `Logger`, `Metrics`, `Clock`,
+      and `RNG`, and update the legacy engine adapter constructor to accept it.
+- [x] Thread the hub logger, telemetry, clock, and deterministic RNG into
+      `sim.Deps` when constructing the legacy adapter so the façade receives
+      injected dependencies.
+
+- [x] Expose the injected `sim.Deps` bundle through the façade so upcoming
+      refactors can consume the logger, metrics, clock, and RNG without touching
+      hub internals.
+
+- [ ] Switch hub consumers that need logging, metrics, clock, or RNG access to
+      pull them from `sim.Engine.Deps()` so future refactors can stop reaching
+      through hub fields for infrastructure.
 
 - [ ] Objective: Create seams and invariants before moving code.
 

@@ -162,7 +162,28 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 	world := newWorld(cfg, pub)
 	cfg = world.config
 
-	engineAdapter := newLegacyEngineAdapter(world)
+	var metrics *logging.Metrics
+	if provider, ok := pub.(interface{ Metrics() *logging.Metrics }); ok {
+		metrics = provider.Metrics()
+	}
+
+	clock := logging.Clock(logging.SystemClock{})
+	if provider, ok := pub.(interface{ Clock() logging.Clock }); ok {
+		if candidate := provider.Clock(); candidate != nil {
+			clock = candidate
+		}
+	}
+
+	engineDeps := sim.Deps{
+		Logger:  stdlog.Default(),
+		Metrics: metrics,
+		Clock:   clock,
+	}
+	if world != nil {
+		engineDeps.RNG = world.rng
+	}
+
+	engineAdapter := newLegacyEngineAdapter(world, engineDeps)
 
 	hub := &Hub{
 		world:                   world,
@@ -1767,11 +1788,7 @@ func (h *Hub) updateResubscribeBaselinesLocked(snapshot sim.Snapshot, includeSna
 		return
 	}
 	if includeSnapshot {
-		if views := playerViewsFromSimSnapshot(snapshot); views != nil {
-			h.resubscribeBaselines = views
-			return
-		}
-		h.resubscribeBaselines = h.capturePlayerViewsFromWorldLocked()
+		h.resubscribeBaselines = playerViewsFromSimSnapshot(snapshot)
 		return
 	}
 	if len(patches) == 0 {
@@ -1780,31 +1797,10 @@ func (h *Hub) updateResubscribeBaselinesLocked(snapshot sim.Snapshot, includeSna
 	base := clonePlayerViewMap(h.resubscribeBaselines)
 	updated, err := simpaches.ApplyPlayers(base, patches)
 	if err != nil {
-		if views := playerViewsFromSimSnapshot(snapshot); views != nil {
-			h.resubscribeBaselines = views
-			return
-		}
-		h.resubscribeBaselines = h.capturePlayerViewsFromWorldLocked()
+		h.resubscribeBaselines = playerViewsFromSimSnapshot(snapshot)
 		return
 	}
 	h.resubscribeBaselines = updated
-}
-
-func (h *Hub) capturePlayerViewsFromWorldLocked() map[string]simpaches.PlayerView {
-	if h == nil || h.world == nil || len(h.world.players) == 0 {
-		return nil
-	}
-	views := make(map[string]simpaches.PlayerView, len(h.world.players))
-	for id, state := range h.world.players {
-		if state == nil {
-			continue
-		}
-		views[id] = playerViewFromState(state)
-	}
-	if len(views) == 0 {
-		return nil
-	}
-	return views
 }
 
 func playerViewsFromSimSnapshot(snapshot sim.Snapshot) map[string]simpaches.PlayerView {
@@ -1828,18 +1824,6 @@ func playerViewsFromSimSnapshot(snapshot sim.Snapshot) map[string]simpaches.Play
 		return nil
 	}
 	return views
-}
-
-func playerViewFromState(state *playerState) simpaches.PlayerView {
-	if state == nil {
-		return simpaches.PlayerView{}
-	}
-	legacy := state.snapshot()
-	return simpaches.PlayerView{
-		Player:   sim.Player{Actor: simActorFromLegacy(legacy.Actor)},
-		IntentDX: state.intentX,
-		IntentDY: state.intentY,
-	}
 }
 
 func playerFromView(view simpaches.PlayerView) Player {

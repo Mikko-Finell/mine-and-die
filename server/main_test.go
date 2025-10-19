@@ -84,6 +84,8 @@ func newRecordingSimEngine(snapshot sim.Snapshot) *recordingSimEngine {
 	return &recordingSimEngine{snapshot: snapshot, gate: make(chan struct{})}
 }
 
+func (e *recordingSimEngine) Deps() sim.Deps { return sim.Deps{} }
+
 func (e *recordingSimEngine) Apply([]sim.Command) error { return nil }
 
 func (e *recordingSimEngine) Step() {}

@@ -232,3 +232,19 @@ func (r *Router) Close(ctx context.Context) error {
 func (r *Router) MetricsSnapshot() map[string]uint64 {
 	return r.metrics.Snapshot()
 }
+
+// Metrics exposes the router counters for dependency injection.
+func (r *Router) Metrics() *Metrics {
+	if r == nil {
+		return nil
+	}
+	return &r.metrics
+}
+
+// Clock exposes the time source used by the router.
+func (r *Router) Clock() Clock {
+	if r == nil {
+		return nil
+	}
+	return r.clock
+}
