@@ -38,6 +38,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Added a regression test to ensure the `pickup_gold` console command consults
   the `sim.Engine` snapshot when broadcasting, covering the complementary read
   path.
+- Added a regression test that drives `RunSimulation` through a tick broadcast
+  and asserts the fan-out consumes ground items from the `sim.Engine` snapshot,
+  keeping the adapter authoritative for tick loops.
 
 ### Next task
 
@@ -54,8 +57,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       `sim.Engine` snapshot instead of reading `World` directly.
 - [x] Add a hub console command test proving gold pickup broadcasts consult the
       `sim.Engine` snapshot instead of reading `World` directly.
-- [ ] Add a hub tick broadcast test proving `RunSimulation` fan-out pulls ground
+- [x] Add a hub tick broadcast test proving `RunSimulation` fan-out pulls ground
       items from the `sim.Engine` snapshot so the adapter stays authoritative.
+- [ ] Sketch a determinism harness that seeds the engine RNG, feeds a fixed
+      command script for a handful of ticks, and records baseline patch/journal
+      checksums for the upcoming golden test.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
