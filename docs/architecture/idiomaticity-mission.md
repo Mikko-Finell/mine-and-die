@@ -27,6 +27,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Routed the hub tick loop through a legacy adapter so it now stages commands
   and snapshots via the `internal/sim.Engine` façade while still delegating to
   the legacy world internals.
+- Updated hub disconnect and reset flows to read snapshots through the
+  `sim.Engine` adapter so state fan-out no longer touches `World` directly.
 
 ### Next task
 
@@ -35,8 +37,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       `internal/sim.Engine` rather than touching `World` directly.
 - [x] Move hub join/resubscribe/resync flows to fetch snapshots and patches via
       `sim.Engine` so read-only callers stop reaching into `World` internals.
-- [ ] Update hub disconnect and reset flows to pull snapshots via `sim.Engine`
+- [x] Update hub disconnect and reset flows to pull snapshots via `sim.Engine`
       so state fan-out no longer reads the legacy world directly.
+- [ ] Update hub console command flows that broadcast ground-item changes to
+      source snapshots via `sim.Engine` instead of accessing `World`.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
