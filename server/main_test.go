@@ -2361,6 +2361,52 @@ func TestConsoleDropGoldBroadcastsGroundItemsFromSimEngine(t *testing.T) {
 	engine.AllowFurtherSnapshots()
 }
 
+func TestConsolePickupGoldBroadcastsGroundItemsFromSimEngine(t *testing.T) {
+	hub := newHubWithFullWorld()
+	player := newTestPlayerState("player-console-pickup-engine")
+	hub.world.AddPlayer(player)
+	stack := hub.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: 6}, "manual")
+	if stack == nil {
+		t.Fatalf("expected ground item to seed for pickup test")
+	}
+	originalQty := stack.Qty
+
+	snapshot := sim.Snapshot{GroundItems: []sim.GroundItem{{
+		ID:             "engine-ground",
+		Type:           sim.ItemType(ItemTypeGold),
+		FungibilityKey: "engine-fungibility",
+		X:              11,
+		Y:              7,
+		Qty:            2,
+	}}}
+	engine := newRecordingSimEngine(snapshot)
+	t.Cleanup(engine.AllowFurtherSnapshots)
+	hub.engine = engine
+
+	ack, ok := hub.HandleConsoleCommand(player.ID, "pickup_gold", 0)
+	if !ok {
+		t.Fatalf("expected pickup command to be handled")
+	}
+	if ack.Status != "ok" {
+		t.Fatalf("expected pickup ack to be ok, got %+v", ack)
+	}
+	if ack.Qty != originalQty {
+		t.Fatalf("expected pickup ack qty %d, got %d", originalQty, ack.Qty)
+	}
+	if ack.StackID != stack.ID {
+		t.Fatalf("expected ack stack id %q, got %q", stack.ID, ack.StackID)
+	}
+	if total := player.Inventory.QuantityOf(ItemTypeGold); total != originalQty {
+		t.Fatalf("expected inventory to contain %d gold, got %d", originalQty, total)
+	}
+
+	if calls := engine.Calls(); calls != 1 {
+		t.Fatalf("expected engine snapshot to be consulted exactly once, got %d", calls)
+	}
+
+	engine.AllowFurtherSnapshots()
+}
+
 func TestDeathDropsPlayerInventory(t *testing.T) {
 	hub := newHubWithFullWorld()
 	attacker := newTestPlayerState("player-attacker")
