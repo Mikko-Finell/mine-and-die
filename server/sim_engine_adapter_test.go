@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/sim"
 )
 
@@ -163,5 +164,164 @@ func TestSimPatchConversionRoundTrip(t *testing.T) {
 	simPayload.Params["radius"] = 8
 	if legacyParams := legacyPatches[6].Payload.(EffectParamsPayload).Params["radius"]; legacyParams != 4 {
 		t.Fatalf("expected legacy effect params to remain unchanged, got %v", legacyParams)
+	}
+}
+
+func TestSimEffectEventBatchConversionRoundTrip(t *testing.T) {
+	legacyBatch := EffectEventBatch{
+		Spawns: []effectcontract.EffectSpawnEvent{{
+			Tick: 22,
+			Seq:  3,
+			Instance: effectcontract.EffectInstance{
+				ID:           "effect-1",
+				EntryID:      "entry-1",
+				DefinitionID: "fireball",
+				Definition: &effectcontract.EffectDefinition{
+					TypeID:        "fireball",
+					Delivery:      effectcontract.DeliveryKindArea,
+					Shape:         effectcontract.GeometryShapeCircle,
+					Motion:        effectcontract.MotionKindLinear,
+					Impact:        effectcontract.ImpactPolicyAllInPath,
+					LifetimeTicks: 40,
+					PierceCount:   2,
+					Params:        map[string]int{"speed": 5},
+					Hooks:         effectcontract.EffectHooks{OnSpawn: "ignite"},
+					Client: effectcontract.ReplicationSpec{
+						SendSpawn:    true,
+						SendUpdates:  true,
+						SendEnd:      true,
+						UpdateFields: map[string]bool{"position": true},
+					},
+					End: effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
+				},
+				StartTick:     19,
+				Params:        map[string]int{"power": 10},
+				Colors:        []string{"scarlet", "amber"},
+				FollowActorID: "player-1",
+				OwnerActorID:  "player-1",
+				DeliveryState: effectcontract.EffectDeliveryState{
+					Geometry: effectcontract.EffectGeometry{
+						Shape:    effectcontract.GeometryShapeArc,
+						Width:    12,
+						Height:   4,
+						Variants: map[string]int{"alternate": 2},
+					},
+					Motion: effectcontract.EffectMotionState{
+						PositionX:      1,
+						PositionY:      2,
+						VelocityX:      3,
+						VelocityY:      4,
+						RangeRemaining: 9,
+					},
+					AttachedActorID: "player-2",
+					Follow:          effectcontract.FollowTarget,
+				},
+				BehaviorState: effectcontract.EffectBehaviorState{
+					TicksRemaining:    12,
+					CooldownTicks:     2,
+					TickCadence:       3,
+					AccumulatedDamage: 5,
+					Stacks:            map[string]int{"charge": 3},
+					Extra:             map[string]int{"slow": 1},
+				},
+				Replication: effectcontract.ReplicationSpec{
+					SendSpawn:    true,
+					SendUpdates:  true,
+					SendEnd:      true,
+					UpdateFields: map[string]bool{"motion": true},
+				},
+				End: effectcontract.EndPolicy{
+					Kind: effectcontract.EndInstant,
+					Conditions: effectcontract.EndConditions{
+						OnExplicitCancel: true,
+					},
+				},
+			},
+		}},
+		Updates: []effectcontract.EffectUpdateEvent{{
+			Tick: 23,
+			Seq:  4,
+			ID:   "effect-1",
+			DeliveryState: &effectcontract.EffectDeliveryState{
+				Geometry: effectcontract.EffectGeometry{
+					Shape:    effectcontract.GeometryShapeRect,
+					Width:    18,
+					Height:   7,
+					Variants: map[string]int{"focused": 1},
+				},
+				Motion: effectcontract.EffectMotionState{
+					PositionX: 6,
+					PositionY: 8,
+					VelocityX: 2,
+					VelocityY: -1,
+				},
+				AttachedActorID: "player-3",
+				Follow:          effectcontract.FollowOwner,
+			},
+			BehaviorState: &effectcontract.EffectBehaviorState{
+				TicksRemaining:    8,
+				CooldownTicks:     1,
+				TickCadence:       2,
+				AccumulatedDamage: 7,
+				Stacks:            map[string]int{"charge": 3},
+				Extra:             map[string]int{"slow": 1},
+			},
+			Params: map[string]int{"damage": 7},
+		}},
+		Ends: []effectcontract.EffectEndEvent{{
+			Tick:   24,
+			Seq:    5,
+			ID:     "effect-1",
+			Reason: effectcontract.EndReasonCancelled,
+		}},
+		LastSeqByID: map[string]effectcontract.Seq{
+			"effect-1": 5,
+			"effect-2": 9,
+		},
+	}
+
+	simBatch := simEffectEventBatchFromLegacy(legacyBatch)
+	roundTrip := legacyEffectEventBatchFromSim(simBatch)
+
+	if !reflect.DeepEqual(legacyBatch, roundTrip) {
+		t.Fatalf("effect batch round trip mismatch\nlegacy: %#v\nround-trip: %#v", legacyBatch, roundTrip)
+	}
+
+	simBatch.Spawns[0].Instance.Params["power"] = 99
+	if legacyBatch.Spawns[0].Instance.Params["power"] != 10 {
+		t.Fatalf("expected spawn params to remain unchanged after sim mutation, got %v", legacyBatch.Spawns[0].Instance.Params["power"])
+	}
+	simBatch.Spawns[0].Instance.Colors[0] = "violet"
+	if legacyBatch.Spawns[0].Instance.Colors[0] != "scarlet" {
+		t.Fatalf("expected spawn colors to remain unchanged after sim mutation, got %v", legacyBatch.Spawns[0].Instance.Colors)
+	}
+	simBatch.Updates[0].Params["damage"] = 11
+	if legacyBatch.Updates[0].Params["damage"] != 7 {
+		t.Fatalf("expected update params to remain unchanged after sim mutation, got %v", legacyBatch.Updates[0].Params["damage"])
+	}
+	simBatch.Updates[0].DeliveryState.Geometry.Width = 99
+	if legacyBatch.Updates[0].DeliveryState.Geometry.Width != 18 {
+		t.Fatalf("expected update geometry to remain unchanged after sim mutation, got %v", legacyBatch.Updates[0].DeliveryState.Geometry.Width)
+	}
+	simBatch.Updates[0].BehaviorState.Stacks["charge"] = 6
+	if legacyBatch.Updates[0].BehaviorState.Stacks["charge"] != 3 {
+		t.Fatalf("expected update stacks to remain unchanged after sim mutation, got %v", legacyBatch.Updates[0].BehaviorState.Stacks["charge"])
+	}
+	simBatch.LastSeqByID["effect-1"] = 12
+	if legacyBatch.LastSeqByID["effect-1"] != 5 {
+		t.Fatalf("expected seq cursor to remain unchanged after sim mutation, got %v", legacyBatch.LastSeqByID["effect-1"])
+	}
+
+	roundTrip.Spawns[0].Instance.Definition.Params["speed"] = 42
+	if simBatch.Spawns[0].Instance.Definition.Params["speed"] != 5 {
+		t.Fatalf("expected definition params to remain unchanged after legacy mutation, got %v", simBatch.Spawns[0].Instance.Definition.Params["speed"])
+	}
+	roundTrip.Updates[0].BehaviorState.Extra["slow"] = 5
+	if simBatch.Updates[0].BehaviorState.Extra["slow"] != 1 {
+		t.Fatalf("expected update extra map to remain unchanged after legacy mutation, got %v", simBatch.Updates[0].BehaviorState.Extra["slow"])
+	}
+	roundTrip.LastSeqByID["effect-2"] = 20
+	if simBatch.LastSeqByID["effect-2"] != 9 {
+		t.Fatalf("expected seq cursor map to remain unchanged after legacy mutation, got %v", simBatch.LastSeqByID["effect-2"])
 	}
 }
