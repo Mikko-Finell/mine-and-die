@@ -118,6 +118,14 @@ func (e *recordingSimEngine) ConsumeEffectResyncHint() (sim.EffectResyncSignal, 
 	return sim.EffectResyncSignal{}, false
 }
 
+func (e *recordingSimEngine) KeyframeBySequence(uint64) (sim.Keyframe, bool) {
+	return sim.Keyframe{}, false
+}
+
+func (e *recordingSimEngine) KeyframeWindow() (int, uint64, uint64) {
+	return 0, 0, 0
+}
+
 func (e *recordingSimEngine) Calls() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()

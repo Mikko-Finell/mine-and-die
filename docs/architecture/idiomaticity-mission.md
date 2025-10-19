@@ -61,6 +61,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Added façade-backed resync hint consumption with deep-copy conversions and a
   hub regression test that matches the legacy journal scheduling to lock the
   behavior before moving the code.
+- Surfaced keyframe lookup/window access through `internal/sim.Engine`, added
+  conversion round-trips for keyframes, and switched hub resync handling to rely
+  on the façade instead of reading the journal directly.
 
 ### Next task
 
@@ -99,10 +102,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Route effect resync hints through `sim.Engine` with deep-copy conversions
       and lock behavior parity with a hub regression test before moving code.
 
-- [ ] Surface keyframe lookups and restores through `sim.Engine` so hub
+- [x] Surface keyframe lookups and restores through `sim.Engine` so hub
       resynchronisation handlers stop reading the legacy journal directly.
-- [ ] Add adapter round-trip coverage for keyframe payloads to freeze the data
+- [x] Add adapter round-trip coverage for keyframe payloads to freeze the data
       contract before switching hub lookups to the façade.
+- [ ] Route keyframe recording through `sim.Engine` so hub state fan-out stops
+      writing to the legacy journal directly when capturing frames.
 
 - [ ] Objective: Create seams and invariants before moving code.
 

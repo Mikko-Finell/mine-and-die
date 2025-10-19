@@ -115,6 +115,24 @@ func (a *legacyEngineAdapter) ConsumeEffectResyncHint() (sim.EffectResyncSignal,
 	return simEffectResyncSignalFromLegacy(signal), true
 }
 
+func (a *legacyEngineAdapter) KeyframeBySequence(sequence uint64) (sim.Keyframe, bool) {
+	if a == nil || a.world == nil {
+		return sim.Keyframe{}, false
+	}
+	frame, ok := a.world.journal.KeyframeBySequence(sequence)
+	if !ok {
+		return sim.Keyframe{}, false
+	}
+	return simKeyframeFromLegacy(frame), true
+}
+
+func (a *legacyEngineAdapter) KeyframeWindow() (int, uint64, uint64) {
+	if a == nil || a.world == nil {
+		return 0, 0, 0
+	}
+	return a.world.journal.KeyframeWindow()
+}
+
 func (a *legacyEngineAdapter) RemovedPlayers() []string {
 	if a == nil || len(a.lastRemoved) == 0 {
 		return nil
@@ -362,6 +380,104 @@ func simPatchesFromLegacy(patches []Patch) []sim.Patch {
 		}
 	}
 	return converted
+}
+
+func simKeyframeFromLegacy(frame keyframe) sim.Keyframe {
+	return sim.Keyframe{
+		Tick:        frame.Tick,
+		Sequence:    frame.Sequence,
+		Players:     simPlayersFromLegacy(frame.Players),
+		NPCs:        simNPCsFromLegacy(frame.NPCs),
+		Obstacles:   simObstaclesFromLegacy(frame.Obstacles),
+		GroundItems: simGroundItemsFromLegacy(frame.GroundItems),
+		Config:      simWorldConfigFromLegacy(frame.Config),
+		RecordedAt:  frame.RecordedAt,
+	}
+}
+
+func legacyKeyframeFromSim(frame sim.Keyframe) keyframe {
+	return keyframe{
+		Tick:        frame.Tick,
+		Sequence:    frame.Sequence,
+		Players:     legacyPlayersFromSim(frame.Players),
+		NPCs:        legacyNPCsFromSim(frame.NPCs),
+		Obstacles:   legacyObstaclesFromSim(frame.Obstacles),
+		GroundItems: legacyGroundItemsFromSim(frame.GroundItems),
+		Config:      legacyWorldConfigFromSim(frame.Config),
+		RecordedAt:  frame.RecordedAt,
+	}
+}
+
+func simObstaclesFromLegacy(obstacles []Obstacle) []sim.Obstacle {
+	if len(obstacles) == 0 {
+		return nil
+	}
+	converted := make([]sim.Obstacle, len(obstacles))
+	for i, obstacle := range obstacles {
+		converted[i] = sim.Obstacle{
+			ID:     obstacle.ID,
+			Type:   obstacle.Type,
+			X:      obstacle.X,
+			Y:      obstacle.Y,
+			Width:  obstacle.Width,
+			Height: obstacle.Height,
+		}
+	}
+	return converted
+}
+
+func legacyObstaclesFromSim(obstacles []sim.Obstacle) []Obstacle {
+	if len(obstacles) == 0 {
+		return nil
+	}
+	converted := make([]Obstacle, len(obstacles))
+	for i, obstacle := range obstacles {
+		converted[i] = Obstacle{
+			ID:     obstacle.ID,
+			Type:   obstacle.Type,
+			X:      obstacle.X,
+			Y:      obstacle.Y,
+			Width:  obstacle.Width,
+			Height: obstacle.Height,
+		}
+	}
+	return converted
+}
+
+func simWorldConfigFromLegacy(cfg worldConfig) sim.WorldConfig {
+	return sim.WorldConfig{
+		Obstacles:      cfg.Obstacles,
+		ObstaclesCount: cfg.ObstaclesCount,
+		GoldMines:      cfg.GoldMines,
+		GoldMineCount:  cfg.GoldMineCount,
+		NPCs:           cfg.NPCs,
+		GoblinCount:    cfg.GoblinCount,
+		RatCount:       cfg.RatCount,
+		NPCCount:       cfg.NPCCount,
+		Lava:           cfg.Lava,
+		LavaCount:      cfg.LavaCount,
+		Seed:           cfg.Seed,
+		Width:          cfg.Width,
+		Height:         cfg.Height,
+	}
+}
+
+func legacyWorldConfigFromSim(cfg sim.WorldConfig) worldConfig {
+	return worldConfig{
+		Obstacles:      cfg.Obstacles,
+		ObstaclesCount: cfg.ObstaclesCount,
+		GoldMines:      cfg.GoldMines,
+		GoldMineCount:  cfg.GoldMineCount,
+		NPCs:           cfg.NPCs,
+		GoblinCount:    cfg.GoblinCount,
+		RatCount:       cfg.RatCount,
+		NPCCount:       cfg.NPCCount,
+		Lava:           cfg.Lava,
+		LavaCount:      cfg.LavaCount,
+		Seed:           cfg.Seed,
+		Width:          cfg.Width,
+		Height:         cfg.Height,
+	}
 }
 
 func convertPatchPayloadToSim(payload any) any {

@@ -1417,27 +1417,31 @@ func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupSt
 	}
 
 	h.mu.Lock()
-	journal := &h.world.journal
+	engine := h.engine
 	h.mu.Unlock()
 
-	frame, ok := journal.KeyframeBySequence(sequence)
+	if engine == nil {
+		return keyframeMessage{}, keyframeLookupMissing
+	}
+
+	frame, ok := engine.KeyframeBySequence(sequence)
 	if ok {
-		config := frame.Config
+		legacy := legacyKeyframeFromSim(frame)
 		snapshot := keyframeMessage{
 			Ver:         ProtocolVersion,
 			Type:        "keyframe",
-			Sequence:    frame.Sequence,
-			Tick:        frame.Tick,
-			Players:     append([]Player(nil), frame.Players...),
-			NPCs:        append([]NPC(nil), frame.NPCs...),
-			Obstacles:   append([]Obstacle(nil), frame.Obstacles...),
-			GroundItems: append([]GroundItem(nil), frame.GroundItems...),
-			Config:      config,
+			Sequence:    legacy.Sequence,
+			Tick:        legacy.Tick,
+			Players:     append([]Player(nil), legacy.Players...),
+			NPCs:        append([]NPC(nil), legacy.NPCs...),
+			Obstacles:   append([]Obstacle(nil), legacy.Obstacles...),
+			GroundItems: append([]GroundItem(nil), legacy.GroundItems...),
+			Config:      legacy.Config,
 		}
 		return snapshot, keyframeLookupFound
 	}
 
-	size, oldest, newest := journal.KeyframeWindow()
+	size, oldest, newest := engine.KeyframeWindow()
 	if size == 0 {
 		return keyframeMessage{}, keyframeLookupExpired
 	}
