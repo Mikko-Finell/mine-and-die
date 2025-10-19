@@ -273,6 +273,26 @@ func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTrigger
 	return players, npcs, triggers, groundItems
 }
 
+// legacyGroundItemsSnapshotLocked returns a broadcast-friendly snapshot of ground items.
+// Callers must hold h.mu.
+func (h *Hub) legacyGroundItemsSnapshotLocked() []GroundItem {
+	if h == nil {
+		return make([]GroundItem, 0)
+	}
+	if h.engine != nil {
+		items := legacyGroundItemsFromSim(h.engine.Snapshot().GroundItems)
+		if items == nil {
+			return make([]GroundItem, 0)
+		}
+		return items
+	}
+	items := h.world.GroundItemsSnapshot()
+	if items == nil {
+		return make([]GroundItem, 0)
+	}
+	return items
+}
+
 func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 	inventory := NewInventory()
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
@@ -646,7 +666,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 			return ack, true
 		}
 		stack := h.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: removed}, "manual")
-		groundItems := h.world.GroundItemsSnapshot()
+		groundItems := h.legacyGroundItemsSnapshotLocked()
 		h.mu.Unlock()
 
 		ack.Status = "ok"
@@ -781,7 +801,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMes
 			return ack, true
 		}
 		h.world.removeGroundItem(item)
-		groundItems := h.world.GroundItemsSnapshot()
+		groundItems := h.legacyGroundItemsSnapshotLocked()
 		h.mu.Unlock()
 
 		loggingeconomy.GoldPickedUp(
