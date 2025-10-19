@@ -6,4 +6,8 @@ type Engine interface {
 	Step()
 	Snapshot() Snapshot
 	DrainPatches() []Patch
+	DrainEffectEvents() EffectEventBatch
+	SnapshotEffectEvents() EffectEventBatch
+	RestoreEffectEvents(EffectEventBatch)
+	ConsumeEffectResyncHint() (EffectResyncSignal, bool)
 }

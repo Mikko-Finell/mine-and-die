@@ -55,6 +55,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   so non-simulation surfaces stop depending on the legacy hub command structs.
 - Added adapter round-trip coverage for effect journal batches so the façade's
   record layout matches the legacy journal before we carve out packages.
+- Routed effect event draining and resync hint consumption through `sim.Engine`
+  so hub fan-out and recovery flows rely on the façade rather than the legacy
+  journal directly.
+- Added façade-backed resync hint consumption with deep-copy conversions and a
+  hub regression test that matches the legacy journal scheduling to lock the
+  behavior before moving the code.
 
 ### Next task
 
@@ -87,9 +93,16 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Add journal round-trip coverage that proves `sim.Engine` exposes the same
       effect batch layout as the legacy journal so the façade's record format is
       locked down before carving packages.
-- [ ] Expose effect batch draining through `sim.Engine` and route hub broadcast
+- [x] Expose effect batch draining through `sim.Engine` and route hub broadcast
       and resync flows through the façade so non-simulation callers stop
       touching the legacy journal directly.
+- [x] Route effect resync hints through `sim.Engine` with deep-copy conversions
+      and lock behavior parity with a hub regression test before moving code.
+
+- [ ] Surface keyframe lookups and restores through `sim.Engine` so hub
+      resynchronisation handlers stop reading the legacy journal directly.
+- [ ] Add adapter round-trip coverage for keyframe payloads to freeze the data
+      contract before switching hub lookups to the façade.
 
 - [ ] Objective: Create seams and invariants before moving code.
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	stdlog "log"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -547,19 +548,33 @@ func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 }
 
 func TestHubSchedulesResyncAfterJournalHint(t *testing.T) {
+	event := effectcontract.EffectUpdateEvent{Tick: 1, ID: "effect-x"}
+
+	legacy := newHub()
+	legacy.SetKeyframeInterval(5)
+
+	legacy.mu.Lock()
+	legacy.world.journal.RecordEffectUpdate(event)
+	legacy.mu.Unlock()
+
+	expected, ok := legacy.world.journal.ConsumeResyncHint()
+	if !ok {
+		t.Fatalf("expected legacy journal to produce resync hint")
+	}
+
 	hub := newHub()
 	hub.SetKeyframeInterval(5)
 
 	hub.mu.Lock()
-	hub.world.journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 1, ID: "effect-x"})
+	hub.world.journal.RecordEffectUpdate(event)
 	hub.mu.Unlock()
 
 	scheduled, signal := hub.scheduleResyncIfNeeded()
 	if !scheduled {
 		t.Fatalf("expected resync to be scheduled after journal hint")
 	}
-	if signal.LostSpawns != 1 {
-		t.Fatalf("expected lost spawn count 1, got %d", signal.LostSpawns)
+	if !reflect.DeepEqual(signal, expected) {
+		t.Fatalf("unexpected resync signal from engine\nexpected: %#v\nactual:   %#v", expected, signal)
 	}
 
 	includeSnapshot := hub.shouldIncludeSnapshot()

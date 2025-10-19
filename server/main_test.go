@@ -104,6 +104,20 @@ func (e *recordingSimEngine) Snapshot() sim.Snapshot {
 
 func (e *recordingSimEngine) DrainPatches() []sim.Patch { return nil }
 
+func (e *recordingSimEngine) DrainEffectEvents() sim.EffectEventBatch {
+	return sim.EffectEventBatch{}
+}
+
+func (e *recordingSimEngine) SnapshotEffectEvents() sim.EffectEventBatch {
+	return sim.EffectEventBatch{}
+}
+
+func (e *recordingSimEngine) RestoreEffectEvents(sim.EffectEventBatch) {}
+
+func (e *recordingSimEngine) ConsumeEffectResyncHint() (sim.EffectResyncSignal, bool) {
+	return sim.EffectResyncSignal{}, false
+}
+
 func (e *recordingSimEngine) Calls() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
