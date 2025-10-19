@@ -216,6 +216,63 @@ func (h *Hub) EffectCatalogSnapshot() map[string]effectCatalogMetadata {
 	return h.effectCatalogSnapshotLocked()
 }
 
+func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTriggers bool) ([]Player, []NPC, []EffectTrigger, []GroundItem) {
+	if h == nil {
+		return make([]Player, 0), make([]NPC, 0), nil, nil
+	}
+
+	if h.engine != nil {
+		snapshot := h.engine.Snapshot()
+		players := legacyPlayersFromSim(snapshot.Players)
+		if players == nil {
+			players = make([]Player, 0)
+		}
+		npcs := legacyNPCsFromSim(snapshot.NPCs)
+		if npcs == nil {
+			npcs = make([]NPC, 0)
+		}
+		var triggers []EffectTrigger
+		if includeEffectTriggers {
+			triggers = legacyEffectTriggersFromSim(snapshot.EffectEvents)
+			if triggers == nil {
+				triggers = make([]EffectTrigger, 0)
+			}
+		}
+		var groundItems []GroundItem
+		if includeGroundItems {
+			groundItems = legacyGroundItemsFromSim(snapshot.GroundItems)
+			if groundItems == nil {
+				groundItems = make([]GroundItem, 0)
+			}
+		}
+		return players, npcs, triggers, groundItems
+	}
+
+	now := time.Now()
+	players, npcs := h.world.Snapshot(now)
+	if players == nil {
+		players = make([]Player, 0)
+	}
+	if npcs == nil {
+		npcs = make([]NPC, 0)
+	}
+	var triggers []EffectTrigger
+	if includeEffectTriggers {
+		triggers = h.world.flushEffectTriggersLocked()
+		if triggers == nil {
+			triggers = make([]EffectTrigger, 0)
+		}
+	}
+	var groundItems []GroundItem
+	if includeGroundItems {
+		groundItems = h.world.GroundItemsSnapshot()
+		if groundItems == nil {
+			groundItems = make([]GroundItem, 0)
+		}
+	}
+	return players, npcs, triggers, groundItems
+}
+
 func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 	inventory := NewInventory()
 	if _, err := inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 50}); err != nil {
@@ -272,8 +329,7 @@ func (h *Hub) Join() joinResponse {
 
 	h.mu.Lock()
 	h.world.AddPlayer(player)
-	players, npcs := h.world.Snapshot(now)
-	groundItems := h.world.GroundItemsSnapshot()
+	players, npcs, _, groundItems := h.legacySnapshotLocked(true, false)
 	obstacles := append([]Obstacle(nil), h.world.obstacles...)
 	cfg := h.config
 	h.mu.Unlock()
@@ -369,9 +425,7 @@ func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []P
 
 	sub := &subscriber{conn: conn, limiter: newKeyframeRateLimiter(keyframeLimiterCapacity, keyframeLimiterRefillPer)}
 	h.subscribers[playerID] = sub
-	now := time.Now()
-	players, npcs := h.world.Snapshot(now)
-	groundItems := h.world.GroundItemsSnapshot()
+	players, npcs, _, groundItems := h.legacySnapshotLocked(true, false)
 	return sub, players, npcs, groundItems, true
 }
 
@@ -1046,17 +1100,30 @@ func (h *Hub) shouldIncludeSnapshot() bool {
 
 func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	h.mu.Lock()
-	if (players == nil || npcs == nil) && includeSnapshot {
-		now := time.Now()
-		players, npcs = h.world.Snapshot(now)
-		if triggers == nil {
-			triggers = h.world.flushEffectTriggersLocked()
+	if includeSnapshot {
+		needSnapshot := players == nil || npcs == nil
+		needGround := groundItems == nil
+		needTriggers := triggers == nil
+		if needSnapshot || needGround || needTriggers {
+			snapPlayers, snapNPCs, snapTriggers, snapGround := h.legacySnapshotLocked(needGround, needTriggers)
+			if players == nil {
+				players = snapPlayers
+			}
+			if npcs == nil {
+				npcs = snapNPCs
+			}
+			if groundItems == nil && needGround {
+				groundItems = snapGround
+			}
+			if triggers == nil && needTriggers {
+				triggers = snapTriggers
+			}
 		}
 	} else if triggers == nil {
 		triggers = make([]EffectTrigger, 0)
 	}
-	if groundItems == nil && includeSnapshot {
-		groundItems = h.world.GroundItemsSnapshot()
+	if groundItems == nil {
+		groundItems = make([]GroundItem, 0)
 	}
 	var aliveEffectIDs []string
 	if len(h.world.effects) > 0 {
@@ -1073,7 +1140,11 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		restorablePatches []Patch
 	)
 	if drainPatches {
-		patches = h.world.drainPatchesLocked()
+		if h.engine != nil {
+			patches = legacyPatchesFromSim(h.engine.DrainPatches())
+		} else {
+			patches = h.world.drainPatchesLocked()
+		}
 		if len(patches) > 0 {
 			restorablePatches = append([]Patch(nil), patches...)
 		}

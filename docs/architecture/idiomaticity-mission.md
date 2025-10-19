@@ -33,8 +33,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Document the next logical follow-up step.
 - [x] Wire the hub through a legacy adapter so external callers interact with
       `internal/sim.Engine` rather than touching `World` directly.
-- [ ] Move hub join/resubscribe/resync flows to fetch snapshots and patches via
+- [x] Move hub join/resubscribe/resync flows to fetch snapshots and patches via
       `sim.Engine` so read-only callers stop reaching into `World` internals.
+- [ ] Update hub disconnect and reset flows to pull snapshots via `sim.Engine`
+      so state fan-out no longer reads the legacy world directly.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
