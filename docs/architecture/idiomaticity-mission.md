@@ -24,12 +24,17 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Initialized `internal/sim` package with façade types that mirror the current
   command, snapshot, and patch payloads. This scaffolding will let us convert
   external callers over without touching the legacy world structs yet.
+- Routed the hub tick loop through a legacy adapter so it now stages commands
+  and snapshots via the `internal/sim.Engine` façade while still delegating to
+  the legacy world internals.
 
 ### Next task
 
 - [x] Document the next logical follow-up step.
-- [ ] Wire the hub through a legacy adapter so external callers interact with
+- [x] Wire the hub through a legacy adapter so external callers interact with
       `internal/sim.Engine` rather than touching `World` directly.
+- [ ] Move hub join/resubscribe/resync flows to fetch snapshots and patches via
+      `sim.Engine` so read-only callers stop reaching into `World` internals.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
