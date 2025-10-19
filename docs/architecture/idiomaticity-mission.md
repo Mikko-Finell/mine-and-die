@@ -97,7 +97,8 @@ _
   * `journal/` – write-barriers and diff recording
   * `effects/` – authoritative visual events
   * `combat/` – hit/damage rules
-  * `ecology/` – terrain evolution and CA rules
+  * `stats/` – actor stats
+  * `items/` – items and quipment
   * `ai/` – NPC logic and behaviors
 * Mutations go only through `journal` APIs to record diffs.
 * Each subsystem has ≤300 LOC per file and its own unit tests.
