@@ -10,6 +10,7 @@ import (
 
 	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/sim"
+	simpaches "mine-and-die/server/internal/sim/patches"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
 )
@@ -2749,6 +2750,134 @@ func TestConsolePickupOutOfRange(t *testing.T) {
 	ack, _ := hub.HandleConsoleCommand(picker.ID, "pickup_gold", 0)
 	if ack.Status != "error" || ack.Reason != "out_of_range" {
 		t.Fatalf("expected out_of_range error, got %+v", ack)
+	}
+}
+
+func TestMarshalStateCapturesResubscribeBaselinesFromSnapshot(t *testing.T) {
+	hub := newHub()
+	player := newTestPlayerState("resubscribe-baseline")
+	player.X = 12
+	player.Y = -7
+	player.intentX = 0.5
+	player.intentY = -0.25
+	hub.world.AddPlayer(player)
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, false, true); err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	baselines := hub.resubscribeBaselines
+	if baselines == nil {
+		t.Fatalf("expected resubscribe baselines to be captured")
+	}
+
+	view, ok := baselines[player.ID]
+	if !ok {
+		t.Fatalf("expected baseline entry for %q", player.ID)
+	}
+
+	if view.Player.Actor.ID != player.ID {
+		t.Fatalf("expected baseline actor id %q, got %q", player.ID, view.Player.Actor.ID)
+	}
+	if math.Abs(view.Player.Actor.X-player.X) > 1e-6 || math.Abs(view.Player.Actor.Y-player.Y) > 1e-6 {
+		t.Fatalf("expected baseline coordinates (%.1f, %.1f), got (%.1f, %.1f)", player.X, player.Y, view.Player.Actor.X, view.Player.Actor.Y)
+	}
+	if math.Abs(view.IntentDX-player.intentX) > 1e-6 || math.Abs(view.IntentDY-player.intentY) > 1e-6 {
+		t.Fatalf("expected baseline intents (%.2f, %.2f), got (%.2f, %.2f)", player.intentX, player.intentY, view.IntentDX, view.IntentDY)
+	}
+}
+
+func TestMarshalStateAppliesPlayerPatchesToResubscribeBaselines(t *testing.T) {
+	hub := newHub()
+	player := newTestPlayerState("resubscribe-patch")
+	hub.world.AddPlayer(player)
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, false, true); err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	hub.world.SetPosition(player.ID, 40, -15)
+	hub.world.SetIntent(player.ID, -0.75, 0.25)
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, true, false); err != nil {
+		t.Fatalf("marshalState returned error during delta: %v", err)
+	}
+
+	view, ok := hub.resubscribeBaselines[player.ID]
+	if !ok {
+		t.Fatalf("expected baseline entry for %q", player.ID)
+	}
+	if math.Abs(view.Player.Actor.X-40) > 1e-6 || math.Abs(view.Player.Actor.Y-(-15)) > 1e-6 {
+		t.Fatalf("expected baseline position (40,-15), got (%.1f, %.1f)", view.Player.Actor.X, view.Player.Actor.Y)
+	}
+	if math.Abs(view.IntentDX-(-0.75)) > 1e-6 || math.Abs(view.IntentDY-0.25) > 1e-6 {
+		t.Fatalf("expected baseline intent (-0.75,0.25), got (%.2f, %.2f)", view.IntentDX, view.IntentDY)
+	}
+}
+
+func TestMarshalStateRemovesResubscribeBaselinesOnRemoval(t *testing.T) {
+	hub := newHub()
+	player := newTestPlayerState("resubscribe-remove")
+	hub.world.AddPlayer(player)
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, false, true); err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	if removed := hub.world.RemovePlayer(player.ID); !removed {
+		t.Fatalf("expected player removal to succeed")
+	}
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, true, false); err != nil {
+		t.Fatalf("marshalState returned error during removal delta: %v", err)
+	}
+
+	if _, ok := hub.resubscribeBaselines[player.ID]; ok {
+		t.Fatalf("expected baseline entry for %q to be removed", player.ID)
+	}
+}
+
+func TestClonePlayerViewsDeepCopiesData(t *testing.T) {
+	base := map[string]simpaches.PlayerView{
+		"player-clone": {
+			Player: sim.Player{
+				Actor: sim.Actor{
+					ID: "player-clone",
+					Inventory: sim.Inventory{Slots: []sim.InventorySlot{{
+						Slot: 0,
+						Item: sim.ItemStack{Type: sim.ItemType("gold"), Quantity: 5},
+					}}},
+					Equipment: sim.Equipment{Slots: []sim.EquippedItem{{
+						Slot: sim.EquipSlotMainHand,
+						Item: sim.ItemStack{Type: sim.ItemType("sword"), Quantity: 1},
+					}}},
+				},
+			},
+			IntentDX: 0.25,
+			IntentDY: -0.5,
+		},
+	}
+
+	cloned := clonePlayerViewMap(base)
+	if len(cloned) != len(base) {
+		t.Fatalf("expected clone length %d, got %d", len(base), len(cloned))
+	}
+
+	view := cloned["player-clone"]
+	view.Player.Inventory.Slots[0].Item.Quantity = 99
+	view.Player.Equipment.Slots[0].Item.Type = sim.ItemType("axe")
+	view.IntentDX = 1.0
+	cloned["player-clone"] = view
+
+	original := base["player-clone"]
+	if original.Player.Inventory.Slots[0].Item.Quantity != 5 {
+		t.Fatalf("expected original inventory quantity 5, got %d", original.Player.Inventory.Slots[0].Item.Quantity)
+	}
+	if original.Player.Equipment.Slots[0].Item.Type != sim.ItemType("sword") {
+		t.Fatalf("expected original equipment type sword, got %s", original.Player.Equipment.Slots[0].Item.Type)
+	}
+	if math.Abs(original.IntentDX-0.25) > 1e-6 {
+		t.Fatalf("expected original intent dx 0.25, got %.2f", original.IntentDX)
 	}
 }
 

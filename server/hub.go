@@ -16,6 +16,7 @@ import (
 
 	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/sim"
+	simpaches "mine-and-die/server/internal/sim/patches"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -34,6 +35,8 @@ type Hub struct {
 	config      worldConfig
 	publisher   logging.Publisher
 	telemetry   *telemetryCounters
+
+	resubscribeBaselines map[string]simpaches.PlayerView
 
 	nextID atomic.Uint64
 	tick   atomic.Uint64
@@ -172,6 +175,7 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 		publisher:               pub,
 		telemetry:               newTelemetryCounters(),
 		defaultKeyframeInterval: interval,
+		resubscribeBaselines:    nil,
 	}
 	hub.world.telemetry = hub.telemetry
 	hub.world.journal.AttachTelemetry(hub.telemetry)
@@ -418,6 +422,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 	} else {
 		players, npcs = h.world.Snapshot(now)
 	}
+	h.resubscribeBaselines = nil
 	h.mu.Unlock()
 
 	h.tick.Store(0)
@@ -1242,27 +1247,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	} else {
 		patches = h.world.snapshotPatchesLocked()
 	}
-	cfg := h.config
-	tick := h.tick.Load()
-	seq, resync := h.nextStateMeta(drainPatches)
-	effectTransportEnabled := engine != nil
-	h.mu.Unlock()
-
-	effectBatch := EffectEventBatch{}
-	simEffectBatch := sim.EffectEventBatch{}
-	if engine != nil {
-		if drainPatches {
-			simEffectBatch = engine.DrainEffectEvents()
-		} else {
-			simEffectBatch = engine.SnapshotEffectEvents()
-		}
-		effectBatch = legacyEffectEventBatchFromSim(simEffectBatch)
-	}
-
-	if patches == nil {
-		patches = make([]Patch, 0)
-	}
-
 	if len(patches) > 0 {
 		alivePlayers := players
 		aliveNPCs := npcs
@@ -1319,6 +1303,28 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 			}
 			patches = filtered
 		}
+	}
+	simPlayerPatches := filterPlayerPatches(simPatchesFromLegacy(patches))
+	h.updateResubscribeBaselinesLocked(includeSnapshot, simPlayerPatches)
+	cfg := h.config
+	tick := h.tick.Load()
+	seq, resync := h.nextStateMeta(drainPatches)
+	effectTransportEnabled := engine != nil
+	h.mu.Unlock()
+
+	effectBatch := EffectEventBatch{}
+	simEffectBatch := sim.EffectEventBatch{}
+	if engine != nil {
+		if drainPatches {
+			simEffectBatch = engine.DrainEffectEvents()
+		} else {
+			simEffectBatch = engine.SnapshotEffectEvents()
+		}
+		effectBatch = legacyEffectEventBatchFromSim(simEffectBatch)
+	}
+
+	if patches == nil {
+		patches = make([]Patch, 0)
 	}
 
 	if includeSnapshot {
@@ -1721,6 +1727,89 @@ func (h *Hub) drainCommands() []sim.Command {
 	copied := make([]sim.Command, len(cmds))
 	copy(copied, cmds)
 	return copied
+}
+
+func filterPlayerPatches(patches []sim.Patch) []sim.Patch {
+	if len(patches) == 0 {
+		return nil
+	}
+	filtered := make([]sim.Patch, 0, len(patches))
+	for _, patch := range patches {
+		switch patch.Kind {
+		case sim.PatchPlayerPos,
+			sim.PatchPlayerFacing,
+			sim.PatchPlayerIntent,
+			sim.PatchPlayerHealth,
+			sim.PatchPlayerInventory,
+			sim.PatchPlayerEquipment,
+			sim.PatchPlayerRemoved:
+			filtered = append(filtered, patch)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
+func (h *Hub) updateResubscribeBaselinesLocked(includeSnapshot bool, patches []sim.Patch) {
+	if h == nil {
+		return
+	}
+	if includeSnapshot {
+		h.resubscribeBaselines = h.capturePlayerViewsLocked()
+		return
+	}
+	if len(patches) == 0 {
+		return
+	}
+	base := clonePlayerViewMap(h.resubscribeBaselines)
+	updated, err := simpaches.ApplyPlayers(base, patches)
+	if err != nil {
+		h.resubscribeBaselines = h.capturePlayerViewsLocked()
+		return
+	}
+	h.resubscribeBaselines = updated
+}
+
+func (h *Hub) capturePlayerViewsLocked() map[string]simpaches.PlayerView {
+	if h == nil || h.world == nil || len(h.world.players) == 0 {
+		return nil
+	}
+	views := make(map[string]simpaches.PlayerView, len(h.world.players))
+	for id, state := range h.world.players {
+		if state == nil {
+			continue
+		}
+		views[id] = playerViewFromState(state)
+	}
+	if len(views) == 0 {
+		return nil
+	}
+	return views
+}
+
+func playerViewFromState(state *playerState) simpaches.PlayerView {
+	if state == nil {
+		return simpaches.PlayerView{}
+	}
+	legacy := state.snapshot()
+	return simpaches.PlayerView{
+		Player:   sim.Player{Actor: simActorFromLegacy(legacy.Actor)},
+		IntentDX: state.intentX,
+		IntentDY: state.intentY,
+	}
+}
+
+func clonePlayerViewMap(src map[string]simpaches.PlayerView) map[string]simpaches.PlayerView {
+	if len(src) == 0 {
+		return nil
+	}
+	clones := make(map[string]simpaches.PlayerView, len(src))
+	for id, view := range src {
+		clones[id] = view.Clone()
+	}
+	return clones
 }
 
 func (h *Hub) playerExists(playerID string) bool {
