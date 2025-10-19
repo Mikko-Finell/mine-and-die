@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	stdlog "log"
 	"testing"
+	"time"
 
+	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/logging"
 )
 
@@ -39,11 +42,90 @@ func TestNewHubWithConfigInjectsSimDeps(t *testing.T) {
 		t.Errorf("expected engine deps metrics to point at router metrics")
 	}
 
+	if hub.telemetry == nil {
+		t.Fatalf("expected telemetry counters to be configured")
+	}
+
+	if hub.telemetry.metrics != deps.Metrics {
+		t.Errorf("expected telemetry counters to attach router metrics")
+	}
+
 	if deps.Clock != router.Clock() {
 		t.Errorf("expected engine deps clock to mirror router clock")
 	}
 
 	if deps.RNG != hub.world.rng {
 		t.Errorf("expected engine deps RNG to mirror world RNG")
+	}
+}
+
+type fixedClock struct {
+	now time.Time
+}
+
+func (c fixedClock) Now() time.Time { return c.now }
+
+type stubEngine struct {
+	deps sim.Deps
+}
+
+func (s *stubEngine) Deps() sim.Deps                           { return s.deps }
+func (*stubEngine) Apply([]sim.Command) error                  { return nil }
+func (*stubEngine) Step()                                      {}
+func (*stubEngine) Snapshot() sim.Snapshot                     { return sim.Snapshot{} }
+func (*stubEngine) DrainPatches() []sim.Patch                  { return nil }
+func (*stubEngine) SnapshotPatches() []sim.Patch               { return nil }
+func (*stubEngine) RestorePatches([]sim.Patch)                 {}
+func (*stubEngine) DrainEffectEvents() sim.EffectEventBatch    { return sim.EffectEventBatch{} }
+func (*stubEngine) SnapshotEffectEvents() sim.EffectEventBatch { return sim.EffectEventBatch{} }
+func (*stubEngine) RestoreEffectEvents(sim.EffectEventBatch)   {}
+func (*stubEngine) ConsumeEffectResyncHint() (sim.EffectResyncSignal, bool) {
+	return sim.EffectResyncSignal{}, false
+}
+func (*stubEngine) RecordKeyframe(sim.Keyframe) sim.KeyframeRecordResult {
+	return sim.KeyframeRecordResult{}
+}
+func (*stubEngine) KeyframeBySequence(uint64) (sim.Keyframe, bool) { return sim.Keyframe{}, false }
+func (*stubEngine) KeyframeWindow() (int, uint64, uint64)          { return 0, 0, 0 }
+
+func TestHubNowUsesEngineClock(t *testing.T) {
+	hub := newHub()
+	ts := time.Unix(123, 456)
+	hub.engine = &stubEngine{deps: sim.Deps{Clock: fixedClock{now: ts}}}
+
+	if got := hub.now(); !got.Equal(ts) {
+		t.Fatalf("expected hub.now() to use engine clock, got %v", got)
+	}
+}
+
+func TestCommandIssuedAtUsesEngineClock(t *testing.T) {
+	hub := newHub()
+	ts := time.Unix(789, 101112)
+	hub.engine = &stubEngine{deps: sim.Deps{Clock: fixedClock{now: ts}}}
+
+	player := hub.seedPlayerState("player-1", ts)
+	hub.mu.Lock()
+	hub.world.AddPlayer(player)
+	hub.mu.Unlock()
+
+	cmd, ok, reason := hub.UpdateIntent("player-1", 1, 0, "")
+	if !ok {
+		t.Fatalf("expected command to enqueue, got reason %q", reason)
+	}
+	if !cmd.IssuedAt.Equal(ts) {
+		t.Fatalf("expected command IssuedAt to use engine clock, got %v", cmd.IssuedAt)
+	}
+}
+
+func TestHubLogfUsesEngineLogger(t *testing.T) {
+	hub := newHub()
+	var buf bytes.Buffer
+	logger := stdlog.New(&buf, "", 0)
+	hub.engine = &stubEngine{deps: sim.Deps{Logger: logger}}
+
+	hub.logf("hello %s", "world")
+
+	if got := buf.String(); got != "hello world\n" {
+		t.Fatalf("expected log output to use injected logger, got %q", got)
 	}
 }

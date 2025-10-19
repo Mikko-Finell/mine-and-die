@@ -65,7 +65,7 @@ func TestJournalEvictsByAge(t *testing.T) {
 
 func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 	journal := newJournal(0, 0)
-	journal.AttachTelemetry(newTelemetryCounters())
+	journal.AttachTelemetry(newTelemetryCounters(nil))
 
 	extra := map[string]int{"damage": 15}
 	params := map[string]int{"damage": 15}
@@ -148,7 +148,7 @@ func TestJournalRecordsEffectEventsWithSequences(t *testing.T) {
 
 func TestJournalDropsNonMonotonicSequences(t *testing.T) {
 	journal := newJournal(0, 0)
-	telemetry := newTelemetryCounters()
+	telemetry := newTelemetryCounters(nil)
 	journal.AttachTelemetry(telemetry)
 
 	spawn := journal.RecordEffectSpawn(effectcontract.EffectSpawnEvent{Tick: 1, Instance: effectcontract.EffectInstance{ID: "effect-1"}})
@@ -179,7 +179,7 @@ func TestJournalDropsNonMonotonicSequences(t *testing.T) {
 
 func TestJournalDropsUnknownEffectUpdates(t *testing.T) {
 	journal := newJournal(0, 0)
-	telemetry := newTelemetryCounters()
+	telemetry := newTelemetryCounters(nil)
 	journal.AttachTelemetry(telemetry)
 
 	dropped := journal.RecordEffectUpdate(effectcontract.EffectUpdateEvent{Tick: 5, ID: "effect-x", Seq: 1})
@@ -219,7 +219,7 @@ func TestJournalResyncHintOnLostSpawn(t *testing.T) {
 
 func TestJournalDropsUpdatesAfterEnd(t *testing.T) {
 	journal := newJournal(0, 0)
-	telemetry := newTelemetryCounters()
+	telemetry := newTelemetryCounters(nil)
 	journal.AttachTelemetry(telemetry)
 
 	journal.RecordEffectSpawn(effectcontract.EffectSpawnEvent{Tick: 10, Instance: effectcontract.EffectInstance{ID: "effect-1"}})

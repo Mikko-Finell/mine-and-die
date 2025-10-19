@@ -6,10 +6,11 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	"mine-and-die/server/logging"
 )
 
 func TestTelemetryEffectParitySnapshot(t *testing.T) {
-	counters := newTelemetryCounters()
+	counters := newTelemetryCounters(nil)
 	for i := 0; i < 10; i++ {
 		counters.RecordTickDuration(16 * time.Millisecond)
 	}
@@ -72,7 +73,7 @@ func TestTelemetryEffectParitySnapshot(t *testing.T) {
 }
 
 func TestTelemetryTickBudgetOverrunMetrics(t *testing.T) {
-	counters := newTelemetryCounters()
+	counters := newTelemetryCounters(nil)
 	budget := time.Second / time.Duration(tickRate)
 
 	if streak := counters.RecordTickBudgetOverrun(budget+budget/2, budget); streak != 1 {
@@ -140,5 +141,130 @@ func TestTelemetryTickBudgetOverrunMetrics(t *testing.T) {
 	}
 	if math.Abs(tickBudget.LastAlarmRatio-2.75) > 1e-9 {
 		t.Fatalf("expected last alarm ratio to persist at 2.75, got %.4f", tickBudget.LastAlarmRatio)
+	}
+}
+
+func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
+	metrics := &logging.Metrics{}
+	counters := newTelemetryCounters(metrics)
+
+	counters.RecordBroadcast(64, 3)
+
+	duration := 15 * time.Millisecond
+	counters.RecordTickDuration(duration)
+
+	budget := time.Second / time.Duration(tickRate)
+	overrun := budget + budget/2
+	counters.RecordTickBudgetOverrun(overrun, budget)
+	counters.RecordTickBudgetAlarm(42, 2.5)
+	counters.ResetTickBudgetOverrunStreak()
+
+	counters.RecordKeyframeJournal(5, 10, 20)
+	counters.RecordKeyframeRequest(25*time.Millisecond, true)
+	counters.RecordKeyframeRequest(0, false)
+	counters.IncrementKeyframeExpired()
+	counters.IncrementKeyframeRateLimited()
+
+	counters.RecordEffectsActive(7)
+	counters.RecordEffectSpawned("fireball", "wizard")
+	counters.RecordEffectUpdated("fireball", "spread")
+	counters.RecordEffectEnded("fireball", "timeout")
+	counters.RecordEffectSpatialOverflow("fireball")
+	counters.RecordEffectTrigger("chain")
+
+	snapshot := metrics.Snapshot()
+	if got := snapshot[metricKeyBroadcastTotal]; got != 1 {
+		t.Fatalf("expected broadcast total 1, got %d", got)
+	}
+	if got := snapshot[metricKeyBroadcastBytesTotal]; got != 64 {
+		t.Fatalf("expected broadcast bytes 64, got %d", got)
+	}
+	if got := snapshot[metricKeyBroadcastEntitiesTotal]; got != 3 {
+		t.Fatalf("expected broadcast entities 3, got %d", got)
+	}
+	if got := snapshot[metricKeyBroadcastLastBytes]; got != 64 {
+		t.Fatalf("expected last broadcast bytes 64, got %d", got)
+	}
+	if got := snapshot[metricKeyBroadcastLastEntities]; got != 3 {
+		t.Fatalf("expected last broadcast entities 3, got %d", got)
+	}
+	if got := snapshot[metricKeyTickDurationMillis]; got != uint64(duration.Milliseconds()) {
+		t.Fatalf("expected tick duration %d, got %d", duration.Milliseconds(), got)
+	}
+	if got := snapshot[metricKeyTickTotal]; got != 1 {
+		t.Fatalf("expected tick total 1, got %d", got)
+	}
+	if got := snapshot[metricKeyTickBudgetOverrunTotal]; got != 1 {
+		t.Fatalf("expected overrun total 1, got %d", got)
+	}
+	if got := snapshot[metricKeyTickBudgetOverrunLastMs]; got != uint64(overrun.Milliseconds()) {
+		t.Fatalf("expected overrun millis %d, got %d", overrun.Milliseconds(), got)
+	}
+	if got := snapshot[metricKeyTickBudgetBudgetMillis]; got != uint64(budget.Milliseconds()) {
+		t.Fatalf("expected budget millis %d, got %d", budget.Milliseconds(), got)
+	}
+	if got := snapshot[metricKeyTickBudgetStreakCurrent]; got != 0 {
+		t.Fatalf("expected current streak reset to 0, got %d", got)
+	}
+	if got := snapshot[metricKeyTickBudgetStreakMax]; got != 1 {
+		t.Fatalf("expected max streak 1, got %d", got)
+	}
+	expectedRatioBits := math.Float64bits(float64(overrun) / float64(budget))
+	if got := snapshot[metricKeyTickBudgetRatioBits]; got != expectedRatioBits {
+		t.Fatalf("expected ratio bits %d, got %d", expectedRatioBits, got)
+	}
+	if got := snapshot[metricKeyTickBudgetAlarmTotal]; got != 1 {
+		t.Fatalf("expected alarm total 1, got %d", got)
+	}
+	if got := snapshot[metricKeyTickBudgetAlarmLastTick]; got != 42 {
+		t.Fatalf("expected last alarm tick 42, got %d", got)
+	}
+	expectedAlarmRatioBits := math.Float64bits(2.5)
+	if got := snapshot[metricKeyTickBudgetAlarmRatioBits]; got != expectedAlarmRatioBits {
+		t.Fatalf("expected alarm ratio bits %d, got %d", expectedAlarmRatioBits, got)
+	}
+	if got := snapshot[metricKeyKeyframeJournalSize]; got != 5 {
+		t.Fatalf("expected keyframe journal size 5, got %d", got)
+	}
+	if got := snapshot[metricKeyKeyframeOldestSequence]; got != 10 {
+		t.Fatalf("expected oldest keyframe sequence 10, got %d", got)
+	}
+	if got := snapshot[metricKeyKeyframeNewestSequence]; got != 20 {
+		t.Fatalf("expected newest keyframe sequence 20, got %d", got)
+	}
+	if got := snapshot[metricKeyKeyframeRequestsTotal]; got != 2 {
+		t.Fatalf("expected keyframe request total 2, got %d", got)
+	}
+	if got := snapshot[metricKeyKeyframeRequestLatencyMs]; got != 25 {
+		t.Fatalf("expected keyframe latency 25ms, got %d", got)
+	}
+	if got := snapshot[metricKeyKeyframeNackExpiredTotal]; got != 1 {
+		t.Fatalf("expected keyframe expired total 1, got %d", got)
+	}
+	if got := snapshot[metricKeyKeyframeNackRateLimited]; got != 1 {
+		t.Fatalf("expected keyframe rate limited total 1, got %d", got)
+	}
+	if got := snapshot[metricKeyEffectsActiveGauge]; got != 7 {
+		t.Fatalf("expected effects active gauge 7, got %d", got)
+	}
+	spawnedKey := metricKeyEffectsSpawnedTotalPrefix + "/fireball/wizard"
+	if got := snapshot[spawnedKey]; got != 1 {
+		t.Fatalf("expected spawned metric 1, got %d", got)
+	}
+	updatedKey := metricKeyEffectsUpdatedTotalPrefix + "/fireball/spread"
+	if got := snapshot[updatedKey]; got != 1 {
+		t.Fatalf("expected updated metric 1, got %d", got)
+	}
+	endedKey := metricKeyEffectsEndedTotalPrefix + "/fireball/timeout"
+	if got := snapshot[endedKey]; got != 1 {
+		t.Fatalf("expected ended metric 1, got %d", got)
+	}
+	overflowKey := metricKeyEffectsSpatialOverflow + "/fireball"
+	if got := snapshot[overflowKey]; got != 1 {
+		t.Fatalf("expected spatial overflow metric 1, got %d", got)
+	}
+	triggerKey := metricKeyEffectTriggersEnqueued + "/chain"
+	if got := snapshot[triggerKey]; got != 1 {
+		t.Fatalf("expected trigger metric 1, got %d", got)
 	}
 }

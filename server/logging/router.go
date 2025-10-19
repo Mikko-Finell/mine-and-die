@@ -21,15 +21,66 @@ type Metrics struct {
 	eventsDroppedTotal atomic.Uint64
 	sinkErrorsTotal    atomic.Uint64
 	sinkDisabledTotal  atomic.Uint64
+	telemetry          sync.Map // string -> *atomic.Uint64
 }
 
 // Snapshot returns a copy of the metrics counters.
 func (m *Metrics) Snapshot() map[string]uint64 {
-	return map[string]uint64{
+	snapshot := map[string]uint64{
 		"events_total":         m.eventsTotal.Load(),
 		"events_dropped_total": m.eventsDroppedTotal.Load(),
 		"sink_errors_total":    m.sinkErrorsTotal.Load(),
 		"sink_disabled_total":  m.sinkDisabledTotal.Load(),
+	}
+	m.telemetry.Range(func(key, value any) bool {
+		name, ok := key.(string)
+		if !ok || name == "" {
+			return true
+		}
+		counter, ok := value.(*atomic.Uint64)
+		if !ok || counter == nil {
+			return true
+		}
+		snapshot[name] = counter.Load()
+		return true
+	})
+	return snapshot
+}
+
+func (m *Metrics) telemetryCounter(key string) *atomic.Uint64 {
+	if m == nil || key == "" {
+		return nil
+	}
+	if counter, ok := m.telemetry.Load(key); ok {
+		if typed, ok := counter.(*atomic.Uint64); ok {
+			return typed
+		}
+	}
+	fresh := &atomic.Uint64{}
+	actual, _ := m.telemetry.LoadOrStore(key, fresh)
+	if counter, ok := actual.(*atomic.Uint64); ok {
+		return counter
+	}
+	return fresh
+}
+
+// TelemetryAdd increments the named telemetry counter by the provided delta.
+func (m *Metrics) TelemetryAdd(key string, delta uint64) {
+	if m == nil || delta == 0 {
+		return
+	}
+	if counter := m.telemetryCounter(key); counter != nil {
+		counter.Add(delta)
+	}
+}
+
+// TelemetryStore records the provided value for the named telemetry gauge.
+func (m *Metrics) TelemetryStore(key string, value uint64) {
+	if m == nil {
+		return
+	}
+	if counter := m.telemetryCounter(key); counter != nil {
+		counter.Store(value)
 	}
 }
 
