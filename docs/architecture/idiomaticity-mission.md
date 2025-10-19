@@ -35,6 +35,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Added a regression test to ensure the `drop_gold` console command broadcasts
   ground items from the `sim.Engine` snapshot, protecting the new read path from
   future regressions.
+- Added a regression test to ensure the `pickup_gold` console command consults
+  the `sim.Engine` snapshot when broadcasting, covering the complementary read
+  path.
 
 ### Next task
 
@@ -49,8 +52,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       source snapshots via `sim.Engine` instead of accessing `World`.
 - [x] Add a hub console command test proving ground-item broadcasts consult the
       `sim.Engine` snapshot instead of reading `World` directly.
-- [ ] Add a hub console command test proving gold pickup broadcasts consult the
+- [x] Add a hub console command test proving gold pickup broadcasts consult the
       `sim.Engine` snapshot instead of reading `World` directly.
+- [ ] Add a hub tick broadcast test proving `RunSimulation` fan-out pulls ground
+      items from the `sim.Engine` snapshot so the adapter stays authoritative.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
