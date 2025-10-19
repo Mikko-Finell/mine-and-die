@@ -1132,40 +1132,94 @@ func (h *Hub) shouldIncludeSnapshot() bool {
 func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	h.mu.Lock()
 	engine := h.engine
-	if includeSnapshot {
-		needSnapshot := players == nil || npcs == nil
-		needGround := groundItems == nil
-		needTriggers := triggers == nil
-		if needSnapshot || needGround || needTriggers {
-			snapPlayers, snapNPCs, snapTriggers, snapGround := h.legacySnapshotLocked(needGround, needTriggers)
+	var (
+		aliveEffectIDs []string
+		obstacles      []Obstacle
+	)
+	if engine != nil {
+		snapshot := engine.Snapshot()
+		if includeSnapshot {
 			if players == nil {
-				players = snapPlayers
+				players = legacyPlayersFromSim(snapshot.Players)
+				if players == nil {
+					players = make([]Player, 0)
+				}
 			}
 			if npcs == nil {
-				npcs = snapNPCs
+				npcs = legacyNPCsFromSim(snapshot.NPCs)
+				if npcs == nil {
+					npcs = make([]NPC, 0)
+				}
 			}
-			if groundItems == nil && needGround {
-				groundItems = snapGround
+			if groundItems == nil {
+				groundItems = legacyGroundItemsFromSim(snapshot.GroundItems)
+				if groundItems == nil {
+					groundItems = make([]GroundItem, 0)
+				}
 			}
-			if triggers == nil && needTriggers {
-				triggers = snapTriggers
+			if triggers == nil {
+				triggers = legacyEffectTriggersFromSim(snapshot.EffectEvents)
+				if triggers == nil {
+					triggers = make([]EffectTrigger, 0)
+				}
+			}
+			obstacles = legacyObstaclesFromSim(snapshot.Obstacles)
+		} else if triggers == nil {
+			triggers = make([]EffectTrigger, 0)
+		}
+		if len(snapshot.AliveEffectIDs) > 0 {
+			aliveEffectIDs = make([]string, 0, len(snapshot.AliveEffectIDs))
+			for _, id := range snapshot.AliveEffectIDs {
+				if id == "" {
+					continue
+				}
+				aliveEffectIDs = append(aliveEffectIDs, id)
+			}
+			if len(aliveEffectIDs) == 0 {
+				aliveEffectIDs = nil
 			}
 		}
-	} else if triggers == nil {
-		triggers = make([]EffectTrigger, 0)
+	} else {
+		if includeSnapshot {
+			needSnapshot := players == nil || npcs == nil
+			needGround := groundItems == nil
+			needTriggers := triggers == nil
+			if needSnapshot || needGround || needTriggers {
+				snapPlayers, snapNPCs, snapTriggers, snapGround := h.legacySnapshotLocked(needGround, needTriggers)
+				if players == nil {
+					players = snapPlayers
+				}
+				if npcs == nil {
+					npcs = snapNPCs
+				}
+				if groundItems == nil && needGround {
+					groundItems = snapGround
+				}
+				if triggers == nil && needTriggers {
+					triggers = snapTriggers
+				}
+			}
+		} else if triggers == nil {
+			triggers = make([]EffectTrigger, 0)
+		}
+		if groundItems == nil {
+			groundItems = make([]GroundItem, 0)
+		}
+		if len(h.world.effects) > 0 {
+			aliveEffectIDs = make([]string, 0, len(h.world.effects))
+			for _, eff := range h.world.effects {
+				if eff == nil || eff.ID == "" {
+					continue
+				}
+				aliveEffectIDs = append(aliveEffectIDs, eff.ID)
+			}
+		}
+		if includeSnapshot {
+			obstacles = append([]Obstacle(nil), h.world.obstacles...)
+		}
 	}
 	if groundItems == nil {
 		groundItems = make([]GroundItem, 0)
-	}
-	var aliveEffectIDs []string
-	if len(h.world.effects) > 0 {
-		aliveEffectIDs = make([]string, 0, len(h.world.effects))
-		for _, eff := range h.world.effects {
-			if eff == nil || eff.ID == "" {
-				continue
-			}
-			aliveEffectIDs = append(aliveEffectIDs, eff.ID)
-		}
 	}
 	var (
 		patches                 []Patch
@@ -1188,28 +1242,21 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	} else {
 		patches = h.world.snapshotPatchesLocked()
 	}
-	obstacles := []Obstacle(nil)
-	if includeSnapshot {
-		obstacles = append([]Obstacle(nil), h.world.obstacles...)
-	}
 	cfg := h.config
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
-	effectManagerPresent := h.world.effectManager != nil
-	effectTransportEnabled := effectManagerPresent && engine != nil
+	effectTransportEnabled := engine != nil
 	h.mu.Unlock()
 
 	effectBatch := EffectEventBatch{}
 	simEffectBatch := sim.EffectEventBatch{}
-	if effectManagerPresent {
-		if engine != nil {
-			if drainPatches {
-				simEffectBatch = engine.DrainEffectEvents()
-			} else {
-				simEffectBatch = engine.SnapshotEffectEvents()
-			}
-			effectBatch = legacyEffectEventBatchFromSim(simEffectBatch)
+	if engine != nil {
+		if drainPatches {
+			simEffectBatch = engine.DrainEffectEvents()
+		} else {
+			simEffectBatch = engine.SnapshotEffectEvents()
 		}
+		effectBatch = legacyEffectEventBatchFromSim(simEffectBatch)
 	}
 
 	if patches == nil {
@@ -1387,10 +1434,8 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 			} else if len(restorableLegacyPatches) > 0 {
 				h.world.journal.RestorePatches(restorableLegacyPatches)
 			}
-			if effectManagerPresent {
-				if engine != nil {
-					engine.RestoreEffectEvents(simEffectBatch)
-				}
+			if effectTransportEnabled {
+				engine.RestoreEffectEvents(simEffectBatch)
 			}
 			h.mu.Unlock()
 		}

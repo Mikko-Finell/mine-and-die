@@ -64,11 +64,15 @@ func (a *legacyEngineAdapter) Snapshot() sim.Snapshot {
 	players, npcs := a.world.Snapshot(a.pendingNow)
 	groundItems := a.world.GroundItemsSnapshot()
 	triggers := a.world.flushEffectTriggersLocked()
+	obstacles := a.world.obstacles
+	aliveEffectIDs := simAliveEffectIDsFromLegacy(a.world.effects)
 	return sim.Snapshot{
-		Players:      simPlayersFromLegacy(players),
-		NPCs:         simNPCsFromLegacy(npcs),
-		GroundItems:  simGroundItemsFromLegacy(groundItems),
-		EffectEvents: simEffectTriggersFromLegacy(triggers),
+		Players:        simPlayersFromLegacy(players),
+		NPCs:           simNPCsFromLegacy(npcs),
+		GroundItems:    simGroundItemsFromLegacy(groundItems),
+		EffectEvents:   simEffectTriggersFromLegacy(triggers),
+		Obstacles:      simObstaclesFromLegacy(obstacles),
+		AliveEffectIDs: aliveEffectIDs,
 	}
 }
 
@@ -493,6 +497,23 @@ func legacyObstaclesFromSim(obstacles []sim.Obstacle) []Obstacle {
 		}
 	}
 	return converted
+}
+
+func simAliveEffectIDsFromLegacy(effects []*effectState) []string {
+	if len(effects) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(effects))
+	for _, eff := range effects {
+		if eff == nil || eff.ID == "" {
+			continue
+		}
+		ids = append(ids, eff.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
 }
 
 func simWorldConfigFromLegacy(cfg worldConfig) sim.WorldConfig {

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
 )
@@ -164,5 +165,43 @@ func TestMarshalStateRetainsEffectPatches(t *testing.T) {
 		if wantKinds[i] != kind {
 			t.Fatalf("expected effect patch order %v, got %v", wantKinds, effectPatchKinds)
 		}
+	}
+}
+
+func TestMarshalStateUsesFacadeEffectIDsForFiltering(t *testing.T) {
+	hub := newHub()
+
+	effectID := "engine-effect"
+
+	hub.mu.Lock()
+	hub.world.appendPatch(PatchEffectParams, effectID, EffectParamsPayload{Params: map[string]float64{"radius": 1}})
+	hub.world.effects = nil
+	hub.mu.Unlock()
+
+	snapshot := sim.Snapshot{AliveEffectIDs: []string{effectID}}
+	engine := newRecordingSimEngine(snapshot)
+	t.Cleanup(engine.AllowFurtherSnapshots)
+	hub.engine = engine
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, false, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state message: %v", err)
+	}
+
+	found := false
+	for _, patch := range msg.Patches {
+		if patch.EntityID == effectID && patch.Kind == PatchEffectParams {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("expected effect patch for %q to survive filtering when provided by engine snapshot", effectID)
 	}
 }

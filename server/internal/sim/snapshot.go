@@ -59,8 +59,10 @@ type GroundItem struct {
 
 // Snapshot captures the state exposed to non-simulation callers.
 type Snapshot struct {
-	Players      []Player        `json:"players,omitempty"`
-	NPCs         []NPC           `json:"npcs,omitempty"`
-	GroundItems  []GroundItem    `json:"groundItems,omitempty"`
-	EffectEvents []EffectTrigger `json:"effectTriggers,omitempty"`
+	Players        []Player        `json:"players,omitempty"`
+	NPCs           []NPC           `json:"npcs,omitempty"`
+	GroundItems    []GroundItem    `json:"groundItems,omitempty"`
+	EffectEvents   []EffectTrigger `json:"effectTriggers,omitempty"`
+	Obstacles      []Obstacle      `json:"obstacles,omitempty"`
+	AliveEffectIDs []string        `json:"aliveEffectIDs,omitempty"`
 }
