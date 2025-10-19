@@ -110,7 +110,7 @@ _none_
   - [ ] Carve out `ai/` for NPC logic and behaviors.
   - [ ] Others as needed. Possibly `net/` etc if it makes sense.
 - [ ] Route mutations only through `journal` APIs to record diffs.
-- [ ] Keep each subsystem ≤300 LOC per file with dedicated unit tests.
+- Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**
 
