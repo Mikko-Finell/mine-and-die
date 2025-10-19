@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/logging"
 	loggingSinks "mine-and-die/server/logging/sinks"
 )
@@ -335,7 +336,7 @@ func main() {
 				return writeJSON(ack)
 			}
 
-			sendCommandAck := func(cmd Command) bool {
+			sendCommandAck := func(cmd sim.Command) bool {
 				if normalizedSeq == 0 {
 					return true
 				}

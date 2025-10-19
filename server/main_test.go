@@ -160,13 +160,13 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	joined := hub.Join()
 	playerID := joined.ID
 
-	hub.enqueueCommand(Command{
+	hub.enqueueCommand(sim.Command{
 		ActorID: playerID,
-		Type:    CommandMove,
-		Move: &MoveCommand{
+		Type:    sim.CommandMove,
+		Move: &sim.MoveCommand{
 			DX:     1,
 			DY:     0,
-			Facing: FacingRight,
+			Facing: toSimFacing(FacingRight),
 		},
 	})
 

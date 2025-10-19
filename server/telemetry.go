@@ -511,14 +511,14 @@ func (t *telemetryCounters) RecordJournalDrop(reason string) {
 	t.journalDrops.add(reason, 1)
 }
 
-func (t *telemetryCounters) RecordCommandDropped(reason string, cmdType CommandType) {
+func (t *telemetryCounters) RecordCommandDropped(reason string, cmdType string) {
 	if t == nil {
 		return
 	}
 	if reason == "" {
 		reason = "unknown"
 	}
-	secondary := string(cmdType)
+	secondary := cmdType
 	if secondary == "" {
 		secondary = "unknown"
 	}

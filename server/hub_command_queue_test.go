@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"mine-and-die/server/internal/sim"
+)
 
 func TestEnqueueCommandEnforcesPerActorLimit(t *testing.T) {
 	hub := newHub()
@@ -9,12 +13,12 @@ func TestEnqueueCommandEnforcesPerActorLimit(t *testing.T) {
 	actorB := "player-b"
 
 	for i := 0; i < commandQueuePerActorLimit; i++ {
-		hub.enqueueCommand(Command{ActorID: actorA, Type: CommandMove, Move: &MoveCommand{DX: 1}})
+		hub.enqueueCommand(sim.Command{ActorID: actorA, Type: sim.CommandMove, Move: &sim.MoveCommand{DX: 1}})
 	}
 
-	hub.enqueueCommand(Command{ActorID: actorB, Type: CommandMove, Move: &MoveCommand{DY: 1}})
+	hub.enqueueCommand(sim.Command{ActorID: actorB, Type: sim.CommandMove, Move: &sim.MoveCommand{DY: 1}})
 
-	hub.enqueueCommand(Command{ActorID: actorA, Type: CommandMove, Move: &MoveCommand{DX: -1}})
+	hub.enqueueCommand(sim.Command{ActorID: actorA, Type: sim.CommandMove, Move: &sim.MoveCommand{DX: -1}})
 
 	commands := hub.drainCommands()
 
@@ -45,7 +49,7 @@ func TestEnqueueCommandEnforcesPerActorLimit(t *testing.T) {
 	if dropsByReason == nil {
 		t.Fatalf("expected command drops to be recorded")
 	}
-	if dropsByReason[string(CommandMove)] != 1 {
-		t.Fatalf("expected 1 drop recorded for move commands, got %d", dropsByReason[string(CommandMove)])
+	if dropsByReason[string(sim.CommandMove)] != 1 {
+		t.Fatalf("expected 1 drop recorded for move commands, got %d", dropsByReason[string(sim.CommandMove)])
 	}
 }
