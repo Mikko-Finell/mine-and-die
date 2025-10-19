@@ -6,6 +6,7 @@ type Engine interface {
 	Step()
 	Snapshot() Snapshot
 	DrainPatches() []Patch
+	RestorePatches([]Patch)
 	DrainEffectEvents() EffectEventBatch
 	SnapshotEffectEvents() EffectEventBatch
 	RestoreEffectEvents(EffectEventBatch)

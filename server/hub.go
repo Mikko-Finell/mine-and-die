@@ -1131,6 +1131,7 @@ func (h *Hub) shouldIncludeSnapshot() bool {
 
 func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	h.mu.Lock()
+	engine := h.engine
 	if includeSnapshot {
 		needSnapshot := players == nil || npcs == nil
 		needGround := groundItems == nil
@@ -1167,17 +1168,22 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		}
 	}
 	var (
-		patches           []Patch
-		restorablePatches []Patch
+		patches                 []Patch
+		restorableLegacyPatches []Patch
+		restorableSimPatches    []sim.Patch
 	)
 	if drainPatches {
-		if h.engine != nil {
-			patches = legacyPatchesFromSim(h.engine.DrainPatches())
+		if engine != nil {
+			drained := engine.DrainPatches()
+			if len(drained) > 0 {
+				restorableSimPatches = append([]sim.Patch(nil), drained...)
+			}
+			patches = legacyPatchesFromSim(drained)
 		} else {
 			patches = h.world.drainPatchesLocked()
 		}
-		if len(patches) > 0 {
-			restorablePatches = append([]Patch(nil), patches...)
+		if len(patches) > 0 && engine == nil {
+			restorableLegacyPatches = append([]Patch(nil), patches...)
 		}
 	} else {
 		patches = h.world.snapshotPatchesLocked()
@@ -1190,7 +1196,6 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
 	effectManagerPresent := h.world.effectManager != nil
-	engine := h.engine
 	effectTransportEnabled := effectManagerPresent && engine != nil
 	h.mu.Unlock()
 
@@ -1375,8 +1380,12 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	if err != nil {
 		if drainPatches {
 			h.mu.Lock()
-			if len(restorablePatches) > 0 {
-				h.world.journal.RestorePatches(restorablePatches)
+			if engine != nil {
+				if len(restorableSimPatches) > 0 {
+					engine.RestorePatches(restorableSimPatches)
+				}
+			} else if len(restorableLegacyPatches) > 0 {
+				h.world.journal.RestorePatches(restorableLegacyPatches)
 			}
 			if effectManagerPresent {
 				if engine != nil {

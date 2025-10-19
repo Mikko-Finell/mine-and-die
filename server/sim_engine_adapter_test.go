@@ -167,6 +167,59 @@ func TestSimPatchConversionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLegacyAdapterRestorePatches(t *testing.T) {
+	hub := newHub()
+
+	adapter, ok := hub.engine.(*legacyEngineAdapter)
+	if !ok || adapter == nil {
+		t.Fatalf("expected hub engine to be legacy adapter")
+	}
+
+	baseline := Patch{Kind: PatchNPCPos, EntityID: "npc-1", Payload: PositionPayload{X: 3, Y: 4}}
+	hub.world.journal.AppendPatch(baseline)
+
+	simPatches := []sim.Patch{
+		{
+			Kind:     sim.PatchPlayerFacing,
+			EntityID: "player-1",
+			Payload:  sim.PlayerFacingPayload{Facing: sim.FacingLeft},
+		},
+		{
+			Kind:     sim.PatchEffectParams,
+			EntityID: "effect-1",
+			Payload:  sim.EffectParamsPayload{Params: map[string]float64{"radius": 5}},
+		},
+	}
+
+	expectedRestored := legacyPatchesFromSim(simPatches)
+
+	adapter.RestorePatches(simPatches)
+
+	effectPayload := simPatches[1].Payload.(sim.EffectParamsPayload)
+	effectPayload.Params["radius"] = 9
+	simPatches[1].Payload = effectPayload
+
+	drained := hub.world.journal.DrainPatches()
+
+	if len(drained) != len(expectedRestored)+1 {
+		t.Fatalf("unexpected drained patch count: want %d got %d", len(expectedRestored)+1, len(drained))
+	}
+
+	for idx := range expectedRestored {
+		if !reflect.DeepEqual(expectedRestored[idx], drained[idx]) {
+			t.Fatalf("restored patch mismatch at %d\nwant: %#v\ngot: %#v", idx, expectedRestored[idx], drained[idx])
+		}
+	}
+
+	if !reflect.DeepEqual(drained[len(expectedRestored)], baseline) {
+		t.Fatalf("expected baseline patch to remain queued, got %#v", drained[len(expectedRestored)])
+	}
+
+	if qty := drained[1].Payload.(EffectParamsPayload).Params["radius"]; qty != 5 {
+		t.Fatalf("expected journal restore to deep copy params, got %v", qty)
+	}
+}
+
 func TestSimKeyframeConversionRoundTrip(t *testing.T) {
 	recordedAt := time.Unix(1700000100, 42).UTC()
 
