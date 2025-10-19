@@ -29,6 +29,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   the legacy world internals.
 - Updated hub disconnect and reset flows to read snapshots through the
   `sim.Engine` adapter so state fan-out no longer touches `World` directly.
+- Updated console `drop_gold`/`pickup_gold` broadcasts to pull ground-item
+  snapshots via `sim.Engine`, keeping manual debug flows off the legacy `World`
+  reads when fanning out state.
 
 ### Next task
 
@@ -39,8 +42,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       `sim.Engine` so read-only callers stop reaching into `World` internals.
 - [x] Update hub disconnect and reset flows to pull snapshots via `sim.Engine`
       so state fan-out no longer reads the legacy world directly.
-- [ ] Update hub console command flows that broadcast ground-item changes to
+- [x] Update hub console command flows that broadcast ground-item changes to
       source snapshots via `sim.Engine` instead of accessing `World`.
+- [ ] Add a hub console command test proving ground-item broadcasts consult the
+      `sim.Engine` snapshot instead of reading `World` directly.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
