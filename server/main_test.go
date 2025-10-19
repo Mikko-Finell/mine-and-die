@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
 )
@@ -66,6 +68,50 @@ func newTestPlayerState(id string) *playerState {
 func runAdvance(h *Hub, dt float64) ([]Player, []NPC) {
 	players, npcs, _, _, _ := h.advance(time.Now(), dt)
 	return players, npcs
+}
+
+type recordingSimEngine struct {
+	mu       sync.Mutex
+	snapshot sim.Snapshot
+	calls    int
+	gate     chan struct{}
+	gateOnce sync.Once
+}
+
+func newRecordingSimEngine(snapshot sim.Snapshot) *recordingSimEngine {
+	return &recordingSimEngine{snapshot: snapshot, gate: make(chan struct{})}
+}
+
+func (e *recordingSimEngine) Apply([]sim.Command) error { return nil }
+
+func (e *recordingSimEngine) Step() {}
+
+func (e *recordingSimEngine) Snapshot() sim.Snapshot {
+	e.mu.Lock()
+	callIndex := e.calls + 1
+	snapshot := e.snapshot
+	gate := e.gate
+	e.mu.Unlock()
+
+	if callIndex > 1 {
+		<-gate
+	}
+	e.mu.Lock()
+	e.calls++
+	e.mu.Unlock()
+	return snapshot
+}
+
+func (e *recordingSimEngine) DrainPatches() []sim.Patch { return nil }
+
+func (e *recordingSimEngine) Calls() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.calls
+}
+
+func (e *recordingSimEngine) AllowFurtherSnapshots() {
+	e.gateOnce.Do(func() { close(e.gate) })
 }
 
 func TestHubJoinCreatesPlayer(t *testing.T) {
@@ -2272,6 +2318,47 @@ func TestConsolePickupRaceHonoursFirstCollector(t *testing.T) {
 	if secondAck.Status != "error" || secondAck.Reason != "not_found" {
 		t.Fatalf("expected second pickup to fail with not_found, got %+v", secondAck)
 	}
+}
+
+func TestConsoleDropGoldBroadcastsGroundItemsFromSimEngine(t *testing.T) {
+	hub := newHubWithFullWorld()
+	player := newTestPlayerState("player-console-engine")
+	hub.world.AddPlayer(player)
+	if err := hub.world.MutateInventory(player.ID, func(inv *Inventory) error {
+		_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12})
+		return err
+	}); err != nil {
+		t.Fatalf("failed to seed gold: %v", err)
+	}
+
+	snapshot := sim.Snapshot{GroundItems: []sim.GroundItem{{
+		ID:             "engine-ground",
+		Type:           sim.ItemType(ItemTypeGold),
+		FungibilityKey: "engine-fungibility",
+		X:              42,
+		Y:              24,
+		Qty:            3,
+	}}}
+	engine := newRecordingSimEngine(snapshot)
+	t.Cleanup(engine.AllowFurtherSnapshots)
+	hub.engine = engine
+
+	ack, ok := hub.HandleConsoleCommand(player.ID, "drop_gold", 4)
+	if !ok {
+		t.Fatalf("expected drop command to be handled")
+	}
+	if ack.Status != "ok" {
+		t.Fatalf("expected drop ack to be ok, got %+v", ack)
+	}
+	if ack.StackID == snapshot.GroundItems[0].ID {
+		t.Fatalf("expected stack id to come from world, got engine sentinel %q", ack.StackID)
+	}
+
+	if calls := engine.Calls(); calls != 1 {
+		t.Fatalf("expected engine snapshot to be consulted exactly once, got %d", calls)
+	}
+
+	engine.AllowFurtherSnapshots()
 }
 
 func TestDeathDropsPlayerInventory(t *testing.T) {
