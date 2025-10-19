@@ -25,11 +25,11 @@ _none_
 
 ### Next task
 
-_
+- [ ] Document the next logical follow-up step.
 
-**Objective:** Create seams and invariants before moving code.
+- [ ] Objective: Create seams and invariants before moving code.
 
-* Introduce `internal/sim` façade that wraps the existing engine:
+- [ ] Introduce `internal/sim` façade that wraps the existing engine:
 
   ```go
   type Engine interface {
@@ -42,21 +42,21 @@ _
 
   All external callers (websocket, matchmaker, etc.) must use this façade instead of touching internals.
 
-* Add a **golden determinism test**:
+- [ ] Add a **golden determinism test**:
 
-  * Fixed seed, fixed command script, fixed number of ticks.
-  * Compute and assert checksum of patch/journal stream.
-  * Runs in CI to detect any behavioral drift.
+  - [ ] Set a fixed seed, command script, and tick count.
+  - [ ] Compute and assert the patch and journal checksum.
+  - [ ] Run the check in CI to detect behavioral drift.
 
-* Freeze **core data contracts**:
+- [ ] Freeze **core data contracts**:
 
-  * Command schema
-  * Patch/journal record format
-  * Tick, RNG, and sequence numbering rules
+  - [ ] Lock the command schema.
+  - [ ] Lock the patch and journal record format.
+  - [ ] Lock tick, RNG, and sequence numbering rules.
 
-* Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
+- [ ] Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
 
-* Begin passing injected dependencies (`Logger`, `Metrics`, `Clock`, `RNG`) via a `Deps` struct.
+- [ ] Pass injected dependencies (`Logger`, `Metrics`, `Clock`, `RNG`) via a `Deps` struct.
 
 *Outcome:* Simulation has a narrow interface and deterministic baseline; tests ensure safety.
 
@@ -64,105 +64,125 @@ _
 
 ## [NOT STARTED] Phase 1 — Structural Extraction
 
-**Objective:** Separate concerns without changing runtime behavior.
+- [ ] Objective: Separate concerns without changing runtime behavior.
 
-* Move process wiring to `/cmd/server` and `internal/app`.
-* Move networking into `internal/net`:
+### Next task
 
-  * `ws/` for websocket sessions and fan-out.
-  * `proto/` for message encode/decode and versioning.
-* All networking code converts messages → `sim.Command` and reads `sim.Patch`/`Snapshot` — no direct state access.
-* Introduce `telemetry` package for `Logger` and `Metrics` interfaces.
-* Replace global loggers or random seeds with injected dependencies.
+- [ ] Document the next logical follow-up step.
+
+- [ ] Move process wiring into `/cmd/server` and `internal/app`.
+- [ ] Move networking into `internal/net`:
+
+  - [ ] Add `ws/` for websocket sessions and fan-out.
+  - [ ] Add `proto/` for message encode/decode and versioning.
+- [ ] Convert all networking code to map messages → `sim.Command` and read `sim.Patch`/`Snapshot` without direct state access.
+- [ ] Introduce `telemetry` package for `Logger` and `Metrics` interfaces.
+- [ ] Replace global loggers or random seeds with injected dependencies.
 
 **Definition of done:**
 
-* All non-simulation code talks only to `internal/sim`.
-* No new `context.Background()` created inside the loop.
-* Golden determinism test passes unchanged.
+- [ ] Keep all non-simulation code talking only to `internal/sim`.
+- [ ] Avoid creating new `context.Background()` inside the loop.
+- [ ] Keep the golden determinism test passing unchanged.
 
 ---
 
 ## [NOT STARTED] Phase 2 — Simulation Decomposition
 
-**Objective:** Split the monolithic simulation into smaller packages with explicit ownership.
+- [ ] Objective: Split the monolithic simulation into smaller packages with explicit ownership.
 
-* Keep the tick loop in `sim/engine`:
+### Next task
 
-  * Owns fixed timestep, command queue, tick progression.
-  * Uses a **ring buffer** (`CommandBuffer`) for deterministic input, not unbounded channels.
-* Extract subpackages:
+- [ ] Document the next logical follow-up step.
 
-  * `world/` – tiles, spatial index, RNG/time, map helpers
-  * `journal/` – write-barriers and diff recording
-  * `effects/` – authoritative visual events
-  * `combat/` – hit/damage rules
-  * `stats/` – actor stats
-  * `items/` – items and quipment
-  * `ai/` – NPC logic and behaviors
-* Mutations go only through `journal` APIs to record diffs.
-* Each subsystem has ≤300 LOC per file and its own unit tests.
+- [ ] Keep the tick loop in `sim/engine`:
+
+  - [ ] Maintain the fixed timestep, command queue, and tick progression inside the engine.
+  - [ ] Use a **ring buffer** (`CommandBuffer`) for deterministic input instead of unbounded channels.
+- [ ] Extract subpackages:
+
+  - [ ] Carve out `world/` for tiles, spatial index, RNG/time, and map helpers.
+  - [ ] Carve out `journal/` for write-barriers and diff recording.
+  - [ ] Carve out `effects/` for authoritative visual events.
+  - [ ] Carve out `combat/` for hit and damage rules.
+  - [ ] Carve out `stats/` for actor stats.
+  - [ ] Carve out `items/` for items and equipment.
+  - [ ] Carve out `ai/` for NPC logic and behaviors.
+- [ ] Route mutations only through `journal` APIs to record diffs.
+- [ ] Keep each subsystem ≤300 LOC per file with dedicated unit tests.
 
 **Definition of done:**
 
-* Engine depends downward (`engine → world → journal`).
-* No cycles between subpackages.
-* Golden determinism test passes.
+- [ ] Ensure the engine depends downward (`engine → world → journal`).
+- [ ] Keep subpackages acyclic.
+- [ ] Keep the golden determinism test passing.
 
 ---
 
 ## [NOT STARTED] Phase 3 — IO and Concurrency Cleanup
 
-**Objective:** Push all concurrency to the perimeter.
+- [ ] Objective: Push all concurrency to the perimeter.
 
-* Each client connection has its own writer goroutine and bounded send queue.
-* Hub and match systems coordinate but never block the simulation tick.
-* Replace ad-hoc broadcast loops with fan-out queues using metrics (queue depth, drops).
-* Add latency/tick metrics: p50/p95 tick duration, send queue stats.
-* Compare histograms before/after refactor to confirm no performance regression.
+### Next task
+
+- [ ] Document the next logical follow-up step.
+
+- [ ] Give each client connection its own writer goroutine and bounded send queue.
+- [ ] Coordinate hub and match systems without blocking the simulation tick.
+- [ ] Replace ad-hoc broadcast loops with metrics-backed fan-out queues (queue depth, drops).
+- [ ] Add latency and tick metrics for p50/p95 duration and send queue stats.
+- [ ] Compare histograms before and after the refactor to confirm no performance regression.
 
 **Definition of done:**
 
-* Simulation tick remains single-threaded.
-* WS and HTTP run in separate goroutines with clear boundaries.
-* Golden test still passes; tick latency at or below baseline.
+- [ ] Keep the simulation tick single-threaded.
+- [ ] Keep WS and HTTP in separate goroutines with clear boundaries.
+- [ ] Keep the golden test passing with tick latency at or below baseline.
 
 ---
 
 ## [NOT STARTED] Phase 4 — Typed Contracts & Versioning
 
-**Objective:** Solidify data interchange formats and backward compatibility.
+- [ ] Objective: Solidify data interchange formats and backward compatibility.
 
-* Replace untyped patch maps with typed structs under `sim/patches`.
-* Add versioned encoders in `net/proto`; keep a compatibility layer for one release cycle.
-* Freeze serialization format and validate via property tests (decode→encode→decode).
-* Introduce `Version` field in client protocol messages.
-* Update CI to fail on incompatible schema changes unless a migration flag is set.
+### Next task
+
+- [ ] Document the next logical follow-up step.
+
+- [ ] Replace untyped patch maps with typed structs under `sim/patches`.
+- [ ] Add versioned encoders in `net/proto`; keep a compatibility layer for one release cycle.
+- [ ] Freeze serialization format and validate via property tests (decode→encode→decode).
+- [ ] Introduce `Version` field in client protocol messages.
+- [ ] Update CI to fail on incompatible schema changes unless a migration flag is set.
 
 **Definition of done:**
 
-* Patches, snapshots, and messages are typed and versioned.
-* Older clients can still connect with compatibility mode.
-* Golden test passes identical checksums.
+- [ ] Keep patches, snapshots, and messages typed and versioned.
+- [ ] Keep compatibility mode available for older clients.
+- [ ] Keep the golden test producing identical checksums.
 
 ---
 
 ## [NOT STARTED] Phase 5 — Observability, Style, and Maintenance
 
-**Objective:** Prevent regression and ensure future maintainability.
+- [ ] Objective: Prevent regression and ensure future maintainability.
 
-* Integrate `pprof` and optional tracing endpoints under `/debug/pprof/`.
-* Add `make deps-check` to enforce import boundaries (`net/*` must not import `sim/*` internals).
-* Configure `golangci-lint` with cyclomatic limits and forbid package cycles.
-* Add CI race detection (`go test -race ./...`).
-* Commit a concise `ARCHITECTURE.md` and `STYLE.md` next to the code, not only in docs.
-* Document dependency rules and testing expectations.
+### Next task
+
+- [ ] Document the next logical follow-up step.
+
+- [ ] Integrate `pprof` and optional tracing endpoints under `/debug/pprof/`.
+- [ ] Add `make deps-check` to enforce import boundaries (`net/*` must not import `sim/*` internals).
+- [ ] Configure `golangci-lint` with cyclomatic limits and forbid package cycles.
+- [ ] Add CI race detection (`go test -race ./...`).
+- [ ] Commit a concise `ARCHITECTURE.md` and `STYLE.md` next to the code, not only in docs.
+- [ ] Document dependency rules and testing expectations.
 
 **Definition of done:**
 
-* All phases complete with no determinism drift.
-* CI enforces architecture, tests, lint, and race checks.
-* Codebase conforms to Go idioms: small packages, clear ownership, explicit deps.
+- [ ] Confirm all phases complete with no determinism drift.
+- [ ] Ensure CI enforces architecture, tests, lint, and race checks.
+- [ ] Ensure the codebase conforms to Go idioms: small packages, clear ownership, explicit dependencies.
 
 ---
 
