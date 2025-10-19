@@ -48,6 +48,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Captured the determinism harness' patch and journal checksums as committed
   constants and taught the harness test to fail on drift, preserving the
   baseline record.
+- Added adapter round-trip tests that verify `internal/sim` commands,
+  snapshots, and patches stay in lockstep with the legacy hub structures so the
+  façade data contract cannot drift silently.
 
 ### Next task
 
@@ -74,13 +77,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Promote the determinism harness into a golden test that asserts the
       recorded checksums against the committed baseline constants.
 
-- [ ] Introduce the `internal/sim.Engine` interface in its own package along
+- [x] Introduce the `internal/sim.Engine` interface in its own package along
       with façade command/snapshot/patch types so callers can stop reaching into
       the legacy hub and world directly.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
-- [ ] Introduce `internal/sim` façade that wraps the existing engine:
+- [x] Introduce `internal/sim` façade that wraps the existing engine:
 
   ```go
   type Engine interface {
@@ -93,21 +96,25 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
   All external callers (websocket, matchmaker, etc.) must use this façade instead of touching internals.
 
-- [ ] Add a **golden determinism test**:
+- [x] Add a **golden determinism test**:
 
-  - [ ] Set a fixed seed, command script, and tick count.
-  - [ ] Compute and assert the patch and journal checksum.
-  - [ ] Run the check in CI to detect behavioral drift.
+  - [x] Set a fixed seed, command script, and tick count.
+  - [x] Compute and assert the patch and journal checksum.
+  - [x] Run the check in CI to detect behavioral drift.
 
 - [ ] Freeze **core data contracts**:
 
-  - [ ] Lock the command schema.
-  - [ ] Lock the patch and journal record format.
+  - [x] Lock the command schema.
+  - [x] Lock the patch format via adapter round-trip tests.
+  - [ ] Lock the journal record format.
   - [ ] Lock tick, RNG, and sequence numbering rules.
 
 - [ ] Add `internal/sim/patches` with round-trip test: `apply(patches(snapshot)) == state`.
 
 - [ ] Pass injected dependencies (`Logger`, `Metrics`, `Clock`, `RNG`) via a `Deps` struct.
+
+- [ ] Add adapter coverage for journal effect batches so the façade captures the
+      exact record layout before we split packages.
 
 *Outcome:* Simulation has a narrow interface and deterministic baseline; tests ensure safety.
 
