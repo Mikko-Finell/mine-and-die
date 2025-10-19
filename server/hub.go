@@ -1190,16 +1190,21 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
 	effectManagerPresent := h.world.effectManager != nil
-	effectTransportEnabled := effectManagerPresent
+	engine := h.engine
 	journal := &h.world.journal
+	effectTransportEnabled := effectManagerPresent && engine != nil
 	h.mu.Unlock()
 
 	effectBatch := EffectEventBatch{}
+	simEffectBatch := sim.EffectEventBatch{}
 	if effectManagerPresent {
-		if drainPatches {
-			effectBatch = journal.DrainEffectEvents()
-		} else {
-			effectBatch = journal.SnapshotEffectEvents()
+		if engine != nil {
+			if drainPatches {
+				simEffectBatch = engine.DrainEffectEvents()
+			} else {
+				simEffectBatch = engine.SnapshotEffectEvents()
+			}
+			effectBatch = legacyEffectEventBatchFromSim(simEffectBatch)
 		}
 	}
 
@@ -1360,7 +1365,9 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 				h.world.journal.RestorePatches(restorablePatches)
 			}
 			if effectManagerPresent {
-				h.world.journal.RestoreEffectEvents(effectBatch)
+				if engine != nil {
+					engine.RestoreEffectEvents(simEffectBatch)
+				}
 			}
 			h.mu.Unlock()
 		}
@@ -1371,13 +1378,17 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 
 func (h *Hub) scheduleResyncIfNeeded() (bool, resyncSignal) {
 	h.mu.Lock()
-	journal := &h.world.journal
+	engine := h.engine
 	h.mu.Unlock()
 
-	signal, ok := journal.ConsumeResyncHint()
+	if engine == nil {
+		return false, resyncSignal{}
+	}
+	simSignal, ok := engine.ConsumeEffectResyncHint()
 	if !ok {
 		return false, resyncSignal{}
 	}
+	signal := legacyEffectResyncSignalFromSim(simSignal)
 
 	h.forceKeyframe()
 	h.resyncNext.Store(true)

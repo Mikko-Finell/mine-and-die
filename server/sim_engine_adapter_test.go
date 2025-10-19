@@ -325,3 +325,31 @@ func TestSimEffectEventBatchConversionRoundTrip(t *testing.T) {
 		t.Fatalf("expected seq cursor map to remain unchanged after legacy mutation, got %v", simBatch.LastSeqByID["effect-2"])
 	}
 }
+
+func TestSimEffectResyncSignalConversionRoundTrip(t *testing.T) {
+	legacySignal := resyncSignal{
+		LostSpawns:  3,
+		TotalEvents: 120,
+		Reasons: []resyncReason{
+			{Kind: "lost_spawn", EffectID: "effect-1"},
+			{Kind: "stale_update", EffectID: "effect-2"},
+		},
+	}
+
+	simSignal := simEffectResyncSignalFromLegacy(legacySignal)
+	roundTrip := legacyEffectResyncSignalFromSim(simSignal)
+
+	if !reflect.DeepEqual(legacySignal, roundTrip) {
+		t.Fatalf("effect resync signal round trip mismatch\nlegacy: %#v\nround: %#v", legacySignal, roundTrip)
+	}
+	if len(roundTrip.Reasons) == 0 {
+		t.Fatalf("expected round-trip signal to include reasons")
+	}
+	if &roundTrip.Reasons[0] == &legacySignal.Reasons[0] {
+		t.Fatalf("expected reasons slice to be copied, got shared element")
+	}
+	roundTrip.Reasons[0].Kind = "mutated"
+	if legacySignal.Reasons[0].Kind != "lost_spawn" {
+		t.Fatalf("expected legacy signal to remain unchanged after mutation")
+	}
+}

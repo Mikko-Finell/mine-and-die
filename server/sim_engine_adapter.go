@@ -80,6 +80,41 @@ func (a *legacyEngineAdapter) DrainPatches() []sim.Patch {
 	return simPatchesFromLegacy(patches)
 }
 
+func (a *legacyEngineAdapter) DrainEffectEvents() sim.EffectEventBatch {
+	if a == nil || a.world == nil {
+		return sim.EffectEventBatch{}
+	}
+	batch := a.world.journal.DrainEffectEvents()
+	return simEffectEventBatchFromLegacy(batch)
+}
+
+func (a *legacyEngineAdapter) SnapshotEffectEvents() sim.EffectEventBatch {
+	if a == nil || a.world == nil {
+		return sim.EffectEventBatch{}
+	}
+	batch := a.world.journal.SnapshotEffectEvents()
+	return simEffectEventBatchFromLegacy(batch)
+}
+
+func (a *legacyEngineAdapter) RestoreEffectEvents(batch sim.EffectEventBatch) {
+	if a == nil || a.world == nil {
+		return
+	}
+	legacy := legacyEffectEventBatchFromSim(batch)
+	a.world.journal.RestoreEffectEvents(legacy)
+}
+
+func (a *legacyEngineAdapter) ConsumeEffectResyncHint() (sim.EffectResyncSignal, bool) {
+	if a == nil || a.world == nil {
+		return sim.EffectResyncSignal{}, false
+	}
+	signal, ok := a.world.journal.ConsumeResyncHint()
+	if !ok {
+		return sim.EffectResyncSignal{}, false
+	}
+	return simEffectResyncSignalFromLegacy(signal), true
+}
+
 func (a *legacyEngineAdapter) RemovedPlayers() []string {
 	if a == nil || len(a.lastRemoved) == 0 {
 		return nil
@@ -383,6 +418,50 @@ func legacyEffectEventBatchFromSim(batch sim.EffectEventBatch) EffectEventBatch 
 		Ends:        cloneEndEvents(batch.Ends),
 		LastSeqByID: copySeqMap(batch.LastSeqByID),
 	}
+}
+
+func simEffectResyncSignalFromLegacy(signal resyncSignal) sim.EffectResyncSignal {
+	return sim.EffectResyncSignal{
+		LostSpawns:  signal.LostSpawns,
+		TotalEvents: signal.TotalEvents,
+		Reasons:     simResyncReasonsFromLegacy(signal.Reasons),
+	}
+}
+
+func legacyEffectResyncSignalFromSim(signal sim.EffectResyncSignal) resyncSignal {
+	return resyncSignal{
+		LostSpawns:  signal.LostSpawns,
+		TotalEvents: signal.TotalEvents,
+		Reasons:     legacyResyncReasonsFromSim(signal.Reasons),
+	}
+}
+
+func simResyncReasonsFromLegacy(reasons []resyncReason) []sim.EffectResyncReason {
+	if len(reasons) == 0 {
+		return nil
+	}
+	converted := make([]sim.EffectResyncReason, len(reasons))
+	for i, reason := range reasons {
+		converted[i] = sim.EffectResyncReason{
+			Kind:     reason.Kind,
+			EffectID: reason.EffectID,
+		}
+	}
+	return converted
+}
+
+func legacyResyncReasonsFromSim(reasons []sim.EffectResyncReason) []resyncReason {
+	if len(reasons) == 0 {
+		return nil
+	}
+	converted := make([]resyncReason, len(reasons))
+	for i, reason := range reasons {
+		converted[i] = resyncReason{
+			Kind:     reason.Kind,
+			EffectID: reason.EffectID,
+		}
+	}
+	return converted
 }
 
 func convertPatchPayloadFromSim(payload any) any {
