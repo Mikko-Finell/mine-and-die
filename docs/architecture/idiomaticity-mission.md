@@ -1,4 +1,4 @@
-# Go Idiomaticity Migration Plan
+# I.D.I.O.M. — Idiomatic Design & Implementation Optimization Mission
 
 ## Purpose
 
