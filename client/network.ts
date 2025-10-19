@@ -4,6 +4,18 @@ import {
 } from "./effect-catalog";
 import { effectCatalogHash } from "./generated/effect-contracts-hash";
 
+class EffectCatalogCompatibilityError extends Error {
+  constructor(params: { expected: string; received: string }) {
+    const message =
+      `Effect catalog hash mismatch between client and server.\n` +
+      `Client hash: ${params.expected}.\n` +
+      `Server hash: ${params.received}.\n` +
+      `Rebuild and redeploy both client and server from the same commit to resolve this.`;
+    super(message);
+    this.name = "EffectCatalogCompatibilityError";
+  }
+}
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -403,9 +415,10 @@ export class WebSocketNetworkClient implements NetworkClient {
     );
 
     if (catalogHash !== effectCatalogHash) {
-      throw new Error(
-        `Effect catalog mismatch: expected hash ${effectCatalogHash}, received ${catalogHash}.`,
-      );
+      throw new EffectCatalogCompatibilityError({
+        expected: effectCatalogHash,
+        received: catalogHash,
+      });
     }
 
     const effectCatalog = getEffectCatalog();

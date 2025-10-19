@@ -18,7 +18,7 @@
 * [DONE] Add a server-side guard that keeps sending the catalog for now but allows us to toggle it off while always shipping the new hash (join + resync/keyframe paths). The guard is default-on (env: `DISABLE_EFFECT_CATALOG_TRANSMISSION=true` to cut over) and covered by join/resync/keyframe tests for both modes.
 
 **Next task**
-Clear the compatibility error path when hashes mismatch so operators see a precise rebuild/update instruction, while continuing to use the local generated catalog on success.
+Add an optional server debug endpoint or flag that allows fetching the generated catalog during migration (default off).
 
 ## What changes (conceptually)
 
@@ -37,7 +37,7 @@ Clear the compatibility error path when hashes mismatch so operators see a preci
 
 * [DONE] Remove validation of server-provided catalog.
 * [DONE] On join, compare server hash vs local generated hash.
-* [TODO] If mismatch → clear compatibility error; otherwise use the local generated catalog.
+* [DONE] If mismatch → clear compatibility error; otherwise use the local generated catalog.
 
 ## Tests (acceptance criteria)
 
@@ -66,7 +66,7 @@ Clear the compatibility error path when hashes mismatch so operators see a preci
 
 * [TODO] Short compatibility window: server can send both hash and catalog; client prefers hash path.
 * [TODO] Telemetry: log both hashes on join for a week to confirm fleet alignment.
-* [TODO] Clear operator message for hash mismatches (action: rebuild/update one side).
+* [DONE] Clear operator message for hash mismatches (action: rebuild/update one side).
 
 ## Risks & mitigations
 
