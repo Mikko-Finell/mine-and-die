@@ -38,7 +38,7 @@ type determinismBaseline struct {
 }
 
 type harnessTick struct {
-	Commands []Command
+	Commands []sim.Command
 }
 
 func TestDeterminismHarnessGolden(t *testing.T) {
@@ -139,40 +139,40 @@ func buildDeterminismHarnessScript(baseTime time.Time) []harnessTick {
 	script := make([]harnessTick, 0, determinismHarnessTickCount)
 
 	script = append(script,
-		harnessTick{Commands: []Command{
+		harnessTick{Commands: []sim.Command{
 			{
-				Type: CommandMove,
-				Move: &MoveCommand{DX: 1, DY: 0, Facing: FacingRight},
+				Type: sim.CommandMove,
+				Move: &sim.MoveCommand{DX: 1, DY: 0, Facing: toSimFacing(FacingRight)},
 			},
 		}},
-		harnessTick{Commands: []Command{
+		harnessTick{Commands: []sim.Command{
 			{
-				Type: CommandMove,
-				Move: &MoveCommand{DX: 0, DY: 1, Facing: FacingDown},
+				Type: sim.CommandMove,
+				Move: &sim.MoveCommand{DX: 0, DY: 1, Facing: toSimFacing(FacingDown)},
 			},
 		}},
-		harnessTick{Commands: []Command{
+		harnessTick{Commands: []sim.Command{
 			{
-				Type: CommandMove,
-				Move: &MoveCommand{DX: -1, DY: 0, Facing: FacingLeft},
+				Type: sim.CommandMove,
+				Move: &sim.MoveCommand{DX: -1, DY: 0, Facing: toSimFacing(FacingLeft)},
 			},
 		}},
-		harnessTick{Commands: []Command{
+		harnessTick{Commands: []sim.Command{
 			{
-				Type: CommandMove,
-				Move: &MoveCommand{DX: 0, DY: -1, Facing: FacingUp},
+				Type: sim.CommandMove,
+				Move: &sim.MoveCommand{DX: 0, DY: -1, Facing: toSimFacing(FacingUp)},
 			},
 		}},
-		harnessTick{Commands: []Command{
+		harnessTick{Commands: []sim.Command{
 			{
-				Type: CommandMove,
-				Move: &MoveCommand{DX: 0, DY: 0, Facing: FacingUp},
+				Type: sim.CommandMove,
+				Move: &sim.MoveCommand{DX: 0, DY: 0, Facing: toSimFacing(FacingUp)},
 			},
 		}},
-		harnessTick{Commands: []Command{
+		harnessTick{Commands: []sim.Command{
 			{
-				Type: CommandHeartbeat,
-				Heartbeat: &HeartbeatCommand{
+				Type: sim.CommandHeartbeat,
+				Heartbeat: &sim.HeartbeatCommand{
 					ClientSent: baseTime.UnixMilli(),
 				},
 			},
@@ -182,7 +182,7 @@ func buildDeterminismHarnessScript(baseTime time.Time) []harnessTick {
 	return script
 }
 
-func cloneHarnessCommand(cmd Command) Command {
+func cloneHarnessCommand(cmd sim.Command) sim.Command {
 	cloned := cmd
 	if cmd.Move != nil {
 		copyMove := *cmd.Move

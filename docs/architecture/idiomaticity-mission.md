@@ -51,6 +51,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Added adapter round-trip tests that verify `internal/sim` commands,
   snapshots, and patches stay in lockstep with the legacy hub structures so the
   façade data contract cannot drift silently.
+- Updated hub command ingestion to stage `internal/sim.Command` values end-to-end
+  so non-simulation surfaces stop depending on the legacy hub command structs.
 
 ### Next task
 
@@ -77,9 +79,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Promote the determinism harness into a golden test that asserts the
       recorded checksums against the committed baseline constants.
 
-- [ ] Introduce the `internal/sim.Engine` interface in its own package along
+- [x] Introduce the `internal/sim.Engine` interface in its own package along
       with façade command/snapshot/patch types so callers can stop reaching into
       the legacy hub and world directly.
+- [ ] Add journal round-trip coverage that proves `sim.Engine` exposes the same
+      effect batch layout as the legacy journal so the façade's record format is
+      locked down before carving packages.
 
 - [ ] Objective: Create seams and invariants before moving code.
 

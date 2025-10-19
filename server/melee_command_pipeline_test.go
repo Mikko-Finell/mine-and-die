@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"mine-and-die/server/internal/sim"
 )
 
 func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
@@ -26,8 +28,8 @@ func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
 	}
 	staged := hub.pendingCommands[0]
 	hub.commandsMu.Unlock()
-	if staged.Type != CommandAction {
-		t.Fatalf("expected pending command type %q, got %q", CommandAction, staged.Type)
+	if staged.Type != sim.CommandAction {
+		t.Fatalf("expected pending command type %q, got %q", sim.CommandAction, staged.Type)
 	}
 	if staged.Action == nil {
 		t.Fatalf("expected pending action payload to be populated")

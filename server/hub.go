@@ -48,8 +48,8 @@ type Hub struct {
 	forceKeyframeNext        atomic.Bool
 	tickBudgetAlarmTriggered atomic.Bool
 
-	commandsMu             sync.Mutex // protects pendingCommands between network handlers and the tick loop
-	pendingCommands        []Command  // staged commands applied in order at the next simulation step
+	commandsMu             sync.Mutex    // protects pendingCommands between network handlers and the tick loop
+	pendingCommands        []sim.Command // staged commands applied in order at the next simulation step
 	pendingCommandsByActor map[string]int
 	droppedCommandsByActor map[string]uint64
 }
@@ -165,7 +165,7 @@ func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
 		engine:                  engineAdapter,
 		adapter:                 engineAdapter,
 		subscribers:             make(map[string]*subscriber),
-		pendingCommands:         make([]Command, 0),
+		pendingCommands:         make([]sim.Command, 0),
 		pendingCommandsByActor:  make(map[string]int),
 		droppedCommandsByActor:  make(map[string]uint64),
 		config:                  cfg,
@@ -532,12 +532,12 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
 }
 
 // UpdateIntent stores the latest movement vector and facing for a player.
-func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (Command, bool, string) {
-	var zero Command
-	parsedFacing := FacingDirection("")
+func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (sim.Command, bool, string) {
+	var zero sim.Command
+	parsedFacing := sim.FacingDirection("")
 	if facing != "" {
 		if face, ok := parseFacing(facing); ok {
-			parsedFacing = face
+			parsedFacing = toSimFacing(face)
 		}
 	}
 
@@ -545,12 +545,12 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (Comm
 		return zero, false, commandRejectUnknownActor
 	}
 
-	cmd := Command{
+	cmd := sim.Command{
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
-		Type:       CommandMove,
+		Type:       sim.CommandMove,
 		IssuedAt:   time.Now(),
-		Move: &MoveCommand{
+		Move: &sim.MoveCommand{
 			DX:     dx,
 			DY:     dy,
 			Facing: parsedFacing,
@@ -563,17 +563,17 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (Comm
 }
 
 // SetPlayerPath queues a command that asks the server to navigate the player toward a point.
-func (h *Hub) SetPlayerPath(playerID string, x, y float64) (Command, bool, string) {
-	var zero Command
+func (h *Hub) SetPlayerPath(playerID string, x, y float64) (sim.Command, bool, string) {
+	var zero sim.Command
 	if !h.playerExists(playerID) {
 		return zero, false, commandRejectUnknownActor
 	}
-	cmd := Command{
+	cmd := sim.Command{
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
-		Type:       CommandSetPath,
+		Type:       sim.CommandSetPath,
 		IssuedAt:   time.Now(),
-		Path: &PathCommand{
+		Path: &sim.PathCommand{
 			TargetX: x,
 			TargetY: y,
 		},
@@ -585,15 +585,15 @@ func (h *Hub) SetPlayerPath(playerID string, x, y float64) (Command, bool, strin
 }
 
 // ClearPlayerPath stops any server-driven navigation for the player.
-func (h *Hub) ClearPlayerPath(playerID string) (Command, bool, string) {
-	var zero Command
+func (h *Hub) ClearPlayerPath(playerID string) (sim.Command, bool, string) {
+	var zero sim.Command
 	if !h.playerExists(playerID) {
 		return zero, false, commandRejectUnknownActor
 	}
-	cmd := Command{
+	cmd := sim.Command{
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
-		Type:       CommandClearPath,
+		Type:       sim.CommandClearPath,
 		IssuedAt:   time.Now(),
 	}
 	if ok, reason := h.enqueueCommand(cmd); !ok {
@@ -603,8 +603,8 @@ func (h *Hub) ClearPlayerPath(playerID string) (Command, bool, string) {
 }
 
 // HandleAction queues an action command for processing on the next tick.
-func (h *Hub) HandleAction(playerID, action string) (Command, bool, string) {
-	var zero Command
+func (h *Hub) HandleAction(playerID, action string) (sim.Command, bool, string) {
+	var zero sim.Command
 	switch action {
 	case effectTypeAttack, effectTypeFireball:
 	default:
@@ -613,12 +613,12 @@ func (h *Hub) HandleAction(playerID, action string) (Command, bool, string) {
 	if !h.playerExists(playerID) {
 		return zero, false, commandRejectUnknownActor
 	}
-	cmd := Command{
+	cmd := sim.Command{
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
-		Type:       CommandAction,
+		Type:       sim.CommandAction,
 		IssuedAt:   time.Now(),
-		Action: &ActionCommand{
+		Action: &sim.ActionCommand{
 			Name: action,
 		},
 	}
@@ -863,12 +863,12 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 		}
 	}
 
-	cmd := Command{
+	cmd := sim.Command{
 		OriginTick: h.tick.Load(),
 		ActorID:    playerID,
-		Type:       CommandHeartbeat,
+		Type:       sim.CommandHeartbeat,
 		IssuedAt:   receivedAt,
-		Heartbeat: &HeartbeatCommand{
+		Heartbeat: &sim.HeartbeatCommand{
 			ReceivedAt: receivedAt,
 			ClientSent: clientSent,
 			RTT:        rtt,
@@ -883,7 +883,6 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigger, []GroundItem, []*subscriber) {
 	tick := h.tick.Add(1)
 	commands := h.drainCommands()
-	simCommands := simCommandsFromLegacy(commands)
 
 	h.mu.Lock()
 	if h.adapter != nil {
@@ -892,7 +891,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigg
 	var snapshot sim.Snapshot
 	var removed []string
 	if h.engine != nil {
-		_ = h.engine.Apply(simCommands)
+		_ = h.engine.Apply(commands)
 		h.engine.Step()
 		snapshot = h.engine.Snapshot()
 	}
@@ -1568,7 +1567,7 @@ func (h *Hub) TelemetrySnapshot() telemetrySnapshot {
 	return h.telemetry.Snapshot()
 }
 
-func (h *Hub) enqueueCommand(cmd Command) (bool, string) {
+func (h *Hub) enqueueCommand(cmd sim.Command) (bool, string) {
 	var queueLen int
 	var dropped bool
 	var dropCount uint64
@@ -1604,7 +1603,7 @@ func (h *Hub) enqueueCommand(cmd Command) (bool, string) {
 
 	if dropped {
 		if h.telemetry != nil {
-			h.telemetry.RecordCommandDropped("limit_exceeded", cmd.Type)
+			h.telemetry.RecordCommandDropped("limit_exceeded", string(cmd.Type))
 		}
 		if dropCount > 0 && dropCount&(dropCount-1) == 0 {
 			stdlog.Printf(
@@ -1625,7 +1624,7 @@ func (h *Hub) enqueueCommand(cmd Command) (bool, string) {
 	return true, ""
 }
 
-func (h *Hub) drainCommands() []Command {
+func (h *Hub) drainCommands() []sim.Command {
 	h.commandsMu.Lock()
 	cmds := h.pendingCommands
 	h.pendingCommands = nil
@@ -1636,7 +1635,7 @@ func (h *Hub) drainCommands() []Command {
 	if len(cmds) == 0 {
 		return nil
 	}
-	copied := make([]Command, len(cmds))
+	copied := make([]sim.Command, len(cmds))
 	copy(copied, cmds)
 	return copied
 }

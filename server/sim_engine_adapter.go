@@ -99,14 +99,14 @@ func legacyCommandsFromSim(cmds []sim.Command) []Command {
 		converted[i] = Command{
 			OriginTick: cmd.OriginTick,
 			ActorID:    cmd.ActorID,
-			Type:       CommandType(cmd.Type),
+			Type:       legacyCommandTypeFromSim(cmd.Type),
 			IssuedAt:   cmd.IssuedAt,
 		}
 		if cmd.Move != nil {
 			converted[i].Move = &MoveCommand{
 				DX:     cmd.Move.DX,
 				DY:     cmd.Move.DY,
-				Facing: FacingDirection(cmd.Move.Facing),
+				Facing: legacyFacingFromSim(cmd.Move.Facing),
 			}
 		}
 		if cmd.Action != nil {
@@ -138,14 +138,14 @@ func simCommandsFromLegacy(cmds []Command) []sim.Command {
 		converted[i] = sim.Command{
 			OriginTick: cmd.OriginTick,
 			ActorID:    cmd.ActorID,
-			Type:       sim.CommandType(cmd.Type),
+			Type:       toSimCommandType(cmd.Type),
 			IssuedAt:   cmd.IssuedAt,
 		}
 		if cmd.Move != nil {
 			converted[i].Move = &sim.MoveCommand{
 				DX:     cmd.Move.DX,
 				DY:     cmd.Move.DY,
-				Facing: sim.FacingDirection(cmd.Move.Facing),
+				Facing: toSimFacing(cmd.Move.Facing),
 			}
 		}
 		if cmd.Action != nil {
@@ -198,7 +198,7 @@ func simNPCsFromLegacy(npcs []NPC) []sim.NPC {
 	for i, npc := range npcs {
 		converted[i] = sim.NPC{
 			Actor:            simActorFromLegacy(npc.Actor),
-			Type:             sim.NPCType(npc.Type),
+			Type:             toSimNPCType(npc.Type),
 			AIControlled:     npc.AIControlled,
 			ExperienceReward: npc.ExperienceReward,
 		}
@@ -214,7 +214,7 @@ func legacyNPCsFromSim(npcs []sim.NPC) []NPC {
 	for i, npc := range npcs {
 		converted[i] = NPC{
 			Actor:            legacyActorFromSim(npc.Actor),
-			Type:             NPCType(npc.Type),
+			Type:             legacyNPCTypeFromSim(npc.Type),
 			AIControlled:     npc.AIControlled,
 			ExperienceReward: npc.ExperienceReward,
 		}
@@ -242,7 +242,7 @@ func simGroundItemsFromLegacy(items []GroundItem) []sim.GroundItem {
 	for i, item := range items {
 		converted[i] = sim.GroundItem{
 			ID:             item.ID,
-			Type:           sim.ItemType(item.Type),
+			Type:           toSimItemType(item.Type),
 			FungibilityKey: item.FungibilityKey,
 			X:              item.X,
 			Y:              item.Y,
@@ -260,7 +260,7 @@ func legacyGroundItemsFromSim(items []sim.GroundItem) []GroundItem {
 	for i, item := range items {
 		converted[i] = GroundItem{
 			ID:             item.ID,
-			Type:           ItemType(item.Type),
+			Type:           legacyItemTypeFromSim(item.Type),
 			FungibilityKey: item.FungibilityKey,
 			X:              item.X,
 			Y:              item.Y,
@@ -321,7 +321,7 @@ func simPatchesFromLegacy(patches []Patch) []sim.Patch {
 	converted := make([]sim.Patch, len(patches))
 	for i, patch := range patches {
 		converted[i] = sim.Patch{
-			Kind:     sim.PatchKind(patch.Kind),
+			Kind:     toSimPatchKind(patch.Kind),
 			EntityID: patch.EntityID,
 			Payload:  convertPatchPayloadToSim(patch.Payload),
 		}
@@ -334,7 +334,7 @@ func convertPatchPayloadToSim(payload any) any {
 	case PositionPayload:
 		return sim.PositionPayload{X: value.X, Y: value.Y}
 	case FacingPayload:
-		return sim.FacingPayload{Facing: sim.FacingDirection(value.Facing)}
+		return sim.FacingPayload{Facing: toSimFacing(value.Facing)}
 	case PlayerIntentPayload:
 		return sim.PlayerIntentPayload{DX: value.DX, DY: value.DY}
 	case HealthPayload:
@@ -359,7 +359,7 @@ func legacyPatchesFromSim(patches []sim.Patch) []Patch {
 	converted := make([]Patch, len(patches))
 	for i, patch := range patches {
 		converted[i] = Patch{
-			Kind:     PatchKind(patch.Kind),
+			Kind:     legacyPatchKindFromSim(patch.Kind),
 			EntityID: patch.EntityID,
 			Payload:  convertPatchPayloadFromSim(patch.Payload),
 		}
@@ -372,7 +372,7 @@ func convertPatchPayloadFromSim(payload any) any {
 	case sim.PositionPayload:
 		return PositionPayload{X: value.X, Y: value.Y}
 	case sim.FacingPayload:
-		return FacingPayload{Facing: FacingDirection(value.Facing)}
+		return FacingPayload{Facing: legacyFacingFromSim(value.Facing)}
 	case sim.PlayerIntentPayload:
 		return PlayerIntentPayload{DX: value.DX, DY: value.DY}
 	case sim.HealthPayload:
@@ -413,7 +413,7 @@ func simEquippedItemsFromLegacy(slots []EquippedItem) []sim.EquippedItem {
 	converted := make([]sim.EquippedItem, len(slots))
 	for i, slot := range slots {
 		converted[i] = sim.EquippedItem{
-			Slot: sim.EquipSlot(slot.Slot),
+			Slot: toSimEquipSlot(slot.Slot),
 			Item: simItemStackFromLegacy(slot.Item),
 		}
 	}
@@ -422,7 +422,7 @@ func simEquippedItemsFromLegacy(slots []EquippedItem) []sim.EquippedItem {
 
 func simItemStackFromLegacy(stack ItemStack) sim.ItemStack {
 	return sim.ItemStack{
-		Type:           sim.ItemType(stack.Type),
+		Type:           toSimItemType(stack.Type),
 		FungibilityKey: stack.FungibilityKey,
 		Quantity:       stack.Quantity,
 	}
@@ -433,7 +433,7 @@ func simActorFromLegacy(actor Actor) sim.Actor {
 		ID:        actor.ID,
 		X:         actor.X,
 		Y:         actor.Y,
-		Facing:    sim.FacingDirection(actor.Facing),
+		Facing:    toSimFacing(actor.Facing),
 		Health:    actor.Health,
 		MaxHealth: actor.MaxHealth,
 		Inventory: simInventoryFromLegacy(actor.Inventory),
@@ -454,7 +454,7 @@ func legacyActorFromSim(actor sim.Actor) Actor {
 		ID:        actor.ID,
 		X:         actor.X,
 		Y:         actor.Y,
-		Facing:    FacingDirection(actor.Facing),
+		Facing:    legacyFacingFromSim(actor.Facing),
 		Health:    actor.Health,
 		MaxHealth: actor.MaxHealth,
 		Inventory: legacyInventoryFromSim(actor.Inventory),
@@ -483,7 +483,7 @@ func legacyEquipmentFromSim(eq sim.Equipment) Equipment {
 	converted := make([]EquippedItem, len(eq.Slots))
 	for i, slot := range eq.Slots {
 		converted[i] = EquippedItem{
-			Slot: EquipSlot(slot.Slot),
+			Slot: legacyEquipSlotFromSim(slot.Slot),
 			Item: legacyItemStackFromSim(slot.Item),
 		}
 	}
@@ -492,7 +492,7 @@ func legacyEquipmentFromSim(eq sim.Equipment) Equipment {
 
 func legacyItemStackFromSim(stack sim.ItemStack) ItemStack {
 	return ItemStack{
-		Type:           ItemType(stack.Type),
+		Type:           legacyItemTypeFromSim(stack.Type),
 		FungibilityKey: stack.FungibilityKey,
 		Quantity:       stack.Quantity,
 	}
