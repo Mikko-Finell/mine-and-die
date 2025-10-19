@@ -167,6 +167,61 @@ func TestSimPatchConversionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSimKeyframeConversionRoundTrip(t *testing.T) {
+	recordedAt := time.Unix(1700000100, 42).UTC()
+
+	legacyFrame := keyframe{
+		Tick:     64,
+		Sequence: 7,
+		Players: []Player{{
+			Actor: Actor{ID: "player-1", X: 10, Y: -5, Facing: FacingLeft, Health: 80, MaxHealth: 100},
+		}},
+		NPCs: []NPC{{
+			Actor: Actor{ID: "npc-1", X: -2, Y: 4, Facing: FacingDown, Health: 40, MaxHealth: 50},
+			Type:  NPCTypeGoblin,
+		}},
+		Obstacles: []Obstacle{{
+			ID: "obstacle-1", Type: "rock", X: 1.5, Y: 2.5, Width: 3, Height: 4,
+		}},
+		GroundItems: []GroundItem{{
+			ID: "ground-1", Type: ItemType("potion"), FungibilityKey: "potion", X: 3, Y: 4, Qty: 2,
+		}},
+		Config: worldConfig{
+			Obstacles:      true,
+			ObstaclesCount: 5,
+			GoldMines:      true,
+			GoldMineCount:  2,
+			NPCs:           true,
+			GoblinCount:    3,
+			RatCount:       1,
+			NPCCount:       4,
+			Lava:           true,
+			LavaCount:      2,
+			Seed:           "seed",
+			Width:          128,
+			Height:         256,
+		},
+		RecordedAt: recordedAt,
+	}
+
+	simFrame := simKeyframeFromLegacy(legacyFrame)
+	roundTrip := legacyKeyframeFromSim(simFrame)
+
+	if !reflect.DeepEqual(legacyFrame, roundTrip) {
+		t.Fatalf("keyframe round trip mismatch\nlegacy: %#v\nround: %#v", legacyFrame, roundTrip)
+	}
+
+	simFrame.Players[0].Health = 10
+	if legacyFrame.Players[0].Health != 80 {
+		t.Fatalf("expected player conversion to deep copy actors, got %v", legacyFrame.Players[0].Health)
+	}
+
+	simFrame.Obstacles[0].Width = 99
+	if legacyFrame.Obstacles[0].Width != 3 {
+		t.Fatalf("expected obstacle conversion to deep copy values, got %v", legacyFrame.Obstacles[0].Width)
+	}
+}
+
 func TestSimEffectEventBatchConversionRoundTrip(t *testing.T) {
 	legacyBatch := EffectEventBatch{
 		Spawns: []effectcontract.EffectSpawnEvent{{
