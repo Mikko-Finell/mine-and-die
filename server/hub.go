@@ -14,6 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -285,16 +286,17 @@ func (h *Hub) Join() joinResponse {
 	go h.broadcastState(players, npcs, nil, groundItems)
 
 	return joinResponse{
-		Ver:              ProtocolVersion,
-		ID:               playerID,
-		Players:          players,
-		NPCs:             npcs,
-		Obstacles:        obstacles,
-		GroundItems:      groundItems,
-		Config:           cfg,
-		Resync:           true,
-		KeyframeInterval: h.CurrentKeyframeInterval(),
-		EffectCatalog:    catalog,
+		Ver:               ProtocolVersion,
+		ID:                playerID,
+		Players:           players,
+		NPCs:              npcs,
+		Obstacles:         obstacles,
+		GroundItems:       groundItems,
+		Config:            cfg,
+		Resync:            true,
+		KeyframeInterval:  h.CurrentKeyframeInterval(),
+		EffectCatalog:     catalog,
+		EffectCatalogHash: effectcontract.EffectCatalogHash,
 	}
 }
 

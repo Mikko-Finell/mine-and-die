@@ -4,6 +4,7 @@ import {
 } from "../../client-manager";
 import { normalizeEffectCatalog } from "../../effect-catalog";
 import type { EffectCatalogEntry } from "../../generated/effect-contracts";
+import { effectCatalogHash as generatedEffectCatalogHash } from "../../generated/effect-contracts-hash";
 import type {
   ContractLifecycleBatch,
   ContractLifecycleEndEvent,
@@ -60,6 +61,8 @@ export const createJoinResponse = (
   id: "player",
   seed: "seed",
   protocolVersion: 1,
+  effectCatalogHash:
+    overrides.effectCatalogHash ?? generatedEffectCatalogHash,
   effectCatalog: normalizeEffectCatalog(catalog),
   world: (overrides.world as WorldConfigurationSnapshot | undefined) ?? {
     width: defaultRendererConfiguration.dimensions.width,

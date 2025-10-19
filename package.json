@@ -16,8 +16,8 @@
     "test": "vitest",
     "pretest": "npm run effects:check && npm --prefix tools/js-effects run build",
     "effects:map": "./tools/effects/build_producer_map",
-    "effects:generate": "go run ./tools/effectsgen/cmd/effectsgen --contracts=server/effects/contract --registry=server/effects/contract/definitions.go --definitions=config/effects/definitions.json --out=client/generated/effect-contracts.ts",
-    "effects:check": "npm run effects:generate && (git diff --exit-code -- client/generated/effect-contracts.ts || (echo \"effects contract bindings are out of date; run npm run effects:generate\" >&2 && exit 1))"
+    "effects:generate": "go run ./tools/effectsgen/cmd/effectsgen --contracts=server/effects/contract --registry=server/effects/contract/definitions.go --definitions=config/effects/definitions.json --out=client/generated/effect-contracts.ts --hash-go=server/effects/contract/effect_catalog_hash.generated.go --hash-go-pkg=contract --hash-ts=client/generated/effect-contracts-hash.ts",
+    "effects:check": "npm run effects:generate && (git diff --exit-code -- client/generated/effect-contracts.ts client/generated/effect-contracts-hash.ts server/effects/contract/effect_catalog_hash.generated.go || (echo \"effects contract bindings are out of date; run npm run effects:generate\" >&2 && exit 1))"
   },
   "dependencies": {
     "@js-effects/effects-lib": "workspace:*",

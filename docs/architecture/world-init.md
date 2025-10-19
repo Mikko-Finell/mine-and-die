@@ -16,25 +16,25 @@
 * [DONE] Create this plan
 
 ***Next task**
-Start on the generator work. Describe the `next task` in one paragraph of technical detail when done.
+Add a server-side guard that keeps sending the catalog for now but allows us to toggle it off while always shipping the new hash (join + resync/keyframe paths). Document the flag behaviour/tests once implemented.
 
 ## What changes (conceptually)
 
 **Generator**
 
-* [TODO] Produce a stable hash/version of the canonical catalog.
-* [TODO] Make that hash available to both client and server artifacts (no specifics on how).
+* [DONE] Produce a stable hash/version of the canonical catalog.
+* [DONE] Make that hash available to both client and server artifacts (no specifics on how).
 
 **Server**
 
 * [TODO] Stop including the catalog in join/resync responses.
-* [TODO] Include only the catalog hash/version in the handshake.
+* [IN PROGRESS] Include only the catalog hash/version in the handshake. (Join now emits the hash alongside the legacy catalog; needs resync + feature flag follow-up.)
 * [TODO] (Optional) Keep a temporary debug endpoint/flag to fetch the catalog during migration; default off.
 
 **Client**
 
 * [TODO] Remove validation of server-provided catalog.
-* [TODO] On join, compare server hash vs local generated hash.
+* [DONE] On join, compare server hash vs local generated hash.
 * [TODO] If mismatch → clear compatibility error; otherwise use the local generated catalog.
 
 ## Tests (acceptance criteria)
