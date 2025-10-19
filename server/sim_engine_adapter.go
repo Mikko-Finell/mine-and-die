@@ -9,6 +9,7 @@ import (
 
 type legacyEngineAdapter struct {
 	world *World
+	deps  sim.Deps
 
 	pendingTick     uint64
 	pendingNow      time.Time
@@ -19,12 +20,24 @@ type legacyEngineAdapter struct {
 	lastRemoved []string
 }
 
-func newLegacyEngineAdapter(world *World) *legacyEngineAdapter {
-	return &legacyEngineAdapter{world: world}
+func newLegacyEngineAdapter(world *World, deps sim.Deps) *legacyEngineAdapter {
+	return &legacyEngineAdapter{world: world, deps: deps}
+}
+
+func (a *legacyEngineAdapter) Deps() sim.Deps {
+	if a == nil {
+		return sim.Deps{}
+	}
+	return a.deps
 }
 
 func (a *legacyEngineAdapter) SetWorld(world *World) {
 	a.world = world
+	if world != nil {
+		a.deps.RNG = world.rng
+	} else {
+		a.deps.RNG = nil
+	}
 }
 
 func (a *legacyEngineAdapter) PrepareStep(tick uint64, now time.Time, dt float64, emit func(effectcontract.EffectLifecycleEvent)) {
