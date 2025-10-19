@@ -340,6 +340,46 @@ func convertPatchPayloadToSim(payload any) any {
 	}
 }
 
+func legacyPatchesFromSim(patches []sim.Patch) []Patch {
+	if len(patches) == 0 {
+		return nil
+	}
+	converted := make([]Patch, len(patches))
+	for i, patch := range patches {
+		converted[i] = Patch{
+			Kind:     PatchKind(patch.Kind),
+			EntityID: patch.EntityID,
+			Payload:  convertPatchPayloadFromSim(patch.Payload),
+		}
+	}
+	return converted
+}
+
+func convertPatchPayloadFromSim(payload any) any {
+	switch value := payload.(type) {
+	case sim.PositionPayload:
+		return PositionPayload{X: value.X, Y: value.Y}
+	case sim.FacingPayload:
+		return FacingPayload{Facing: FacingDirection(value.Facing)}
+	case sim.PlayerIntentPayload:
+		return PlayerIntentPayload{DX: value.DX, DY: value.DY}
+	case sim.HealthPayload:
+		return HealthPayload{Health: value.Health, MaxHealth: value.MaxHealth}
+	case sim.InventoryPayload:
+		inv := legacyInventoryFromSim(sim.Inventory{Slots: value.Slots})
+		return InventoryPayload{Slots: inv.Slots}
+	case sim.EquipmentPayload:
+		eq := legacyEquipmentFromSim(sim.Equipment{Slots: value.Slots})
+		return EquipmentPayload{Slots: eq.Slots}
+	case sim.EffectParamsPayload:
+		return EffectParamsPayload{Params: cloneFloatMap(value.Params)}
+	case sim.GroundItemQtyPayload:
+		return GroundItemQtyPayload{Qty: value.Qty}
+	default:
+		return value
+	}
+}
+
 func simInventorySlotsFromLegacy(slots []InventorySlot) []sim.InventorySlot {
 	if len(slots) == 0 {
 		return nil
