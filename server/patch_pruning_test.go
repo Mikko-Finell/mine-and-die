@@ -181,6 +181,11 @@ func TestMarshalStateUsesFacadeEffectIDsForFiltering(t *testing.T) {
 	snapshot := sim.Snapshot{AliveEffectIDs: []string{effectID}}
 	engine := newRecordingSimEngine(snapshot)
 	t.Cleanup(engine.AllowFurtherSnapshots)
+	engine.SetSnapshotPatches([]sim.Patch{{
+		Kind:     sim.PatchEffectParams,
+		EntityID: effectID,
+		Payload:  sim.EffectParamsPayload{Params: map[string]float64{"radius": 1}},
+	}})
 	hub.engine = engine
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, false, true)

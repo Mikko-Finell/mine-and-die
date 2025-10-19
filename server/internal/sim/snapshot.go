@@ -15,6 +15,8 @@ type Actor struct {
 // Player mirrors the actor state for human-controlled characters.
 type Player struct {
 	Actor
+	IntentDX float64 `json:"intentDX,omitempty"`
+	IntentDY float64 `json:"intentDY,omitempty"`
 }
 
 // NPCType enumerates the available neutral enemy archetypes.

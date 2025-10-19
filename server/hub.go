@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	stdlog "log"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1140,41 +1141,42 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	var (
 		aliveEffectIDs []string
 		obstacles      []Obstacle
+		simSnapshot    sim.Snapshot
 	)
 	if engine != nil {
-		snapshot := engine.Snapshot()
+		simSnapshot = engine.Snapshot()
 		if includeSnapshot {
 			if players == nil {
-				players = legacyPlayersFromSim(snapshot.Players)
+				players = legacyPlayersFromSim(simSnapshot.Players)
 				if players == nil {
 					players = make([]Player, 0)
 				}
 			}
 			if npcs == nil {
-				npcs = legacyNPCsFromSim(snapshot.NPCs)
+				npcs = legacyNPCsFromSim(simSnapshot.NPCs)
 				if npcs == nil {
 					npcs = make([]NPC, 0)
 				}
 			}
 			if groundItems == nil {
-				groundItems = legacyGroundItemsFromSim(snapshot.GroundItems)
+				groundItems = legacyGroundItemsFromSim(simSnapshot.GroundItems)
 				if groundItems == nil {
 					groundItems = make([]GroundItem, 0)
 				}
 			}
 			if triggers == nil {
-				triggers = legacyEffectTriggersFromSim(snapshot.EffectEvents)
+				triggers = legacyEffectTriggersFromSim(simSnapshot.EffectEvents)
 				if triggers == nil {
 					triggers = make([]EffectTrigger, 0)
 				}
 			}
-			obstacles = legacyObstaclesFromSim(snapshot.Obstacles)
+			obstacles = legacyObstaclesFromSim(simSnapshot.Obstacles)
 		} else if triggers == nil {
 			triggers = make([]EffectTrigger, 0)
 		}
-		if len(snapshot.AliveEffectIDs) > 0 {
-			aliveEffectIDs = make([]string, 0, len(snapshot.AliveEffectIDs))
-			for _, id := range snapshot.AliveEffectIDs {
+		if len(simSnapshot.AliveEffectIDs) > 0 {
+			aliveEffectIDs = make([]string, 0, len(simSnapshot.AliveEffectIDs))
+			for _, id := range simSnapshot.AliveEffectIDs {
 				if id == "" {
 					continue
 				}
@@ -1245,7 +1247,12 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 			restorableLegacyPatches = append([]Patch(nil), patches...)
 		}
 	} else {
-		patches = h.world.snapshotPatchesLocked()
+		if engine != nil {
+			snapshot := engine.SnapshotPatches()
+			patches = legacyPatchesFromSim(snapshot)
+		} else {
+			patches = h.world.snapshotPatchesLocked()
+		}
 	}
 	if len(patches) > 0 {
 		alivePlayers := players
@@ -1305,7 +1312,10 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		}
 	}
 	simPlayerPatches := filterPlayerPatches(simPatchesFromLegacy(patches))
-	h.updateResubscribeBaselinesLocked(includeSnapshot, simPlayerPatches)
+	h.updateResubscribeBaselinesLocked(simSnapshot, includeSnapshot, simPlayerPatches)
+	if includeSnapshot {
+		players = mergePlayersFromBaselines(players, h.resubscribeBaselines)
+	}
 	cfg := h.config
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
@@ -1752,12 +1762,16 @@ func filterPlayerPatches(patches []sim.Patch) []sim.Patch {
 	return filtered
 }
 
-func (h *Hub) updateResubscribeBaselinesLocked(includeSnapshot bool, patches []sim.Patch) {
+func (h *Hub) updateResubscribeBaselinesLocked(snapshot sim.Snapshot, includeSnapshot bool, patches []sim.Patch) {
 	if h == nil {
 		return
 	}
 	if includeSnapshot {
-		h.resubscribeBaselines = h.capturePlayerViewsLocked()
+		if views := playerViewsFromSimSnapshot(snapshot); views != nil {
+			h.resubscribeBaselines = views
+			return
+		}
+		h.resubscribeBaselines = h.capturePlayerViewsFromWorldLocked()
 		return
 	}
 	if len(patches) == 0 {
@@ -1766,13 +1780,17 @@ func (h *Hub) updateResubscribeBaselinesLocked(includeSnapshot bool, patches []s
 	base := clonePlayerViewMap(h.resubscribeBaselines)
 	updated, err := simpaches.ApplyPlayers(base, patches)
 	if err != nil {
-		h.resubscribeBaselines = h.capturePlayerViewsLocked()
+		if views := playerViewsFromSimSnapshot(snapshot); views != nil {
+			h.resubscribeBaselines = views
+			return
+		}
+		h.resubscribeBaselines = h.capturePlayerViewsFromWorldLocked()
 		return
 	}
 	h.resubscribeBaselines = updated
 }
 
-func (h *Hub) capturePlayerViewsLocked() map[string]simpaches.PlayerView {
+func (h *Hub) capturePlayerViewsFromWorldLocked() map[string]simpaches.PlayerView {
 	if h == nil || h.world == nil || len(h.world.players) == 0 {
 		return nil
 	}
@@ -1782,6 +1800,29 @@ func (h *Hub) capturePlayerViewsLocked() map[string]simpaches.PlayerView {
 			continue
 		}
 		views[id] = playerViewFromState(state)
+	}
+	if len(views) == 0 {
+		return nil
+	}
+	return views
+}
+
+func playerViewsFromSimSnapshot(snapshot sim.Snapshot) map[string]simpaches.PlayerView {
+	if len(snapshot.Players) == 0 {
+		return nil
+	}
+	views := make(map[string]simpaches.PlayerView, len(snapshot.Players))
+	for _, player := range snapshot.Players {
+		id := player.Actor.ID
+		if id == "" {
+			continue
+		}
+		view := simpaches.PlayerView{
+			Player:   player,
+			IntentDX: player.IntentDX,
+			IntentDY: player.IntentDY,
+		}
+		views[id] = view.Clone()
 	}
 	if len(views) == 0 {
 		return nil
@@ -1801,6 +1842,10 @@ func playerViewFromState(state *playerState) simpaches.PlayerView {
 	}
 }
 
+func playerFromView(view simpaches.PlayerView) Player {
+	return legacyPlayerFromSim(view.Player)
+}
+
 func clonePlayerViewMap(src map[string]simpaches.PlayerView) map[string]simpaches.PlayerView {
 	if len(src) == 0 {
 		return nil
@@ -1810,6 +1855,47 @@ func clonePlayerViewMap(src map[string]simpaches.PlayerView) map[string]simpache
 		clones[id] = view.Clone()
 	}
 	return clones
+}
+
+func mergePlayersFromBaselines(players []Player, baselines map[string]simpaches.PlayerView) []Player {
+	if len(baselines) == 0 {
+		return players
+	}
+	if players == nil {
+		players = make([]Player, 0, len(baselines))
+	}
+
+	seen := make(map[string]struct{}, len(players))
+	for i := range players {
+		id := players[i].ID
+		if id == "" {
+			continue
+		}
+		seen[id] = struct{}{}
+		if view, ok := baselines[id]; ok {
+			players[i] = playerFromView(view)
+		}
+	}
+
+	if len(seen) == len(baselines) {
+		return players
+	}
+
+	missing := make([]string, 0, len(baselines)-len(seen))
+	for id := range baselines {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		missing = append(missing, id)
+	}
+	sort.Strings(missing)
+	for _, id := range missing {
+		players = append(players, playerFromView(baselines[id]))
+	}
+	return players
 }
 
 func (h *Hub) playerExists(playerID string) bool {
