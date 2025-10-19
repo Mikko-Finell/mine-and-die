@@ -43,6 +43,23 @@ type harnessTick struct {
 
 func TestDeterminismHarnessGolden(t *testing.T) {
 	baseline := runDeterminismHarness(t)
+	assertDeterminismHarnessBaseline(t, baseline)
+}
+
+func TestDeterminismHarnessGoldenWithKeyframes(t *testing.T) {
+	baseline := runDeterminismHarnessWithOptions(t, determinismHarnessOptions{recordKeyframes: true})
+	assertDeterminismHarnessBaseline(t, baseline)
+}
+
+func assertDeterminismBaselineField[T comparable](t *testing.T, field string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("determinism harness drift: %s mismatch: expected %v, got %v", field, want, got)
+	}
+}
+
+func assertDeterminismHarnessBaseline(t *testing.T, baseline determinismBaseline) {
+	t.Helper()
 
 	assertDeterminismBaselineField(t, "seed", baseline.Seed, determinismHarnessBaselineRecord.Seed)
 	assertDeterminismBaselineField(t, "ticks", baseline.Ticks, determinismHarnessBaselineRecord.Ticks)
@@ -54,14 +71,15 @@ func TestDeterminismHarnessGolden(t *testing.T) {
 	t.Logf("determinism harness baseline: seed=%s patch=%s journal=%s patches=%d journal_events=%d", baseline.Seed, baseline.PatchChecksum, baseline.JournalChecksum, baseline.TotalPatches, baseline.TotalJournalEvents)
 }
 
-func assertDeterminismBaselineField[T comparable](t *testing.T, field string, got, want T) {
-	t.Helper()
-	if got != want {
-		t.Fatalf("determinism harness drift: %s mismatch: expected %v, got %v", field, want, got)
-	}
+type determinismHarnessOptions struct {
+	recordKeyframes bool
 }
 
 func runDeterminismHarness(t *testing.T) determinismBaseline {
+	return runDeterminismHarnessWithOptions(t, determinismHarnessOptions{})
+}
+
+func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptions) determinismBaseline {
 	t.Helper()
 
 	hub := newHub()
@@ -104,7 +122,13 @@ func runDeterminismHarness(t *testing.T) determinismBaseline {
 		}
 
 		current = current.Add(tickDuration)
-		_, _, _, _, _ = hub.advance(current, dtSeconds)
+		players, npcs, triggers, groundItems, _ := hub.advance(current, dtSeconds)
+
+		if opts.recordKeyframes {
+			if _, _, err := hub.marshalState(players, npcs, triggers, groundItems, false, true); err != nil {
+				t.Fatalf("failed to record keyframe during determinism harness: %v", err)
+			}
+		}
 
 		patches := hub.engine.DrainPatches()
 		patchEnvelope := struct {

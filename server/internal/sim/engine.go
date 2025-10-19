@@ -10,6 +10,7 @@ type Engine interface {
 	SnapshotEffectEvents() EffectEventBatch
 	RestoreEffectEvents(EffectEventBatch)
 	ConsumeEffectResyncHint() (EffectResyncSignal, bool)
+	RecordKeyframe(Keyframe) KeyframeRecordResult
 	KeyframeBySequence(uint64) (Keyframe, bool)
 	KeyframeWindow() (int, uint64, uint64)
 }

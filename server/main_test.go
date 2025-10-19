@@ -118,6 +118,10 @@ func (e *recordingSimEngine) ConsumeEffectResyncHint() (sim.EffectResyncSignal, 
 	return sim.EffectResyncSignal{}, false
 }
 
+func (e *recordingSimEngine) RecordKeyframe(sim.Keyframe) sim.KeyframeRecordResult {
+	return sim.KeyframeRecordResult{}
+}
+
 func (e *recordingSimEngine) KeyframeBySequence(uint64) (sim.Keyframe, bool) {
 	return sim.Keyframe{}, false
 }

@@ -64,6 +64,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - Surfaced keyframe lookup/window access through `internal/sim.Engine`, added
   conversion round-trips for keyframes, and switched hub resync handling to rely
   on the façade instead of reading the journal directly.
+- Routed hub keyframe recording through `internal/sim.Engine`, adding façade
+  record-result conversions and tests so journal writes stay behind the adapter.
+- Added a hub adapter regression to ensure façade-based keyframe recording
+  matches the legacy journal window and eviction metadata exactly.
+- Exercised the determinism harness with per-tick keyframe capture to prove the
+  golden patch and journal checksums remain stable.
 
 ### Next task
 
@@ -106,8 +112,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
       resynchronisation handlers stop reading the legacy journal directly.
 - [x] Add adapter round-trip coverage for keyframe payloads to freeze the data
       contract before switching hub lookups to the façade.
-- [ ] Route keyframe recording through `sim.Engine` so hub state fan-out stops
+- [x] Route keyframe recording through `sim.Engine` so hub state fan-out stops
       writing to the legacy journal directly when capturing frames.
+- [ ] Route patch restoration through `sim.Engine` so hub error handling stops
+      writing directly to the legacy journal when replaying patches.
+- [ ] Add adapter regression coverage for patch restoration once the façade
+      handles the replay path.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
