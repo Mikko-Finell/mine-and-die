@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 
+	"mine-and-die/server/internal/sim"
+	simpaches "mine-and-die/server/internal/sim/patches"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
 )
@@ -68,7 +70,7 @@ func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 	}
 
 	expected := capturePlayerViews(w)
-	originalFrozen := capturePlayerViewsFromMap(original)
+	originalFrozen := clonePlayerViews(original)
 
 	replayed, err := ApplyPatches(original, patches)
 	if err != nil {
@@ -95,84 +97,6 @@ func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 			t.Fatalf("original snapshot mutated for player %s", id)
 		}
 	}
-}
-
-func capturePlayerViews(w *World) map[string]PlayerPatchView {
-	views := make(map[string]PlayerPatchView, len(w.players))
-	for id, state := range w.players {
-		views[id] = PlayerPatchView{
-			Player:   state.snapshot(),
-			IntentDX: state.intentX,
-			IntentDY: state.intentY,
-		}
-	}
-	return views
-}
-
-func capturePlayerViewsFromMap(src map[string]PlayerPatchView) map[string]PlayerPatchView {
-	views := make(map[string]PlayerPatchView, len(src))
-	for id, view := range src {
-		views[id] = clonePlayerPatchView(view)
-	}
-	return views
-}
-
-func playerViewsEqual(a, b PlayerPatchView) bool {
-	if a.ID != b.ID {
-		return false
-	}
-	if !floatsEqual(a.X, b.X) || !floatsEqual(a.Y, b.Y) {
-		return false
-	}
-	if a.Facing != b.Facing {
-		return false
-	}
-	if !floatsEqual(a.IntentDX, b.IntentDX) || !floatsEqual(a.IntentDY, b.IntentDY) {
-		return false
-	}
-	if !floatsEqual(a.Health, b.Health) || !floatsEqual(a.MaxHealth, b.MaxHealth) {
-		return false
-	}
-	if !inventoriesSlotEqual(a.Inventory, b.Inventory) {
-		return false
-	}
-	return true
-}
-
-func playerViewMapsEqual(a, b map[string]PlayerPatchView) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for id, viewA := range a {
-		viewB, ok := b[id]
-		if !ok {
-			return false
-		}
-		if !playerViewsEqual(viewA, viewB) {
-			return false
-		}
-	}
-	return true
-}
-
-func inventoriesSlotEqual(a, b Inventory) bool {
-	if len(a.Slots) != len(b.Slots) {
-		return false
-	}
-	for i := range a.Slots {
-		as := a.Slots[i]
-		bs := b.Slots[i]
-		if as.Slot != bs.Slot {
-			return false
-		}
-		if as.Item.Type != bs.Item.Type {
-			return false
-		}
-		if as.Item.Quantity != bs.Item.Quantity {
-			return false
-		}
-	}
-	return true
 }
 
 func TestApplyPatchesNoop(t *testing.T) {
@@ -205,9 +129,7 @@ func TestApplyPatchesNoop(t *testing.T) {
 		t.Fatalf("expected replayed snapshot to equal original when applying nil patches")
 	}
 
-	// Ensure the original snapshot remains untouched after replay.
-	frozen := capturePlayerViewsFromMap(original)
-	if !playerViewMapsEqual(original, frozen) {
+	if !playerViewMapsEqual(original, clonePlayerViews(original)) {
 		t.Fatalf("original snapshot mutated during noop replay")
 	}
 }
@@ -241,20 +163,14 @@ func TestApplyPatchesRemovesPlayer(t *testing.T) {
 
 func TestApplyPatchesUnknownEntity(t *testing.T) {
 	base := map[string]PlayerPatchView{
-		"player-1": {
-			Player: Player{
-				Actor: Actor{
-					ID:        "player-1",
-					X:         1,
-					Y:         2,
-					Facing:    FacingUp,
-					Health:    50,
-					MaxHealth: 75,
-				},
-			},
-			IntentDX: 0,
-			IntentDY: 1,
-		},
+		"player-1": playerViewFromLegacy(Player{Actor: Actor{
+			ID:        "player-1",
+			X:         1,
+			Y:         2,
+			Facing:    FacingUp,
+			Health:    50,
+			MaxHealth: 75,
+		}}, 0, 1),
 	}
 
 	patches := []Patch{{
@@ -272,101 +188,47 @@ func TestApplyPatchesUnknownEntity(t *testing.T) {
 		t.Fatalf("expected no snapshot on error, got %#v", replayed)
 	}
 
-	if !playerViewMapsEqual(base, capturePlayerViewsFromMap(base)) {
+	if !playerViewMapsEqual(base, clonePlayerViews(base)) {
 		t.Fatalf("base snapshot mutated when applying unknown entity patch")
 	}
 }
 
 func TestApplyPatchesDuplicatePatchesLastWriteWins(t *testing.T) {
 	base := map[string]PlayerPatchView{
-		"player-1": {
-			Player: Player{
-				Actor: Actor{
-					ID:        "player-1",
-					X:         0,
-					Y:         0,
-					Facing:    FacingDown,
-					Health:    10,
-					MaxHealth: 20,
-					Inventory: Inventory{Slots: []InventorySlot{{
-						Slot: 0,
-						Item: ItemStack{Type: ItemTypeGold, Quantity: 1},
-					}}}},
-			},
-			IntentDX: 0,
-			IntentDY: 0,
-		},
+		"player-1": playerViewFromLegacy(Player{Actor: Actor{
+			ID:        "player-1",
+			X:         0,
+			Y:         0,
+			Facing:    FacingDown,
+			Health:    10,
+			MaxHealth: 20,
+			Inventory: Inventory{Slots: []InventorySlot{{
+				Slot: 0,
+				Item: ItemStack{Type: ItemTypeGold, Quantity: 1},
+			}}},
+		}}, 0, 0),
 	}
 
 	patches := []Patch{
-		{
-			Kind:     PatchPlayerPos,
-			EntityID: "player-1",
-			Payload:  PlayerPosPayload{X: 1, Y: 1},
-		},
-		{
-			Kind:     PatchPlayerPos,
-			EntityID: "player-1",
-			Payload:  PlayerPosPayload{X: 5, Y: -2},
-		},
-		{
-			Kind:     PatchPlayerIntent,
-			EntityID: "player-1",
-			Payload:  PlayerIntentPayload{DX: 1, DY: 0},
-		},
-		{
-			Kind:     PatchPlayerIntent,
-			EntityID: "player-1",
-			Payload:  PlayerIntentPayload{DX: -1, DY: 1},
-		},
-		{
-			Kind:     PatchPlayerHealth,
-			EntityID: "player-1",
-			Payload:  PlayerHealthPayload{Health: 15, MaxHealth: 30},
-		},
-		{
-			Kind:     PatchPlayerHealth,
-			EntityID: "player-1",
-			Payload:  PlayerHealthPayload{Health: 8},
-		},
-		{
-			Kind:     PatchPlayerInventory,
-			EntityID: "player-1",
-			Payload: PlayerInventoryPayload{
-				Slots: []InventorySlot{
-					{
-						Slot: 0,
-						Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
-					},
-				},
-			},
-		},
-		{
-			Kind:     PatchPlayerInventory,
-			EntityID: "player-1",
-			Payload: PlayerInventoryPayload{
-				Slots: []InventorySlot{
-					{
-						Slot: 0,
-						Item: ItemStack{Type: ItemTypeHealthPotion, Quantity: 1},
-					},
-					{
-						Slot: 1,
-						Item: ItemStack{Type: ItemTypeGold, Quantity: 4},
-					},
-				},
-			},
-		},
-		{
-			Kind:     PatchPlayerFacing,
-			EntityID: "player-1",
-			Payload:  PlayerFacingPayload{Facing: FacingLeft},
-		},
-		{
-			Kind:     PatchPlayerFacing,
-			EntityID: "player-1",
-			Payload:  PlayerFacingPayload{Facing: FacingUp},
-		},
+		{Kind: PatchPlayerPos, EntityID: "player-1", Payload: PlayerPosPayload{X: 1, Y: 1}},
+		{Kind: PatchPlayerPos, EntityID: "player-1", Payload: PlayerPosPayload{X: 5, Y: -2}},
+		{Kind: PatchPlayerIntent, EntityID: "player-1", Payload: PlayerIntentPayload{DX: 1, DY: 0}},
+		{Kind: PatchPlayerIntent, EntityID: "player-1", Payload: PlayerIntentPayload{DX: -1, DY: 1}},
+		{Kind: PatchPlayerHealth, EntityID: "player-1", Payload: PlayerHealthPayload{Health: 15, MaxHealth: 30}},
+		{Kind: PatchPlayerHealth, EntityID: "player-1", Payload: PlayerHealthPayload{Health: 8}},
+		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: PlayerInventoryPayload{Slots: []InventorySlot{{
+			Slot: 0,
+			Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
+		}}}},
+		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: PlayerInventoryPayload{Slots: []InventorySlot{{
+			Slot: 0,
+			Item: ItemStack{Type: ItemTypeHealthPotion, Quantity: 1},
+		}, {
+			Slot: 1,
+			Item: ItemStack{Type: ItemTypeGold, Quantity: 4},
+		}}}},
+		{Kind: PatchPlayerFacing, EntityID: "player-1", Payload: PlayerFacingPayload{Facing: FacingLeft}},
+		{Kind: PatchPlayerFacing, EntityID: "player-1", Payload: PlayerFacingPayload{Facing: FacingUp}},
 	}
 
 	replayed, err := ApplyPatches(base, patches)
@@ -374,30 +236,21 @@ func TestApplyPatchesDuplicatePatchesLastWriteWins(t *testing.T) {
 		t.Fatalf("apply patches failed: %v", err)
 	}
 
-	expected := PlayerPatchView{
-		Player: Player{
-			Actor: Actor{
-				ID:        "player-1",
-				X:         5,
-				Y:         -2,
-				Facing:    FacingUp,
-				Health:    8,
-				MaxHealth: 30,
-				Inventory: Inventory{Slots: []InventorySlot{
-					{
-						Slot: 0,
-						Item: ItemStack{Type: ItemTypeHealthPotion, Quantity: 1},
-					},
-					{
-						Slot: 1,
-						Item: ItemStack{Type: ItemTypeGold, Quantity: 4},
-					},
-				}},
-			},
-		},
-		IntentDX: -1,
-		IntentDY: 1,
-	}
+	expected := playerViewFromLegacy(Player{Actor: Actor{
+		ID:        "player-1",
+		X:         5,
+		Y:         -2,
+		Facing:    FacingUp,
+		Health:    8,
+		MaxHealth: 30,
+		Inventory: Inventory{Slots: []InventorySlot{{
+			Slot: 0,
+			Item: ItemStack{Type: ItemTypeHealthPotion, Quantity: 1},
+		}, {
+			Slot: 1,
+			Item: ItemStack{Type: ItemTypeGold, Quantity: 4},
+		}}},
+	}}, -1, 1)
 
 	replayedView, ok := replayed["player-1"]
 	if !ok {
@@ -408,37 +261,31 @@ func TestApplyPatchesDuplicatePatchesLastWriteWins(t *testing.T) {
 		t.Fatalf("expected last write wins for duplicate patches")
 	}
 
-	if !playerViewMapsEqual(base, capturePlayerViewsFromMap(base)) {
+	if !playerViewMapsEqual(base, clonePlayerViews(base)) {
 		t.Fatalf("base snapshot mutated during duplicate patch replay")
 	}
 }
 
 func TestApplyPatchesUpdatesEquipment(t *testing.T) {
 	base := map[string]PlayerPatchView{
-		"player-1": {
-			Player: Player{Actor: Actor{ID: "player-1", Equipment: Equipment{Slots: []EquippedItem{{
+		"player-1": playerViewFromLegacy(Player{Actor: Actor{
+			ID: "player-1",
+			Equipment: Equipment{Slots: []EquippedItem{{
 				Slot: EquipSlotBody,
 				Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1},
-			}}}}},
-		},
+			}}}}}, 0, 0),
 	}
 
 	patches := []Patch{{
 		Kind:     PatchPlayerEquipment,
 		EntityID: "player-1",
 		Payload: EquipmentPayload{Slots: []EquippedItem{
-			{
-				Slot: EquipSlotBody,
-				Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1},
-			},
-			{
-				Slot: EquipSlotMainHand,
-				Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1},
-			},
+			{Slot: EquipSlotBody, Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1}},
+			{Slot: EquipSlotMainHand, Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1}},
 		}},
 	}}
 
-	frozen := capturePlayerViewsFromMap(base)
+	frozen := clonePlayerViews(base)
 	replayed, err := ApplyPatches(base, patches)
 	if err != nil {
 		t.Fatalf("apply patches failed: %v", err)
@@ -449,22 +296,118 @@ func TestApplyPatchesUpdatesEquipment(t *testing.T) {
 		t.Fatalf("expected player-1 in replayed snapshot")
 	}
 
-	expected := Equipment{Slots: []EquippedItem{
-		{
-			Slot: EquipSlotBody,
-			Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1},
-		},
-		{
-			Slot: EquipSlotMainHand,
-			Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1},
-		},
-	}}
+	expected := simEquipmentFromLegacy(Equipment{Slots: []EquippedItem{
+		{Slot: EquipSlotBody, Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1}},
+		{Slot: EquipSlotMainHand, Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1}},
+	}})
 
-	if !equipmentsEqual(expected, replayedView.Equipment) {
-		t.Fatalf("expected equipment update to replay, got %+v", replayedView.Equipment)
+	if !simEquipmentsEqual(expected, replayedView.Player.Actor.Equipment) {
+		t.Fatalf("expected equipment update to replay, got %+v", replayedView.Player.Actor.Equipment)
 	}
 
 	if !playerViewMapsEqual(base, frozen) {
 		t.Fatalf("base snapshot mutated during equipment patch replay")
 	}
+}
+
+func capturePlayerViews(w *World) map[string]simpaches.PlayerView {
+	views := make(map[string]simpaches.PlayerView, len(w.players))
+	for id, state := range w.players {
+		legacy := state.snapshot()
+		views[id] = playerViewFromLegacy(legacy, state.intentX, state.intentY)
+	}
+	return views
+}
+
+func clonePlayerViews(src map[string]simpaches.PlayerView) map[string]simpaches.PlayerView {
+	views := make(map[string]simpaches.PlayerView, len(src))
+	for id, view := range src {
+		views[id] = view.Clone()
+	}
+	return views
+}
+
+func playerViewFromLegacy(player Player, intentDX, intentDY float64) simpaches.PlayerView {
+	return simpaches.PlayerView{
+		Player:   sim.Player{Actor: simActorFromLegacy(player.Actor)},
+		IntentDX: intentDX,
+		IntentDY: intentDY,
+	}
+}
+
+func playerViewsEqual(a, b simpaches.PlayerView) bool {
+	aa := a.Player.Actor
+	bb := b.Player.Actor
+	if aa.ID != bb.ID {
+		return false
+	}
+	if !floatsEqual(aa.X, bb.X) || !floatsEqual(aa.Y, bb.Y) {
+		return false
+	}
+	if aa.Facing != bb.Facing {
+		return false
+	}
+	if !floatsEqual(aa.Health, bb.Health) || !floatsEqual(aa.MaxHealth, bb.MaxHealth) {
+		return false
+	}
+	if !floatsEqual(a.IntentDX, b.IntentDX) || !floatsEqual(a.IntentDY, b.IntentDY) {
+		return false
+	}
+	if !simInventoriesEqual(aa.Inventory, bb.Inventory) {
+		return false
+	}
+	if !simEquipmentsEqual(aa.Equipment, bb.Equipment) {
+		return false
+	}
+	return true
+}
+
+func playerViewMapsEqual(a, b map[string]simpaches.PlayerView) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for id, viewA := range a {
+		viewB, ok := b[id]
+		if !ok {
+			return false
+		}
+		if !playerViewsEqual(viewA, viewB) {
+			return false
+		}
+	}
+	return true
+}
+
+func simInventoriesEqual(a, b sim.Inventory) bool {
+	if len(a.Slots) != len(b.Slots) {
+		return false
+	}
+	for i := range a.Slots {
+		as := a.Slots[i]
+		bs := b.Slots[i]
+		if as.Slot != bs.Slot {
+			return false
+		}
+		if as.Item.Type != bs.Item.Type || as.Item.Quantity != bs.Item.Quantity || as.Item.FungibilityKey != bs.Item.FungibilityKey {
+			return false
+		}
+	}
+	return true
+}
+
+func simEquipmentsEqual(a, b sim.Equipment) bool {
+	if len(a.Slots) != len(b.Slots) {
+		return false
+	}
+	for i := range a.Slots {
+		as := a.Slots[i]
+		bs := b.Slots[i]
+		if as.Slot != bs.Slot {
+			return false
+		}
+		if as.Item.Type != bs.Item.Type || as.Item.Quantity != bs.Item.Quantity || as.Item.FungibilityKey != bs.Item.FungibilityKey {
+			return false
+		}
+	}
+	return true
 }
