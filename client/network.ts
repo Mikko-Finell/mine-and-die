@@ -1,4 +1,5 @@
 import {
+  getEffectCatalog,
   normalizeEffectCatalog,
   type EffectCatalogSnapshot,
 } from "./effect-catalog";
@@ -409,7 +410,11 @@ export class WebSocketNetworkClient implements NetworkClient {
       );
     }
 
-    const effectCatalog = normalizeEffectCatalog(config.effectCatalog);
+    const effectCatalogPayload = config.effectCatalog;
+    const effectCatalog =
+      effectCatalogPayload === undefined
+        ? getEffectCatalog()
+        : normalizeEffectCatalog(effectCatalogPayload);
 
     if (joinPayload.ver !== this.configuration.protocolVersion) {
       throw new Error(

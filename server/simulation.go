@@ -148,7 +148,6 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		journal:             newJournal(capacity, maxAge),
 	}
 	w.effectManager = newEffectManager(w)
-	w.config.EffectCatalog = snapshotEffectCatalog(w.effectManager.catalog)
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
 	return w

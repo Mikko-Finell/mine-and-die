@@ -133,7 +133,7 @@ type hubConfig struct {
 }
 
 func defaultHubConfig() hubConfig {
-	return hubConfig{KeyframeInterval: 30, SendEffectCatalog: true}
+	return hubConfig{KeyframeInterval: 30, SendEffectCatalog: false}
 }
 
 // newHub creates a hub with empty maps and a freshly generated world.
@@ -288,6 +288,9 @@ func (h *Hub) Join() joinResponse {
 	var catalog map[string]effectCatalogMetadata
 	if h.shouldSendEffectCatalog() {
 		catalog = h.effectCatalogSnapshotLocked()
+		cfg.EffectCatalog = cloneEffectCatalogMetadataMap(catalog)
+	} else {
+		cfg.EffectCatalog = nil
 	}
 	h.mu.Unlock()
 
