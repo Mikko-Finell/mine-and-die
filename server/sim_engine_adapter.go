@@ -66,8 +66,21 @@ func (a *legacyEngineAdapter) Snapshot() sim.Snapshot {
 	triggers := a.world.flushEffectTriggersLocked()
 	obstacles := a.world.obstacles
 	aliveEffectIDs := simAliveEffectIDsFromLegacy(a.world.effects)
+	simPlayers := simPlayersFromLegacy(players)
+	if len(simPlayers) > 0 {
+		for i := range simPlayers {
+			id := simPlayers[i].Actor.ID
+			if id == "" {
+				continue
+			}
+			if state, ok := a.world.players[id]; ok && state != nil {
+				simPlayers[i].IntentDX = state.intentX
+				simPlayers[i].IntentDY = state.intentY
+			}
+		}
+	}
 	return sim.Snapshot{
-		Players:        simPlayersFromLegacy(players),
+		Players:        simPlayers,
 		NPCs:           simNPCsFromLegacy(npcs),
 		GroundItems:    simGroundItemsFromLegacy(groundItems),
 		EffectEvents:   simEffectTriggersFromLegacy(triggers),
@@ -81,6 +94,14 @@ func (a *legacyEngineAdapter) DrainPatches() []sim.Patch {
 		return nil
 	}
 	patches := a.world.drainPatchesLocked()
+	return simPatchesFromLegacy(patches)
+}
+
+func (a *legacyEngineAdapter) SnapshotPatches() []sim.Patch {
+	if a == nil || a.world == nil {
+		return nil
+	}
+	patches := a.world.snapshotPatchesLocked()
 	return simPatchesFromLegacy(patches)
 }
 
@@ -253,13 +274,17 @@ func simPlayersFromLegacy(players []Player) []sim.Player {
 	return converted
 }
 
+func legacyPlayerFromSim(player sim.Player) Player {
+	return Player{Actor: legacyActorFromSim(player.Actor)}
+}
+
 func legacyPlayersFromSim(players []sim.Player) []Player {
 	if len(players) == 0 {
 		return nil
 	}
 	converted := make([]Player, len(players))
 	for i, player := range players {
-		converted[i] = Player{Actor: legacyActorFromSim(player.Actor)}
+		converted[i] = legacyPlayerFromSim(player)
 	}
 	return converted
 }

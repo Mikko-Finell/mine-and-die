@@ -72,11 +72,12 @@ func runAdvance(h *Hub, dt float64) ([]Player, []NPC) {
 }
 
 type recordingSimEngine struct {
-	mu       sync.Mutex
-	snapshot sim.Snapshot
-	calls    int
-	gate     chan struct{}
-	gateOnce sync.Once
+	mu              sync.Mutex
+	snapshot        sim.Snapshot
+	snapshotPatches []sim.Patch
+	calls           int
+	gate            chan struct{}
+	gateOnce        sync.Once
 }
 
 func newRecordingSimEngine(snapshot sim.Snapshot) *recordingSimEngine {
@@ -104,6 +105,17 @@ func (e *recordingSimEngine) Snapshot() sim.Snapshot {
 }
 
 func (e *recordingSimEngine) DrainPatches() []sim.Patch { return nil }
+
+func (e *recordingSimEngine) SnapshotPatches() []sim.Patch {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.snapshotPatches) == 0 {
+		return nil
+	}
+	patches := make([]sim.Patch, len(e.snapshotPatches))
+	copy(patches, e.snapshotPatches)
+	return patches
+}
 
 func (e *recordingSimEngine) RestorePatches([]sim.Patch) {}
 
@@ -141,6 +153,18 @@ func (e *recordingSimEngine) Calls() int {
 
 func (e *recordingSimEngine) AllowFurtherSnapshots() {
 	e.gateOnce.Do(func() { close(e.gate) })
+}
+
+func (e *recordingSimEngine) SetSnapshotPatches(patches []sim.Patch) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(patches) == 0 {
+		e.snapshotPatches = nil
+		return
+	}
+	cloned := make([]sim.Patch, len(patches))
+	copy(cloned, patches)
+	e.snapshotPatches = cloned
 }
 
 func TestHubJoinCreatesPlayer(t *testing.T) {
@@ -2787,6 +2811,50 @@ func TestMarshalStateCapturesResubscribeBaselinesFromSnapshot(t *testing.T) {
 	}
 }
 
+func TestPlayerViewsFromSimSnapshotCopiesIntent(t *testing.T) {
+	snapshot := sim.Snapshot{
+		Players: []sim.Player{{
+			Actor: sim.Actor{
+				ID: "player-1",
+				Inventory: sim.Inventory{Slots: []sim.InventorySlot{{
+					Slot: 1,
+					Item: sim.ItemStack{Type: sim.ItemType("gold"), Quantity: 3},
+				}}},
+			},
+			IntentDX: 0.5,
+			IntentDY: -0.25,
+		}},
+	}
+
+	views := playerViewsFromSimSnapshot(snapshot)
+	if len(views) != 1 {
+		t.Fatalf("expected 1 view, got %d", len(views))
+	}
+
+	view, ok := views["player-1"]
+	if !ok {
+		t.Fatalf("expected view for player-1")
+	}
+	if math.Abs(view.IntentDX-0.5) > 1e-6 || math.Abs(view.IntentDY-(-0.25)) > 1e-6 {
+		t.Fatalf("expected intents (0.5,-0.25), got (%.2f, %.2f)", view.IntentDX, view.IntentDY)
+	}
+	if view.Player.Actor.ID != "player-1" {
+		t.Fatalf("expected actor id player-1, got %q", view.Player.Actor.ID)
+	}
+	if got := view.Player.Inventory.Slots[0].Item.Quantity; got != 3 {
+		t.Fatalf("expected inventory quantity 3, got %d", got)
+	}
+
+	snapshot.Players[0].IntentDX = 1
+	snapshot.Players[0].Inventory.Slots[0].Item.Quantity = 99
+	if math.Abs(view.IntentDX-0.5) > 1e-6 {
+		t.Fatalf("expected snapshot mutation to not affect captured view, got %.2f", view.IntentDX)
+	}
+	if got := view.Player.Inventory.Slots[0].Item.Quantity; got != 3 {
+		t.Fatalf("expected inventory quantity to remain 3, got %d", got)
+	}
+}
+
 func TestMarshalStateAppliesPlayerPatchesToResubscribeBaselines(t *testing.T) {
 	hub := newHub()
 	player := newTestPlayerState("resubscribe-patch")
@@ -2815,6 +2883,53 @@ func TestMarshalStateAppliesPlayerPatchesToResubscribeBaselines(t *testing.T) {
 	}
 }
 
+func TestMarshalStateRefreshesResubscribeBaselinesFromSnapshotOnPatchFailure(t *testing.T) {
+	hub := newHub()
+	playerID := "resubscribe-fallback"
+	player := newTestPlayerState(playerID)
+	hub.world.AddPlayer(player)
+
+	snapshot := sim.Snapshot{
+		Players: []sim.Player{{
+			Actor:    sim.Actor{ID: playerID, X: 42, Y: -17},
+			IntentDX: 0.5,
+			IntentDY: -0.25,
+		}},
+	}
+	engine := newRecordingSimEngine(snapshot)
+	engine.SetSnapshotPatches([]sim.Patch{{
+		Kind:     sim.PatchPlayerIntent,
+		EntityID: "missing-entity",
+		Payload:  sim.PlayerIntentPayload{DX: 0.75, DY: 0.25},
+	}})
+	hub.engine = engine
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, false, true); err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	engine.AllowFurtherSnapshots()
+
+	hub.world.SetPosition(playerID, -99, 33)
+	hub.world.SetIntent(playerID, 1.0, -1.0)
+
+	if _, _, err := hub.marshalState(nil, nil, nil, nil, false, false); err != nil {
+		t.Fatalf("marshalState returned error during delta: %v", err)
+	}
+
+	view, ok := hub.resubscribeBaselines[playerID]
+	if !ok {
+		t.Fatalf("expected baseline entry for %q", playerID)
+	}
+
+	if math.Abs(view.Player.Actor.X-42) > 1e-6 || math.Abs(view.Player.Actor.Y-(-17)) > 1e-6 {
+		t.Fatalf("expected fallback baseline coordinates (42,-17), got (%.1f, %.1f)", view.Player.Actor.X, view.Player.Actor.Y)
+	}
+	if math.Abs(view.IntentDX-0.5) > 1e-6 || math.Abs(view.IntentDY-(-0.25)) > 1e-6 {
+		t.Fatalf("expected fallback intents (0.5,-0.25), got (%.2f, %.2f)", view.IntentDX, view.IntentDY)
+	}
+}
+
 func TestMarshalStateRemovesResubscribeBaselinesOnRemoval(t *testing.T) {
 	hub := newHub()
 	player := newTestPlayerState("resubscribe-remove")
@@ -2834,6 +2949,87 @@ func TestMarshalStateRemovesResubscribeBaselinesOnRemoval(t *testing.T) {
 
 	if _, ok := hub.resubscribeBaselines[player.ID]; ok {
 		t.Fatalf("expected baseline entry for %q to be removed", player.ID)
+	}
+}
+
+func TestMarshalStateUsesResubscribeBaselinesForReplayPackaging(t *testing.T) {
+	hub := newHub()
+	player := newTestPlayerState("resubscribe-packaging")
+	hub.world.AddPlayer(player)
+
+	stale := []Player{{Actor: Actor{ID: player.ID, X: player.X, Y: player.Y}}}
+
+	updatedX := player.X + 8
+	updatedY := player.Y - 5
+	hub.world.SetPosition(player.ID, updatedX, updatedY)
+
+	data, _, err := hub.marshalState(stale, nil, nil, nil, false, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state payload: %v", err)
+	}
+
+	if len(msg.Players) != 1 {
+		t.Fatalf("expected exactly one player in packaged snapshot, got %d", len(msg.Players))
+	}
+
+	packaged := msg.Players[0]
+	if math.Abs(packaged.X-updatedX) > 1e-6 || math.Abs(packaged.Y-updatedY) > 1e-6 {
+		t.Fatalf("expected packaged coordinates (%.1f, %.1f), got (%.1f, %.1f)", updatedX, updatedY, packaged.X, packaged.Y)
+	}
+}
+
+func TestMarshalStateUsesSimEngineSnapshotPatchesForReplay(t *testing.T) {
+	hub := newHub()
+	playerID := "resubscribe-engine-player"
+	snapshot := sim.Snapshot{
+		Players: []sim.Player{{Actor: sim.Actor{ID: playerID}}},
+	}
+	engine := newRecordingSimEngine(snapshot)
+	engine.SetSnapshotPatches([]sim.Patch{{
+		Kind:     sim.PatchPlayerIntent,
+		EntityID: playerID,
+		Payload:  sim.PlayerIntentPayload{DX: 0.5, DY: -0.25},
+	}})
+	hub.engine = engine
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, false, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state payload: %v", err)
+	}
+
+	if len(msg.Patches) != 1 {
+		t.Fatalf("expected exactly one patch in packaged snapshot, got %d", len(msg.Patches))
+	}
+
+	patch := msg.Patches[0]
+	if patch.Kind != PatchPlayerIntent {
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerIntent, patch.Kind)
+	}
+	if patch.EntityID != playerID {
+		t.Fatalf("expected patch entity %q, got %q", playerID, patch.EntityID)
+	}
+
+	payload, ok := patch.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("expected player intent payload to decode as map, got %T", patch.Payload)
+	}
+	dx, dxOK := payload["dx"].(float64)
+	dy, dyOK := payload["dy"].(float64)
+	if !dxOK || !dyOK {
+		t.Fatalf("expected payload to contain dx/dy floats, got %+v", payload)
+	}
+	if math.Abs(dx-0.5) > 1e-6 || math.Abs(dy-(-0.25)) > 1e-6 {
+		t.Fatalf("expected payload (0.5,-0.25), got (%.2f, %.2f)", dx, dy)
 	}
 }
 

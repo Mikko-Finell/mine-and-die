@@ -147,8 +147,17 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Teach the hub resubscribe flow to clone the persisted `patches.PlayerView`
       baselines when staging replay payloads so reconnects no longer depend on
       legacy player structs.
-- [ ] Integrate the cloned resubscribe baselines into the replay packaging so
+- [x] Integrate the cloned resubscribe baselines into the replay packaging so
       reconnect payloads are staged from the façade types end-to-end.
+- [x] Route hub resubscribe patch snapshots through `sim.Engine` so replay
+      packaging stops reading the legacy journal during reconnect staging.
+- [x] Capture resubscribe baselines from `sim.Engine` snapshots so reconnect
+      caching stops reading legacy player state during full snapshot packaging.
+- [x] Refresh resubscribe baseline fallbacks from `sim.Engine` snapshots when
+      patch application fails so hub recovery stays off `World` state.
+
+- [ ] Remove the legacy world fallback from resubscribe baseline capture so
+      reconnect caching relies exclusively on `sim.Engine` snapshots.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
