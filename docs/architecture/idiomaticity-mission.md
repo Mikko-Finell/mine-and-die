@@ -43,6 +43,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   keeping the adapter authoritative for tick loops.
 - Sketched a determinism harness that seeds the engine, plays a fixed command
   script, and produces patch/journal checksums for the upcoming golden test.
+- Captured the determinism harness' patch and journal checksums as committed
+  constants and taught the harness test to fail on drift, preserving the
+  baseline record.
 
 ### Next task
 
@@ -64,8 +67,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Sketch a determinism harness that seeds the engine RNG, feeds a fixed
       command script for a handful of ticks, and records baseline patch/journal
       checksums for the upcoming golden test.
-- [ ] Capture the harness' recorded patch and journal checksums as constants so
+- [x] Capture the harness' recorded patch and journal checksums as constants so
       the forthcoming golden test can assert against a committed baseline.
+- [ ] Promote the determinism harness into a golden test that asserts the
+      recorded checksums against the committed baseline constants.
 
 - [ ] Objective: Create seams and invariants before moving code.
 
