@@ -1,268 +1,59 @@
 package server
 
 import (
-	"fmt"
 	"math/rand"
+
+	worldpkg "mine-and-die/server/internal/world"
 )
+
+type Obstacle = worldpkg.Obstacle
 
 const (
-	obstacleTypeGoldOre = "gold-ore"
-	obstacleTypeLava    = "lava"
+	obstacleTypeGoldOre = worldpkg.ObstacleTypeGoldOre
+	obstacleTypeLava    = worldpkg.ObstacleTypeLava
 )
-
-type Obstacle struct {
-	ID     string  `json:"id"`
-	Type   string  `json:"type,omitempty"`
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
-}
 
 // generateObstacles scatters blocking rectangles and ore deposits around the map.
 func (w *World) generateObstacles(count int) []Obstacle {
-	baseCount := count
-	if baseCount < 0 {
-		baseCount = 0
-	}
-
-	obstacles := make([]Obstacle, 0, baseCount)
-
-	if w.config.Obstacles && baseCount > 0 {
-		rng := w.subsystemRNG("obstacles.base")
-		attempts := 0
-		maxAttempts := baseCount * 20
-		worldW, worldH := w.dimensions()
-
-		for len(obstacles) < baseCount && attempts < maxAttempts {
-			attempts++
-
-			width := obstacleMinWidth + rng.Float64()*(obstacleMaxWidth-obstacleMinWidth)
-			height := obstacleMinHeight + rng.Float64()*(obstacleMaxHeight-obstacleMinHeight)
-
-			globalMinX := obstacleSpawnMargin
-			globalMaxX := worldW - obstacleSpawnMargin - width
-			globalMinY := obstacleSpawnMargin
-			globalMaxY := worldH - obstacleSpawnMargin - height
-			if globalMaxX <= globalMinX || globalMaxY <= globalMinY {
-				break
-			}
-
-			minX, maxX := centralTopLeftRange(worldW, defaultSpawnX, obstacleSpawnMargin, width)
-			if maxX <= minX {
-				minX = globalMinX
-				maxX = globalMaxX
-			}
-			minY, maxY := centralTopLeftRange(worldH, defaultSpawnY, obstacleSpawnMargin, height)
-			if maxY <= minY {
-				minY = globalMinY
-				maxY = globalMaxY
-			}
-
-			x := minX
-			if maxX > minX {
-				x += rng.Float64() * (maxX - minX)
-			}
-			y := minY
-			if maxY > minY {
-				y += rng.Float64() * (maxY - minY)
-			}
-
-			candidate := Obstacle{
-				ID:     fmt.Sprintf("obstacle-%d", len(obstacles)+1),
-				X:      x,
-				Y:      y,
-				Width:  width,
-				Height: height,
-			}
-
-			if circleRectOverlap(defaultSpawnX, defaultSpawnY, playerSpawnSafeRadius, candidate) {
-				continue
-			}
-
-			overlapsExisting := false
-			for _, obs := range obstacles {
-				if obstaclesOverlap(candidate, obs, playerHalf) {
-					overlapsExisting = true
-					break
-				}
-			}
-
-			if overlapsExisting {
-				continue
-			}
-
-			obstacles = append(obstacles, candidate)
-		}
-	}
-
-	if w.config.GoldMines && w.config.GoldMineCount > 0 {
-		oreRNG := w.subsystemRNG("obstacles.gold")
-		goldOre := w.generateGoldOreNodes(w.config.GoldMineCount, obstacles, oreRNG)
-		obstacles = append(obstacles, goldOre...)
-	}
-
-	if w.config.Lava {
-		lavaPools := w.generateLavaPools(w.config.LavaCount, obstacles)
-		obstacles = append(obstacles, lavaPools...)
-	}
-
-	return obstacles
-}
-
-// generateGoldOreNodes places ore obstacles while avoiding overlaps.
-func (w *World) generateGoldOreNodes(count int, existing []Obstacle, rng *rand.Rand) []Obstacle {
-	if count <= 0 || rng == nil {
-		return nil
-	}
-
-	ores := make([]Obstacle, 0, count)
-	attempts := 0
-	maxAttempts := count * 30
-	worldW, worldH := w.dimensions()
-
-	for len(ores) < count && attempts < maxAttempts {
-		attempts++
-
-		width := goldOreMinSize + rng.Float64()*(goldOreMaxSize-goldOreMinSize)
-		height := goldOreMinSize + rng.Float64()*(goldOreMaxSize-goldOreMinSize)
-
-		globalMinX := obstacleSpawnMargin
-		globalMaxX := worldW - obstacleSpawnMargin - width
-		globalMinY := obstacleSpawnMargin
-		globalMaxY := worldH - obstacleSpawnMargin - height
-		if globalMaxX <= globalMinX || globalMaxY <= globalMinY {
-			break
-		}
-
-		minX, maxX := centralTopLeftRange(worldW, defaultSpawnX, obstacleSpawnMargin, width)
-		if maxX <= minX {
-			minX = globalMinX
-			maxX = globalMaxX
-		}
-		minY, maxY := centralTopLeftRange(worldH, defaultSpawnY, obstacleSpawnMargin, height)
-		if maxY <= minY {
-			minY = globalMinY
-			maxY = globalMaxY
-		}
-
-		x := minX
-		if maxX > minX {
-			x += rng.Float64() * (maxX - minX)
-		}
-		y := minY
-		if maxY > minY {
-			y += rng.Float64() * (maxY - minY)
-		}
-
-		candidate := Obstacle{
-			ID:     fmt.Sprintf("gold-ore-%d", len(ores)+1),
-			Type:   obstacleTypeGoldOre,
-			X:      x,
-			Y:      y,
-			Width:  width,
-			Height: height,
-		}
-
-		if circleRectOverlap(defaultSpawnX, defaultSpawnY, playerSpawnSafeRadius, candidate) {
-			continue
-		}
-
-		overlaps := false
-
-		for _, obs := range existing {
-			if obstaclesOverlap(candidate, obs, playerHalf) {
-				overlaps = true
-				break
-			}
-		}
-
-		if overlaps {
-			continue
-		}
-
-		for _, ore := range ores {
-			if obstaclesOverlap(candidate, ore, playerHalf) {
-				overlaps = true
-				break
-			}
-		}
-
-		if overlaps {
-			continue
-		}
-
-		ores = append(ores, candidate)
-	}
-
-	return ores
-}
-
-// generateLavaPools inserts deterministic lava hazards that remain walkable but harmful.
-func (w *World) generateLavaPools(count int, existing []Obstacle) []Obstacle {
-	if count <= 0 {
-		return nil
-	}
-
-	templates := []Obstacle{
-		{ID: "lava-1", Type: obstacleTypeLava, X: 320, Y: 120, Width: 80, Height: 80},
-		{ID: "lava-2", Type: obstacleTypeLava, X: 520, Y: 260, Width: 80, Height: 80},
-		{ID: "lava-3", Type: obstacleTypeLava, X: 200, Y: 360, Width: 80, Height: 80},
-	}
-
-	pools := make([]Obstacle, 0, len(templates))
-	for _, tpl := range templates {
-		if len(pools) >= count {
-			break
-		}
-		overlaps := false
-		for _, obs := range existing {
-			if obstaclesOverlap(tpl, obs, 0) {
-				overlaps = true
-				break
-			}
-		}
-		if overlaps {
-			continue
-		}
-		for _, pool := range pools {
-			if obstaclesOverlap(tpl, pool, 0) {
-				overlaps = true
-				break
-			}
-		}
-		if overlaps {
-			continue
-		}
-		pools = append(pools, tpl)
-	}
-	return pools
+	return worldpkg.GenerateObstacles(worldObstacleGenerator{world: w}, count)
 }
 
 // circleRectOverlap reports whether a circle intersects an obstacle rectangle.
 func circleRectOverlap(cx, cy, radius float64, obs Obstacle) bool {
-	closestX := clamp(cx, obs.X, obs.X+obs.Width)
-	closestY := clamp(cy, obs.Y, obs.Y+obs.Height)
-	dx := cx - closestX
-	dy := cy - closestY
-	return dx*dx+dy*dy < radius*radius
+	return worldpkg.CircleRectOverlap(cx, cy, radius, obs)
 }
 
 // obstaclesOverlap checks for AABB overlap with optional padding.
 func obstaclesOverlap(a, b Obstacle, padding float64) bool {
-	return a.X-padding < b.X+b.Width+padding &&
-		a.X+a.Width+padding > b.X-padding &&
-		a.Y-padding < b.Y+b.Height+padding &&
-		a.Y+a.Height+padding > b.Y-padding
+	return worldpkg.ObstaclesOverlap(a, b, padding)
 }
 
 // clamp limits value to the range [min, max].
 func clamp(value, min, max float64) float64 {
-	if value < min {
-		return min
+	return worldpkg.Clamp(value, min, max)
+}
+
+type worldObstacleGenerator struct {
+	world *World
+}
+
+func (g worldObstacleGenerator) Config() worldpkg.Config {
+	if g.world == nil {
+		return worldpkg.DefaultConfig()
 	}
-	if value > max {
-		return max
+	return g.world.config
+}
+
+func (g worldObstacleGenerator) Dimensions() (float64, float64) {
+	if g.world == nil {
+		return worldpkg.DefaultWidth, worldpkg.DefaultHeight
 	}
-	return value
+	return g.world.dimensions()
+}
+
+func (g worldObstacleGenerator) SubsystemRNG(label string) *rand.Rand {
+	if g.world == nil {
+		return newDeterministicRNG(worldpkg.DefaultSeed, label)
+	}
+	return g.world.subsystemRNG(label)
 }

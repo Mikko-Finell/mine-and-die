@@ -577,57 +577,7 @@ func (w *World) applyNPCPositionMutations(initial map[string]vec2, proposed map[
 }
 
 func (w *World) spawnInitialNPCs() {
-	if !w.config.NPCs {
-		return
-	}
-
-	goblinTarget := w.config.GoblinCount
-	ratTarget := w.config.RatCount
-	if goblinTarget <= 0 && ratTarget <= 0 {
-		return
-	}
-
-	centerX := defaultSpawnX
-	centerY := defaultSpawnY
-
-	goblinsSpawned := 0
-	if goblinTarget >= 1 {
-		patrolOffset := 160.0
-		w.spawnGoblinAt(centerX-patrolOffset, centerY-patrolOffset, []vec2{
-			{X: centerX - patrolOffset, Y: centerY - patrolOffset},
-			{X: centerX + patrolOffset, Y: centerY - patrolOffset},
-			{X: centerX + patrolOffset, Y: centerY + patrolOffset},
-			{X: centerX - patrolOffset, Y: centerY + patrolOffset},
-		}, 12, 1)
-		goblinsSpawned++
-	}
-	if goblinTarget >= 2 {
-		topLeftX := centerX + 120.0
-		height := 220.0
-		width := 220.0
-		topLeftY := centerY - height/2
-		w.spawnGoblinAt(topLeftX, topLeftY, []vec2{
-			{X: topLeftX, Y: topLeftY},
-			{X: topLeftX + width, Y: topLeftY},
-			{X: topLeftX + width, Y: topLeftY + height},
-			{X: topLeftX, Y: topLeftY + height},
-		}, 8, 1)
-		goblinsSpawned++
-	}
-	extraGoblins := goblinTarget - goblinsSpawned
-	if extraGoblins > 0 {
-		w.spawnExtraGoblins(extraGoblins)
-	}
-
-	ratsSpawned := 0
-	if ratTarget >= 1 {
-		w.spawnRatAt(centerX-200, centerY+240)
-		ratsSpawned++
-	}
-	extraRats := ratTarget - ratsSpawned
-	if extraRats > 0 {
-		w.spawnExtraRats(extraRats)
-	}
+	worldpkg.SeedInitialNPCs(worldNPCSpawner{world: w})
 }
 
 func (w *World) spawnGoblinAt(x, y float64, waypoints []vec2, goldQty, potionQty int) {
@@ -715,60 +665,7 @@ func (w *World) initializeGoblinState(goblin *npcState) {
 }
 
 func (w *World) spawnExtraGoblins(count int) {
-	if count <= 0 {
-		return
-	}
-	rng := w.subsystemRNG("npcs.extraGoblin")
-	const patrolRadius = 60.0
-	width, height := w.dimensions()
-	minX := obstacleSpawnMargin + patrolRadius
-	maxX := width - obstacleSpawnMargin - patrolRadius
-	if maxX <= minX {
-		minX = playerHalf + patrolRadius
-		maxX = width - playerHalf - patrolRadius
-	}
-	minY := obstacleSpawnMargin + patrolRadius
-	maxY := height - obstacleSpawnMargin - patrolRadius
-	if maxY <= minY {
-		minY = playerHalf + patrolRadius
-		maxY = height - playerHalf - patrolRadius
-	}
-
-	centralMinX, centralMaxX := centralCenterRange(width, defaultSpawnX, obstacleSpawnMargin, patrolRadius)
-	if centralMaxX >= centralMinX {
-		minX = centralMinX
-		maxX = centralMaxX
-	}
-	centralMinY, centralMaxY := centralCenterRange(height, defaultSpawnY, obstacleSpawnMargin, patrolRadius)
-	if centralMaxY >= centralMinY {
-		minY = centralMinY
-		maxY = centralMaxY
-	}
-
-	for i := 0; i < count; i++ {
-		x := minX
-		if maxX > minX {
-			x = minX + rng.Float64()*(maxX-minX)
-		}
-		y := minY
-		if maxY > minY {
-			y = minY + rng.Float64()*(maxY-minY)
-		}
-
-		topLeftX := clamp(x-patrolRadius, playerHalf, width-playerHalf)
-		topLeftY := clamp(y-patrolRadius, playerHalf, height-playerHalf)
-		topRightX := clamp(x+patrolRadius, playerHalf, width-playerHalf)
-		bottomY := clamp(y+patrolRadius, playerHalf, height-playerHalf)
-
-		waypoints := []vec2{
-			{X: topLeftX, Y: topLeftY},
-			{X: topRightX, Y: topLeftY},
-			{X: topRightX, Y: bottomY},
-			{X: topLeftX, Y: bottomY},
-		}
-
-		w.spawnGoblinAt(topLeftX, topLeftY, waypoints, 10, 1)
-	}
+	worldpkg.SpawnExtraGoblins(worldNPCSpawner{world: w}, count)
 }
 
 func (w *World) spawnRatAt(x, y float64) {
@@ -831,23 +728,48 @@ func (w *World) initializeRatState(rat *npcState) {
 }
 
 func (w *World) spawnExtraRats(count int) {
-	if count <= 0 {
+	worldpkg.SpawnExtraRats(worldNPCSpawner{world: w}, count)
+}
+
+type worldNPCSpawner struct {
+	world *World
+}
+
+func (s worldNPCSpawner) Config() worldpkg.Config {
+	if s.world == nil {
+		return worldpkg.DefaultConfig()
+	}
+	return s.world.config
+}
+
+func (s worldNPCSpawner) Dimensions() (float64, float64) {
+	if s.world == nil {
+		return worldpkg.DefaultWidth, worldpkg.DefaultHeight
+	}
+	return s.world.dimensions()
+}
+
+func (s worldNPCSpawner) SubsystemRNG(label string) *rand.Rand {
+	if s.world == nil {
+		return newDeterministicRNG(worldpkg.DefaultSeed, label)
+	}
+	return s.world.subsystemRNG(label)
+}
+
+func (s worldNPCSpawner) SpawnGoblinAt(x, y float64, waypoints []worldpkg.Vec2, goldQty, potionQty int) {
+	if s.world == nil {
 		return
 	}
-	rng := w.subsystemRNG("npcs.extra")
-	width, height := w.dimensions()
-	minX, maxX := centralCenterRange(width, defaultSpawnX, obstacleSpawnMargin, playerHalf)
-	minY, maxY := centralCenterRange(height, defaultSpawnY, obstacleSpawnMargin, playerHalf)
-
-	for i := 0; i < count; i++ {
-		x := minX
-		if maxX > minX {
-			x = minX + rng.Float64()*(maxX-minX)
-		}
-		y := minY
-		if maxY > minY {
-			y = minY + rng.Float64()*(maxY-minY)
-		}
-		w.spawnRatAt(x, y)
+	converted := make([]vec2, len(waypoints))
+	for i, wp := range waypoints {
+		converted[i] = vec2{X: wp.X, Y: wp.Y}
 	}
+	s.world.spawnGoblinAt(x, y, converted, goldQty, potionQty)
+}
+
+func (s worldNPCSpawner) SpawnRatAt(x, y float64) {
+	if s.world == nil {
+		return
+	}
+	s.world.spawnRatAt(x, y)
 }
