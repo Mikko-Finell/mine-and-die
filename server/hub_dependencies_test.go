@@ -49,8 +49,12 @@ func TestNewHubWithConfigInjectsSimDeps(t *testing.T) {
 		t.Fatalf("expected injected logger to capture output, got %q", got)
 	}
 
-	if deps.Metrics != router.Metrics() {
-		t.Errorf("expected engine deps metrics to point at router metrics")
+	if deps.Metrics == nil {
+		t.Fatalf("expected engine deps metrics to be configured")
+	}
+	deps.Metrics.Add("test_new_hub_metric", 3)
+	if got := router.Metrics().Snapshot()["test_new_hub_metric"]; got != 3 {
+		t.Fatalf("expected metrics adapter to forward increments, got %d", got)
 	}
 
 	if hub.telemetry == nil {
@@ -67,6 +71,43 @@ func TestNewHubWithConfigInjectsSimDeps(t *testing.T) {
 
 	if deps.RNG != hub.world.rng {
 		t.Errorf("expected engine deps RNG to mirror world RNG")
+	}
+}
+
+func TestNewHubWithConfigUsesConfiguredMetrics(t *testing.T) {
+	routerCfg := logging.DefaultConfig()
+	routerCfg.EnabledSinks = nil
+	routerCfg.BufferSize = 1
+
+	router, err := logging.NewRouter(routerCfg, logging.SystemClock{}, stdlog.New(io.Discard, "", 0), nil)
+	if err != nil {
+		t.Fatalf("failed to construct router: %v", err)
+	}
+	t.Cleanup(func() {
+		if cerr := router.Close(context.Background()); cerr != nil {
+			t.Fatalf("failed to close router: %v", cerr)
+		}
+	})
+
+	injected := &logging.Metrics{}
+	hubCfg := DefaultHubConfig()
+	hubCfg.Metrics = telemetry.WrapMetrics(injected)
+
+	hub := NewHubWithConfig(hubCfg, router)
+	if hub.telemetry == nil {
+		t.Fatalf("expected telemetry counters to be configured")
+	}
+	if hub.telemetry.metrics != hubCfg.Metrics {
+		t.Fatalf("expected telemetry counters to use configured metrics")
+	}
+
+	hub.RecordTelemetryBroadcast(16, 2)
+
+	if got := injected.Snapshot()[metricKeyBroadcastTotal]; got != 1 {
+		t.Fatalf("expected configured metrics to capture broadcasts, got %d", got)
+	}
+	if got := router.Metrics().Snapshot()[metricKeyBroadcastTotal]; got != 0 {
+		t.Fatalf("expected router metrics to remain untouched, got %d", got)
 	}
 }
 

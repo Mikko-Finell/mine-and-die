@@ -10,7 +10,7 @@ import (
 // Deps carries shared infrastructure dependencies required by the simulation engine.
 type Deps struct {
 	Logger  telemetry.Logger
-	Metrics *logging.Metrics
+	Metrics telemetry.Metrics
 	Clock   logging.Clock
 	RNG     *rand.Rand
 }

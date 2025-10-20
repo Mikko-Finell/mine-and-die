@@ -257,7 +257,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Sketch interfaces for the telemetry package that wrap the existing logger and metrics dependencies before switching call sites.
 - [x] Replace global loggers or random seeds with injected dependencies.
   - [x] Switch hub logging to rely on the new telemetry.Logger adapters.
-  - [ ] Adapt hub metrics consumption to the telemetry.Metrics interface exposed by the new package.
+  - [x] Adapt hub metrics consumption to the telemetry.Metrics interface exposed by the new package.
+  - [x] Allow `HubConfig` to accept injected `telemetry.Metrics` instances so callers are not tied to the logging router.
+  - [ ] Allow `HubConfig` to accept a `telemetry.Logger` implementation to decouple logger injection from the standard library.
 
 **Definition of done:**
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	"mine-and-die/server/internal/telemetry"
 	"mine-and-die/server/logging"
 )
 
@@ -146,7 +147,7 @@ func TestTelemetryTickBudgetOverrunMetrics(t *testing.T) {
 
 func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
 	metrics := &logging.Metrics{}
-	counters := newTelemetryCounters(metrics)
+	counters := newTelemetryCounters(telemetry.WrapMetrics(metrics))
 
 	counters.RecordBroadcast(64, 3)
 

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	"mine-and-die/server/logging"
+	"mine-and-die/server/internal/telemetry"
 )
 
 const (
@@ -53,10 +53,10 @@ const (
 )
 
 type telemetryMetricsAdapter struct {
-	metrics *logging.Metrics
+	metrics telemetry.Metrics
 }
 
-func (a *telemetryMetricsAdapter) Attach(metrics *logging.Metrics) {
+func (a *telemetryMetricsAdapter) Attach(metrics telemetry.Metrics) {
 	a.metrics = metrics
 }
 
@@ -64,14 +64,14 @@ func (a *telemetryMetricsAdapter) add(key string, delta uint64) {
 	if a == nil || a.metrics == nil || key == "" || delta == 0 {
 		return
 	}
-	a.metrics.TelemetryAdd(key, delta)
+	a.metrics.Add(key, delta)
 }
 
 func (a *telemetryMetricsAdapter) store(key string, value uint64) {
 	if a == nil || a.metrics == nil || key == "" {
 		return
 	}
-	a.metrics.TelemetryStore(key, value)
+	a.metrics.Store(key, value)
 }
 
 func (a *telemetryMetricsAdapter) layeredKey(base, primary, secondary string) string {
@@ -110,11 +110,11 @@ func (a *telemetryMetricsAdapter) RecordBroadcast(bytes, entities int) {
 	if entities < 0 {
 		entities = 0
 	}
-	a.metrics.TelemetryAdd(metricKeyBroadcastTotal, 1)
-	a.metrics.TelemetryAdd(metricKeyBroadcastBytesTotal, uint64(bytes))
-	a.metrics.TelemetryAdd(metricKeyBroadcastEntitiesTotal, uint64(entities))
-	a.metrics.TelemetryStore(metricKeyBroadcastLastBytes, uint64(bytes))
-	a.metrics.TelemetryStore(metricKeyBroadcastLastEntities, uint64(entities))
+	a.metrics.Add(metricKeyBroadcastTotal, 1)
+	a.metrics.Add(metricKeyBroadcastBytesTotal, uint64(bytes))
+	a.metrics.Add(metricKeyBroadcastEntitiesTotal, uint64(entities))
+	a.metrics.Store(metricKeyBroadcastLastBytes, uint64(bytes))
+	a.metrics.Store(metricKeyBroadcastLastEntities, uint64(entities))
 }
 
 func (a *telemetryMetricsAdapter) RecordTickDuration(duration time.Duration, total uint64) {
@@ -125,8 +125,8 @@ func (a *telemetryMetricsAdapter) RecordTickDuration(duration time.Duration, tot
 	if millis < 0 {
 		millis = 0
 	}
-	a.metrics.TelemetryStore(metricKeyTickDurationMillis, uint64(millis))
-	a.metrics.TelemetryStore(metricKeyTickTotal, total)
+	a.metrics.Store(metricKeyTickDurationMillis, uint64(millis))
+	a.metrics.Store(metricKeyTickTotal, total)
 }
 
 func (a *telemetryMetricsAdapter) RecordTickBudgetOverrun(duration, budget time.Duration, ratio float64, streak, max uint64) {
@@ -141,28 +141,28 @@ func (a *telemetryMetricsAdapter) RecordTickBudgetOverrun(duration, budget time.
 	if budgetMillis < 0 {
 		budgetMillis = 0
 	}
-	a.metrics.TelemetryAdd(metricKeyTickBudgetOverrunTotal, 1)
-	a.metrics.TelemetryStore(metricKeyTickBudgetOverrunLastMs, uint64(millis))
-	a.metrics.TelemetryStore(metricKeyTickBudgetBudgetMillis, uint64(budgetMillis))
-	a.metrics.TelemetryStore(metricKeyTickBudgetStreakCurrent, streak)
-	a.metrics.TelemetryStore(metricKeyTickBudgetStreakMax, max)
-	a.metrics.TelemetryStore(metricKeyTickBudgetRatioBits, math.Float64bits(ratio))
+	a.metrics.Add(metricKeyTickBudgetOverrunTotal, 1)
+	a.metrics.Store(metricKeyTickBudgetOverrunLastMs, uint64(millis))
+	a.metrics.Store(metricKeyTickBudgetBudgetMillis, uint64(budgetMillis))
+	a.metrics.Store(metricKeyTickBudgetStreakCurrent, streak)
+	a.metrics.Store(metricKeyTickBudgetStreakMax, max)
+	a.metrics.Store(metricKeyTickBudgetRatioBits, math.Float64bits(ratio))
 }
 
 func (a *telemetryMetricsAdapter) ResetTickBudgetStreak() {
 	if a == nil || a.metrics == nil {
 		return
 	}
-	a.metrics.TelemetryStore(metricKeyTickBudgetStreakCurrent, 0)
+	a.metrics.Store(metricKeyTickBudgetStreakCurrent, 0)
 }
 
 func (a *telemetryMetricsAdapter) RecordTickBudgetAlarm(tick uint64, ratio float64) {
 	if a == nil || a.metrics == nil {
 		return
 	}
-	a.metrics.TelemetryAdd(metricKeyTickBudgetAlarmTotal, 1)
-	a.metrics.TelemetryStore(metricKeyTickBudgetAlarmLastTick, tick)
-	a.metrics.TelemetryStore(metricKeyTickBudgetAlarmRatioBits, math.Float64bits(ratio))
+	a.metrics.Add(metricKeyTickBudgetAlarmTotal, 1)
+	a.metrics.Store(metricKeyTickBudgetAlarmLastTick, tick)
+	a.metrics.Store(metricKeyTickBudgetAlarmRatioBits, math.Float64bits(ratio))
 }
 
 func (a *telemetryMetricsAdapter) RecordKeyframeJournal(size uint64, oldest, newest uint64) {
@@ -495,7 +495,7 @@ func normalizeMetricKey(value string) string {
 }
 
 type telemetryCounters struct {
-	metrics        *logging.Metrics
+	metrics        telemetry.Metrics
 	metricsAdapter telemetryMetricsAdapter
 
 	bytesSent                    atomic.Uint64
@@ -581,7 +581,7 @@ type telemetryTickBudgetSnapshot struct {
 	LastAlarmRatio    float64           `json:"lastAlarmRatio,omitempty"`
 }
 
-func newTelemetryCounters(metrics *logging.Metrics) *telemetryCounters {
+func newTelemetryCounters(metrics telemetry.Metrics) *telemetryCounters {
 	t := &telemetryCounters{metrics: metrics}
 	t.metricsAdapter.Attach(metrics)
 	if os.Getenv("DEBUG_TELEMETRY") == "1" {
@@ -590,7 +590,7 @@ func newTelemetryCounters(metrics *logging.Metrics) *telemetryCounters {
 	return t
 }
 
-func (t *telemetryCounters) AttachMetrics(metrics *logging.Metrics) {
+func (t *telemetryCounters) AttachMetrics(metrics telemetry.Metrics) {
 	if t == nil {
 		return
 	}
