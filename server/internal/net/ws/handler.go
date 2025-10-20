@@ -11,6 +11,7 @@ import (
 	"mine-and-die/server"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
+	"mine-and-die/server/internal/telemetry"
 )
 
 type subscription interface {
@@ -20,12 +21,12 @@ type subscription interface {
 }
 
 type HandlerConfig struct {
-	Logger *log.Logger
+	Logger telemetry.Logger
 }
 
 type Handler struct {
 	hub      *server.Hub
-	logger   *log.Logger
+	logger   telemetry.Logger
 	upgrader websocket.Upgrader
 }
 
@@ -57,7 +58,7 @@ func (c *websocketConn) Close() error {
 func NewHandler(hub *server.Hub, cfg HandlerConfig) *Handler {
 	logger := cfg.Logger
 	if logger == nil {
-		logger = log.Default()
+		logger = telemetry.WrapLogger(log.Default())
 	}
 
 	upgrader := websocket.Upgrader{

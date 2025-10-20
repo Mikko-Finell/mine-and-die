@@ -218,7 +218,7 @@ func (l *keyframeRateLimiter) allow(now time.Time) bool {
 
 type HubConfig struct {
 	KeyframeInterval int
-	Logger           *stdlog.Logger
+	Logger           telemetry.Logger
 	Metrics          telemetry.Metrics
 }
 
@@ -264,15 +264,13 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 		}
 	}
 
-	baseLogger := hubCfg.Logger
-	if baseLogger == nil {
-		baseLogger = stdlog.Default()
-	}
-
 	engineDeps := sim.Deps{
-		Logger:  telemetry.WrapLogger(baseLogger),
+		Logger:  hubCfg.Logger,
 		Metrics: metrics,
 		Clock:   clock,
+	}
+	if engineDeps.Logger == nil {
+		engineDeps.Logger = telemetry.WrapLogger(stdlog.Default())
 	}
 	if world != nil {
 		engineDeps.RNG = world.rng

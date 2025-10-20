@@ -10,17 +10,18 @@ import (
 	"mine-and-die/server"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/net/ws"
+	"mine-and-die/server/internal/telemetry"
 )
 
 type HTTPHandlerConfig struct {
 	ClientDir string
-	Logger    *log.Logger
+	Logger    telemetry.Logger
 }
 
 func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
-	logger := cfg.Logger
-	if logger == nil {
-		logger = log.Default()
+	telemetryLogger := cfg.Logger
+	if telemetryLogger == nil {
+		telemetryLogger = telemetry.WrapLogger(log.Default())
 	}
 
 	mux := nethttp.NewServeMux()
@@ -249,7 +250,7 @@ func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
 	})
 
 	wsHandler := ws.NewHandler(hub, ws.HandlerConfig{
-		Logger: logger,
+		Logger: telemetryLogger,
 	})
 	mux.HandleFunc("/ws", wsHandler.Handle)
 

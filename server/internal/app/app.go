@@ -11,25 +11,40 @@ import (
 
 	server "mine-and-die/server"
 	servernet "mine-and-die/server/internal/net"
+	"mine-and-die/server/internal/telemetry"
 	"mine-and-die/server/logging"
 	loggingSinks "mine-and-die/server/logging/sinks"
 )
 
-func Run(ctx context.Context) error {
-	logger := log.New(os.Stderr, "", log.LstdFlags)
+type Config struct {
+	Logger telemetry.Logger
+}
+
+func Run(ctx context.Context, cfg Config) error {
+	telemetryLogger := cfg.Logger
+	if telemetryLogger == nil {
+		telemetryLogger = telemetry.WrapLogger(log.Default())
+	}
+
+	fallbackLogger := log.Default()
+	if provider, ok := telemetryLogger.(interface{ StandardLogger() *log.Logger }); ok {
+		if candidate := provider.StandardLogger(); candidate != nil {
+			fallbackLogger = candidate
+		}
+	}
 
 	logConfig := logging.DefaultConfig()
 	sinks := map[string]logging.Sink{
 		"console": loggingSinks.NewConsole(os.Stdout),
 	}
 
-	router, err := logging.NewRouter(logConfig, logging.SystemClock{}, logger, sinks)
+	router, err := logging.NewRouter(logConfig, logging.SystemClock{}, fallbackLogger, sinks)
 	if err != nil {
 		return fmt.Errorf("failed to construct logging router: %w", err)
 	}
 	defer func() {
 		if cerr := router.Close(ctx); cerr != nil {
-			logger.Printf("failed to close logging router: %v", cerr)
+			telemetryLogger.Printf("failed to close logging router: %v", cerr)
 		}
 	}()
 
@@ -38,11 +53,11 @@ func Run(ctx context.Context) error {
 		if value, err := strconv.Atoi(raw); err == nil {
 			hubCfg.KeyframeInterval = value
 		} else {
-			logger.Printf("invalid KEYFRAME_INTERVAL_TICKS=%q: %v", raw, err)
+			telemetryLogger.Printf("invalid KEYFRAME_INTERVAL_TICKS=%q: %v", raw, err)
 		}
 	}
 
-	hubCfg.Logger = logger
+	hubCfg.Logger = telemetryLogger
 
 	hub := server.NewHubWithConfig(hubCfg, router)
 	stop := make(chan struct{})
@@ -52,11 +67,11 @@ func Run(ctx context.Context) error {
 	clientDir := filepath.Clean(filepath.Join("..", "client"))
 	handler := servernet.NewHTTPHandler(hub, servernet.HTTPHandlerConfig{
 		ClientDir: clientDir,
-		Logger:    logger,
+		Logger:    telemetryLogger,
 	})
 
 	srv := &http.Server{Addr: ":8080", Handler: handler}
-	logger.Printf("server listening on %s", srv.Addr)
+	telemetryLogger.Printf("server listening on %s", srv.Addr)
 
 	if err := srv.ListenAndServe(); err != nil {
 		return fmt.Errorf("server failed: %w", err)

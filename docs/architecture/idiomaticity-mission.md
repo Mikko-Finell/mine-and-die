@@ -230,7 +230,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## [IN PROGRESS] Phase 1 — Structural Extraction
+## [DONE] Phase 1 — Structural Extraction
 
 - [ ] Objective: Separate concerns without changing runtime behavior.
 
@@ -257,9 +257,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Sketch interfaces for the telemetry package that wrap the existing logger and metrics dependencies before switching call sites.
 - [x] Replace global loggers or random seeds with injected dependencies.
   - [x] Switch hub logging to rely on the new telemetry.Logger adapters.
-  - [x] Adapt hub metrics consumption to the telemetry.Metrics interface exposed by the new package.
-  - [x] Allow `HubConfig` to accept injected `telemetry.Metrics` instances so callers are not tied to the logging router.
-  - [ ] Allow `HubConfig` to accept a `telemetry.Logger` implementation to decouple logger injection from the standard library.
+- [x] Adapt hub metrics consumption to the telemetry.Metrics interface exposed by the new package.
+- [x] Allow `HubConfig` to accept injected `telemetry.Metrics` instances so callers are not tied to the logging router.
+  - [x] Allow `HubConfig` to accept a `telemetry.Logger` implementation to decouple logger injection from the standard library.
+- [x] Allow `internal/net.HTTPHandlerConfig` to accept a `telemetry.Logger` implementation so HTTP wiring no longer depends on the standard library logger.
+- [x] Allow `internal/net/ws.HandlerConfig` to accept a `telemetry.Logger` implementation so websocket wiring can drop the standard library logger dependency.
+- [x] Allow `internal/app` to accept an injected `telemetry.Logger` so the process wiring can stop constructing its own standard library logger.
 
 **Definition of done:**
 
@@ -269,13 +272,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## [NOT STARTED] Phase 2 — Simulation Decomposition
+## [IN PROGRESS] Phase 2 — Simulation Decomposition
 
 - [ ] Objective: Split the monolithic simulation into smaller packages with explicit ownership.
 
 ### Next task
 
-- [ ] Document the next logical follow-up step.
+- [ ] Document the next logical follow-up step for Phase 2, outlining how to keep the tick loop inside `sim/engine` while introducing the ring-buffered command queue.
 
 - [ ] Keep the tick loop in `sim/engine`:
 
