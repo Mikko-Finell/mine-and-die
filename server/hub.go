@@ -86,6 +86,35 @@ func (h *Hub) now() time.Time {
 	return time.Now()
 }
 
+// Engine exposes the simulation engine façade.
+func (h *Hub) Engine() sim.Engine {
+	if h == nil {
+		return nil
+	}
+	return h.engine
+}
+
+// Tick reports the latest simulation tick processed by the hub.
+func (h *Hub) Tick() uint64 {
+	if h == nil {
+		return 0
+	}
+	return h.tick.Load()
+}
+
+// Now returns the hub's current clock reading.
+func (h *Hub) Now() time.Time {
+	return h.now()
+}
+
+// HasPlayer reports whether the player is currently tracked by the hub.
+func (h *Hub) HasPlayer(playerID string) bool {
+	if h == nil {
+		return false
+	}
+	return h.playerExists(playerID)
+}
+
 func (h *Hub) attachTelemetryMetrics() {
 	if h == nil || h.telemetry == nil {
 		return
@@ -711,6 +740,23 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
 	return players, npcs
 }
 
+func (h *Hub) enqueuePlayerCommand(playerID string, cmd sim.Command) (sim.Command, bool, string) {
+	var zero sim.Command
+	if !h.playerExists(playerID) {
+		return zero, false, commandRejectUnknownActor
+	}
+	cmd.ActorID = playerID
+	cmd.OriginTick = h.tick.Load()
+	cmd.IssuedAt = h.now()
+	if h.engine == nil {
+		return zero, false, sim.CommandRejectQueueFull
+	}
+	if ok, reason := h.engine.Enqueue(cmd); !ok {
+		return zero, false, reason
+	}
+	return cmd, true, ""
+}
+
 // UpdateIntent stores the latest movement vector and facing for a player.
 func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (sim.Command, bool, string) {
 	parsedFacing := sim.FacingDirection("")
@@ -729,7 +775,7 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (sim.
 		},
 	}
 
-	return h.HandleCommand(playerID, cmd)
+	return h.enqueuePlayerCommand(playerID, cmd)
 }
 
 // SetPlayerPath queues a command that asks the server to navigate the player toward a point.
@@ -742,18 +788,24 @@ func (h *Hub) SetPlayerPath(playerID string, x, y float64) (sim.Command, bool, s
 		},
 	}
 
-	return h.HandleCommand(playerID, cmd)
+	return h.enqueuePlayerCommand(playerID, cmd)
 }
 
 // ClearPlayerPath stops any server-driven navigation for the player.
 func (h *Hub) ClearPlayerPath(playerID string) (sim.Command, bool, string) {
 	cmd := sim.Command{Type: sim.CommandClearPath}
 
-	return h.HandleCommand(playerID, cmd)
+	return h.enqueuePlayerCommand(playerID, cmd)
 }
 
 // HandleAction queues an action command for processing on the next tick.
 func (h *Hub) HandleAction(playerID, action string) (sim.Command, bool, string) {
+	switch action {
+	case effectTypeAttack, effectTypeFireball:
+	default:
+		return sim.Command{}, false, commandRejectInvalidAction
+	}
+
 	cmd := sim.Command{
 		Type: sim.CommandAction,
 		Action: &sim.ActionCommand{
@@ -761,52 +813,7 @@ func (h *Hub) HandleAction(playerID, action string) (sim.Command, bool, string) 
 		},
 	}
 
-	return h.HandleCommand(playerID, cmd)
-}
-
-// HandleCommand validates and stages a simulation command for execution on the next tick.
-func (h *Hub) HandleCommand(playerID string, cmd sim.Command) (sim.Command, bool, string) {
-	var zero sim.Command
-
-	switch cmd.Type {
-	case sim.CommandMove:
-		if cmd.Move == nil {
-			return zero, false, commandRejectInvalidAction
-		}
-	case sim.CommandSetPath:
-		if cmd.Path == nil {
-			return zero, false, commandRejectInvalidAction
-		}
-	case sim.CommandClearPath:
-	case sim.CommandAction:
-		if cmd.Action == nil {
-			return zero, false, commandRejectInvalidAction
-		}
-		switch cmd.Action.Name {
-		case effectTypeAttack, effectTypeFireball:
-		default:
-			return zero, false, commandRejectInvalidAction
-		}
-	default:
-		return zero, false, commandRejectInvalidAction
-	}
-
-	if !h.playerExists(playerID) {
-		return zero, false, commandRejectUnknownActor
-	}
-
-	cmd.ActorID = playerID
-	cmd.OriginTick = h.tick.Load()
-	cmd.IssuedAt = h.now()
-
-	if h.engine == nil {
-		return zero, false, sim.CommandRejectQueueFull
-	}
-	if ok, reason := h.engine.Enqueue(cmd); !ok {
-		return zero, false, reason
-	}
-
-	return cmd, true, ""
+	return h.enqueuePlayerCommand(playerID, cmd)
 }
 
 // HandleConsoleCommand executes a debug console command for the player.
