@@ -1,4 +1,4 @@
-package main
+package server
 
 import effectcontract "mine-and-die/server/effects/contract"
 

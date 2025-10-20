@@ -1,4 +1,4 @@
-package main
+package server
 
 import stats "mine-and-die/server/stats"
 

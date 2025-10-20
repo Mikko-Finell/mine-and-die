@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -27,7 +27,7 @@ func TestNewHubWithConfigInjectsSimDeps(t *testing.T) {
 		}
 	})
 
-	hub := newHubWithConfig(defaultHubConfig(), router)
+	hub := NewHubWithConfig(DefaultHubConfig(), router)
 	if hub.engine == nil {
 		t.Fatalf("expected engine to be configured")
 	}

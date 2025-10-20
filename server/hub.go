@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -172,20 +172,20 @@ func (l *keyframeRateLimiter) allow(now time.Time) bool {
 	return true
 }
 
-type hubConfig struct {
+type HubConfig struct {
 	KeyframeInterval int
 }
 
-func defaultHubConfig() hubConfig {
-	return hubConfig{KeyframeInterval: 30}
+func DefaultHubConfig() HubConfig {
+	return HubConfig{KeyframeInterval: 30}
 }
 
 // newHub creates a hub with empty maps and a freshly generated world.
 func newHub(pubs ...logging.Publisher) *Hub {
-	return newHubWithConfig(defaultHubConfig(), pubs...)
+	return NewHubWithConfig(DefaultHubConfig(), pubs...)
 }
 
-func newHubWithConfig(hubCfg hubConfig, pubs ...logging.Publisher) *Hub {
+func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 	cfg := defaultWorldConfig().normalized()
 	var pub logging.Publisher
 	if len(pubs) > 0 && pubs[0] != nil {

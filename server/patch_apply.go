@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	simpaches "mine-and-die/server/internal/sim/patches"

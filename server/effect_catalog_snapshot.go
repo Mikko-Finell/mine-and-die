@@ -1,4 +1,4 @@
-package main
+package server
 
 import effectcatalog "mine-and-die/server/effects/catalog"
 

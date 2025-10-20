@@ -1,59 +1,36 @@
-package main
+package server
 
 import (
-	"context"
 	"encoding/json"
 	"io"
-	stdlog "log"
+	"log"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
 
 	"mine-and-die/server/internal/sim"
-	"mine-and-die/server/logging"
-	loggingSinks "mine-and-die/server/logging/sinks"
 )
 
-// main wires up HTTP handlers, starts the simulation, and serves the client.
-func main() {
-	logConfig := logging.DefaultConfig()
-	sinks := map[string]logging.Sink{
-		"console": loggingSinks.NewConsole(os.Stdout),
-	}
-	router, err := logging.NewRouter(logConfig, logging.SystemClock{}, stdlog.Default(), sinks)
-	if err != nil {
-		stdlog.Fatalf("failed to construct logging router: %v", err)
-	}
-	defer func() {
-		if cerr := router.Close(context.Background()); cerr != nil {
-			stdlog.Printf("failed to close logging router: %v", cerr)
-		}
-	}()
+type HTTPHandlerConfig struct {
+	ClientDir string
+	Logger    *log.Logger
+}
 
-	hubCfg := defaultHubConfig()
-	if raw := os.Getenv("KEYFRAME_INTERVAL_TICKS"); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil {
-			hubCfg.KeyframeInterval = value
-		} else {
-			stdlog.Printf("invalid KEYFRAME_INTERVAL_TICKS=%q: %v", raw, err)
-		}
+func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = log.Default()
 	}
 
-	hub := newHubWithConfig(hubCfg, router)
-	stop := make(chan struct{})
-	go hub.RunSimulation(stop)
-	defer close(stop)
+	mux := http.NewServeMux()
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write([]byte("ok"))
 	})
 
-	http.HandleFunc("/diagnostics", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/diagnostics", func(w http.ResponseWriter, r *http.Request) {
 		payload := struct {
 			Status     string              `json:"status"`
 			ServerTime int64               `json:"serverTime"`
@@ -80,7 +57,7 @@ func main() {
 		w.Write(data)
 	})
 
-	http.HandleFunc("/world/reset", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/world/reset", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -184,7 +161,7 @@ func main() {
 		w.Write(data)
 	})
 
-	http.HandleFunc("/join", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/join", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -200,7 +177,7 @@ func main() {
 		w.Write(data)
 	})
 
-	http.HandleFunc("/effects/catalog", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/effects/catalog", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -233,7 +210,7 @@ func main() {
 		},
 	}
 
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		playerID := r.URL.Query().Get("id")
 		if playerID == "" {
 			http.Error(w, "missing id", http.StatusBadRequest)
@@ -242,7 +219,7 @@ func main() {
 
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			stdlog.Printf("upgrade failed for %s: %v", playerID, err)
+			logger.Printf("upgrade failed for %s: %v", playerID, err)
 			return
 		}
 
@@ -256,7 +233,7 @@ func main() {
 
 		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, nil, snapshotGroundItems, false, true)
 		if err != nil {
-			stdlog.Printf("failed to marshal initial state for %s: %v", playerID, err)
+			logger.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs := hub.Disconnect(playerID)
 			if players != nil {
 				hub.forceKeyframe()
@@ -294,7 +271,7 @@ func main() {
 
 			var msg clientMessage
 			if err := json.Unmarshal(payload, &msg); err != nil {
-				stdlog.Printf("discarding malformed message from %s: %v", playerID, err)
+				logger.Printf("discarding malformed message from %s: %v", playerID, err)
 				continue
 			}
 
@@ -310,7 +287,7 @@ func main() {
 			writeJSON := func(payload any) bool {
 				data, err := json.Marshal(payload)
 				if err != nil {
-					stdlog.Printf("failed to marshal response for %s: %v", playerID, err)
+					logger.Printf("failed to marshal response for %s: %v", playerID, err)
 					return true
 				}
 				sub.mu.Lock()
@@ -392,7 +369,7 @@ func main() {
 				}
 				if !ok {
 					if reason == commandRejectUnknownActor {
-						stdlog.Printf("input ignored for unknown player %s", playerID)
+						logger.Printf("input ignored for unknown player %s", playerID)
 					}
 				}
 			case "path":
@@ -418,7 +395,7 @@ func main() {
 					}
 				}
 				if !ok && reason == commandRejectUnknownActor {
-					stdlog.Printf("path request ignored for unknown player %s", playerID)
+					logger.Printf("path request ignored for unknown player %s", playerID)
 				}
 			case "cancelPath":
 				if normalizedSeq > 0 {
@@ -443,7 +420,7 @@ func main() {
 					}
 				}
 				if !ok && reason == commandRejectUnknownActor {
-					stdlog.Printf("cancelPath ignored for unknown player %s", playerID)
+					logger.Printf("cancelPath ignored for unknown player %s", playerID)
 				}
 			case "action":
 				if msg.Action == "" {
@@ -472,9 +449,9 @@ func main() {
 				}
 				if !ok {
 					if reason == commandRejectInvalidAction {
-						stdlog.Printf("unknown action %q from %s", msg.Action, playerID)
+						logger.Printf("unknown action %q from %s", msg.Action, playerID)
 					} else if reason == commandRejectUnknownActor {
-						stdlog.Printf("action ignored for unknown player %s", playerID)
+						logger.Printf("action ignored for unknown player %s", playerID)
 					}
 				}
 			case "heartbeat":
@@ -494,7 +471,7 @@ func main() {
 
 				data, err := json.Marshal(ack)
 				if err != nil {
-					stdlog.Printf("failed to marshal heartbeat ack for %s: %v", playerID, err)
+					logger.Printf("failed to marshal heartbeat ack for %s: %v", playerID, err)
 					continue
 				}
 
@@ -517,7 +494,7 @@ func main() {
 				}
 				data, err := json.Marshal(ack)
 				if err != nil {
-					stdlog.Printf("failed to marshal console ack for %s: %v", playerID, err)
+					logger.Printf("failed to marshal console ack for %s: %v", playerID, err)
 					continue
 				}
 				sub.mu.Lock()
@@ -548,7 +525,7 @@ func main() {
 					data, err = json.Marshal(snapshot)
 				}
 				if err != nil {
-					stdlog.Printf("failed to marshal keyframe for %s: %v", playerID, err)
+					logger.Printf("failed to marshal keyframe for %s: %v", playerID, err)
 					continue
 				}
 				sub.mu.Lock()
@@ -569,20 +546,17 @@ func main() {
 					requested = *msg.KeyframeInterval
 				}
 				applied := hub.SetKeyframeInterval(requested)
-				stdlog.Printf("[keyframe] player=%s requested cadence=%d", playerID, applied)
+				logger.Printf("[keyframe] player=%s requested cadence=%d", playerID, applied)
 			default:
-				stdlog.Printf("unknown message type %q from %s", msg.Type, playerID)
+				logger.Printf("unknown message type %q from %s", msg.Type, playerID)
 			}
 		}
 	})
 
-	clientDir := filepath.Clean(filepath.Join("..", "client"))
-	fs := http.FileServer(http.Dir(clientDir))
-	http.Handle("/", fs)
-
-	addr := ":8080"
-	stdlog.Printf("server listening on %s", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		stdlog.Fatalf("server failed: %v", err)
+	if cfg.ClientDir != "" {
+		fs := http.FileServer(http.Dir(cfg.ClientDir))
+		mux.Handle("/", fs)
 	}
+
+	return mux
 }
