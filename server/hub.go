@@ -16,6 +16,7 @@ import (
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
 	simpaches "mine-and-die/server/internal/sim/patches"
+	"mine-and-die/server/internal/simutil"
 	"mine-and-die/server/internal/telemetry"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
@@ -393,6 +394,39 @@ func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTrigger
 	return players, npcs, triggers, groundItems
 }
 
+func (h *Hub) simSnapshotLocked(includeGroundItems bool, includeEffectTriggers bool) sim.Snapshot {
+	if h == nil {
+		return sim.Snapshot{}
+	}
+
+	if h.engine != nil {
+		snapshot := simutil.CloneSnapshot(h.engine.Snapshot())
+		if !includeGroundItems {
+			snapshot.GroundItems = nil
+		}
+		if !includeEffectTriggers {
+			snapshot.EffectEvents = nil
+		}
+		return snapshot
+	}
+
+	now := h.now()
+	players, npcs := h.world.Snapshot(now)
+	snapshot := sim.Snapshot{
+		Players:        simutil.ClonePlayers(simPlayersFromLegacy(players)),
+		NPCs:           simutil.CloneNPCs(simNPCsFromLegacy(npcs)),
+		Obstacles:      simutil.CloneObstacles(simObstaclesFromLegacy(h.world.obstacles)),
+		AliveEffectIDs: simutil.CloneAliveEffectIDs(simAliveEffectIDsFromLegacy(h.world.effects)),
+	}
+	if includeGroundItems {
+		snapshot.GroundItems = simutil.CloneGroundItems(simGroundItemsFromLegacy(h.world.GroundItemsSnapshot()))
+	}
+	if includeEffectTriggers {
+		snapshot.EffectEvents = simutil.CloneEffectTriggers(simEffectTriggersFromLegacy(h.world.flushEffectTriggersLocked()))
+	}
+	return snapshot
+}
+
 // legacyGroundItemsSnapshotLocked returns a broadcast-friendly snapshot of ground items.
 // Callers must hold h.mu.
 func (h *Hub) legacyGroundItemsSnapshotLocked() []GroundItem {
@@ -469,8 +503,10 @@ func (h *Hub) Join() joinResponse {
 
 	h.mu.Lock()
 	h.world.AddPlayer(player)
-	players, npcs, _, groundItems := h.legacySnapshotLocked(true, false)
-	obstacles := append([]Obstacle(nil), h.world.obstacles...)
+	snapshot := h.simSnapshotLocked(true, false)
+	players := legacyPlayersFromSim(snapshot.Players)
+	npcs := legacyNPCsFromSim(snapshot.NPCs)
+	groundItems := legacyGroundItemsFromSim(snapshot.GroundItems)
 	cfg := h.config
 	h.mu.Unlock()
 
@@ -489,11 +525,11 @@ func (h *Hub) Join() joinResponse {
 	return joinResponse{
 		Ver:               ProtocolVersion,
 		ID:                playerID,
-		Players:           players,
-		NPCs:              npcs,
-		Obstacles:         obstacles,
-		GroundItems:       groundItems,
-		Config:            cfg,
+		Players:           snapshot.Players,
+		NPCs:              snapshot.NPCs,
+		Obstacles:         snapshot.Obstacles,
+		GroundItems:       snapshot.GroundItems,
+		Config:            simWorldConfigFromLegacy(cfg),
 		Resync:            true,
 		KeyframeInterval:  h.CurrentKeyframeInterval(),
 		EffectCatalogHash: effectcontract.EffectCatalogHash,
@@ -557,7 +593,7 @@ func (h *Hub) CurrentConfig() worldConfig {
 }
 
 // Subscribe associates a WebSocket connection with an existing player.
-func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []Player, []NPC, []GroundItem, bool) {
+func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []sim.Player, []sim.NPC, []sim.GroundItem, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -574,8 +610,8 @@ func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []Pl
 
 	sub := &subscriber{conn: conn, limiter: newKeyframeRateLimiter(keyframeLimiterCapacity, keyframeLimiterRefillPer)}
 	h.subscribers[playerID] = sub
-	players, npcs, _, groundItems := h.legacySnapshotLocked(true, false)
-	return sub, players, npcs, groundItems, true
+	snapshot := h.simSnapshotLocked(true, false)
+	return sub, snapshot.Players, snapshot.NPCs, snapshot.GroundItems, true
 }
 
 // RecordAck updates the latest acknowledged tick for the given subscriber.
@@ -1210,82 +1246,71 @@ func (h *Hub) shouldIncludeSnapshot() bool {
 	return tick >= last && tick-last >= interval64
 }
 
-func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
+func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.EffectTrigger, groundItems []sim.GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	h.mu.Lock()
 	engine := h.engine
 	var (
-		aliveEffectIDs []string
-		obstacles      []Obstacle
 		simSnapshot    sim.Snapshot
+		obstacles      []sim.Obstacle
+		aliveEffectIDs []string
 	)
+
 	if engine != nil {
 		simSnapshot = engine.Snapshot()
 		if includeSnapshot {
 			if players == nil {
-				players = legacyPlayersFromSim(simSnapshot.Players)
-				if players == nil {
-					players = make([]Player, 0)
-				}
+				players = simutil.ClonePlayers(simSnapshot.Players)
 			}
 			if npcs == nil {
-				npcs = legacyNPCsFromSim(simSnapshot.NPCs)
-				if npcs == nil {
-					npcs = make([]NPC, 0)
-				}
+				npcs = simutil.CloneNPCs(simSnapshot.NPCs)
 			}
 			if groundItems == nil {
-				groundItems = legacyGroundItemsFromSim(simSnapshot.GroundItems)
-				if groundItems == nil {
-					groundItems = make([]GroundItem, 0)
-				}
+				groundItems = simutil.CloneGroundItems(simSnapshot.GroundItems)
 			}
 			if triggers == nil {
-				triggers = legacyEffectTriggersFromSim(simSnapshot.EffectEvents)
-				if triggers == nil {
-					triggers = make([]EffectTrigger, 0)
-				}
+				triggers = simutil.CloneEffectTriggers(simSnapshot.EffectEvents)
 			}
-			obstacles = legacyObstaclesFromSim(simSnapshot.Obstacles)
+			obstacles = simutil.CloneObstacles(simSnapshot.Obstacles)
 		} else if triggers == nil {
-			triggers = make([]EffectTrigger, 0)
+			triggers = make([]sim.EffectTrigger, 0)
 		}
-		if len(simSnapshot.AliveEffectIDs) > 0 {
-			aliveEffectIDs = make([]string, 0, len(simSnapshot.AliveEffectIDs))
-			for _, id := range simSnapshot.AliveEffectIDs {
-				if id == "" {
-					continue
-				}
-				aliveEffectIDs = append(aliveEffectIDs, id)
-			}
-			if len(aliveEffectIDs) == 0 {
-				aliveEffectIDs = nil
-			}
-		}
+		aliveEffectIDs = simutil.CloneAliveEffectIDs(simSnapshot.AliveEffectIDs)
 	} else {
 		if includeSnapshot {
 			needSnapshot := players == nil || npcs == nil
 			needGround := groundItems == nil
 			needTriggers := triggers == nil
 			if needSnapshot || needGround || needTriggers {
-				snapPlayers, snapNPCs, snapTriggers, snapGround := h.legacySnapshotLocked(needGround, needTriggers)
+				simSnapshot = h.simSnapshotLocked(needGround, needTriggers)
 				if players == nil {
-					players = snapPlayers
+					players = simutil.ClonePlayers(simSnapshot.Players)
 				}
 				if npcs == nil {
-					npcs = snapNPCs
+					npcs = simutil.CloneNPCs(simSnapshot.NPCs)
 				}
-				if groundItems == nil && needGround {
-					groundItems = snapGround
+				if needGround && groundItems == nil {
+					groundItems = simutil.CloneGroundItems(simSnapshot.GroundItems)
 				}
-				if triggers == nil && needTriggers {
-					triggers = snapTriggers
+				if needTriggers && triggers == nil {
+					triggers = simutil.CloneEffectTriggers(simSnapshot.EffectEvents)
 				}
 			}
 		} else if triggers == nil {
-			triggers = make([]EffectTrigger, 0)
+			triggers = make([]sim.EffectTrigger, 0)
 		}
-		if groundItems == nil {
-			groundItems = make([]GroundItem, 0)
+		if includeSnapshot {
+			if groundItems == nil {
+				groundItems = make([]sim.GroundItem, 0)
+			}
+			obstacles = simutil.CloneObstacles(simObstaclesFromLegacy(h.world.obstacles))
+		} else {
+			groundItems = nil
+		}
+		if includeSnapshot && players == nil {
+			players = make([]sim.Player, 0)
+		}
+		if includeSnapshot && npcs == nil {
+			npcs = make([]sim.NPC, 0)
 		}
 		if len(h.world.effects) > 0 {
 			aliveEffectIDs = make([]string, 0, len(h.world.effects))
@@ -1296,15 +1321,32 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 				aliveEffectIDs = append(aliveEffectIDs, eff.ID)
 			}
 		}
-		if includeSnapshot {
-			obstacles = append([]Obstacle(nil), h.world.obstacles...)
+	}
+
+	if !includeSnapshot {
+		players = nil
+		npcs = nil
+		groundItems = nil
+	} else {
+		if players == nil {
+			players = make([]sim.Player, 0)
+		}
+		if npcs == nil {
+			npcs = make([]sim.NPC, 0)
+		}
+		if groundItems == nil {
+			groundItems = make([]sim.GroundItem, 0)
 		}
 	}
-	if groundItems == nil {
-		groundItems = make([]GroundItem, 0)
+	if triggers == nil {
+		triggers = make([]sim.EffectTrigger, 0)
 	}
+	if obstacles == nil {
+		obstacles = make([]sim.Obstacle, 0)
+	}
+
 	var (
-		patches                 []Patch
+		patches                 []sim.Patch
 		restorableLegacyPatches []Patch
 		restorableSimPatches    []sim.Patch
 	)
@@ -1312,23 +1354,25 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		if engine != nil {
 			drained := engine.DrainPatches()
 			if len(drained) > 0 {
-				restorableSimPatches = append([]sim.Patch(nil), drained...)
+				restorableSimPatches = simutil.ClonePatches(drained)
+				patches = simutil.ClonePatches(drained)
 			}
-			patches = legacyPatchesFromSim(drained)
 		} else {
-			patches = h.world.drainPatchesLocked()
-		}
-		if len(patches) > 0 && engine == nil {
-			restorableLegacyPatches = append([]Patch(nil), patches...)
+			legacy := h.world.drainPatchesLocked()
+			if len(legacy) > 0 {
+				restorableLegacyPatches = append([]Patch(nil), legacy...)
+				patches = simPatchesFromLegacy(legacy)
+			}
 		}
 	} else {
 		if engine != nil {
 			snapshot := engine.SnapshotPatches()
-			patches = legacyPatchesFromSim(snapshot)
+			patches = simutil.ClonePatches(snapshot)
 		} else {
-			patches = h.world.snapshotPatchesLocked()
+			patches = simPatchesFromLegacy(h.world.snapshotPatchesLocked())
 		}
 	}
+
 	if len(patches) > 0 {
 		alivePlayers := players
 		aliveNPCs := npcs
@@ -1341,16 +1385,18 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		if total > 0 {
 			alive := make(map[string]struct{}, total)
 			for _, player := range alivePlayers {
-				if player.ID == "" {
+				id := player.Actor.ID
+				if id == "" {
 					continue
 				}
-				alive[player.ID] = struct{}{}
+				alive[id] = struct{}{}
 			}
 			for _, npc := range aliveNPCs {
-				if npc.ID == "" {
+				id := npc.Actor.ID
+				if id == "" {
 					continue
 				}
-				alive[npc.ID] = struct{}{}
+				alive[id] = struct{}{}
 			}
 			for _, item := range aliveItems {
 				if item.ID == "" {
@@ -1370,13 +1416,20 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 					continue
 				}
 				if _, ok := alive[patch.EntityID]; !ok {
-					if patch.Kind == PatchPlayerRemoved {
+					if patch.Kind == sim.PatchPlayerRemoved {
 						filtered = append(filtered, patch)
 						continue
 					}
-					if patch.Kind == PatchGroundItemQty {
-						if payload, ok := patch.Payload.(GroundItemQtyPayload); ok && payload.Qty <= 0 {
-							filtered = append(filtered, patch)
+					if patch.Kind == sim.PatchGroundItemQty {
+						switch payload := patch.Payload.(type) {
+						case sim.GroundItemQtyPayload:
+							if payload.Qty <= 0 {
+								filtered = append(filtered, patch)
+							}
+						case *sim.GroundItemQtyPayload:
+							if payload != nil && payload.Qty <= 0 {
+								filtered = append(filtered, patch)
+							}
 						}
 					}
 					continue
@@ -1386,12 +1439,15 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 			patches = filtered
 		}
 	}
-	simPlayerPatches := filterPlayerPatches(simPatchesFromLegacy(patches))
+
+	simPlayerPatches := filterPlayerPatches(patches)
 	h.updateResubscribeBaselinesLocked(simSnapshot, includeSnapshot, simPlayerPatches)
 	if includeSnapshot {
 		players = mergePlayersFromBaselines(players, h.resubscribeBaselines)
 	}
+
 	cfg := h.config
+	simCfg := simWorldConfigFromLegacy(cfg)
 	tick := h.tick.Load()
 	seq, resync := h.nextStateMeta(drainPatches)
 	effectTransportEnabled := engine != nil
@@ -1409,32 +1465,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	}
 
 	if patches == nil {
-		patches = make([]Patch, 0)
-	}
-
-	if includeSnapshot {
-		if players == nil {
-			players = make([]Player, 0)
-		}
-		if npcs == nil {
-			npcs = make([]NPC, 0)
-		}
-	} else {
-		players = nil
-		npcs = nil
-	}
-	if triggers == nil {
-		triggers = make([]EffectTrigger, 0)
-	}
-	if includeSnapshot {
-		if groundItems == nil {
-			groundItems = make([]GroundItem, 0)
-		}
-	} else {
-		groundItems = nil
-	}
-	if obstacles == nil {
-		obstacles = make([]Obstacle, 0)
+		patches = make([]sim.Patch, 0)
 	}
 
 	keyframeSeq := h.lastKeyframeSeq.Load()
@@ -1442,11 +1473,11 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		simFrame := sim.Keyframe{
 			Tick:        tick,
 			Sequence:    seq,
-			Players:     simPlayersFromLegacy(players),
-			NPCs:        simNPCsFromLegacy(npcs),
-			Obstacles:   simObstaclesFromLegacy(obstacles),
-			GroundItems: simGroundItemsFromLegacy(groundItems),
-			Config:      simWorldConfigFromLegacy(cfg),
+			Players:     simutil.ClonePlayers(players),
+			NPCs:        simutil.CloneNPCs(npcs),
+			Obstacles:   simutil.CloneObstacles(obstacles),
+			GroundItems: simutil.CloneGroundItems(groundItems),
+			Config:      simCfg,
 		}
 		var record sim.KeyframeRecordResult
 		if engine != nil {
@@ -1455,10 +1486,10 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 			legacyFrame := keyframe{
 				Tick:        tick,
 				Sequence:    seq,
-				Players:     players,
-				NPCs:        npcs,
-				Obstacles:   obstacles,
-				GroundItems: groundItems,
+				Players:     legacyPlayersFromSim(players),
+				NPCs:        legacyNPCsFromSim(npcs),
+				Obstacles:   legacyObstaclesFromSim(obstacles),
+				GroundItems: legacyGroundItemsFromSim(groundItems),
 				Config:      cfg,
 			}
 			legacyRecord := h.world.journal.RecordKeyframe(legacyFrame)
@@ -1495,7 +1526,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 		Sequence:         seq,
 		KeyframeSeq:      keyframeSeq,
 		ServerTime:       h.now().UnixMilli(),
-		Config:           cfg,
+		Config:           simCfg,
 		KeyframeInterval: currentInterval,
 	}
 	if resync {
@@ -1536,7 +1567,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 }
 
 // MarshalState serializes a world snapshot using the legacy hub marshaller.
-func (h *Hub) MarshalState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
+func (h *Hub) MarshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.EffectTrigger, groundItems []sim.GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	return h.marshalState(players, npcs, triggers, groundItems, drainPatches, includeSnapshot)
 }
 
@@ -1590,17 +1621,16 @@ func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupSt
 
 	frame, ok := engine.KeyframeBySequence(sequence)
 	if ok {
-		legacy := legacyKeyframeFromSim(frame)
 		snapshot := keyframeMessage{
 			Ver:         ProtocolVersion,
 			Type:        proto.TypeKeyframe,
-			Sequence:    legacy.Sequence,
-			Tick:        legacy.Tick,
-			Players:     append([]Player(nil), legacy.Players...),
-			NPCs:        append([]NPC(nil), legacy.NPCs...),
-			Obstacles:   append([]Obstacle(nil), legacy.Obstacles...),
-			GroundItems: append([]GroundItem(nil), legacy.GroundItems...),
-			Config:      legacy.Config,
+			Sequence:    frame.Sequence,
+			Tick:        frame.Tick,
+			Players:     simutil.ClonePlayers(frame.Players),
+			NPCs:        simutil.CloneNPCs(frame.NPCs),
+			Obstacles:   simutil.CloneObstacles(frame.Obstacles),
+			GroundItems: simutil.CloneGroundItems(frame.GroundItems),
+			Config:      frame.Config,
 		}
 		return snapshot, keyframeLookupFound
 	}
@@ -1639,7 +1669,7 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 			Sequence: sequence,
 			Reason:   "rate_limited",
 			Resync:   true,
-			Config:   h.resyncConfigSnapshot(),
+			Config:   simWorldConfigFromLegacy(h.resyncConfigSnapshot()),
 		}
 		h.scheduleKeyframeResync()
 		return keyframeMessage{}, nack, true
@@ -1666,7 +1696,7 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 			Sequence: sequence,
 			Reason:   "expired",
 			Resync:   true,
-			Config:   h.resyncConfigSnapshot(),
+			Config:   simWorldConfigFromLegacy(h.resyncConfigSnapshot()),
 		}
 		h.scheduleKeyframeResync()
 		return keyframeMessage{}, nack, true
@@ -1682,7 +1712,17 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem) {
 	h.scheduleResyncIfNeeded()
 	includeSnapshot := h.shouldIncludeSnapshot()
-	data, entities, err := h.marshalState(players, npcs, triggers, groundItems, true, includeSnapshot)
+	simPlayers := simPlayersFromLegacy(players)
+	simNPCs := simNPCsFromLegacy(npcs)
+	var simTriggers []sim.EffectTrigger
+	if len(triggers) > 0 {
+		simTriggers = simEffectTriggersFromLegacy(triggers)
+	}
+	var simGroundItems []sim.GroundItem
+	if len(groundItems) > 0 {
+		simGroundItems = simGroundItemsFromLegacy(groundItems)
+	}
+	data, entities, err := h.marshalState(simPlayers, simNPCs, simTriggers, simGroundItems, true, includeSnapshot)
 	if err != nil {
 		h.logf("failed to marshal state message: %v", err)
 		return
@@ -1895,8 +1935,11 @@ func playerViewsFromSimSnapshot(snapshot sim.Snapshot) map[string]simpaches.Play
 	return views
 }
 
-func playerFromView(view simpaches.PlayerView) Player {
-	return legacyPlayerFromSim(view.Player)
+func playerFromView(view simpaches.PlayerView) sim.Player {
+	player := simutil.ClonePlayer(view.Player)
+	player.IntentDX = view.IntentDX
+	player.IntentDY = view.IntentDY
+	return player
 }
 
 func clonePlayerViewMap(src map[string]simpaches.PlayerView) map[string]simpaches.PlayerView {
@@ -1910,17 +1953,17 @@ func clonePlayerViewMap(src map[string]simpaches.PlayerView) map[string]simpache
 	return clones
 }
 
-func mergePlayersFromBaselines(players []Player, baselines map[string]simpaches.PlayerView) []Player {
+func mergePlayersFromBaselines(players []sim.Player, baselines map[string]simpaches.PlayerView) []sim.Player {
 	if len(baselines) == 0 {
 		return players
 	}
 	if players == nil {
-		players = make([]Player, 0, len(baselines))
+		players = make([]sim.Player, 0, len(baselines))
 	}
 
 	seen := make(map[string]struct{}, len(players))
 	for i := range players {
-		id := players[i].ID
+		id := players[i].Actor.ID
 		if id == "" {
 			continue
 		}

@@ -5,6 +5,7 @@ import (
 
 	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/sim"
+	"mine-and-die/server/internal/simutil"
 )
 
 type legacyEngineAdapter struct {
@@ -397,8 +398,8 @@ func simEffectTriggersFromLegacy(triggers []EffectTrigger) []sim.EffectTrigger {
 			Y:        trigger.Y,
 			Width:    trigger.Width,
 			Height:   trigger.Height,
-			Params:   cloneFloatMap(trigger.Params),
-			Colors:   cloneStringSlice(trigger.Colors),
+			Params:   simutil.CloneFloatMap(trigger.Params),
+			Colors:   simutil.CloneStringSlice(trigger.Colors),
 		}
 	}
 	return converted
@@ -419,8 +420,8 @@ func legacyEffectTriggersFromSim(triggers []sim.EffectTrigger) []EffectTrigger {
 			Y:        trigger.Y,
 			Width:    trigger.Width,
 			Height:   trigger.Height,
-			Params:   cloneFloatMap(trigger.Params),
-			Colors:   cloneStringSlice(trigger.Colors),
+			Params:   simutil.CloneFloatMap(trigger.Params),
+			Colors:   simutil.CloneStringSlice(trigger.Colors),
 		}
 	}
 	return converted
@@ -605,7 +606,7 @@ func convertPatchPayloadToSim(payload any) any {
 	case EquipmentPayload:
 		return sim.EquipmentPayload{Slots: simEquippedItemsFromLegacy(value.Slots)}
 	case EffectParamsPayload:
-		return sim.EffectParamsPayload{Params: cloneFloatMap(value.Params)}
+		return sim.EffectParamsPayload{Params: simutil.CloneFloatMap(value.Params)}
 	case GroundItemQtyPayload:
 		return sim.GroundItemQtyPayload{Qty: value.Qty}
 	default:
@@ -707,7 +708,7 @@ func convertPatchPayloadFromSim(payload any) any {
 		eq := legacyEquipmentFromSim(sim.Equipment{Slots: value.Slots})
 		return EquipmentPayload{Slots: eq.Slots}
 	case sim.EffectParamsPayload:
-		return EffectParamsPayload{Params: cloneFloatMap(value.Params)}
+		return EffectParamsPayload{Params: simutil.CloneFloatMap(value.Params)}
 	case sim.GroundItemQtyPayload:
 		return GroundItemQtyPayload{Qty: value.Qty}
 	default:
@@ -819,26 +820,6 @@ func legacyItemStackFromSim(stack sim.ItemStack) ItemStack {
 		FungibilityKey: stack.FungibilityKey,
 		Quantity:       stack.Quantity,
 	}
-}
-
-func cloneFloatMap(values map[string]float64) map[string]float64 {
-	if len(values) == 0 {
-		return nil
-	}
-	cloned := make(map[string]float64, len(values))
-	for k, v := range values {
-		cloned[k] = v
-	}
-	return cloned
-}
-
-func cloneStringSlice(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	cloned := make([]string, len(values))
-	copy(cloned, values)
-	return cloned
 }
 
 // Ensure legacyEngineAdapter implements sim.Engine.

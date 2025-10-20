@@ -24,6 +24,20 @@ func findPlayer(players []Player, id string) *Player {
 	return nil
 }
 
+func marshalStateLegacy(h *Hub, players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
+	simPlayers := simPlayersFromLegacy(players)
+	simNPCs := simNPCsFromLegacy(npcs)
+	var simTriggers []sim.EffectTrigger
+	if len(triggers) > 0 {
+		simTriggers = simEffectTriggersFromLegacy(triggers)
+	}
+	var simGroundItems []sim.GroundItem
+	if len(groundItems) > 0 {
+		simGroundItems = simGroundItemsFromLegacy(groundItems)
+	}
+	return h.marshalState(simPlayers, simNPCs, simTriggers, simGroundItems, drainPatches, includeSnapshot)
+}
+
 func hasFollowEffect(effects []*effectState, effectType, actorID string) bool {
 	for _, eff := range effects {
 		if eff == nil {
@@ -179,7 +193,8 @@ func TestHubJoinCreatesPlayer(t *testing.T) {
 	if len(first.Players) != 1 {
 		t.Fatalf("expected snapshot to contain 1 player, got %d", len(first.Players))
 	}
-	if p := findPlayer(first.Players, first.ID); p == nil {
+	playersLegacy := legacyPlayersFromSim(first.Players)
+	if p := findPlayer(playersLegacy, first.ID); p == nil {
 		t.Fatalf("snapshot missing newly joined player %q", first.ID)
 	} else if p.Facing == "" {
 		t.Fatalf("expected joined player to include facing direction")
@@ -280,7 +295,7 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	}
 	hub.mu.Unlock()
 
-	data, _, err := hub.marshalState(players, npcs, triggers, groundItems, true, true)
+	data, _, err := marshalStateLegacy(hub, players, npcs, triggers, groundItems, true, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -301,11 +316,11 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 			t.Fatalf("expected payload to decode as map, got %T", patch.Payload)
 		}
 		switch patch.Kind {
-		case PatchPlayerPos:
+		case sim.PatchPlayerPos:
 			decodedPos = payload
-		case PatchPlayerFacing:
+		case sim.PatchPlayerFacing:
 			decodedFacing = payload
-		case PatchPlayerIntent:
+		case sim.PatchPlayerIntent:
 			decodedIntent = payload
 		}
 	}
@@ -914,7 +929,7 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 	nextNow := now.Add(step)
 	players, npcs, triggers, groundItems, _ = hub.advance(nextNow, dt)
 
-	data, _, err := hub.marshalState(players, npcs, triggers, groundItems, true, false)
+	data, _, err := marshalStateLegacy(hub, players, npcs, triggers, groundItems, true, false)
 	if err != nil {
 		t.Fatalf("failed to marshal state message: %v", err)
 	}
@@ -2490,7 +2505,7 @@ func TestRunSimulationBroadcastsGroundItemsFromSimEngine(t *testing.T) {
 
 	includeSnapshot := hub.shouldIncludeSnapshot()
 	engine.AllowFurtherSnapshots()
-	data, _, err := hub.marshalState(players, npcs, triggers, groundItems, true, includeSnapshot)
+	data, _, err := marshalStateLegacy(hub, players, npcs, triggers, groundItems, true, includeSnapshot)
 	if err != nil {
 		t.Fatalf("failed to marshal state payload: %v", err)
 	}
@@ -2965,7 +2980,7 @@ func TestMarshalStateUsesResubscribeBaselinesForReplayPackaging(t *testing.T) {
 	updatedY := player.Y - 5
 	hub.world.SetPosition(player.ID, updatedX, updatedY)
 
-	data, _, err := hub.marshalState(stale, nil, nil, nil, false, true)
+	data, _, err := marshalStateLegacy(hub, stale, nil, nil, nil, false, true)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
@@ -3014,8 +3029,8 @@ func TestMarshalStateUsesSimEngineSnapshotPatchesForReplay(t *testing.T) {
 	}
 
 	patch := msg.Patches[0]
-	if patch.Kind != PatchPlayerIntent {
-		t.Fatalf("expected patch kind %q, got %q", PatchPlayerIntent, patch.Kind)
+	if patch.Kind != sim.PatchPlayerIntent {
+		t.Fatalf("expected patch kind %q, got %q", sim.PatchPlayerIntent, patch.Kind)
 	}
 	if patch.EntityID != playerID {
 		t.Fatalf("expected patch entity %q, got %q", playerID, patch.EntityID)

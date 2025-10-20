@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"mine-and-die/server/internal/sim"
 	logging "mine-and-die/server/logging"
 )
 
@@ -99,8 +100,8 @@ func TestMarshalStateKeepsGroundItemRemovalPatch(t *testing.T) {
 		t.Fatalf("expected one patch in state message, got %d", len(msg.Patches))
 	}
 	patch := msg.Patches[0]
-	if patch.Kind != PatchGroundItemQty {
-		t.Fatalf("expected patch kind %q, got %q", PatchGroundItemQty, patch.Kind)
+	if patch.Kind != sim.PatchGroundItemQty {
+		t.Fatalf("expected patch kind %q, got %q", sim.PatchGroundItemQty, patch.Kind)
 	}
 	if patch.EntityID != item.ID {
 		t.Fatalf("expected patch entity %q, got %q", item.ID, patch.EntityID)
@@ -153,7 +154,7 @@ func TestMarshalStateOmitsGroundItemsFromDiffFrames(t *testing.T) {
 		t.Fatalf("expected snapshot to contain one ground item, got %d", len(snapshot))
 	}
 
-	data, _, err := hub.marshalState(nil, nil, nil, snapshot, true, false)
+	data, _, err := hub.marshalState(nil, nil, nil, simGroundItemsFromLegacy(snapshot), true, false)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
