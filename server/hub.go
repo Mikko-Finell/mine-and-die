@@ -219,6 +219,7 @@ func (l *keyframeRateLimiter) allow(now time.Time) bool {
 type HubConfig struct {
 	KeyframeInterval int
 	Logger           *stdlog.Logger
+	Metrics          telemetry.Metrics
 }
 
 func DefaultHubConfig() HubConfig {
@@ -247,9 +248,13 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 	world := newWorld(cfg, pub)
 	cfg = world.config
 
-	var metrics *logging.Metrics
-	if provider, ok := pub.(interface{ Metrics() *logging.Metrics }); ok {
-		metrics = provider.Metrics()
+	metrics := hubCfg.Metrics
+	if metrics == nil {
+		if provider, ok := pub.(interface{ Metrics() *logging.Metrics }); ok {
+			if candidate := provider.Metrics(); candidate != nil {
+				metrics = telemetry.WrapMetrics(candidate)
+			}
+		}
 	}
 
 	clock := logging.Clock(logging.SystemClock{})
