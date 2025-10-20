@@ -100,6 +100,24 @@ func newRecordingSimEngine(snapshot sim.Snapshot) *recordingSimEngine {
 
 func (e *recordingSimEngine) Deps() sim.Deps { return sim.Deps{} }
 
+func (e *recordingSimEngine) Enqueue(sim.Command) (bool, string) { return true, "" }
+
+func (e *recordingSimEngine) Pending() int { return 0 }
+
+func (e *recordingSimEngine) DrainCommands() []sim.Command { return nil }
+
+func (e *recordingSimEngine) Advance(ctx sim.LoopTickContext) sim.LoopStepResult {
+	snapshot := e.Snapshot()
+	return sim.LoopStepResult{Tick: ctx.Tick, Now: ctx.Now, Delta: ctx.Delta, Snapshot: snapshot}
+}
+
+func (e *recordingSimEngine) Run(stop <-chan struct{}) {
+	if stop == nil {
+		return
+	}
+	<-stop
+}
+
 func (e *recordingSimEngine) Apply([]sim.Command) error { return nil }
 
 func (e *recordingSimEngine) Step() {}
@@ -230,7 +248,7 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 	joined := hub.Join()
 	playerID := joined.ID
 
-	hub.enqueueCommand(sim.Command{
+	hub.engine.Enqueue(sim.Command{
 		ActorID: playerID,
 		Type:    sim.CommandMove,
 		Move: &sim.MoveCommand{

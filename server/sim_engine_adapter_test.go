@@ -349,9 +349,9 @@ func TestSimEffectEventBatchConversionRoundTripPreservesSequences(t *testing.T) 
 func TestLegacyAdapterRestorePatches(t *testing.T) {
 	hub := newHub()
 
-	adapter, ok := hub.engine.(*legacyEngineAdapter)
-	if !ok || adapter == nil {
-		t.Fatalf("expected hub engine to be legacy adapter")
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
 	}
 
 	baseline := Patch{Kind: PatchNPCPos, EntityID: "npc-1", Payload: PositionPayload{X: 3, Y: 4}}
@@ -497,9 +497,9 @@ func TestHubAdapterKeyframeRecordingMatchesJournal(t *testing.T) {
 	hub := newHub()
 	hub.world.journal = newJournal(capacity, maxAge)
 
-	adapter, ok := hub.engine.(*legacyEngineAdapter)
-	if !ok || adapter == nil {
-		t.Fatalf("expected hub engine to be legacy adapter")
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
 	}
 
 	cases := []struct {

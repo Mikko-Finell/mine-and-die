@@ -13,14 +13,17 @@ func TestEnqueueCommandEnforcesPerActorLimit(t *testing.T) {
 	actorB := "player-b"
 
 	for i := 0; i < commandQueuePerActorLimit; i++ {
-		hub.enqueueCommand(sim.Command{ActorID: actorA, Type: sim.CommandMove, Move: &sim.MoveCommand{DX: 1}})
+		hub.engine.Enqueue(sim.Command{ActorID: actorA, Type: sim.CommandMove, Move: &sim.MoveCommand{DX: 1}})
 	}
 
-	hub.enqueueCommand(sim.Command{ActorID: actorB, Type: sim.CommandMove, Move: &sim.MoveCommand{DY: 1}})
+	hub.engine.Enqueue(sim.Command{ActorID: actorB, Type: sim.CommandMove, Move: &sim.MoveCommand{DY: 1}})
 
-	hub.enqueueCommand(sim.Command{ActorID: actorA, Type: sim.CommandMove, Move: &sim.MoveCommand{DX: -1}})
+	ok, reason := hub.engine.Enqueue(sim.Command{ActorID: actorA, Type: sim.CommandMove, Move: &sim.MoveCommand{DX: -1}})
+	if ok || reason != sim.CommandRejectQueueLimit {
+		t.Fatalf("expected queue limit rejection, ok=%t reason=%q", ok, reason)
+	}
 
-	commands := hub.drainCommands()
+	commands := hub.engine.DrainCommands()
 
 	var countA, countB int
 	for _, cmd := range commands {

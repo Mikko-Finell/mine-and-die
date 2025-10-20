@@ -822,5 +822,5 @@ func legacyItemStackFromSim(stack sim.ItemStack) ItemStack {
 	}
 }
 
-// Ensure legacyEngineAdapter implements sim.Engine.
-var _ sim.Engine = (*legacyEngineAdapter)(nil)
+// Ensure legacyEngineAdapter implements sim.EngineCore.
+var _ sim.EngineCore = (*legacyEngineAdapter)(nil)
