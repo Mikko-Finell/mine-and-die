@@ -11,7 +11,7 @@ import (
 )
 
 func TestNPCRemovalPurgesPatches(t *testing.T) {
-	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-test", Health: 50, MaxHealth: 50}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin), Type: NPCTypeGoblin}
 	w.npcs[npc.ID] = npc
 
@@ -50,7 +50,7 @@ func TestNPCRemovalPurgesPatches(t *testing.T) {
 }
 
 func TestEffectExpiryPurgesPatches(t *testing.T) {
-	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	now := time.Now()
 	expired := &effectState{ID: "effect-test", Type: effectTypeFireball, expiresAt: now.Add(-time.Second)}
 	alive := &effectState{ID: "effect-alive", Type: effectTypeFireball, expiresAt: now.Add(time.Second)}

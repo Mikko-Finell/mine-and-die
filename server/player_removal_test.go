@@ -7,7 +7,7 @@ import (
 )
 
 func TestRemovePlayerEmitsRemovalPatch(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	player := newTestPlayerState("player-remove")
 	world.AddPlayer(player)

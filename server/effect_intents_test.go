@@ -234,7 +234,7 @@ func TestNewBloodSplatterIntent(t *testing.T) {
 }
 
 func TestApplyStatusEffectQueuesIntent(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialised")
 	}
@@ -272,7 +272,7 @@ func TestApplyStatusEffectQueuesIntent(t *testing.T) {
 }
 
 func TestMaybeSpawnBloodSplatterQueuesIntent(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialised")
 	}

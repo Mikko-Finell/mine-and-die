@@ -8,6 +8,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -93,6 +94,8 @@ type World struct {
 	journal           Journal
 }
 
+func (w *World) LegacyWorldMarker() {}
+
 func (w *World) resolveStats(tick uint64) {
 	for _, player := range w.players {
 		player.stats.Resolve(tick)
@@ -117,8 +120,8 @@ func (w *World) syncMaxHealth(actor *actorState, version *uint64, entityID strin
 	w.setActorHealth(actor, version, entityID, kind, maxHealth, actor.Health)
 }
 
-// newWorld constructs an empty world with generated obstacles and seeded NPCs.
-func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
+// legacyConstructWorld constructs an empty world with generated obstacles and seeded NPCs.
+func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 	normalized := cfg.Normalized()
 
 	if publisher == nil {
@@ -151,6 +154,23 @@ func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
 	return w
+}
+
+func requireLegacyWorld(instance worldpkg.LegacyWorld) *World {
+	if instance == nil {
+		return nil
+	}
+	world, ok := instance.(*World)
+	if !ok {
+		panic("world: legacy constructor returned unexpected type")
+	}
+	return world
+}
+
+func init() {
+	worldpkg.RegisterLegacyConstructor(func(cfg worldpkg.Config, publisher logging.Publisher) worldpkg.LegacyWorld {
+		return legacyConstructWorld(cfg, publisher)
+	})
 }
 
 // Snapshot copies players and NPCs into broadcast-friendly structs.

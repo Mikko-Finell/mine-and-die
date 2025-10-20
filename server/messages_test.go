@@ -14,6 +14,7 @@ import (
 	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
+	worldpkg "mine-and-die/server/internal/world"
 )
 
 type failingPayload struct{}
@@ -532,7 +533,7 @@ func TestResyncLifecycleAcrossSnapshotsAndResets(t *testing.T) {
 
 	assertResyncFlag(t, data, false)
 
-	hub.ResetWorld(defaultWorldConfig())
+	hub.ResetWorld(worldpkg.DefaultConfig())
 
 	data, _, err = hub.marshalState(nil, nil, nil, nil, true, true)
 	if err != nil {

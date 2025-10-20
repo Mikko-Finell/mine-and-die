@@ -20,7 +20,7 @@ func (w *World) ensureRNG() {
 		return
 	}
 	if w.seed == "" {
-		w.seed = defaultWorldSeed
+		w.seed = worldpkg.DefaultSeed
 	}
 	if w.rng == nil {
 		w.rng = newDeterministicRNG(w.seed, "world")
@@ -28,7 +28,7 @@ func (w *World) ensureRNG() {
 }
 
 func (w *World) subsystemRNG(label string) *rand.Rand {
-	root := defaultWorldSeed
+	root := worldpkg.DefaultSeed
 	if w != nil && w.seed != "" {
 		root = w.seed
 	}
