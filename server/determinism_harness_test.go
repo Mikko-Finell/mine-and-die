@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mine-and-die/server/internal/sim"
+	worldpkg "mine-and-die/server/internal/world"
 )
 
 const (
@@ -84,7 +85,7 @@ func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptio
 
 	hub := newHub()
 
-	cfg := defaultWorldConfig()
+	cfg := worldpkg.DefaultConfig()
 	cfg.Seed = determinismHarnessSeed
 	hub.ResetWorld(cfg)
 

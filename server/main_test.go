@@ -389,8 +389,8 @@ func TestWorldGenerationDeterministicWithSeed(t *testing.T) {
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "deterministic-test"
 
-	w1 := newWorld(cfg, logging.NopPublisher{})
-	w2 := newWorld(cfg, logging.NopPublisher{})
+	w1 := newTestWorld(cfg, logging.NopPublisher{})
+	w2 := newTestWorld(cfg, logging.NopPublisher{})
 
 	if len(w1.obstacles) != len(w2.obstacles) {
 		t.Fatalf("expected identical obstacle counts, got %d and %d", len(w1.obstacles), len(w2.obstacles))
@@ -402,7 +402,7 @@ func TestWorldGenerationDeterministicWithSeed(t *testing.T) {
 	}
 
 	cfg.Seed = "deterministic-test-alt"
-	w3 := newWorld(cfg, logging.NopPublisher{})
+	w3 := newTestWorld(cfg, logging.NopPublisher{})
 
 	if len(w1.obstacles) != len(w3.obstacles) {
 		return
@@ -620,7 +620,7 @@ func TestWorldRespectsConfiguredDimensions(t *testing.T) {
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Width = 960
 	cfg.Height = 540
-	w := newWorld(cfg, logging.NopPublisher{})
+	w := newTestWorld(cfg, logging.NopPublisher{})
 	w.obstacles = nil
 
 	mover := newTestPlayerState("custom-bound")
@@ -1288,7 +1288,7 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 }
 
 func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1322,7 +1322,7 @@ func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractMeleeSpawnPopulatesMotionCenter(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1361,7 +1361,7 @@ func TestContractMeleeSpawnPopulatesMotionCenter(t *testing.T) {
 }
 
 func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1429,7 +1429,7 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractProjectileSpawnPopulatesMotionCenter(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1477,7 +1477,7 @@ func TestContractProjectileSpawnPopulatesMotionCenter(t *testing.T) {
 }
 
 func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1535,7 +1535,7 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 }
 
 func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialized")
 	}
@@ -1666,7 +1666,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 }
 
 func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	world.obstacles = nil
 	attacker := newTestPlayerState("attacker")
 	attacker.X = 200
@@ -1855,7 +1855,7 @@ func (c *effectEventCollector) collect(evt effectcontract.EffectLifecycleEvent) 
 }
 
 func TestContractMeleeEndsInstantly(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	attacker := newTestPlayerState("melee-owner")
 	attacker.cooldowns = make(map[string]time.Time)
 	world.AddPlayer(attacker)
@@ -1906,7 +1906,7 @@ func TestContractMeleeEndsInstantly(t *testing.T) {
 }
 
 func TestContractProjectileEndsByDuration(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	world.obstacles = nil
 	world.npcs = make(map[string]*npcState)
 	attacker := newTestPlayerState("projectile-owner")
@@ -1978,7 +1978,7 @@ func TestContractProjectileEndsByDuration(t *testing.T) {
 }
 
 func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	owner := newTestPlayerState("anchor-owner")
 	owner.cooldowns = make(map[string]time.Time)
 	world.AddPlayer(owner)
@@ -2041,7 +2041,7 @@ func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
 }
 
 func TestContractReplicationOffSkipsUpdates(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	const spawnOnlyType = "spawn-only"
 	world.effectManager.definitions[spawnOnlyType] = &effectcontract.EffectDefinition{
@@ -2086,7 +2086,7 @@ func TestContractReplicationOffSkipsUpdates(t *testing.T) {
 }
 
 func TestContractSeqMonotonicAcrossTicks(t *testing.T) {
-	world := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	const seqType = "seq-effect"
 	world.effectManager.definitions[seqType] = &effectcontract.EffectDefinition{

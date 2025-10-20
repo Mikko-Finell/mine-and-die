@@ -9,7 +9,7 @@ import (
 )
 
 func TestRemoveGroundItemRecordsQuantityPatch(t *testing.T) {
-	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	def, ok := ItemDefinitionFor(ItemTypeGold)
 	if !ok {

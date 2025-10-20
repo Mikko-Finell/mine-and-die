@@ -17,7 +17,7 @@ func floatsEqual(a, b float64) bool {
 }
 
 func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
-	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	basePlayer := &playerState{actorState: actorState{Actor: Actor{
 		ID:        "player-1",
@@ -100,7 +100,7 @@ func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 }
 
 func TestApplyPatchesNoop(t *testing.T) {
-	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	player := &playerState{actorState: actorState{Actor: Actor{
 		ID:        "player-1",
@@ -135,7 +135,7 @@ func TestApplyPatchesNoop(t *testing.T) {
 }
 
 func TestApplyPatchesRemovesPlayer(t *testing.T) {
-	w := newWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	player := newTestPlayerState("player-remove")
 	w.AddPlayer(player)

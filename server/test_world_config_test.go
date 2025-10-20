@@ -1,7 +1,9 @@
 package server
 
+import worldpkg "mine-and-die/server/internal/world"
+
 func fullyFeaturedTestWorldConfig() worldConfig {
-	cfg := defaultWorldConfig()
+	cfg := worldpkg.DefaultConfig()
 	cfg.Width = 2400
 	cfg.Height = 1800
 	cfg.Obstacles = true

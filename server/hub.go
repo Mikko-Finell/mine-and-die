@@ -18,6 +18,7 @@ import (
 	simpaches "mine-and-die/server/internal/sim/patches"
 	"mine-and-die/server/internal/simutil"
 	"mine-and-die/server/internal/telemetry"
+	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -257,7 +258,7 @@ func newHub(pubs ...logging.Publisher) *Hub {
 }
 
 func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
-	cfg := defaultWorldConfig().Normalized()
+	cfg := worldpkg.DefaultConfig().Normalized()
 	var pub logging.Publisher
 	if len(pubs) > 0 && pubs[0] != nil {
 		pub = pubs[0]
@@ -270,7 +271,7 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 		interval = 1
 	}
 
-	world := newWorld(cfg, pub)
+	world := requireLegacyWorld(worldpkg.New(cfg, pub))
 	cfg = world.config
 
 	metrics := hubCfg.Metrics
@@ -605,7 +606,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 		playerIDs = append(playerIDs, id)
 	}
 
-	newW := newWorld(cfg, h.publisher)
+	newW := requireLegacyWorld(worldpkg.New(cfg, h.publisher))
 	cfg = newW.config
 	newW.telemetry = h.telemetry
 	newW.journal.AttachTelemetry(h.telemetry)
