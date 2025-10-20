@@ -1,12 +1,11 @@
 package server
 
+import worldpkg "mine-and-die/server/internal/world"
+
 const maxAIAbilities = 4
 
 // vec2 captures a 2D vector for blackboard bookkeeping.
-type vec2 struct {
-	X float64
-	Y float64
-}
+type vec2 = worldpkg.Vec2
 
 // npcBlackboard stores per-NPC AI memory required by the FSM executor.
 type npcBlackboard struct {
