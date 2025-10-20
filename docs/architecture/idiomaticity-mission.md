@@ -211,7 +211,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Compute and assert the patch and journal checksum.
   - [x] Run the check in CI to detect behavioral drift.
 
-- [ ] Freeze **core data contracts**:
+- [x] Freeze **core data contracts**:
 
   - [x] Lock the command schema.
   - [x] Lock the patch format via adapter round-trip tests.
