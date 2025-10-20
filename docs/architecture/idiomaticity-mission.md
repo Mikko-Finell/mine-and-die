@@ -294,7 +294,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Begin carving out `server/internal/world` by moving the world struct, tile helpers, and RNG/time wiring into the new package while keeping the hub adapter and simulation loop behavior unchanged.
 - [x] Move the world constructor (`newWorld`) and default configuration helpers into `internal/world`, exposing a constructor that the hub and tests call while leaving adapters and loop wiring untouched.
 - [x] Move world obstacle generation and NPC seeding helpers into `internal/world` so the constructor's dependencies live alongside it, leaving wrappers for any legacy call sites.
-- [ ] Move the navigation grid helpers (`path_utils.go`) into `internal/world`, exposing wrappers in the legacy world so pathfinding continues to compile without depending on server internals.
+- [x] Move the navigation grid helpers (`path_utils.go`) into `internal/world`, exposing wrappers in the legacy world so pathfinding continues to compile without depending on server internals.
+- [ ] Move the player path-following helpers (`player_path.go`) into `internal/world`, exposing adapters on the legacy world so intent updates sit alongside the navigation grid.
 
 - [x] Keep the tick loop in `sim/engine`:
 
