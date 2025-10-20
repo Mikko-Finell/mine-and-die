@@ -3,21 +3,23 @@ package server
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	stdlog "log"
 	"testing"
 	"time"
 
 	"mine-and-die/server/internal/sim"
+	"mine-and-die/server/internal/telemetry"
 	"mine-and-die/server/logging"
 )
 
 func TestNewHubWithConfigInjectsSimDeps(t *testing.T) {
-	cfg := logging.DefaultConfig()
-	cfg.EnabledSinks = nil
-	cfg.BufferSize = 1
+	routerCfg := logging.DefaultConfig()
+	routerCfg.EnabledSinks = nil
+	routerCfg.BufferSize = 1
 
-	router, err := logging.NewRouter(cfg, logging.SystemClock{}, stdlog.New(io.Discard, "", 0), nil)
+	router, err := logging.NewRouter(routerCfg, logging.SystemClock{}, stdlog.New(io.Discard, "", 0), nil)
 	if err != nil {
 		t.Fatalf("failed to construct router: %v", err)
 	}
@@ -27,15 +29,24 @@ func TestNewHubWithConfigInjectsSimDeps(t *testing.T) {
 		}
 	})
 
-	hub := NewHubWithConfig(DefaultHubConfig(), router)
+	var buf bytes.Buffer
+	hubCfg := DefaultHubConfig()
+	hubCfg.Logger = stdlog.New(&buf, "", 0)
+
+	hub := NewHubWithConfig(hubCfg, router)
 	if hub.engine == nil {
 		t.Fatalf("expected engine to be configured")
 	}
 
 	deps := hub.engine.Deps()
 
-	if deps.Logger != stdlog.Default() {
-		t.Errorf("expected engine deps logger to use stdlog")
+	if deps.Logger == nil {
+		t.Fatalf("expected engine deps logger to be configured")
+	}
+
+	deps.Logger.Printf("hello %s", "world")
+	if got := buf.String(); got != "hello world\n" {
+		t.Fatalf("expected injected logger to capture output, got %q", got)
 	}
 
 	if deps.Metrics != router.Metrics() {
@@ -120,7 +131,10 @@ func TestCommandIssuedAtUsesEngineClock(t *testing.T) {
 func TestHubLogfUsesEngineLogger(t *testing.T) {
 	hub := newHub()
 	var buf bytes.Buffer
-	logger := stdlog.New(&buf, "", 0)
+	logger := telemetry.LoggerFunc(func(format string, args ...any) {
+		fmt.Fprintf(&buf, format, args...)
+		buf.WriteByte('\n')
+	})
 	hub.engine = &stubEngine{deps: sim.Deps{Logger: logger}}
 
 	hub.logf("hello %s", "world")
