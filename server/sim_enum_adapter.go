@@ -1,4 +1,4 @@
-package main
+package server
 
 import "mine-and-die/server/internal/sim"
 

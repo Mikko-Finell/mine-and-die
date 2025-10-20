@@ -1,6 +1,6 @@
 //go:build ignore
 
-package main
+package server
 
 import (
 	"encoding/json"

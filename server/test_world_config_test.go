@@ -1,4 +1,4 @@
-package main
+package server
 
 func fullyFeaturedTestWorldConfig() worldConfig {
 	cfg := defaultWorldConfig()

@@ -1,4 +1,4 @@
-package main
+package server
 
 // width returns the configured world width, falling back to the default when
 // unset or when the world is nil.
