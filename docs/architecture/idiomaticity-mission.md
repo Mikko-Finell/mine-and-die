@@ -241,7 +241,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 - [x] Move process wiring into `/cmd/server` and `internal/app`.
 - [x] Move the HTTP and websocket handler construction into `internal/net` so `internal/app` depends on networking packages instead of hub internals.
-- [ ] Extract websocket session orchestration into `internal/net/ws` so handler code depends on a narrow subscription interface instead of hub internals.
+- [x] Extract websocket session orchestration into `internal/net/ws` so handler code depends on a narrow subscription interface instead of hub internals.
+- [ ] Add `internal/net/proto` to centralize websocket message schemas and conversions so the new session package stops duplicating JSON structs.
 - [ ] Move networking into `internal/net`:
 
   - [ ] Add `ws/` for websocket sessions and fan-out.

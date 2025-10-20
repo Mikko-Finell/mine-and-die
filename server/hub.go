@@ -106,6 +106,14 @@ type subscriber struct {
 	limiter        keyframeRateLimiter
 }
 
+// SessionSubscriber exposes the subscription operations required by network handlers.
+type SessionSubscriber interface {
+	WriteMessage(messageType int, data []byte) error
+	LastCommandSeq() uint64
+	StoreLastCommandSeq(seq uint64)
+	AllowKeyframeRequest(now time.Time) bool
+}
+
 // WriteMessage sends a websocket message guarded by the subscriber's mutex and write deadline.
 func (s *subscriber) WriteMessage(messageType int, data []byte) error {
 	if s == nil || s.conn == nil {
@@ -133,6 +141,14 @@ func (s *subscriber) StoreLastCommandSeq(seq uint64) {
 		return
 	}
 	s.lastCommandSeq.Store(seq)
+}
+
+// AllowKeyframeRequest reports whether a keyframe request should be served immediately.
+func (s *subscriber) AllowKeyframeRequest(now time.Time) bool {
+	if s == nil {
+		return false
+	}
+	return s.limiter.allow(now)
 }
 
 const (
@@ -539,7 +555,7 @@ func (h *Hub) CurrentConfig() worldConfig {
 }
 
 // Subscribe associates a WebSocket connection with an existing player.
-func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, []NPC, []GroundItem, bool) {
+func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (SessionSubscriber, []Player, []NPC, []GroundItem, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -1605,13 +1621,13 @@ func (h *Hub) Keyframe(sequence uint64) (keyframeMessage, bool) {
 	return snapshot, status == keyframeLookupFound
 }
 
-func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence uint64) (keyframeMessage, *keyframeNackMessage, bool) {
+func (h *Hub) HandleKeyframeRequest(playerID string, sub SessionSubscriber, sequence uint64) (keyframeMessage, *keyframeNackMessage, bool) {
 	if sequence == 0 {
 		return keyframeMessage{}, nil, false
 	}
 
 	now := h.now()
-	if sub != nil && !sub.limiter.allow(now) {
+	if sub != nil && !sub.AllowKeyframeRequest(now) {
 		if h.telemetry != nil {
 			h.telemetry.RecordKeyframeRequest(0, false)
 			h.telemetry.IncrementKeyframeRateLimited()
