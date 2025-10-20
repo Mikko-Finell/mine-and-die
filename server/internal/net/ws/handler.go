@@ -1,7 +1,6 @@
 package ws
 
 import (
-	"encoding/json"
 	"log"
 	nethttp "net/http"
 	"time"
@@ -314,13 +313,23 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			if !ok {
 				continue
 			}
-			var data []byte
-			var err error
 			if nack != nil {
-				data, err = json.Marshal(nack)
-			} else {
-				data, err = json.Marshal(snapshot)
+				data, err := proto.EncodeKeyframeNack(nack)
+				if err != nil {
+					h.logger.Printf("failed to marshal keyframe for %s: %v", playerID, err)
+					continue
+				}
+				if err := session.WriteMessage(websocket.TextMessage, data); err != nil {
+					players, npcs := h.hub.Disconnect(playerID)
+					if players != nil {
+						h.hub.ForceKeyframe()
+						go h.hub.BroadcastState(players, npcs, nil, nil)
+					}
+					return
+				}
+				continue
 			}
+			data, err := proto.EncodeKeyframeSnapshot(snapshot)
 			if err != nil {
 				h.logger.Printf("failed to marshal keyframe for %s: %v", playerID, err)
 				continue

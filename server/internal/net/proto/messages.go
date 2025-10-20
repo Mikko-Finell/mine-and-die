@@ -11,7 +11,44 @@ const (
 	typeCommandReject = "commandReject"
 	typeHeartbeat     = "heartbeat"
 	typeConsoleAck    = "console_ack"
+	typeState         = "state"
+	typeKeyframe      = "keyframe"
+	typeKeyframeNack  = "keyframeNack"
 )
+
+// Exported aliases for outbound message type identifiers.
+const (
+	TypeState        = typeState
+	TypeKeyframe     = typeKeyframe
+	TypeKeyframeNack = typeKeyframeNack
+)
+
+type stateSnapshot interface {
+	ProtoStateSnapshot()
+}
+
+// EncodeStateSnapshot renders a state snapshot payload.
+func EncodeStateSnapshot(msg stateSnapshot) ([]byte, error) {
+	return json.Marshal(msg)
+}
+
+type keyframeSnapshot interface {
+	ProtoKeyframeSnapshot()
+}
+
+// EncodeKeyframeSnapshot renders a keyframe payload.
+func EncodeKeyframeSnapshot(msg keyframeSnapshot) ([]byte, error) {
+	return json.Marshal(msg)
+}
+
+type keyframeNack interface {
+	ProtoKeyframeNack()
+}
+
+// EncodeKeyframeNack renders a keyframe nack payload.
+func EncodeKeyframeNack(msg keyframeNack) ([]byte, error) {
+	return json.Marshal(msg)
+}
 
 // ClientMessage captures an inbound websocket message from the client.
 type ClientMessage struct {
