@@ -19,7 +19,7 @@ All coordination happens there — phases, order, progress markers, and next tas
   * If the phase is actually complete end-to-end, mark it `[DONE]`.
 * If you discover a missing prerequisite, append a new phase as `[TODO]` rather than improvising silently.
 * If blocked on something external, mark the phase `[BLOCKED]` and state why.
-* Try to avoid adding shims or feature flags or anything like that.
+* Try to avoid adding shims or feature flags or anything like that if you can. If the task requires it, mark them with code comments.
 * If a task is large and complicated so that it can only be executed over several smaller tasks and you have to add a flag for it, then clearly mark the flag with a code comment `// TEMPORARY FLAG REMOVE WHEN DONE`
 * When a change is complete remove flags and shims that had to be added, do not leave legacy code or tests around to confuse future contributors.
 
