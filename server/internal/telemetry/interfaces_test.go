@@ -22,6 +22,14 @@ func TestWrapLogger(t *testing.T) {
 		if got := buf.String(); got != "hello world\n" {
 			t.Fatalf("unexpected log output: %q", got)
 		}
+
+		provider, ok := logger.(interface{ StandardLogger() *log.Logger })
+		if !ok {
+			t.Fatalf("logger adapter does not expose StandardLogger")
+		}
+		if provider.StandardLogger() != base {
+			t.Fatalf("StandardLogger did not return wrapped logger")
+		}
 	})
 }
 

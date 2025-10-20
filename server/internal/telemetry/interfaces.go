@@ -38,6 +38,13 @@ func (l *loggerAdapter) Printf(format string, args ...any) {
 	l.logger.Printf(format, args...)
 }
 
+func (l *loggerAdapter) StandardLogger() *log.Logger {
+	if l == nil {
+		return nil
+	}
+	return l.logger
+}
+
 // Metrics exposes the telemetry methods required by server components.
 type Metrics interface {
 	Add(key string, delta uint64)

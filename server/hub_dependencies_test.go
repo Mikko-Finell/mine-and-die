@@ -31,7 +31,7 @@ func TestNewHubWithConfigInjectsSimDeps(t *testing.T) {
 
 	var buf bytes.Buffer
 	hubCfg := DefaultHubConfig()
-	hubCfg.Logger = stdlog.New(&buf, "", 0)
+	hubCfg.Logger = telemetry.WrapLogger(stdlog.New(&buf, "", 0))
 
 	hub := NewHubWithConfig(hubCfg, router)
 	if hub.engine == nil {
