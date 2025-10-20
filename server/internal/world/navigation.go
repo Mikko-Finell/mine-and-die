@@ -1,8 +1,16 @@
-package server
+package world
 
 import (
 	"container/heap"
 	"math"
+)
+
+const (
+	NavCellSize             = 32.0
+	PathNodeReachedEpsilon  = PlayerHalf * 0.75
+	PathPushRecalcThreshold = 4.0
+	PathStallThresholdTicks = 6
+	PathRecalcCooldownTicks = 8
 )
 
 type navNeighbor struct {
@@ -23,14 +31,6 @@ var navNeighborOffsets = [...]navNeighbor{
 	{col: -1, row: -1, cost: math.Sqrt2, diagonal: true},
 }
 
-const (
-	navCellSize             = 32.0
-	pathNodeReachedEpsilon  = playerHalf * 0.75
-	pathPushRecalcThreshold = 4.0
-	pathStallThresholdTicks = 6
-	pathRecalcCooldownTicks = 8
-)
-
 type navGrid struct {
 	cols, rows int
 	cellSize   float64
@@ -40,8 +40,8 @@ type navGrid struct {
 }
 
 func newNavGrid(obstacles []Obstacle, width, height float64) *navGrid {
-	cols := int(math.Ceil(width / navCellSize))
-	rows := int(math.Ceil(height / navCellSize))
+	cols := int(math.Ceil(width / NavCellSize))
+	rows := int(math.Ceil(height / NavCellSize))
 	if cols <= 0 {
 		cols = 1
 	}
@@ -51,7 +51,7 @@ func newNavGrid(obstacles []Obstacle, width, height float64) *navGrid {
 	grid := &navGrid{
 		cols:     cols,
 		rows:     rows,
-		cellSize: navCellSize,
+		cellSize: NavCellSize,
 		walkable: make([]bool, cols*rows),
 		width:    width,
 		height:   height,
@@ -61,15 +61,15 @@ func newNavGrid(obstacles []Obstacle, width, height float64) *navGrid {
 		for col := 0; col < cols; col++ {
 			cx := (float64(col) + 0.5) * grid.cellSize
 			cy := (float64(row) + 0.5) * grid.cellSize
-			if cx < playerHalf || cx > width-playerHalf || cy < playerHalf || cy > height-playerHalf {
+			if cx < PlayerHalf || cx > width-PlayerHalf || cy < PlayerHalf || cy > height-PlayerHalf {
 				continue
 			}
 			blocked := false
 			for _, obs := range obstacles {
-				if obs.Type == obstacleTypeLava {
+				if obs.Type == ObstacleTypeLava {
 					continue
 				}
-				if circleRectOverlap(cx, cy, playerHalf, obs) {
+				if CircleRectOverlap(cx, cy, PlayerHalf, obs) {
 					blocked = true
 					break
 				}
@@ -98,8 +98,8 @@ func (g *navGrid) isWalkable(col, row int) bool {
 	return g.walkable[g.index(col, row)]
 }
 
-func (g *navGrid) worldPos(col, row int) vec2 {
-	return vec2{
+func (g *navGrid) worldPos(col, row int) Vec2 {
+	return Vec2{
 		X: (float64(col) + 0.5) * g.cellSize,
 		Y: (float64(row) + 0.5) * g.cellSize,
 	}
@@ -143,8 +143,8 @@ func (g *navGrid) locate(x, y float64) (int, int, bool) {
 	if maxY < 0 {
 		maxY = 0
 	}
-	clampedX := clamp(x, 0, maxX)
-	clampedY := clamp(y, 0, maxY)
+	clampedX := Clamp(x, 0, maxX)
+	clampedY := Clamp(y, 0, maxY)
 	col := int(clampedX / g.cellSize)
 	row := int(clampedY / g.cellSize)
 	if !g.inBounds(col, row) {
@@ -319,11 +319,11 @@ func reconstructPath(end *pathNode) []navPoint {
 	return path
 }
 
-func (g *navGrid) findPath(startX, startY float64, target vec2, blocked map[int]struct{}) ([]vec2, bool) {
+func (g *navGrid) findPath(start Vec2, target Vec2, blocked map[int]struct{}) ([]Vec2, bool) {
 	if g == nil {
 		return nil, false
 	}
-	startCol, startRow, ok := g.locate(startX, startY)
+	startCol, startRow, ok := g.locate(start.X, start.Y)
 	if !ok {
 		return nil, false
 	}
@@ -359,16 +359,16 @@ func (g *navGrid) findPath(startX, startY float64, target vec2, blocked map[int]
 			return nil, false
 		}
 	}
-	start := navPoint{col: startCol, row: startRow}
-	goal := navPoint{col: goalCol, row: goalRow}
-	nodes, ok := g.astar(start, goal, blocked)
+	startPoint := navPoint{col: startCol, row: startRow}
+	goalPoint := navPoint{col: goalCol, row: goalRow}
+	nodes, ok := g.astar(startPoint, goalPoint, blocked)
 	if !ok || len(nodes) == 0 {
 		return nil, false
 	}
 	if len(nodes) == 1 {
-		return []vec2{target}, true
+		return []Vec2{target}, true
 	}
-	path := make([]vec2, 0, len(nodes))
+	path := make([]Vec2, 0, len(nodes))
 	for i := 1; i < len(nodes); i++ {
 		path = append(path, g.worldPos(nodes[i].col, nodes[i].row))
 	}
@@ -383,4 +383,181 @@ func (g *navGrid) findPath(startX, startY float64, target vec2, blocked map[int]
 		path[len(path)-1] = target
 	}
 	return path, true
+}
+
+func pathTravelCost(start Vec2, path []Vec2) float64 {
+	if len(path) == 0 {
+		return 0
+	}
+	cost := 0.0
+	prevX := start.X
+	prevY := start.Y
+	for _, node := range path {
+		cost += math.Hypot(node.X-prevX, node.Y-prevY)
+		prevX = node.X
+		prevY = node.Y
+	}
+	return cost
+}
+
+func buildDynamicBlockers(grid *navGrid, blockers []Vec2) map[int]struct{} {
+	if grid == nil || len(blockers) == 0 {
+		return nil
+	}
+	blocked := make(map[int]struct{})
+	mark := func(x, y float64) {
+		minCol := int(math.Floor((x - PlayerHalf) / grid.cellSize))
+		maxCol := int(math.Ceil((x + PlayerHalf) / grid.cellSize))
+		minRow := int(math.Floor((y - PlayerHalf) / grid.cellSize))
+		maxRow := int(math.Ceil((y + PlayerHalf) / grid.cellSize))
+		for row := minRow; row <= maxRow; row++ {
+			for col := minCol; col <= maxCol; col++ {
+				if !grid.inBounds(col, row) {
+					continue
+				}
+				idx := grid.index(col, row)
+				if !grid.walkable[idx] {
+					continue
+				}
+				cx := (float64(col) + 0.5) * grid.cellSize
+				cy := (float64(row) + 0.5) * grid.cellSize
+				if math.Hypot(cx-x, cy-y) <= PlayerHalf {
+					blocked[idx] = struct{}{}
+				}
+			}
+		}
+	}
+	for _, pos := range blockers {
+		mark(pos.X, pos.Y)
+	}
+	if len(blocked) == 0 {
+		return nil
+	}
+	return blocked
+}
+
+// ComputePathRequest captures the inputs required to reproduce the legacy
+// navigation behaviour.
+type ComputePathRequest struct {
+	Start     Vec2
+	Target    Vec2
+	Width     float64
+	Height    float64
+	Obstacles []Obstacle
+	Blockers  []Vec2
+}
+
+// ComputePathFrom reproduces the legacy pathfinding helpers used by the world
+// package while remaining agnostic of the legacy world implementation.
+func ComputePathFrom(req ComputePathRequest) ([]Vec2, Vec2, bool) {
+	grid := newNavGrid(req.Obstacles, req.Width, req.Height)
+	if grid == nil {
+		return nil, Vec2{}, false
+	}
+	target := Vec2{
+		X: Clamp(req.Target.X, PlayerHalf, req.Width-PlayerHalf),
+		Y: Clamp(req.Target.Y, PlayerHalf, req.Height-PlayerHalf),
+	}
+	blocked := buildDynamicBlockers(grid, req.Blockers)
+	path, ok := grid.findPath(req.Start, target, blocked)
+	if ok {
+		return append([]Vec2(nil), path...), target, true
+	}
+	step := grid.cellSize
+	offsets := []Vec2{
+		{X: step, Y: 0},
+		{X: -step, Y: 0},
+		{X: 0, Y: step},
+		{X: 0, Y: -step},
+		{X: step, Y: step},
+		{X: step, Y: -step},
+		{X: -step, Y: step},
+		{X: -step, Y: -step},
+		{X: 2 * step, Y: 0},
+		{X: -2 * step, Y: 0},
+		{X: 0, Y: 2 * step},
+		{X: 0, Y: -2 * step},
+	}
+	bestScore := math.MaxFloat64
+	var bestPath []Vec2
+	var bestGoal Vec2
+	for _, offset := range offsets {
+		alt := Vec2{
+			X: Clamp(target.X+offset.X, PlayerHalf, req.Width-PlayerHalf),
+			Y: Clamp(target.Y+offset.Y, PlayerHalf, req.Height-PlayerHalf),
+		}
+		if math.Hypot(alt.X-target.X, alt.Y-target.Y) < 1 {
+			continue
+		}
+		candidate, ok := grid.findPath(req.Start, alt, blocked)
+		if !ok {
+			continue
+		}
+		score := math.Hypot(alt.X-target.X, alt.Y-target.Y) + pathTravelCost(req.Start, candidate)
+		if score < bestScore {
+			bestScore = score
+			bestGoal = alt
+			bestPath = append([]Vec2(nil), candidate...)
+		}
+	}
+	if len(bestPath) == 0 {
+		return nil, Vec2{}, false
+	}
+	return bestPath, bestGoal, true
+}
+
+// NavigationGrid exposes a minimal view of the legacy navigation grid for
+// callers that need to inspect the generated layout (primarily tests during the
+// migration).
+type NavigationGrid struct {
+	grid *navGrid
+}
+
+// NewNavigationGrid constructs a navigation grid using the legacy parameters.
+func NewNavigationGrid(obstacles []Obstacle, width, height float64) *NavigationGrid {
+	grid := newNavGrid(obstacles, width, height)
+	if grid == nil {
+		return nil
+	}
+	return &NavigationGrid{grid: grid}
+}
+
+// Cols reports the number of columns in the grid.
+func (g *NavigationGrid) Cols() int {
+	if g == nil || g.grid == nil {
+		return 0
+	}
+	return g.grid.cols
+}
+
+// Rows reports the number of rows in the grid.
+func (g *NavigationGrid) Rows() int {
+	if g == nil || g.grid == nil {
+		return 0
+	}
+	return g.grid.rows
+}
+
+// CellSize reports the size of each navigation cell in world units.
+func (g *NavigationGrid) CellSize() float64 {
+	if g == nil || g.grid == nil {
+		return 0
+	}
+	return g.grid.cellSize
+}
+
+// WorldPos reports the world coordinates corresponding to the provided grid
+// indices.
+func (g *NavigationGrid) WorldPos(col, row int) Vec2 {
+	if g == nil || g.grid == nil {
+		return Vec2{}
+	}
+	return g.grid.worldPos(col, row)
+}
+
+func (g *NavigationGrid) underlying() *navGrid {
+	if g == nil {
+		return nil
+	}
+	return g.grid
 }
