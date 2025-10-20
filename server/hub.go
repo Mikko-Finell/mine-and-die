@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	stdlog "log"
@@ -1469,7 +1468,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	currentInterval := h.CurrentKeyframeInterval()
 	msg := stateMessage{
 		Ver:              ProtocolVersion,
-		Type:             "state",
+		Type:             proto.TypeState,
 		Players:          players,
 		NPCs:             npcs,
 		Obstacles:        obstacles,
@@ -1499,7 +1498,7 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	if effectTransportEnabled && (len(msg.EffectSpawns) > 0 || len(msg.EffectUpdates) > 0 || len(msg.EffectEnds) > 0) {
 		entities += len(msg.EffectSpawns) + len(msg.EffectUpdates) + len(msg.EffectEnds)
 	}
-	data, err := json.Marshal(msg)
+	data, err := proto.EncodeStateSnapshot(msg)
 	if err != nil {
 		if drainPatches {
 			h.mu.Lock()
@@ -1578,7 +1577,7 @@ func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupSt
 		legacy := legacyKeyframeFromSim(frame)
 		snapshot := keyframeMessage{
 			Ver:         ProtocolVersion,
-			Type:        "keyframe",
+			Type:        proto.TypeKeyframe,
 			Sequence:    legacy.Sequence,
 			Tick:        legacy.Tick,
 			Players:     append([]Player(nil), legacy.Players...),
@@ -1620,7 +1619,7 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 		h.logf("[keyframe] rate_limited player=%s sequence=%d", playerID, sequence)
 		nack := &keyframeNackMessage{
 			Ver:      ProtocolVersion,
-			Type:     "keyframeNack",
+			Type:     proto.TypeKeyframeNack,
 			Sequence: sequence,
 			Reason:   "rate_limited",
 			Resync:   true,
@@ -1647,7 +1646,7 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 		h.logf("[keyframe] expired player=%s sequence=%d", playerID, sequence)
 		nack := &keyframeNackMessage{
 			Ver:      ProtocolVersion,
-			Type:     "keyframeNack",
+			Type:     proto.TypeKeyframeNack,
 			Sequence: sequence,
 			Reason:   "expired",
 			Resync:   true,

@@ -60,6 +60,10 @@ type keyframeNackMessage struct {
 	Config   worldConfig `json:"config,omitempty"`
 }
 
+func (stateMessage) ProtoStateSnapshot()        {}
+func (keyframeMessage) ProtoKeyframeSnapshot()  {}
+func (*keyframeNackMessage) ProtoKeyframeNack() {}
+
 type diagnosticsPlayer struct {
 	Ver           int    `json:"ver"`
 	ID            string `json:"id"`

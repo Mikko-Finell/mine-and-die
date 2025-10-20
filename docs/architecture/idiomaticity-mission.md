@@ -247,7 +247,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Add `ws/` for websocket sessions and fan-out.
   - [x] Add `proto/` for message encode/decode and versioning.
 - [x] Extract websocket message encode/decode into `internal/net/proto` and route the session handler through it.
-- [ ] Route keyframe and state snapshot responses through `internal/net/proto` so websocket handlers stop marshalling server messages directly.
+- [x] Route keyframe and state snapshot responses through `internal/net/proto` so websocket handlers stop marshalling server messages directly.
+- [ ] Route HTTP join and resubscribe responses through `internal/net/proto` so REST handlers stop marshalling server messages directly.
 - [ ] Convert all networking code to map messages → `sim.Command` and read `sim.Patch`/`Snapshot` without direct state access.
 - [ ] Introduce `telemetry` package for `Logger` and `Metrics` interfaces.
 - [ ] Replace global loggers or random seeds with injected dependencies.
