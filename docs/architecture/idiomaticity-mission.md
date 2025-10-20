@@ -278,7 +278,14 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ### Next task
 
-- [ ] Document the next logical follow-up step for Phase 2, outlining how to keep the tick loop inside `sim/engine` while introducing the ring-buffered command queue.
+- [x] Document the next logical follow-up step for Phase 2, outlining how to keep the tick loop inside `sim/engine` while introducing the ring-buffered command queue.
+
+  1. **Model the bounded queue inside the engine.** Add `internal/sim/command_buffer.go` that owns a fixed-size ring of `sim.Command` values with `Push`, `Drain`, and `Len` helpers. Thread `Deps().Metrics` into the buffer so overflow and occupancy counters replace the hub's ad-hoc logging. Size the buffer from a constructor argument so tests can exercise wraparound deterministically.
+  2. **Host the fixed-timestep loop in `sim`.** Introduce a `Loop` helper in `internal/sim` (for example `loop.go`) that keeps the current `RunSimulation` cadence logic — ticker setup, dt clamping, and tick accounting — but drives `Engine.Apply/Step` against the buffer. The loop should accept callbacks for fan-out (`onStep(snapshot, diff)`) so the hub can continue to broadcast without depending on world internals while the tick scheduling stays in the engine package.
+  3. **Adapt hub intake to the new seam.** Replace `Hub.pendingCommands` with calls into the buffer via a thin `engine.Enqueue(Command)` façade. Migrate the per-actor throttling and drop warnings from `hub.go` into the engine/buffer layer so command ordering stays deterministic regardless of where the call originates.
+  4. **Lock behavior with tests.** Port `hub_command_queue_test.go` to target the new buffer API, add focused ring-buffer coverage for wrap/drop behavior, and rerun the determinism harness to prove tick sequencing and patch/journal checksums stay unchanged once the loop lives under `internal/sim`.
+
+- [ ] Introduce the `internal/sim` ring buffer (`CommandBuffer`) and delegate the hub command queue + tick loop to the engine while keeping fan-out behavior unchanged.
 
 - [ ] Keep the tick loop in `sim/engine`:
 
