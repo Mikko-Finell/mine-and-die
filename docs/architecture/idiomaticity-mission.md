@@ -285,12 +285,16 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   3. **Adapt hub intake to the new seam.** Replace `Hub.pendingCommands` with calls into the buffer via a thin `engine.Enqueue(Command)` façade. Migrate the per-actor throttling and drop warnings from `hub.go` into the engine/buffer layer so command ordering stays deterministic regardless of where the call originates.
   4. **Lock behavior with tests.** Port `hub_command_queue_test.go` to target the new buffer API, add focused ring-buffer coverage for wrap/drop behavior, and rerun the determinism harness to prove tick sequencing and patch/journal checksums stay unchanged once the loop lives under `internal/sim`.
 
-- [ ] Introduce the `internal/sim` ring buffer (`CommandBuffer`) and delegate the hub command queue + tick loop to the engine while keeping fan-out behavior unchanged.
+- [x] Introduce the `internal/sim` ring buffer (`CommandBuffer`) and delegate the hub command queue + tick loop to the engine while keeping fan-out behavior unchanged.
 
-- [ ] Keep the tick loop in `sim/engine`:
+- [x] Route websocket and HTTP command ingestion through `sim.Engine.Enqueue` so the hub wrapper can be retired once callers stop relying on it.
 
-  - [ ] Maintain the fixed timestep, command queue, and tick progression inside the engine.
-  - [ ] Use a **ring buffer** (`CommandBuffer`) for deterministic input instead of unbounded channels.
+- [ ] Retire `Hub.HandleCommand` by moving command validation into a shared intake helper under `internal/net` that normalizes `proto` payloads and calls `sim.Engine.Enqueue` directly, keeping rejection telemetry identical.
+
+- [x] Keep the tick loop in `sim/engine`:
+
+  - [x] Maintain the fixed timestep, command queue, and tick progression inside the engine.
+  - [x] Use a **ring buffer** (`CommandBuffer`) for deterministic input instead of unbounded channels.
 - [ ] Extract subpackages:
 
   - [ ] Carve out `world/` for tiles, spatial index, RNG/time, and map helpers.

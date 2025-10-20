@@ -50,11 +50,6 @@ type Hub struct {
 	resyncNext               atomic.Bool
 	forceKeyframeNext        atomic.Bool
 	tickBudgetAlarmTriggered atomic.Bool
-
-	commandsMu             sync.Mutex    // protects pendingCommands between network handlers and the tick loop
-	pendingCommands        []sim.Command // staged commands applied in order at the next simulation step
-	pendingCommandsByActor map[string]int
-	droppedCommandsByActor map[string]uint64
 }
 
 func (h *Hub) engineDeps() sim.Deps {
@@ -151,6 +146,7 @@ const (
 
 	commandQueueWarningStep   = 256
 	commandQueuePerActorLimit = 32
+	commandBufferCapacity     = 1024
 
 	tickBudgetCatchupMaxTicks = 2
 	tickBudgetAlarmMinStreak  = 3
@@ -158,13 +154,12 @@ const (
 
 	commandRejectUnknownActor  = "unknown_actor"
 	commandRejectInvalidAction = "invalid_action"
-	commandRejectQueueLimit    = "queue_limit"
 )
 
 const (
 	CommandRejectUnknownActor  = commandRejectUnknownActor
 	CommandRejectInvalidAction = commandRejectInvalidAction
-	CommandRejectQueueLimit    = commandRejectQueueLimit
+	CommandRejectQueueLimit    = sim.CommandRejectQueueLimit
 )
 
 type keyframeLookupStatus int
@@ -281,18 +276,48 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 
 	hub := &Hub{
 		world:                   world,
-		engine:                  engineAdapter,
 		adapter:                 engineAdapter,
 		subscribers:             make(map[string]*subscriber),
-		pendingCommands:         make([]sim.Command, 0),
-		pendingCommandsByActor:  make(map[string]int),
-		droppedCommandsByActor:  make(map[string]uint64),
 		config:                  cfg,
 		publisher:               pub,
 		telemetry:               newTelemetryCounters(engineDeps.Metrics),
 		defaultKeyframeInterval: interval,
 		resubscribeBaselines:    nil,
 	}
+	loopCfg := sim.LoopConfig{
+		TickRate:        tickRate,
+		CatchupMaxTicks: tickBudgetCatchupMaxTicks,
+		CommandCapacity: commandBufferCapacity,
+		PerActorLimit:   commandQueuePerActorLimit,
+		WarningStep:     commandQueueWarningStep,
+	}
+	loopHooks := sim.LoopHooks{
+		NextTick: func() uint64 {
+			return hub.tick.Add(1)
+		},
+		Prepare: func(ctx sim.LoopTickContext) {
+			if hub.adapter != nil {
+				hub.adapter.PrepareStep(ctx.Tick, ctx.Now, ctx.Delta, nil)
+			}
+		},
+		AfterStep: func(result sim.LoopStepResult) {
+			hub.handleLoopStep(result)
+		},
+		OnCommandDrop: func(reason string, cmd sim.Command) {
+			if hub.telemetry != nil {
+				mapped := reason
+				if reason == sim.CommandRejectQueueLimit {
+					mapped = "limit_exceeded"
+				}
+				hub.telemetry.RecordCommandDropped(mapped, string(cmd.Type))
+			}
+		},
+		OnQueueWarning: func(length int) {
+			hub.logf("[backpressure] pendingCommands=%d; investigate tick latency or raise throttle thresholds", length)
+		},
+	}
+	hub.engine = sim.NewLoop(engineAdapter, loopCfg, loopHooks)
+
 	hub.world.telemetry = hub.telemetry
 	hub.world.journal.AttachTelemetry(hub.telemetry)
 	hub.keyframeInterval.Store(int64(interval))
@@ -541,9 +566,9 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 	cfg = cfg.normalized()
 	now := h.now()
 
-	h.commandsMu.Lock()
-	h.pendingCommands = nil
-	h.commandsMu.Unlock()
+	if h.engine != nil {
+		h.engine.DrainCommands()
+	}
 
 	h.mu.Lock()
 	playerIDs := make([]string, 0, len(h.world.players))
@@ -561,9 +586,6 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 	h.world = newW
 	if h.adapter != nil {
 		h.adapter.SetWorld(newW)
-	}
-	if h.adapter != nil {
-		h.engine = h.adapter
 	}
 	h.config = cfg
 	h.attachTelemetryMetrics()
@@ -777,7 +799,10 @@ func (h *Hub) HandleCommand(playerID string, cmd sim.Command) (sim.Command, bool
 	cmd.OriginTick = h.tick.Load()
 	cmd.IssuedAt = h.now()
 
-	if ok, reason := h.enqueueCommand(cmd); !ok {
+	if h.engine == nil {
+		return zero, false, sim.CommandRejectQueueFull
+	}
+	if ok, reason := h.engine.Enqueue(cmd); !ok {
 		return zero, false, reason
 	}
 
@@ -1030,35 +1055,25 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 			RTT:        rtt,
 		},
 	}
-	h.enqueueCommand(cmd)
+	if h.engine != nil {
+		h.engine.Enqueue(cmd)
+	}
 
 	return rtt, true
 }
 
-// advance runs a single simulation step and returns updated snapshots plus stale subscribers.
-func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigger, []GroundItem, []*subscriber) {
-	tick := h.tick.Add(1)
-	commands := h.drainCommands()
-
+// processLoopStep applies post-step bookkeeping and returns converted snapshots
+// alongside subscribers that should be closed.
+func (h *Hub) processLoopStep(result sim.LoopStepResult) ([]Player, []NPC, []EffectTrigger, []GroundItem, []*subscriber) {
+	if h == nil {
+		return nil, nil, nil, nil, nil
+	}
 	h.mu.Lock()
-	if h.adapter != nil {
-		h.adapter.PrepareStep(tick, now, dt, nil)
-	}
-	var snapshot sim.Snapshot
-	var removed []string
-	if h.engine != nil {
-		_ = h.engine.Apply(commands)
-		h.engine.Step()
-		snapshot = h.engine.Snapshot()
-	}
-	if h.adapter != nil {
-		removed = h.adapter.RemovedPlayers()
-	}
 	if h.telemetry != nil {
 		h.telemetry.RecordEffectsActive(len(h.world.effects))
 	}
-	toClose := make([]*subscriber, 0, len(removed))
-	for _, id := range removed {
+	toClose := make([]*subscriber, 0, len(result.RemovedPlayers))
+	for _, id := range result.RemovedPlayers {
 		if sub, ok := h.subscribers[id]; ok {
 			toClose = append(toClose, sub)
 			delete(h.subscribers, id)
@@ -1066,6 +1081,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigg
 	}
 	h.mu.Unlock()
 
+	snapshot := result.Snapshot
 	players := legacyPlayersFromSim(snapshot.Players)
 	npcs := legacyNPCsFromSim(snapshot.NPCs)
 	triggers := legacyEffectTriggersFromSim(snapshot.EffectEvents)
@@ -1074,65 +1090,58 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigg
 	return players, npcs, triggers, groundItems, toClose
 }
 
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigger, []GroundItem, []*subscriber) {
+	if h == nil || h.engine == nil {
+		return nil, nil, nil, nil, nil
+	}
+	tick := h.tick.Add(1)
+	result := h.engine.Advance(sim.LoopTickContext{Tick: tick, Now: now, Delta: dt})
+	return h.processLoopStep(result)
+}
+
+func (h *Hub) handleLoopStep(result sim.LoopStepResult) {
+	players, npcs, triggers, groundItems, toClose := h.processLoopStep(result)
+	for _, sub := range toClose {
+		sub.conn.Close()
+	}
+	h.broadcastState(players, npcs, triggers, groundItems)
+	duration := result.Duration
+	if h.telemetry != nil {
+		h.telemetry.RecordTickDuration(duration)
+	}
+	budget := result.Budget
+	if budget > 0 && duration > budget {
+		ratio := float64(duration) / float64(budget)
+		streak := uint64(0)
+		if h.telemetry != nil {
+			streak = h.telemetry.RecordTickBudgetOverrun(duration, budget)
+		}
+		h.logf(
+			"[tick] budget overrun: duration=%s budget=%s ratio=%.2f streak=%d",
+			duration,
+			budget,
+			ratio,
+			streak,
+		)
+		if (ratio >= tickBudgetAlarmMinRatio || streak >= tickBudgetAlarmMinStreak) && h.tickBudgetAlarmTriggered.CompareAndSwap(false, true) {
+			h.handleTickBudgetAlarm(duration, budget, ratio, streak, result.Delta, result.ClampedDelta, result.MaxDelta)
+		}
+	} else {
+		h.resetTickBudgetAlarm()
+	}
+}
+
 // RunSimulation drives the fixed-rate tick loop until the stop channel closes.
 func (h *Hub) RunSimulation(stop <-chan struct{}) {
-	ticker := time.NewTicker(time.Second / tickRate)
-	defer ticker.Stop()
-
-	last := h.now()
-	tickBudget := time.Second / time.Duration(tickRate)
-	budgetSeconds := 1.0 / float64(tickRate)
-	maxDtSeconds := budgetSeconds
-	if tickBudgetCatchupMaxTicks > 1 {
-		maxDtSeconds = budgetSeconds * float64(tickBudgetCatchupMaxTicks)
+	if h == nil {
+		<-stop
+		return
 	}
-	for {
-		select {
-		case <-stop:
-			return
-		case <-ticker.C:
-			tickStart := h.now()
-			current := h.now()
-			dt := current.Sub(last).Seconds()
-			clamped := false
-			if dt <= 0 {
-				dt = budgetSeconds
-			} else if dt > maxDtSeconds {
-				dt = maxDtSeconds
-				clamped = true
-			}
-			last = current
-
-			players, npcs, triggers, groundItems, toClose := h.advance(current, dt)
-			for _, sub := range toClose {
-				sub.conn.Close()
-			}
-			h.broadcastState(players, npcs, triggers, groundItems)
-			duration := h.now().Sub(tickStart)
-			if h.telemetry != nil {
-				h.telemetry.RecordTickDuration(duration)
-			}
-			if tickBudget > 0 && duration > tickBudget {
-				ratio := float64(duration) / float64(tickBudget)
-				streak := uint64(0)
-				if h.telemetry != nil {
-					streak = h.telemetry.RecordTickBudgetOverrun(duration, tickBudget)
-				}
-				h.logf(
-					"[tick] budget overrun: duration=%s budget=%s ratio=%.2f streak=%d",
-					duration,
-					tickBudget,
-					ratio,
-					streak,
-				)
-				if (ratio >= tickBudgetAlarmMinRatio || streak >= tickBudgetAlarmMinStreak) && h.tickBudgetAlarmTriggered.CompareAndSwap(false, true) {
-					h.handleTickBudgetAlarm(duration, tickBudget, ratio, streak, dt, clamped, maxDtSeconds)
-				}
-			} else {
-				h.resetTickBudgetAlarm()
-			}
-		}
+	if h.engine == nil {
+		<-stop
+		return
 	}
+	h.engine.Run(stop)
 }
 
 func (h *Hub) resetTickBudgetAlarm() {
@@ -1794,79 +1803,6 @@ func (h *Hub) TelemetrySnapshot() telemetrySnapshot {
 		return telemetrySnapshot{}
 	}
 	return h.telemetry.Snapshot()
-}
-
-func (h *Hub) enqueueCommand(cmd sim.Command) (bool, string) {
-	var queueLen int
-	var dropped bool
-	var dropCount uint64
-	h.commandsMu.Lock()
-	if commandQueuePerActorLimit > 0 && cmd.ActorID != "" {
-		if h.pendingCommandsByActor == nil {
-			h.pendingCommandsByActor = make(map[string]int)
-		}
-		count := h.pendingCommandsByActor[cmd.ActorID]
-		if count >= commandQueuePerActorLimit {
-			if h.droppedCommandsByActor == nil {
-				h.droppedCommandsByActor = make(map[string]uint64)
-			}
-			dropped = true
-			dropCount = h.droppedCommandsByActor[cmd.ActorID] + 1
-			h.droppedCommandsByActor[cmd.ActorID] = dropCount
-		} else {
-			h.pendingCommandsByActor[cmd.ActorID] = count + 1
-			h.pendingCommands = append(h.pendingCommands, cmd)
-			queueLen = len(h.pendingCommands)
-		}
-	} else {
-		h.pendingCommands = append(h.pendingCommands, cmd)
-		if commandQueuePerActorLimit > 0 && cmd.ActorID != "" {
-			if h.pendingCommandsByActor == nil {
-				h.pendingCommandsByActor = make(map[string]int)
-			}
-			h.pendingCommandsByActor[cmd.ActorID]++
-		}
-		queueLen = len(h.pendingCommands)
-	}
-	h.commandsMu.Unlock()
-
-	if dropped {
-		if h.telemetry != nil {
-			h.telemetry.RecordCommandDropped("limit_exceeded", string(cmd.Type))
-		}
-		if dropCount > 0 && dropCount&(dropCount-1) == 0 {
-			h.logf(
-				"[backpressure] dropping command actor=%s type=%s count=%d limit=%d",
-				cmd.ActorID,
-				cmd.Type,
-				dropCount,
-				commandQueuePerActorLimit,
-			)
-		}
-		return false, "queue_limit"
-	}
-
-	if commandQueueWarningStep > 0 && queueLen >= commandQueueWarningStep && queueLen%commandQueueWarningStep == 0 {
-		h.logf("[backpressure] pendingCommands=%d; investigate tick latency or raise throttle thresholds", queueLen)
-	}
-
-	return true, ""
-}
-
-func (h *Hub) drainCommands() []sim.Command {
-	h.commandsMu.Lock()
-	cmds := h.pendingCommands
-	h.pendingCommands = nil
-	if len(h.pendingCommandsByActor) > 0 {
-		h.pendingCommandsByActor = make(map[string]int)
-	}
-	h.commandsMu.Unlock()
-	if len(cmds) == 0 {
-		return nil
-	}
-	copied := make([]sim.Command, len(cmds))
-	copy(copied, cmds)
-	return copied
 }
 
 func filterPlayerPatches(patches []sim.Patch) []sim.Patch {

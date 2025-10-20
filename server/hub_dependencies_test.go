@@ -121,7 +121,19 @@ type stubEngine struct {
 	deps sim.Deps
 }
 
-func (s *stubEngine) Deps() sim.Deps                           { return s.deps }
+func (s *stubEngine) Deps() sim.Deps                   { return s.deps }
+func (*stubEngine) Enqueue(sim.Command) (bool, string) { return true, "" }
+func (*stubEngine) Pending() int                       { return 0 }
+func (*stubEngine) DrainCommands() []sim.Command       { return nil }
+func (*stubEngine) Advance(sim.LoopTickContext) sim.LoopStepResult {
+	return sim.LoopStepResult{}
+}
+func (*stubEngine) Run(stop <-chan struct{}) {
+	if stop == nil {
+		return
+	}
+	<-stop
+}
 func (*stubEngine) Apply([]sim.Command) error                  { return nil }
 func (*stubEngine) Step()                                      {}
 func (*stubEngine) Snapshot() sim.Snapshot                     { return sim.Snapshot{} }

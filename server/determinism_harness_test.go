@@ -116,7 +116,7 @@ func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptio
 			if cmd.IssuedAt.IsZero() {
 				cmd.IssuedAt = issueAt
 			}
-			if ok, reason := hub.enqueueCommand(cmd); !ok {
+			if ok, reason := hub.engine.Enqueue(cmd); !ok {
 				t.Fatalf("failed to enqueue command for tick %d: %s", idx+1, reason)
 			}
 		}

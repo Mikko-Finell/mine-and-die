@@ -21,13 +21,17 @@ func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
 		t.Fatalf("expected melee attack command to be accepted")
 	}
 
-	hub.commandsMu.Lock()
-	if len(hub.pendingCommands) != 1 {
-		hub.commandsMu.Unlock()
-		t.Fatalf("expected exactly one pending command, got %d", len(hub.pendingCommands))
+	if hub.engine.Pending() != 1 {
+		t.Fatalf("expected exactly one pending command, got %d", hub.engine.Pending())
 	}
-	staged := hub.pendingCommands[0]
-	hub.commandsMu.Unlock()
+
+	now := time.Now()
+	dt := 1.0 / float64(tickRate)
+	result := hub.engine.Advance(sim.LoopTickContext{Tick: hub.tick.Add(1), Now: now, Delta: dt})
+	if len(result.Commands) != 1 {
+		t.Fatalf("expected exactly one command, got %d", len(result.Commands))
+	}
+	staged := result.Commands[0]
 	if staged.Type != sim.CommandAction {
 		t.Fatalf("expected pending command type %q, got %q", sim.CommandAction, staged.Type)
 	}
@@ -37,17 +41,10 @@ func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
 	if staged.Action.Name != effectTypeAttack {
 		t.Fatalf("expected action name %q, got %q", effectTypeAttack, staged.Action.Name)
 	}
-
-	now := time.Now()
-	dt := 1.0 / float64(tickRate)
-	hub.advance(now, dt)
-
-	hub.commandsMu.Lock()
-	if len(hub.pendingCommands) != 0 {
-		hub.commandsMu.Unlock()
-		t.Fatalf("expected command queue to be drained after advance, got %d", len(hub.pendingCommands))
+	_, _, _, _, _ = hub.processLoopStep(result)
+	if hub.engine.Pending() != 0 {
+		t.Fatalf("expected command queue to be drained after advance, got %d", hub.engine.Pending())
 	}
-	hub.commandsMu.Unlock()
 
 	stagedEvents := hub.world.journal.SnapshotEffectEvents()
 	if len(stagedEvents.Spawns) != 1 {
