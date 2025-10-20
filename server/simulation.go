@@ -119,7 +119,7 @@ func (w *World) syncMaxHealth(actor *actorState, version *uint64, entityID strin
 
 // newWorld constructs an empty world with generated obstacles and seeded NPCs.
 func newWorld(cfg worldConfig, publisher logging.Publisher) *World {
-	normalized := cfg.normalized()
+	normalized := cfg.Normalized()
 
 	if publisher == nil {
 		publisher = logging.NopPublisher{}

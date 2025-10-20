@@ -19,7 +19,7 @@ func newStaticAIWorld() (*World, *npcState) {
 	}
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-static"
-	cfg = cfg.normalized()
+	cfg = cfg.Normalized()
 	w.config = cfg
 	w.seed = cfg.Seed
 	w.rng = newDeterministicRNG(w.seed, "world")
@@ -101,7 +101,7 @@ func newRatTestWorld() (*World, *npcState) {
 	}
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-rat"
-	cfg = cfg.normalized()
+	cfg = cfg.Normalized()
 	w.config = cfg
 	w.seed = cfg.Seed
 	w.rng = newDeterministicRNG(w.seed, "world")

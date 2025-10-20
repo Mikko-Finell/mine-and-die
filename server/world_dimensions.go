@@ -1,30 +1,24 @@
 package server
 
-// width returns the configured world width, falling back to the default when
-// unset or when the world is nil.
+import worldpkg "mine-and-die/server/internal/world"
+
 func (w *World) width() float64 {
 	if w == nil {
-		return worldWidth
+		return worldpkg.DefaultWidth
 	}
-	if w.config.Width > 0 {
-		return w.config.Width
-	}
-	return worldWidth
+	return worldpkg.Width(w.config)
 }
 
-// height returns the configured world height, falling back to the default when
-// unset or when the world is nil.
 func (w *World) height() float64 {
 	if w == nil {
-		return worldHeight
+		return worldpkg.DefaultHeight
 	}
-	if w.config.Height > 0 {
-		return w.config.Height
-	}
-	return worldHeight
+	return worldpkg.Height(w.config)
 }
 
-// dimensions returns the configured world width and height.
 func (w *World) dimensions() (float64, float64) {
-	return w.width(), w.height()
+	if w == nil {
+		return worldpkg.DefaultWidth, worldpkg.DefaultHeight
+	}
+	return worldpkg.Dimensions(w.config)
 }

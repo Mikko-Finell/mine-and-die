@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"mine-and-die/server/internal/net/proto"
+	worldpkg "mine-and-die/server/internal/world"
 )
 
 const (
@@ -11,8 +12,8 @@ const (
 	writeWait             = 10 * time.Second
 	tickRate              = 15    // ticks per second (10–20 Hz)
 	moveSpeed             = 160.0 // pixels per second
-	worldWidth            = 100.0
-	worldHeight           = 100.0
+	worldWidth            = worldpkg.DefaultWidth
+	worldHeight           = worldpkg.DefaultHeight
 	defaultSpawnX         = worldWidth / 2
 	defaultSpawnY         = worldHeight / 2
 	playerHalf            = 14.0

@@ -1,28 +1,18 @@
 package server
 
 import (
-	"hash/fnv"
 	"math"
 	"math/rand"
+
+	worldpkg "mine-and-die/server/internal/world"
 )
 
-const centralSpawnRegionRatio = 0.5
-
 func deterministicSeedValue(rootSeed, label string) int64 {
-	hasher := fnv.New64a()
-	hasher.Write([]byte(rootSeed))
-	hasher.Write([]byte{0})
-	hasher.Write([]byte(label))
-	sum := hasher.Sum64()
-	if sum == 0 {
-		sum = 1
-	}
-	return int64(sum)
+	return worldpkg.DeterministicSeedValue(rootSeed, label)
 }
 
 func newDeterministicRNG(rootSeed, label string) *rand.Rand {
-	seedValue := deterministicSeedValue(rootSeed, label)
-	return rand.New(rand.NewSource(seedValue))
+	return worldpkg.NewDeterministicRNG(rootSeed, label)
 }
 
 func (w *World) ensureRNG() {
@@ -50,7 +40,7 @@ func (w *World) randomFloat() float64 {
 		w.ensureRNG()
 		return w.rng.Float64()
 	}
-	return newDeterministicRNG(defaultWorldSeed, "world").Float64()
+	return worldpkg.RandomFloat(nil)
 }
 
 func (w *World) randomAngle() float64 {
@@ -65,48 +55,9 @@ func (w *World) randomDistance(min, max float64) float64 {
 }
 
 func centralTopLeftRange(total, center, margin, size float64) (float64, float64) {
-	if total <= 0 {
-		return margin, margin
-	}
-
-	regionHalf := total * centralSpawnRegionRatio / 2
-	min := center - regionHalf
-	max := center + regionHalf - size
-
-	if min < margin {
-		min = margin
-	}
-	maxLimit := total - margin - size
-	if max > maxLimit {
-		max = maxLimit
-	}
-	if max < min {
-		max = min
-	}
-
-	return min, max
+	return worldpkg.CentralTopLeftRange(total, center, margin, size)
 }
 
 func centralCenterRange(total, center, margin, padding float64) (float64, float64) {
-	if total <= 0 {
-		return margin, margin
-	}
-
-	regionHalf := total * centralSpawnRegionRatio / 2
-	min := center - regionHalf
-	max := center + regionHalf
-
-	minLimit := margin + padding
-	if min < minLimit {
-		min = minLimit
-	}
-	maxLimit := total - margin - padding
-	if max > maxLimit {
-		max = maxLimit
-	}
-	if max < min {
-		max = min
-	}
-
-	return min, max
+	return worldpkg.CentralCenterRange(total, center, margin, padding)
 }
