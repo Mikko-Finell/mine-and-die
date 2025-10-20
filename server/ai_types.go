@@ -23,16 +23,9 @@ type npcBlackboard struct {
 	StuckCounter      uint8
 	TargetActorID     string
 	ChaseUntil        uint64
-	ArriveRadius      float64
 	PauseTicks        uint64
 	PatrolSpeed       float64
 	StuckEpsilon      float64
-	Path              []vec2
-	PathIndex         int
-	PathTarget        vec2
-	PathGoal          vec2
-	PathLastDistance  float64
-	PathStallTicks    uint16
-	PathRecalcTick    uint64
-	nextAbilityReady  [maxAIAbilities]uint64
+	worldpkg.NPCPathState
+	nextAbilityReady [maxAIAbilities]uint64
 }
