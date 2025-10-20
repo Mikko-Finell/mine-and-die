@@ -13,6 +13,7 @@ import (
 
 	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/net/proto"
+	"mine-and-die/server/internal/sim"
 )
 
 type failingPayload struct{}
@@ -340,7 +341,7 @@ func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
 
 	for _, patch := range msg.Patches {
 		switch patch.Kind {
-		case PatchPlayerPos, PatchPlayerFacing, PatchPlayerIntent, PatchPlayerHealth, PatchPlayerInventory:
+		case sim.PatchPlayerPos, sim.PatchPlayerFacing, sim.PatchPlayerIntent, sim.PatchPlayerHealth, sim.PatchPlayerInventory:
 			t.Fatalf("expected no player patches in empty state, saw kind %q", patch.Kind)
 		}
 	}
@@ -389,22 +390,22 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 		Obstacles:      nil,
 		EffectTriggers: nil,
 		GroundItems:    nil,
-		Patches: []Patch{
+		Patches: []sim.Patch{
 			{
-				Kind:     PatchPlayerPos,
+				Kind:     sim.PatchPlayerPos,
 				EntityID: "player-1",
-				Payload: PlayerPosPayload{
+				Payload: sim.PlayerPosPayload{
 					X: 12.5,
 					Y: 42.75,
 				},
 			},
 			{
-				Kind:     PatchPlayerInventory,
+				Kind:     sim.PatchPlayerInventory,
 				EntityID: "player-1",
-				Payload: PlayerInventoryPayload{
-					Slots: []InventorySlot{{
+				Payload: sim.PlayerInventoryPayload{
+					Slots: []sim.InventorySlot{{
 						Slot: 0,
-						Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
+						Item: sim.ItemStack{Type: sim.ItemType(ItemTypeGold), Quantity: 2},
 					}},
 				},
 			},
@@ -412,7 +413,7 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 		Tick:       1,
 		Sequence:   42,
 		ServerTime: time.Now().UnixMilli(),
-		Config:     worldConfig{},
+		Config:     sim.WorldConfig{},
 	}
 
 	data, err := json.Marshal(msg)

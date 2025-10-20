@@ -125,7 +125,11 @@ func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptio
 		players, npcs, triggers, groundItems, _ := hub.advance(current, dtSeconds)
 
 		if opts.recordKeyframes {
-			if _, _, err := hub.marshalState(players, npcs, triggers, groundItems, false, true); err != nil {
+			simPlayers := simPlayersFromLegacy(players)
+			simNPCs := simNPCsFromLegacy(npcs)
+			simTriggers := simEffectTriggersFromLegacy(triggers)
+			simGroundItems := simGroundItemsFromLegacy(groundItems)
+			if _, _, err := hub.marshalState(simPlayers, simNPCs, simTriggers, simGroundItems, false, true); err != nil {
 				t.Fatalf("failed to record keyframe during determinism harness: %v", err)
 			}
 		}

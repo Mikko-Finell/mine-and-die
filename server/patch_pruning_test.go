@@ -98,7 +98,7 @@ func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 		t.Fatalf("failed to decode state message: %v", err)
 	}
 
-	var playerPatchKinds []PatchKind
+	var playerPatchKinds []sim.PatchKind
 	for _, patch := range msg.Patches {
 		if patch.EntityID == "npc-phantom" {
 			t.Fatalf("expected broadcast to omit patches for unknown npc, saw kind %q", patch.Kind)
@@ -111,7 +111,7 @@ func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 	if len(playerPatchKinds) == 0 {
 		t.Fatalf("expected player patch to survive filtering")
 	}
-	wantKinds := []PatchKind{PatchPlayerPos, PatchPlayerFacing}
+	wantKinds := []sim.PatchKind{sim.PatchPlayerPos, sim.PatchPlayerFacing}
 	if len(playerPatchKinds) != len(wantKinds) {
 		t.Fatalf("expected %d player patches after filtering, got %d", len(wantKinds), len(playerPatchKinds))
 	}
@@ -146,7 +146,7 @@ func TestMarshalStateRetainsEffectPatches(t *testing.T) {
 		t.Fatalf("failed to decode state message: %v", err)
 	}
 
-	var effectPatchKinds []PatchKind
+	var effectPatchKinds []sim.PatchKind
 	for _, patch := range msg.Patches {
 		if patch.EntityID == effect.ID {
 			effectPatchKinds = append(effectPatchKinds, patch.Kind)
@@ -157,7 +157,7 @@ func TestMarshalStateRetainsEffectPatches(t *testing.T) {
 		t.Fatalf("expected effect patches to survive filtering")
 	}
 
-	wantKinds := []PatchKind{PatchEffectPos, PatchEffectParams}
+	wantKinds := []sim.PatchKind{sim.PatchEffectPos, sim.PatchEffectParams}
 	if len(effectPatchKinds) != len(wantKinds) {
 		t.Fatalf("expected %d effect patches after filtering, got %d", len(wantKinds), len(effectPatchKinds))
 	}
@@ -200,7 +200,7 @@ func TestMarshalStateUsesFacadeEffectIDsForFiltering(t *testing.T) {
 
 	found := false
 	for _, patch := range msg.Patches {
-		if patch.EntityID == effectID && patch.Kind == PatchEffectParams {
+		if patch.EntityID == effectID && patch.Kind == sim.PatchEffectParams {
 			found = true
 			break
 		}
