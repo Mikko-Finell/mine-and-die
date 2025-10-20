@@ -60,59 +60,6 @@ type keyframeNackMessage struct {
 	Config   worldConfig `json:"config,omitempty"`
 }
 
-type clientMessage struct {
-	Ver              int     `json:"ver,omitempty"`
-	Type             string  `json:"type"`
-	DX               float64 `json:"dx"`
-	DY               float64 `json:"dy"`
-	Facing           string  `json:"facing"`
-	X                float64 `json:"x"`
-	Y                float64 `json:"y"`
-	SentAt           int64   `json:"sentAt"`
-	Action           string  `json:"action"`
-	Cmd              string  `json:"cmd"`
-	Qty              int     `json:"qty"`
-	Ack              *uint64 `json:"ack"`
-	KeyframeSeq      *uint64 `json:"keyframeSeq"`
-	KeyframeInterval *int    `json:"keyframeInterval,omitempty"`
-	CommandSeq       *uint64 `json:"seq,omitempty"`
-}
-
-type commandAckMessage struct {
-	Ver  int    `json:"ver"`
-	Type string `json:"type"`
-	Seq  uint64 `json:"seq"`
-	Tick uint64 `json:"tick,omitempty"`
-}
-
-type commandRejectMessage struct {
-	Ver    int    `json:"ver"`
-	Type   string `json:"type"`
-	Seq    uint64 `json:"seq"`
-	Reason string `json:"reason"`
-	Retry  bool   `json:"retry,omitempty"`
-	Tick   uint64 `json:"tick,omitempty"`
-}
-
-type consoleAckMessage struct {
-	Ver     int    `json:"ver"`
-	Type    string `json:"type"`
-	Cmd     string `json:"cmd"`
-	Status  string `json:"status"`
-	Reason  string `json:"reason,omitempty"`
-	Qty     int    `json:"qty,omitempty"`
-	StackID string `json:"stackId,omitempty"`
-	Slot    string `json:"slot,omitempty"`
-}
-
-type heartbeatMessage struct {
-	Ver        int    `json:"ver"`
-	Type       string `json:"type"`
-	ServerTime int64  `json:"serverTime"`
-	ClientTime int64  `json:"clientTime"`
-	RTTMillis  int64  `json:"rtt"`
-}
-
 type diagnosticsPlayer struct {
 	Ver           int    `json:"ver"`
 	ID            string `json:"id"`

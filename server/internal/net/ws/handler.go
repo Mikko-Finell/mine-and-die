@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"mine-and-die/server"
+	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
 )
 
@@ -104,8 +105,8 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			return
 		}
 
-		var msg clientMessage
-		if err := json.Unmarshal(payload, &msg); err != nil {
+		msg, err := proto.DecodeClientMessage(payload)
+		if err != nil {
 			h.logger.Printf("discarding malformed message from %s: %v", playerID, err)
 			continue
 		}
@@ -119,8 +120,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			normalizedSeq = *msg.CommandSeq
 		}
 
-		writeJSON := func(payload any) bool {
-			data, err := json.Marshal(payload)
+		writeMessage := func(data []byte, err error) bool {
 			if err != nil {
 				h.logger.Printf("failed to marshal response for %s: %v", playerID, err)
 				return true
@@ -140,19 +140,19 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			if normalizedSeq == 0 {
 				return true
 			}
-			ack := commandAckMessage{Ver: server.ProtocolVersion, Type: "commandAck", Seq: normalizedSeq}
-			return writeJSON(ack)
+			ack := proto.CommandAck{Seq: normalizedSeq}
+			return writeMessage(proto.EncodeCommandAck(ack))
 		}
 
 		sendCommandAck := func(cmd sim.Command) bool {
 			if normalizedSeq == 0 {
 				return true
 			}
-			ack := commandAckMessage{Ver: server.ProtocolVersion, Type: "commandAck", Seq: normalizedSeq}
+			ack := proto.CommandAck{Seq: normalizedSeq}
 			if cmd.OriginTick > 0 {
 				ack.Tick = cmd.OriginTick
 			}
-			if !writeJSON(ack) {
+			if !writeMessage(proto.EncodeCommandAck(ack)) {
 				return false
 			}
 			session.StoreLastCommandSeq(normalizedSeq)
@@ -163,16 +163,14 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			if normalizedSeq == 0 {
 				return true
 			}
-			reject := commandRejectMessage{
-				Ver:    server.ProtocolVersion,
-				Type:   "commandReject",
+			reject := proto.CommandReject{
 				Seq:    normalizedSeq,
 				Reason: reason,
 			}
 			if retry {
 				reject.Retry = true
 			}
-			return writeJSON(reject)
+			return writeMessage(proto.EncodeCommandReject(reject))
 		}
 
 		switch msg.Type {
@@ -292,26 +290,12 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				continue
 			}
 
-			ack := heartbeatMessage{
-				Ver:        server.ProtocolVersion,
-				Type:       "heartbeat",
+			heartbeat := proto.Heartbeat{
 				ServerTime: now.UnixMilli(),
 				ClientTime: msg.SentAt,
 				RTTMillis:  rtt.Milliseconds(),
 			}
-
-			data, err := json.Marshal(ack)
-			if err != nil {
-				h.logger.Printf("failed to marshal heartbeat ack for %s: %v", playerID, err)
-				continue
-			}
-
-			if err := session.WriteMessage(websocket.TextMessage, data); err != nil {
-				players, npcs := h.hub.Disconnect(playerID)
-				if players != nil {
-					h.hub.ForceKeyframe()
-					go h.hub.BroadcastState(players, npcs, nil, nil)
-				}
+			if !writeMessage(proto.EncodeHeartbeat(heartbeat)) {
 				return
 			}
 		case "console":
@@ -319,17 +303,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			if !handled {
 				continue
 			}
-			data, err := json.Marshal(ack)
-			if err != nil {
-				h.logger.Printf("failed to marshal console ack for %s: %v", playerID, err)
-				continue
-			}
-			if err := session.WriteMessage(websocket.TextMessage, data); err != nil {
-				players, npcs := h.hub.Disconnect(playerID)
-				if players != nil {
-					h.hub.ForceKeyframe()
-					go h.hub.BroadcastState(players, npcs, nil, nil)
-				}
+			if !writeMessage(proto.EncodeConsoleAck(ack)) {
 				return
 			}
 		case "keyframeRequest":
@@ -370,46 +344,4 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			h.logger.Printf("unknown message type %q from %s", msg.Type, playerID)
 		}
 	}
-}
-
-type clientMessage struct {
-	Ver              int     `json:"ver,omitempty"`
-	Type             string  `json:"type"`
-	DX               float64 `json:"dx"`
-	DY               float64 `json:"dy"`
-	Facing           string  `json:"facing"`
-	X                float64 `json:"x"`
-	Y                float64 `json:"y"`
-	SentAt           int64   `json:"sentAt"`
-	Action           string  `json:"action"`
-	Cmd              string  `json:"cmd"`
-	Qty              int     `json:"qty"`
-	Ack              *uint64 `json:"ack"`
-	KeyframeSeq      *uint64 `json:"keyframeSeq"`
-	KeyframeInterval *int    `json:"keyframeInterval,omitempty"`
-	CommandSeq       *uint64 `json:"seq,omitempty"`
-}
-
-type commandAckMessage struct {
-	Ver  int    `json:"ver"`
-	Type string `json:"type"`
-	Seq  uint64 `json:"seq"`
-	Tick uint64 `json:"tick,omitempty"`
-}
-
-type commandRejectMessage struct {
-	Ver    int    `json:"ver"`
-	Type   string `json:"type"`
-	Seq    uint64 `json:"seq"`
-	Reason string `json:"reason"`
-	Retry  bool   `json:"retry,omitempty"`
-	Tick   uint64 `json:"tick,omitempty"`
-}
-
-type heartbeatMessage struct {
-	Ver        int    `json:"ver"`
-	Type       string `json:"type"`
-	ServerTime int64  `json:"serverTime"`
-	ClientTime int64  `json:"clientTime"`
-	RTTMillis  int64  `json:"rtt"`
 }
