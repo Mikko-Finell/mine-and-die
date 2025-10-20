@@ -14,35 +14,42 @@ import (
 )
 
 const (
-	metricKeyBroadcastTotal            = "telemetry_broadcast_total"
-	metricKeyBroadcastBytesTotal       = "telemetry_broadcast_bytes_total"
-	metricKeyBroadcastEntitiesTotal    = "telemetry_broadcast_entities_total"
-	metricKeyBroadcastLastBytes        = "telemetry_broadcast_last_bytes"
-	metricKeyBroadcastLastEntities     = "telemetry_broadcast_last_entities"
-	metricKeyTickDurationMillis        = "telemetry_tick_duration_millis"
-	metricKeyTickTotal                 = "telemetry_tick_total"
-	metricKeyTickBudgetOverrunTotal    = "telemetry_tick_budget_overrun_total"
-	metricKeyTickBudgetOverrunLastMs   = "telemetry_tick_budget_overrun_last_millis"
-	metricKeyTickBudgetBudgetMillis    = "telemetry_tick_budget_overrun_budget_millis"
-	metricKeyTickBudgetStreakCurrent   = "telemetry_tick_budget_overrun_current_streak"
-	metricKeyTickBudgetStreakMax       = "telemetry_tick_budget_overrun_max_streak"
-	metricKeyTickBudgetRatioBits       = "telemetry_tick_budget_overrun_ratio_bits"
-	metricKeyTickBudgetAlarmTotal      = "telemetry_tick_budget_alarm_total"
-	metricKeyTickBudgetAlarmLastTick   = "telemetry_tick_budget_alarm_last_tick"
-	metricKeyTickBudgetAlarmRatioBits  = "telemetry_tick_budget_alarm_last_ratio_bits"
-	metricKeyKeyframeJournalSize       = "telemetry_keyframe_journal_size"
-	metricKeyKeyframeOldestSequence    = "telemetry_keyframe_oldest_sequence"
-	metricKeyKeyframeNewestSequence    = "telemetry_keyframe_newest_sequence"
-	metricKeyKeyframeRequestsTotal     = "telemetry_keyframe_requests_total"
-	metricKeyKeyframeRequestLatencyMs  = "telemetry_keyframe_request_latency_millis"
-	metricKeyKeyframeNackExpiredTotal  = "telemetry_keyframe_nacks_expired_total"
-	metricKeyKeyframeNackRateLimited   = "telemetry_keyframe_nacks_rate_limited_total"
-	metricKeyEffectsActiveGauge        = "telemetry_effects_active_gauge"
-	metricKeyEffectsSpawnedTotalPrefix = "telemetry_effects_spawned_total"
-	metricKeyEffectsUpdatedTotalPrefix = "telemetry_effects_updated_total"
-	metricKeyEffectsEndedTotalPrefix   = "telemetry_effects_ended_total"
-	metricKeyEffectsSpatialOverflow    = "telemetry_effects_spatial_overflow_total"
-	metricKeyEffectTriggersEnqueued    = "telemetry_effect_triggers_enqueued_total"
+	metricKeyBroadcastTotal                    = "telemetry_broadcast_total"
+	metricKeyBroadcastBytesTotal               = "telemetry_broadcast_bytes_total"
+	metricKeyBroadcastEntitiesTotal            = "telemetry_broadcast_entities_total"
+	metricKeyBroadcastLastBytes                = "telemetry_broadcast_last_bytes"
+	metricKeyBroadcastLastEntities             = "telemetry_broadcast_last_entities"
+	metricKeyTickDurationMillis                = "telemetry_tick_duration_millis"
+	metricKeyTickTotal                         = "telemetry_tick_total"
+	metricKeyTickBudgetOverrunTotal            = "telemetry_tick_budget_overrun_total"
+	metricKeyTickBudgetOverrunLastMs           = "telemetry_tick_budget_overrun_last_millis"
+	metricKeyTickBudgetBudgetMillis            = "telemetry_tick_budget_overrun_budget_millis"
+	metricKeyTickBudgetStreakCurrent           = "telemetry_tick_budget_overrun_current_streak"
+	metricKeyTickBudgetStreakMax               = "telemetry_tick_budget_overrun_max_streak"
+	metricKeyTickBudgetRatioBits               = "telemetry_tick_budget_overrun_ratio_bits"
+	metricKeyTickBudgetAlarmTotal              = "telemetry_tick_budget_alarm_total"
+	metricKeyTickBudgetAlarmLastTick           = "telemetry_tick_budget_alarm_last_tick"
+	metricKeyTickBudgetAlarmRatioBits          = "telemetry_tick_budget_alarm_last_ratio_bits"
+	metricKeyKeyframeJournalSize               = "telemetry_keyframe_journal_size"
+	metricKeyKeyframeOldestSequence            = "telemetry_keyframe_oldest_sequence"
+	metricKeyKeyframeNewestSequence            = "telemetry_keyframe_newest_sequence"
+	metricKeyKeyframeRequestsTotal             = "telemetry_keyframe_requests_total"
+	metricKeyKeyframeRequestLatencyMs          = "telemetry_keyframe_request_latency_millis"
+	metricKeyKeyframeNackExpiredTotal          = "telemetry_keyframe_nacks_expired_total"
+	metricKeyKeyframeNackRateLimited           = "telemetry_keyframe_nacks_rate_limited_total"
+	metricKeyEffectsActiveGauge                = "telemetry_effects_active_gauge"
+	metricKeyEffectsSpawnedTotalPrefix         = "telemetry_effects_spawned_total"
+	metricKeyEffectsUpdatedTotalPrefix         = "telemetry_effects_updated_total"
+	metricKeyEffectsEndedTotalPrefix           = "telemetry_effects_ended_total"
+	metricKeyEffectsSpatialOverflow            = "telemetry_effects_spatial_overflow_total"
+	metricKeyEffectTriggersEnqueued            = "telemetry_effect_triggers_enqueued_total"
+	metricKeyEffectParityHitsTotalPrefix       = "telemetry_effect_parity_hits_total"
+	metricKeyEffectParityMissesTotalPrefix     = "telemetry_effect_parity_misses_total"
+	metricKeyEffectParityVictimsTotalPrefix    = "telemetry_effect_parity_victims_total"
+	metricKeyEffectParityFirstHitLatencyPrefix = "telemetry_effect_parity_first_hit_latency_ticks_total"
+	metricKeyEffectParityFirstHitSamplesPrefix = "telemetry_effect_parity_first_hit_samples_total"
+	metricKeyJournalDropsTotalPrefix           = "telemetry_journal_drops_total"
+	metricKeyCommandDropsTotalPrefix           = "telemetry_command_drops_total"
 )
 
 type telemetryMetricsAdapter struct {
@@ -212,6 +219,43 @@ func (a *telemetryMetricsAdapter) RecordEffectSpatialOverflow(effectType string)
 func (a *telemetryMetricsAdapter) RecordEffectTrigger(triggerType string) {
 	key := a.layeredKey(metricKeyEffectTriggersEnqueued, triggerType, "")
 	a.add(key, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordJournalDrop(reason string) {
+	key := a.layeredKey(metricKeyJournalDropsTotalPrefix, reason, "")
+	a.add(key, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordCommandDrop(reason, commandType string) {
+	key := a.layeredKey(metricKeyCommandDropsTotalPrefix, reason, commandType)
+	a.add(key, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordEffectParity(summary effectParitySummary) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	if summary.Hits > 0 {
+		hitsKey := a.layeredKey(metricKeyEffectParityHitsTotalPrefix, summary.EffectType, "")
+		a.add(hitsKey, uint64(summary.Hits))
+		if summary.SpawnTick > 0 && summary.FirstHitTick >= summary.SpawnTick {
+			latency := summary.FirstHitTick - summary.SpawnTick
+			if latency < 0 {
+				latency = 0
+			}
+			latencyKey := a.layeredKey(metricKeyEffectParityFirstHitLatencyPrefix, summary.EffectType, "")
+			a.add(latencyKey, uint64(latency))
+			samplesKey := a.layeredKey(metricKeyEffectParityFirstHitSamplesPrefix, summary.EffectType, "")
+			a.add(samplesKey, 1)
+		}
+	} else {
+		missesKey := a.layeredKey(metricKeyEffectParityMissesTotalPrefix, summary.EffectType, "")
+		a.add(missesKey, 1)
+	}
+	if bucket := victimsBucket(summary.UniqueVictims); bucket != "" {
+		victimsKey := a.layeredKey(metricKeyEffectParityVictimsTotalPrefix, summary.EffectType, bucket)
+		a.add(victimsKey, 1)
+	}
 }
 
 type simpleCounter struct {
@@ -746,6 +790,7 @@ func (t *telemetryCounters) RecordJournalDrop(reason string) {
 		return
 	}
 	t.journalDrops.add(reason, 1)
+	t.metricsAdapter.RecordJournalDrop(reason)
 }
 
 func (t *telemetryCounters) RecordCommandDropped(reason string, cmdType string) {
@@ -760,6 +805,7 @@ func (t *telemetryCounters) RecordCommandDropped(reason string, cmdType string) 
 		secondary = "unknown"
 	}
 	t.commandDrops.add(reason, secondary, 1)
+	t.metricsAdapter.RecordCommandDrop(reason, secondary)
 }
 
 func (t *telemetryCounters) RecordEffectParity(summary effectParitySummary) {
@@ -767,6 +813,7 @@ func (t *telemetryCounters) RecordEffectParity(summary effectParitySummary) {
 		return
 	}
 	t.effectParity.record(summary)
+	t.metricsAdapter.RecordEffectParity(summary)
 }
 
 func (t *telemetryCounters) DebugEnabled() bool {

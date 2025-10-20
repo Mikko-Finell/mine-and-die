@@ -171,6 +171,22 @@ func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
 	counters.RecordEffectEnded("fireball", "timeout")
 	counters.RecordEffectSpatialOverflow("fireball")
 	counters.RecordEffectTrigger("chain")
+	counters.RecordEffectParity(effectParitySummary{
+		EffectType:    "fireball",
+		Hits:          2,
+		UniqueVictims: 3,
+		SpawnTick:     effectcontract.Tick(5),
+		FirstHitTick:  effectcontract.Tick(7),
+	})
+	counters.RecordEffectParity(effectParitySummary{
+		EffectType:    "fireball",
+		Hits:          0,
+		UniqueVictims: 0,
+	})
+	counters.RecordJournalDrop("overflow")
+	counters.RecordJournalDrop("")
+	counters.RecordCommandDropped("queue_full", "move")
+	counters.RecordCommandDropped("", "")
 
 	snapshot := metrics.Snapshot()
 	if got := snapshot[metricKeyBroadcastTotal]; got != 1 {
@@ -266,5 +282,41 @@ func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
 	triggerKey := metricKeyEffectTriggersEnqueued + "/chain"
 	if got := snapshot[triggerKey]; got != 1 {
 		t.Fatalf("expected trigger metric 1, got %d", got)
+	}
+	hitsKey := metricKeyEffectParityHitsTotalPrefix + "/fireball"
+	if got := snapshot[hitsKey]; got != 2 {
+		t.Fatalf("expected effect parity hits metric 2, got %d", got)
+	}
+	missesKey := metricKeyEffectParityMissesTotalPrefix + "/fireball"
+	if got := snapshot[missesKey]; got != 1 {
+		t.Fatalf("expected effect parity misses metric 1, got %d", got)
+	}
+	latencyKey := metricKeyEffectParityFirstHitLatencyPrefix + "/fireball"
+	if got := snapshot[latencyKey]; got != 2 {
+		t.Fatalf("expected first hit latency total 2 ticks, got %d", got)
+	}
+	samplesKey := metricKeyEffectParityFirstHitSamplesPrefix + "/fireball"
+	if got := snapshot[samplesKey]; got != 1 {
+		t.Fatalf("expected first hit samples total 1, got %d", got)
+	}
+	victimsKey := metricKeyEffectParityVictimsTotalPrefix + "/fireball/3"
+	if got := snapshot[victimsKey]; got != 1 {
+		t.Fatalf("expected victims bucket metric 1, got %d", got)
+	}
+	journalOverflowKey := metricKeyJournalDropsTotalPrefix + "/overflow"
+	if got := snapshot[journalOverflowKey]; got != 1 {
+		t.Fatalf("expected journal overflow metric 1, got %d", got)
+	}
+	journalUnknownKey := metricKeyJournalDropsTotalPrefix + "/unknown"
+	if got := snapshot[journalUnknownKey]; got != 1 {
+		t.Fatalf("expected journal unknown metric 1, got %d", got)
+	}
+	commandDropKey := metricKeyCommandDropsTotalPrefix + "/queue_full/move"
+	if got := snapshot[commandDropKey]; got != 1 {
+		t.Fatalf("expected command drop metric 1, got %d", got)
+	}
+	commandUnknownKey := metricKeyCommandDropsTotalPrefix + "/unknown/unknown"
+	if got := snapshot[commandUnknownKey]; got != 1 {
+		t.Fatalf("expected command unknown metric 1, got %d", got)
 	}
 }

@@ -17,7 +17,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## [IN PROGRESS] Phase 0 — Baseline & Safety Net
+## [DONE] Phase 0 — Baseline & Safety Net
 
 ### Work log
 
@@ -79,6 +79,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   packaging stays pinned ahead of hub marshaling changes.
 - Removed the hub's legacy world fallback for resubscribe baseline capture so
   reconnect caching depends entirely on `sim.Engine` snapshots.
+- Published telemetry journal and command drop metrics through `logging.Metrics`
+  so the Phase 0 instrumentation backlog is closed out in one sweep.
 
 ### Next task
 
@@ -182,10 +184,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Expand the telemetry metrics adapter to surface keyframe and effect
       counters through `logging.Metrics` so diagnostics can observe them
       without hub snapshots.
-- [ ] Publish effect parity aggregates through `logging.Metrics` so telemetry
+- [x] Publish effect parity aggregates through `logging.Metrics` so telemetry
       consumers can inspect hit/miss rates without pulling hub snapshots.
+- [x] Publish journal and command drop aggregates through `logging.Metrics` so
+      monitoring clients can observe drop rates without scraping telemetry
+      snapshots.
 
-- [ ] Objective: Create seams and invariants before moving code.
+- [x] Objective: Create seams and invariants before moving code.
 
 - [x] Introduce `internal/sim` façade that wraps the existing engine:
 
@@ -225,7 +230,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## [NOT STARTED] Phase 1 — Structural Extraction
+## [IN PROGRESS] Phase 1 — Structural Extraction
 
 - [ ] Objective: Separate concerns without changing runtime behavior.
 
