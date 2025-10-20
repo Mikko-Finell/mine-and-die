@@ -1,177 +1,93 @@
 package server
 
-import "math"
+import worldpkg "mine-and-die/server/internal/world"
 
-const defaultPlayerArriveRadius = 12.0
+type playerPathController struct {
+	world *World
+}
+
+func newPlayerPathController(world *World) playerPathController {
+	return playerPathController{world: world}
+}
+
+func (c playerPathController) SetIntent(actorID string, dx, dy float64) {
+	if c.world == nil {
+		return
+	}
+	c.world.SetIntent(actorID, dx, dy)
+}
+
+func (c playerPathController) SetFacing(actorID string, facing string) {
+	if c.world == nil {
+		return
+	}
+	c.world.SetFacing(actorID, FacingDirection(facing))
+}
+
+func (c playerPathController) DeriveFacing(dx, dy float64, fallback string) string {
+	return string(deriveFacing(dx, dy, FacingDirection(fallback)))
+}
+
+func (c playerPathController) Dimensions() (float64, float64) {
+	if c.world == nil {
+		return 0, 0
+	}
+	return c.world.dimensions()
+}
+
+func (c playerPathController) ComputePlayerPath(actorID string, target worldpkg.Vec2) ([]worldpkg.Vec2, worldpkg.Vec2, bool) {
+	if c.world == nil {
+		return nil, worldpkg.Vec2{}, false
+	}
+	player := c.world.players[actorID]
+	if player == nil {
+		return nil, worldpkg.Vec2{}, false
+	}
+	return c.world.computePlayerPath(player, target)
+}
+
+func toPlayerPathActor(player *playerState) *worldpkg.PlayerPathActor {
+	if player == nil {
+		return nil
+	}
+	return &worldpkg.PlayerPathActor{
+		ID:     player.ID,
+		X:      player.X,
+		Y:      player.Y,
+		Facing: string(player.Facing),
+		Path:   &player.path,
+	}
+}
 
 func (w *World) advancePlayerPaths(tick uint64) {
+	controller := newPlayerPathController(w)
 	for _, player := range w.players {
-		w.followPlayerPath(player, tick)
+		worldpkg.FollowPlayerPath(toPlayerPathActor(player), tick, controller)
 	}
 }
 
 func (w *World) followPlayerPath(player *playerState, tick uint64) {
-	if player == nil {
-		return
-	}
-	path := &player.path
-	if len(path.Path) == 0 {
-		if path.PathTarget.X == 0 && path.PathTarget.Y == 0 {
-			return
-		}
-		w.SetIntent(player.ID, 0, 0)
-		if tick >= path.PathRecalcTick {
-			if w.recalculatePlayerPath(player, tick) {
-				w.followPlayerPath(player, tick)
-			}
-		}
-		return
-	}
-	if path.PathIndex >= len(path.Path) {
-		w.finishPlayerPath(player)
-		return
-	}
-
-	threshold := pathNodeReachedEpsilon
-	if threshold <= 0 {
-		threshold = playerHalf
-	}
-
-	for path.PathIndex < len(path.Path) {
-		node := path.Path[path.PathIndex]
-		dx := node.X - player.X
-		dy := node.Y - player.Y
-		dist := math.Hypot(dx, dy)
-
-		limit := threshold
-		if path.PathIndex == len(path.Path)-1 {
-			radius := path.ArriveRadius
-			if radius <= 0 {
-				radius = defaultPlayerArriveRadius
-			}
-			limit = radius
-		}
-		if dist <= limit {
-			path.PathIndex++
-			path.PathLastDistance = 0
-			path.PathStallTicks = 0
-			continue
-		}
-
-		if path.PathLastDistance == 0 || dist+0.1 < path.PathLastDistance {
-			path.PathLastDistance = dist
-			path.PathStallTicks = 0
-		} else {
-			path.PathStallTicks++
-			if path.PathStallTicks >= pathStallThresholdTicks {
-				if tick >= path.PathRecalcTick && w.recalculatePlayerPath(player, tick) {
-					w.followPlayerPath(player, tick)
-				}
-				return
-			}
-		}
-
-		if path.PathLastDistance > 0 && dist > path.PathLastDistance+pathPushRecalcThreshold {
-			if tick >= path.PathRecalcTick && w.recalculatePlayerPath(player, tick) {
-				w.followPlayerPath(player, tick)
-			}
-			return
-		}
-
-		moveDX := dx
-		moveDY := dy
-		if dist > 1 {
-			moveDX = dx / dist
-			moveDY = dy / dist
-		}
-
-		w.SetIntent(player.ID, moveDX, moveDY)
-		w.SetFacing(player.ID, deriveFacing(moveDX, moveDY, player.Facing))
-		return
-	}
-
-	w.finishPlayerPath(player)
+	worldpkg.FollowPlayerPath(toPlayerPathActor(player), tick, newPlayerPathController(w))
 }
 
 func (w *World) finishPlayerPath(player *playerState) {
-	if player == nil {
-		return
-	}
-	radius := player.path.ArriveRadius
-	w.SetIntent(player.ID, 0, 0)
-	player.path = playerPathState{ArriveRadius: radius}
+	worldpkg.FinishPlayerPath(toPlayerPathActor(player), newPlayerPathController(w))
 }
 
 func (w *World) clearPlayerPath(player *playerState) {
-	if player == nil {
-		return
-	}
-	radius := player.path.ArriveRadius
-	player.path = playerPathState{ArriveRadius: radius}
+	worldpkg.ClearPlayerPath(toPlayerPathActor(player))
 }
 
 func (w *World) ensurePlayerPath(player *playerState, target vec2, tick uint64) bool {
-	if player == nil {
-		return false
-	}
-	width, height := w.dimensions()
-	player.path.PathTarget = vec2{
-		X: clamp(target.X, playerHalf, width-playerHalf),
-		Y: clamp(target.Y, playerHalf, height-playerHalf),
-	}
-	path, goal, ok := w.computePlayerPath(player, player.path.PathTarget)
-	if !ok {
-		radius := player.path.ArriveRadius
-		player.path = playerPathState{ArriveRadius: radius, PathTarget: player.path.PathTarget, PathRecalcTick: tick + pathRecalcCooldownTicks}
-		w.SetIntent(player.ID, 0, 0)
-		return false
-	}
-	radius := player.path.ArriveRadius
-	if radius <= 0 {
-		radius = defaultPlayerArriveRadius
-	}
-	player.path.Path = path
-	player.path.PathIndex = 0
-	player.path.PathGoal = goal
-	player.path.PathLastDistance = 0
-	player.path.PathStallTicks = 0
-	player.path.PathRecalcTick = tick + 1
-	player.path.ArriveRadius = radius
-	return true
+	return worldpkg.EnsurePlayerPath(toPlayerPathActor(player), worldpkg.Vec2(target), tick, newPlayerPathController(w))
 }
 
 func (w *World) recalculatePlayerPath(player *playerState, tick uint64) bool {
-	if player == nil {
-		return false
-	}
-	target := player.path.PathTarget
-	if target.X == 0 && target.Y == 0 {
-		return false
-	}
-	path, goal, ok := w.computePlayerPath(player, target)
-	if !ok {
-		radius := player.path.ArriveRadius
-		player.path.Path = nil
-		player.path.PathIndex = 0
-		player.path.PathGoal = vec2{}
-		player.path.PathLastDistance = 0
-		player.path.PathStallTicks = 0
-		player.path.PathRecalcTick = tick + pathRecalcCooldownTicks
-		player.path.ArriveRadius = radius
-		w.SetIntent(player.ID, 0, 0)
-		return false
-	}
-	player.path.Path = path
-	player.path.PathIndex = 0
-	player.path.PathGoal = goal
-	player.path.PathLastDistance = 0
-	player.path.PathStallTicks = 0
-	player.path.PathRecalcTick = tick + 1
-	return true
+	return worldpkg.RecalculatePlayerPath(toPlayerPathActor(player), tick, newPlayerPathController(w))
 }
 
 func (w *World) computePlayerPath(player *playerState, target vec2) ([]vec2, vec2, bool) {
-	if player == nil {
+	if w == nil || player == nil {
 		return nil, vec2{}, false
 	}
 	return w.computePathFrom(player.X, player.Y, player.ID, target)
