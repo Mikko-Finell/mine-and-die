@@ -106,6 +106,35 @@ type subscriber struct {
 	limiter        keyframeRateLimiter
 }
 
+// WriteMessage sends a websocket message guarded by the subscriber's mutex and write deadline.
+func (s *subscriber) WriteMessage(messageType int, data []byte) error {
+	if s == nil || s.conn == nil {
+		return errors.New("subscriber closed")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+		return err
+	}
+	return s.conn.WriteMessage(messageType, data)
+}
+
+// LastCommandSeq returns the last command sequence acknowledged by the subscriber.
+func (s *subscriber) LastCommandSeq() uint64 {
+	if s == nil {
+		return 0
+	}
+	return s.lastCommandSeq.Load()
+}
+
+// StoreLastCommandSeq records the latest command sequence acknowledged by the subscriber.
+func (s *subscriber) StoreLastCommandSeq(seq uint64) {
+	if s == nil {
+		return
+	}
+	s.lastCommandSeq.Store(seq)
+}
+
 const (
 	keyframeLimiterCapacity  = 3
 	keyframeLimiterRefillPer = 2.0 // tokens per second
@@ -120,6 +149,12 @@ const (
 	commandRejectUnknownActor  = "unknown_actor"
 	commandRejectInvalidAction = "invalid_action"
 	commandRejectQueueLimit    = "queue_limit"
+)
+
+const (
+	CommandRejectUnknownActor  = commandRejectUnknownActor
+	CommandRejectInvalidAction = commandRejectInvalidAction
+	CommandRejectQueueLimit    = commandRejectQueueLimit
 )
 
 type keyframeLookupStatus int
@@ -1100,6 +1135,11 @@ func (h *Hub) forceKeyframe() {
 	h.forceKeyframeNext.Store(true)
 }
 
+// ForceKeyframe marks the next broadcast as a keyframe.
+func (h *Hub) ForceKeyframe() {
+	h.forceKeyframe()
+}
+
 func (h *Hub) CurrentKeyframeInterval() int {
 	if h == nil {
 		return 1
@@ -1479,6 +1519,11 @@ func (h *Hub) marshalState(players []Player, npcs []NPC, triggers []EffectTrigge
 	return data, entities, nil
 }
 
+// MarshalState serializes a world snapshot using the legacy hub marshaller.
+func (h *Hub) MarshalState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
+	return h.marshalState(players, npcs, triggers, groundItems, drainPatches, includeSnapshot)
+}
+
 func (h *Hub) scheduleResyncIfNeeded() (bool, resyncSignal) {
 	h.mu.Lock()
 	engine := h.engine
@@ -1676,6 +1721,19 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 	if h.telemetry != nil {
 		h.telemetry.RecordBroadcast(len(data), entities)
 	}
+}
+
+// BroadcastState sends a snapshot to every active subscriber.
+func (h *Hub) BroadcastState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem) {
+	h.broadcastState(players, npcs, triggers, groundItems)
+}
+
+// RecordTelemetryBroadcast records the size of a broadcast for telemetry consumers.
+func (h *Hub) RecordTelemetryBroadcast(bytes, entities int) {
+	if h == nil || h.telemetry == nil {
+		return
+	}
+	h.telemetry.RecordBroadcast(bytes, entities)
 }
 
 func (h *Hub) TelemetrySnapshot() telemetrySnapshot {

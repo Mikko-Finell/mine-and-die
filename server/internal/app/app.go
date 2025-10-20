@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	server "mine-and-die/server"
+	servernet "mine-and-die/server/internal/net"
 	"mine-and-die/server/logging"
 	loggingSinks "mine-and-die/server/logging/sinks"
 )
@@ -47,7 +48,7 @@ func Run(ctx context.Context) error {
 	defer close(stop)
 
 	clientDir := filepath.Clean(filepath.Join("..", "client"))
-	handler := server.NewHTTPHandler(hub, server.HTTPHandlerConfig{
+	handler := servernet.NewHTTPHandler(hub, servernet.HTTPHandlerConfig{
 		ClientDir: clientDir,
 		Logger:    logger,
 	})

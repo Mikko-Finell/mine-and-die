@@ -237,10 +237,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 ### Next task
 
 - [x] Document the next logical follow-up step.
-- [ ] Document the next logical follow-up step.
+- [x] Document the next logical follow-up step.
 
 - [x] Move process wiring into `/cmd/server` and `internal/app`.
-- [ ] Move the HTTP and websocket handler construction into `internal/net` so `internal/app` depends on networking packages instead of hub internals.
+- [x] Move the HTTP and websocket handler construction into `internal/net` so `internal/app` depends on networking packages instead of hub internals.
+- [ ] Extract websocket session orchestration into `internal/net/ws` so handler code depends on a narrow subscription interface instead of hub internals.
 - [ ] Move networking into `internal/net`:
 
   - [ ] Add `ws/` for websocket sessions and fan-out.
