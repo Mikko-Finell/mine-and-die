@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"mine-and-die/server"
+	"mine-and-die/server/internal/net/intake"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/internal/telemetry"
@@ -121,6 +122,13 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 	h.hub.RecordTelemetryBroadcast(len(data), entities)
 
+	intakeCtx := intake.CommandContext{
+		Engine:    h.hub.Engine(),
+		HasPlayer: h.hub.HasPlayer,
+		Tick:      h.hub.Tick,
+		Now:       h.hub.Now,
+	}
+
 	for {
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
@@ -200,7 +208,8 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			return writeMessage(proto.EncodeCommandReject(reject))
 		}
 
-		if command, ok := proto.ClientCommand(msg); ok {
+		switch msg.Type {
+		case proto.TypeInput, proto.TypePath, proto.TypeCancelPath, proto.TypeAction:
 			if normalizedSeq > 0 {
 				if last := session.LastCommandSeq(); last > 0 && normalizedSeq <= last {
 					if !sendDuplicateAck() {
@@ -210,24 +219,24 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				}
 			}
 
-			queued, accepted, reason := h.hub.HandleCommand(playerID, command)
+			queued, accepted, reason := intake.StageClientCommand(intakeCtx, playerID, msg)
 			if !accepted {
-				switch command.Type {
-				case sim.CommandMove:
+				switch msg.Type {
+				case proto.TypeInput:
 					if reason == server.CommandRejectUnknownActor {
 						h.logger.Printf("input ignored for unknown player %s", playerID)
 					}
-				case sim.CommandSetPath:
+				case proto.TypePath:
 					if reason == server.CommandRejectUnknownActor {
 						h.logger.Printf("path request ignored for unknown player %s", playerID)
 					}
-				case sim.CommandClearPath:
+				case proto.TypeCancelPath:
 					if reason == server.CommandRejectUnknownActor {
 						h.logger.Printf("cancelPath ignored for unknown player %s", playerID)
 					}
-				case sim.CommandAction:
+				case proto.TypeAction:
 					if reason == server.CommandRejectInvalidAction {
-						h.logger.Printf("unknown action %q from %s", command.Action.Name, playerID)
+						h.logger.Printf("unknown action %q from %s", msg.Action, playerID)
 					} else if reason == server.CommandRejectUnknownActor {
 						h.logger.Printf("action ignored for unknown player %s", playerID)
 					}

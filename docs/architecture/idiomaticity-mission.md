@@ -289,7 +289,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 - [x] Route websocket and HTTP command ingestion through `sim.Engine.Enqueue` so the hub wrapper can be retired once callers stop relying on it.
 
-- [ ] Retire `Hub.HandleCommand` by moving command validation into a shared intake helper under `internal/net` that normalizes `proto` payloads and calls `sim.Engine.Enqueue` directly, keeping rejection telemetry identical.
+- [x] Retire `Hub.HandleCommand` by moving command validation into a shared intake helper under `internal/net` that normalizes `proto` payloads and calls `sim.Engine.Enqueue` directly, keeping rejection telemetry identical.
+
+- [ ] Begin carving out `server/internal/world` by moving the world struct, tile helpers, and RNG/time wiring into the new package while keeping the hub adapter and simulation loop behavior unchanged.
 
 - [x] Keep the tick loop in `sim/engine`:
 
