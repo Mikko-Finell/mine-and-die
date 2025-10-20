@@ -1,14 +1,15 @@
-package server
+package net
 
 import (
 	"encoding/json"
 	"io"
 	"log"
-	"net/http"
+	nethttp "net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
 
+	"mine-and-die/server"
 	"mine-and-die/server/internal/sim"
 )
 
@@ -17,39 +18,81 @@ type HTTPHandlerConfig struct {
 	Logger    *log.Logger
 }
 
-func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
+type clientMessage struct {
+	Ver              int     `json:"ver,omitempty"`
+	Type             string  `json:"type"`
+	DX               float64 `json:"dx"`
+	DY               float64 `json:"dy"`
+	Facing           string  `json:"facing"`
+	X                float64 `json:"x"`
+	Y                float64 `json:"y"`
+	SentAt           int64   `json:"sentAt"`
+	Action           string  `json:"action"`
+	Cmd              string  `json:"cmd"`
+	Qty              int     `json:"qty"`
+	Ack              *uint64 `json:"ack"`
+	KeyframeSeq      *uint64 `json:"keyframeSeq"`
+	KeyframeInterval *int    `json:"keyframeInterval,omitempty"`
+	CommandSeq       *uint64 `json:"seq,omitempty"`
+}
+
+type commandAckMessage struct {
+	Ver  int    `json:"ver"`
+	Type string `json:"type"`
+	Seq  uint64 `json:"seq"`
+	Tick uint64 `json:"tick,omitempty"`
+}
+
+type commandRejectMessage struct {
+	Ver    int    `json:"ver"`
+	Type   string `json:"type"`
+	Seq    uint64 `json:"seq"`
+	Reason string `json:"reason"`
+	Retry  bool   `json:"retry,omitempty"`
+	Tick   uint64 `json:"tick,omitempty"`
+}
+
+type heartbeatMessage struct {
+	Ver        int    `json:"ver"`
+	Type       string `json:"type"`
+	ServerTime int64  `json:"serverTime"`
+	ClientTime int64  `json:"clientTime"`
+	RTTMillis  int64  `json:"rtt"`
+}
+
+func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = log.Default()
 	}
 
-	mux := http.NewServeMux()
+	mux := nethttp.NewServeMux()
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write([]byte("ok"))
 	})
 
-	mux.HandleFunc("/diagnostics", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/diagnostics", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		payload := struct {
-			Status     string              `json:"status"`
-			ServerTime int64               `json:"serverTime"`
-			Players    []diagnosticsPlayer `json:"players"`
-			TickRate   int                 `json:"tickRate"`
-			Heartbeat  int64               `json:"heartbeatMillis"`
-			Telemetry  telemetrySnapshot   `json:"telemetry"`
+			Status     string `json:"status"`
+			ServerTime int64  `json:"serverTime"`
+			Players    any    `json:"players"`
+			TickRate   int    `json:"tickRate"`
+			Heartbeat  int64  `json:"heartbeatMillis"`
+			Telemetry  any    `json:"telemetry"`
 		}{
 			Status:     "ok",
 			ServerTime: time.Now().UnixMilli(),
 			Players:    hub.DiagnosticsSnapshot(),
-			TickRate:   tickRate,
-			Heartbeat:  heartbeatInterval.Milliseconds(),
+			TickRate:   server.TickRate(),
+			Heartbeat:  server.HeartbeatInterval().Milliseconds(),
 			Telemetry:  hub.TelemetrySnapshot(),
 		}
 
 		data, err := json.Marshal(payload)
 		if err != nil {
-			http.Error(w, "failed to encode", http.StatusInternalServerError)
+			httpError(w, "failed to encode", nethttp.StatusInternalServerError)
 			return
 		}
 
@@ -57,9 +100,9 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 		w.Write(data)
 	})
 
-	mux.HandleFunc("/world/reset", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	mux.HandleFunc("/world/reset", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		if r.Method != nethttp.MethodPost {
+			httpError(w, "method not allowed", nethttp.StatusMethodNotAllowed)
 			return
 		}
 
@@ -84,7 +127,7 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 			var req resetRequest
 			decoder := json.NewDecoder(r.Body)
 			if err := decoder.Decode(&req); err != nil && err != io.EOF {
-				http.Error(w, "invalid payload", http.StatusBadRequest)
+				httpError(w, "invalid payload", nethttp.StatusBadRequest)
 				return
 			}
 			if req.Obstacles != nil {
@@ -137,15 +180,15 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 			}
 		}
 
-		cfg = cfg.normalized()
+		cfg = cfg.Normalized()
 
 		players, npcs := hub.ResetWorld(cfg)
-		hub.forceKeyframe()
-		go hub.broadcastState(players, npcs, nil, nil)
+		hub.ForceKeyframe()
+		go hub.BroadcastState(players, npcs, nil, nil)
 
 		response := struct {
-			Status string      `json:"status"`
-			Config worldConfig `json:"config"`
+			Status string `json:"status"`
+			Config any    `json:"config"`
 		}{
 			Status: "ok",
 			Config: cfg,
@@ -153,7 +196,7 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 
 		data, err := json.Marshal(response)
 		if err != nil {
-			http.Error(w, "failed to encode", http.StatusInternalServerError)
+			httpError(w, "failed to encode", nethttp.StatusInternalServerError)
 			return
 		}
 
@@ -161,40 +204,41 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 		w.Write(data)
 	})
 
-	mux.HandleFunc("/join", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	mux.HandleFunc("/join", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		if r.Method != nethttp.MethodPost {
+			httpError(w, "method not allowed", nethttp.StatusMethodNotAllowed)
 			return
 		}
 
 		join := hub.Join()
 		data, err := json.Marshal(join)
 		if err != nil {
-			http.Error(w, "failed to encode", http.StatusInternalServerError)
+			httpError(w, "failed to encode", nethttp.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(data)
 	})
 
-	mux.HandleFunc("/effects/catalog", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	mux.HandleFunc("/effects/catalog", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		if r.Method != nethttp.MethodGet {
+			httpError(w, "method not allowed", nethttp.StatusMethodNotAllowed)
 			return
 		}
 
 		catalog := hub.EffectCatalogSnapshot()
-		if catalog == nil {
-			catalog = make(map[string]effectCatalogMetadata)
+		var payloadCatalog any = catalog
+		if payloadCatalog == nil {
+			payloadCatalog = map[string]any{}
 		}
 
 		payload := struct {
-			Catalog map[string]effectCatalogMetadata `json:"effectCatalog"`
-		}{Catalog: catalog}
+			Catalog any `json:"effectCatalog"`
+		}{Catalog: payloadCatalog}
 
 		data, err := json.Marshal(payload)
 		if err != nil {
-			http.Error(w, "failed to encode", http.StatusInternalServerError)
+			httpError(w, "failed to encode", nethttp.StatusInternalServerError)
 			return
 		}
 
@@ -205,15 +249,15 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
+		CheckOrigin: func(r *nethttp.Request) bool {
 			return true
 		},
 	}
 
-	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/ws", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		playerID := r.URL.Query().Get("id")
 		if playerID == "" {
-			http.Error(w, "missing id", http.StatusBadRequest)
+			httpError(w, "missing id", nethttp.StatusBadRequest)
 			return
 		}
 
@@ -231,40 +275,34 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 			return
 		}
 
-		data, entities, err := hub.marshalState(snapshotPlayers, snapshotNPCs, nil, snapshotGroundItems, false, true)
+		data, entities, err := hub.MarshalState(snapshotPlayers, snapshotNPCs, nil, snapshotGroundItems, false, true)
 		if err != nil {
 			logger.Printf("failed to marshal initial state for %s: %v", playerID, err)
 			players, npcs := hub.Disconnect(playerID)
 			if players != nil {
-				hub.forceKeyframe()
-				go hub.broadcastState(players, npcs, nil, nil)
+				hub.ForceKeyframe()
+				go hub.BroadcastState(players, npcs, nil, nil)
 			}
 			return
 		}
 
-		sub.mu.Lock()
-		conn.SetWriteDeadline(time.Now().Add(writeWait))
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			sub.mu.Unlock()
+		if err := sub.WriteMessage(websocket.TextMessage, data); err != nil {
 			players, npcs := hub.Disconnect(playerID)
 			if players != nil {
-				hub.forceKeyframe()
-				go hub.broadcastState(players, npcs, nil, nil)
+				hub.ForceKeyframe()
+				go hub.BroadcastState(players, npcs, nil, nil)
 			}
 			return
 		}
-		sub.mu.Unlock()
-		if hub.telemetry != nil {
-			hub.telemetry.RecordBroadcast(len(data), entities)
-		}
+		hub.RecordTelemetryBroadcast(len(data), entities)
 
 		for {
 			_, payload, err := conn.ReadMessage()
 			if err != nil {
 				players, npcs := hub.Disconnect(playerID)
 				if players != nil {
-					hub.forceKeyframe()
-					go hub.broadcastState(players, npcs, nil, nil)
+					hub.ForceKeyframe()
+					go hub.BroadcastState(players, npcs, nil, nil)
 				}
 				return
 			}
@@ -290,15 +328,11 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 					logger.Printf("failed to marshal response for %s: %v", playerID, err)
 					return true
 				}
-				sub.mu.Lock()
-				conn.SetWriteDeadline(time.Now().Add(writeWait))
-				err = conn.WriteMessage(websocket.TextMessage, data)
-				sub.mu.Unlock()
-				if err != nil {
+				if err := sub.WriteMessage(websocket.TextMessage, data); err != nil {
 					players, npcs := hub.Disconnect(playerID)
 					if players != nil {
-						hub.forceKeyframe()
-						go hub.broadcastState(players, npcs, nil, nil)
+						hub.ForceKeyframe()
+						go hub.BroadcastState(players, npcs, nil, nil)
 					}
 					return false
 				}
@@ -309,7 +343,7 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 				if normalizedSeq == 0 {
 					return true
 				}
-				ack := commandAckMessage{Ver: ProtocolVersion, Type: "commandAck", Seq: normalizedSeq}
+				ack := commandAckMessage{Ver: server.ProtocolVersion, Type: "commandAck", Seq: normalizedSeq}
 				return writeJSON(ack)
 			}
 
@@ -317,14 +351,14 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 				if normalizedSeq == 0 {
 					return true
 				}
-				ack := commandAckMessage{Ver: ProtocolVersion, Type: "commandAck", Seq: normalizedSeq}
+				ack := commandAckMessage{Ver: server.ProtocolVersion, Type: "commandAck", Seq: normalizedSeq}
 				if cmd.OriginTick > 0 {
 					ack.Tick = cmd.OriginTick
 				}
 				if !writeJSON(ack) {
 					return false
 				}
-				sub.lastCommandSeq.Store(normalizedSeq)
+				sub.StoreLastCommandSeq(normalizedSeq)
 				return true
 			}
 
@@ -333,7 +367,7 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 					return true
 				}
 				reject := commandRejectMessage{
-					Ver:    ProtocolVersion,
+					Ver:    server.ProtocolVersion,
 					Type:   "commandReject",
 					Seq:    normalizedSeq,
 					Reason: reason,
@@ -347,7 +381,7 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 			switch msg.Type {
 			case "input":
 				if normalizedSeq > 0 {
-					if last := sub.lastCommandSeq.Load(); last > 0 && normalizedSeq <= last {
+					if last := sub.LastCommandSeq(); last > 0 && normalizedSeq <= last {
 						if !sendDuplicateAck() {
 							return
 						}
@@ -361,20 +395,20 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 							return
 						}
 					} else {
-						retry := reason == commandRejectQueueLimit
+						retry := reason == server.CommandRejectQueueLimit
 						if !sendCommandReject(reason, retry) {
 							return
 						}
 					}
 				}
 				if !ok {
-					if reason == commandRejectUnknownActor {
+					if reason == server.CommandRejectUnknownActor {
 						logger.Printf("input ignored for unknown player %s", playerID)
 					}
 				}
 			case "path":
 				if normalizedSeq > 0 {
-					if last := sub.lastCommandSeq.Load(); last > 0 && normalizedSeq <= last {
+					if last := sub.LastCommandSeq(); last > 0 && normalizedSeq <= last {
 						if !sendDuplicateAck() {
 							return
 						}
@@ -388,18 +422,18 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 							return
 						}
 					} else {
-						retry := reason == commandRejectQueueLimit
+						retry := reason == server.CommandRejectQueueLimit
 						if !sendCommandReject(reason, retry) {
 							return
 						}
 					}
 				}
-				if !ok && reason == commandRejectUnknownActor {
+				if !ok && reason == server.CommandRejectUnknownActor {
 					logger.Printf("path request ignored for unknown player %s", playerID)
 				}
 			case "cancelPath":
 				if normalizedSeq > 0 {
-					if last := sub.lastCommandSeq.Load(); last > 0 && normalizedSeq <= last {
+					if last := sub.LastCommandSeq(); last > 0 && normalizedSeq <= last {
 						if !sendDuplicateAck() {
 							return
 						}
@@ -413,13 +447,13 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 							return
 						}
 					} else {
-						retry := reason == commandRejectQueueLimit
+						retry := reason == server.CommandRejectQueueLimit
 						if !sendCommandReject(reason, retry) {
 							return
 						}
 					}
 				}
-				if !ok && reason == commandRejectUnknownActor {
+				if !ok && reason == server.CommandRejectUnknownActor {
 					logger.Printf("cancelPath ignored for unknown player %s", playerID)
 				}
 			case "action":
@@ -427,7 +461,7 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 					continue
 				}
 				if normalizedSeq > 0 {
-					if last := sub.lastCommandSeq.Load(); last > 0 && normalizedSeq <= last {
+					if last := sub.LastCommandSeq(); last > 0 && normalizedSeq <= last {
 						if !sendDuplicateAck() {
 							return
 						}
@@ -441,16 +475,16 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 							return
 						}
 					} else {
-						retry := reason == commandRejectQueueLimit
+						retry := reason == server.CommandRejectQueueLimit
 						if !sendCommandReject(reason, retry) {
 							return
 						}
 					}
 				}
 				if !ok {
-					if reason == commandRejectInvalidAction {
+					if reason == server.CommandRejectInvalidAction {
 						logger.Printf("unknown action %q from %s", msg.Action, playerID)
-					} else if reason == commandRejectUnknownActor {
+					} else if reason == server.CommandRejectUnknownActor {
 						logger.Printf("action ignored for unknown player %s", playerID)
 					}
 				}
@@ -462,7 +496,7 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 				}
 
 				ack := heartbeatMessage{
-					Ver:        ProtocolVersion,
+					Ver:        server.ProtocolVersion,
 					Type:       "heartbeat",
 					ServerTime: now.UnixMilli(),
 					ClientTime: msg.SentAt,
@@ -475,18 +509,14 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 					continue
 				}
 
-				sub.mu.Lock()
-				conn.SetWriteDeadline(time.Now().Add(writeWait))
-				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-					sub.mu.Unlock()
+				if err := sub.WriteMessage(websocket.TextMessage, data); err != nil {
 					players, npcs := hub.Disconnect(playerID)
 					if players != nil {
-						hub.forceKeyframe()
-						go hub.broadcastState(players, npcs, nil, nil)
+						hub.ForceKeyframe()
+						go hub.BroadcastState(players, npcs, nil, nil)
 					}
 					return
 				}
-				sub.mu.Unlock()
 			case "console":
 				ack, handled := hub.HandleConsoleCommand(playerID, msg.Cmd, msg.Qty)
 				if !handled {
@@ -497,18 +527,14 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 					logger.Printf("failed to marshal console ack for %s: %v", playerID, err)
 					continue
 				}
-				sub.mu.Lock()
-				conn.SetWriteDeadline(time.Now().Add(writeWait))
-				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-					sub.mu.Unlock()
+				if err := sub.WriteMessage(websocket.TextMessage, data); err != nil {
 					players, npcs := hub.Disconnect(playerID)
 					if players != nil {
-						hub.forceKeyframe()
-						go hub.broadcastState(players, npcs, nil, nil)
+						hub.ForceKeyframe()
+						go hub.BroadcastState(players, npcs, nil, nil)
 					}
 					return
 				}
-				sub.mu.Unlock()
 			case "keyframeRequest":
 				if msg.KeyframeSeq == nil {
 					continue
@@ -528,18 +554,14 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 					logger.Printf("failed to marshal keyframe for %s: %v", playerID, err)
 					continue
 				}
-				sub.mu.Lock()
-				conn.SetWriteDeadline(time.Now().Add(writeWait))
-				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-					sub.mu.Unlock()
+				if err := sub.WriteMessage(websocket.TextMessage, data); err != nil {
 					players, npcs := hub.Disconnect(playerID)
 					if players != nil {
-						hub.forceKeyframe()
-						go hub.broadcastState(players, npcs, nil, nil)
+						hub.ForceKeyframe()
+						go hub.BroadcastState(players, npcs, nil, nil)
 					}
 					return
 				}
-				sub.mu.Unlock()
 			case "keyframeCadence":
 				requested := 0
 				if msg.KeyframeInterval != nil {
@@ -554,9 +576,13 @@ func NewHTTPHandler(hub *Hub, cfg HTTPHandlerConfig) http.Handler {
 	})
 
 	if cfg.ClientDir != "" {
-		fs := http.FileServer(http.Dir(cfg.ClientDir))
+		fs := nethttp.FileServer(nethttp.Dir(cfg.ClientDir))
 		mux.Handle("/", fs)
 	}
 
 	return mux
+}
+
+func httpError(w nethttp.ResponseWriter, msg string, code int) {
+	nethttp.Error(w, msg, code)
 }

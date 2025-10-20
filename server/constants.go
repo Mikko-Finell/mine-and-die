@@ -31,3 +31,18 @@ const (
 	goldOreMinSize        = 56.0
 	goldOreMaxSize        = 96.0
 )
+
+// TickRate reports the server tick frequency in hertz.
+func TickRate() int {
+	return tickRate
+}
+
+// HeartbeatInterval reports how frequently clients must send heartbeats to stay connected.
+func HeartbeatInterval() time.Duration {
+	return heartbeatInterval
+}
+
+// WriteWaitDuration reports the timeout applied to outbound websocket writes.
+func WriteWaitDuration() time.Duration {
+	return writeWait
+}

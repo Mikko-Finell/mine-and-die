@@ -59,6 +59,11 @@ func (cfg worldConfig) normalized() worldConfig {
 	return normalized
 }
 
+// Normalized returns a copy of the configuration with defaults applied.
+func (cfg worldConfig) Normalized() worldConfig {
+	return cfg.normalized()
+}
+
 // defaultWorldConfig enables every world feature and the default seed.
 func defaultWorldConfig() worldConfig {
 	return worldConfig{
