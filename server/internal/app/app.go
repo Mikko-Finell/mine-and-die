@@ -16,7 +16,7 @@ import (
 )
 
 func Run(ctx context.Context) error {
-	logger := log.Default()
+	logger := log.New(os.Stderr, "", log.LstdFlags)
 
 	logConfig := logging.DefaultConfig()
 	sinks := map[string]logging.Sink{
@@ -41,6 +41,8 @@ func Run(ctx context.Context) error {
 			logger.Printf("invalid KEYFRAME_INTERVAL_TICKS=%q: %v", raw, err)
 		}
 	}
+
+	hubCfg.Logger = logger
 
 	hub := server.NewHubWithConfig(hubCfg, router)
 	stop := make(chan struct{})

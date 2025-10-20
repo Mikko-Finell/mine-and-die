@@ -12,12 +12,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
-
 	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
 	simpaches "mine-and-die/server/internal/sim/patches"
+	"mine-and-die/server/internal/telemetry"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -64,12 +63,12 @@ func (h *Hub) engineDeps() sim.Deps {
 	return h.engine.Deps()
 }
 
-func (h *Hub) logger() *stdlog.Logger {
+func (h *Hub) logger() telemetry.Logger {
 	deps := h.engineDeps()
 	if deps.Logger != nil {
 		return deps.Logger
 	}
-	return stdlog.Default()
+	return telemetry.WrapLogger(stdlog.Default())
 }
 
 func (h *Hub) logf(format string, args ...any) {
@@ -98,25 +97,35 @@ func (h *Hub) attachTelemetryMetrics() {
 	h.telemetry.AttachMetrics(h.engineDeps().Metrics)
 }
 
+type subscriberConn interface {
+	Write([]byte) error
+	SetWriteDeadline(time.Time) error
+	Close() error
+}
+
 type subscriber struct {
-	conn           *websocket.Conn
+	conn           subscriberConn
 	mu             sync.Mutex
 	lastAck        atomic.Uint64
 	lastCommandSeq atomic.Uint64
 	limiter        keyframeRateLimiter
 }
 
-// WriteMessage sends a websocket message guarded by the subscriber's mutex and write deadline.
-func (s *subscriber) WriteMessage(messageType int, data []byte) error {
+// Write sends a websocket message guarded by the subscriber's mutex and write deadline.
+func (s *subscriber) Write(data []byte) error {
+	return s.writeWithDeadline(time.Now(), data)
+}
+
+func (s *subscriber) writeWithDeadline(base time.Time, data []byte) error {
 	if s == nil || s.conn == nil {
 		return errors.New("subscriber closed")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+	if err := s.conn.SetWriteDeadline(base.Add(writeWait)); err != nil {
 		return err
 	}
-	return s.conn.WriteMessage(messageType, data)
+	return s.conn.Write(data)
 }
 
 // LastCommandSeq returns the last command sequence acknowledged by the subscriber.
@@ -209,6 +218,7 @@ func (l *keyframeRateLimiter) allow(now time.Time) bool {
 
 type HubConfig struct {
 	KeyframeInterval int
+	Logger           *stdlog.Logger
 }
 
 func DefaultHubConfig() HubConfig {
@@ -249,8 +259,13 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 		}
 	}
 
+	baseLogger := hubCfg.Logger
+	if baseLogger == nil {
+		baseLogger = stdlog.Default()
+	}
+
 	engineDeps := sim.Deps{
-		Logger:  stdlog.Default(),
+		Logger:  telemetry.WrapLogger(baseLogger),
 		Metrics: metrics,
 		Clock:   clock,
 	}
@@ -539,7 +554,7 @@ func (h *Hub) CurrentConfig() worldConfig {
 }
 
 // Subscribe associates a WebSocket connection with an existing player.
-func (h *Hub) Subscribe(playerID string, conn *websocket.Conn) (*subscriber, []Player, []NPC, []GroundItem, bool) {
+func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []Player, []NPC, []GroundItem, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -637,7 +652,6 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
 
 // UpdateIntent stores the latest movement vector and facing for a player.
 func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (sim.Command, bool, string) {
-	var zero sim.Command
 	parsedFacing := sim.FacingDirection("")
 	if facing != "" {
 		if face, ok := parseFacing(facing); ok {
@@ -645,90 +659,89 @@ func (h *Hub) UpdateIntent(playerID string, dx, dy float64, facing string) (sim.
 		}
 	}
 
-	if !h.playerExists(playerID) {
-		return zero, false, commandRejectUnknownActor
-	}
-
 	cmd := sim.Command{
-		OriginTick: h.tick.Load(),
-		ActorID:    playerID,
-		Type:       sim.CommandMove,
-		IssuedAt:   h.now(),
+		Type: sim.CommandMove,
 		Move: &sim.MoveCommand{
 			DX:     dx,
 			DY:     dy,
 			Facing: parsedFacing,
 		},
 	}
-	if ok, reason := h.enqueueCommand(cmd); !ok {
-		return zero, false, reason
-	}
-	return cmd, true, ""
+
+	return h.HandleCommand(playerID, cmd)
 }
 
 // SetPlayerPath queues a command that asks the server to navigate the player toward a point.
 func (h *Hub) SetPlayerPath(playerID string, x, y float64) (sim.Command, bool, string) {
-	var zero sim.Command
-	if !h.playerExists(playerID) {
-		return zero, false, commandRejectUnknownActor
-	}
 	cmd := sim.Command{
-		OriginTick: h.tick.Load(),
-		ActorID:    playerID,
-		Type:       sim.CommandSetPath,
-		IssuedAt:   h.now(),
+		Type: sim.CommandSetPath,
 		Path: &sim.PathCommand{
 			TargetX: x,
 			TargetY: y,
 		},
 	}
-	if ok, reason := h.enqueueCommand(cmd); !ok {
-		return zero, false, reason
-	}
-	return cmd, true, ""
+
+	return h.HandleCommand(playerID, cmd)
 }
 
 // ClearPlayerPath stops any server-driven navigation for the player.
 func (h *Hub) ClearPlayerPath(playerID string) (sim.Command, bool, string) {
-	var zero sim.Command
-	if !h.playerExists(playerID) {
-		return zero, false, commandRejectUnknownActor
-	}
-	cmd := sim.Command{
-		OriginTick: h.tick.Load(),
-		ActorID:    playerID,
-		Type:       sim.CommandClearPath,
-		IssuedAt:   h.now(),
-	}
-	if ok, reason := h.enqueueCommand(cmd); !ok {
-		return zero, false, reason
-	}
-	return cmd, true, ""
+	cmd := sim.Command{Type: sim.CommandClearPath}
+
+	return h.HandleCommand(playerID, cmd)
 }
 
 // HandleAction queues an action command for processing on the next tick.
 func (h *Hub) HandleAction(playerID, action string) (sim.Command, bool, string) {
-	var zero sim.Command
-	switch action {
-	case effectTypeAttack, effectTypeFireball:
-	default:
-		return zero, false, commandRejectInvalidAction
-	}
-	if !h.playerExists(playerID) {
-		return zero, false, commandRejectUnknownActor
-	}
 	cmd := sim.Command{
-		OriginTick: h.tick.Load(),
-		ActorID:    playerID,
-		Type:       sim.CommandAction,
-		IssuedAt:   h.now(),
+		Type: sim.CommandAction,
 		Action: &sim.ActionCommand{
 			Name: action,
 		},
 	}
+
+	return h.HandleCommand(playerID, cmd)
+}
+
+// HandleCommand validates and stages a simulation command for execution on the next tick.
+func (h *Hub) HandleCommand(playerID string, cmd sim.Command) (sim.Command, bool, string) {
+	var zero sim.Command
+
+	switch cmd.Type {
+	case sim.CommandMove:
+		if cmd.Move == nil {
+			return zero, false, commandRejectInvalidAction
+		}
+	case sim.CommandSetPath:
+		if cmd.Path == nil {
+			return zero, false, commandRejectInvalidAction
+		}
+	case sim.CommandClearPath:
+	case sim.CommandAction:
+		if cmd.Action == nil {
+			return zero, false, commandRejectInvalidAction
+		}
+		switch cmd.Action.Name {
+		case effectTypeAttack, effectTypeFireball:
+		default:
+			return zero, false, commandRejectInvalidAction
+		}
+	default:
+		return zero, false, commandRejectInvalidAction
+	}
+
+	if !h.playerExists(playerID) {
+		return zero, false, commandRejectUnknownActor
+	}
+
+	cmd.ActorID = playerID
+	cmd.OriginTick = h.tick.Load()
+	cmd.IssuedAt = h.now()
+
 	if ok, reason := h.enqueueCommand(cmd); !ok {
 		return zero, false, reason
 	}
+
 	return cmd, true, ""
 }
 
@@ -1704,11 +1717,9 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 	}
 	h.mu.Unlock()
 
+	base := h.now()
 	for id, sub := range subs {
-		sub.mu.Lock()
-		sub.conn.SetWriteDeadline(h.now().Add(writeWait))
-		err := sub.conn.WriteMessage(websocket.TextMessage, data)
-		sub.mu.Unlock()
+		err := sub.writeWithDeadline(base, data)
 		if err != nil {
 			h.logf("failed to send update to %s: %v", id, err)
 			players, npcs := h.Disconnect(id)

@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"errors"
 	"log"
 	nethttp "net/http"
 	"time"
@@ -13,7 +14,7 @@ import (
 )
 
 type subscription interface {
-	WriteMessage(messageType int, data []byte) error
+	Write(data []byte) error
 	LastCommandSeq() uint64
 	StoreLastCommandSeq(seq uint64)
 }
@@ -26,6 +27,31 @@ type Handler struct {
 	hub      *server.Hub
 	logger   *log.Logger
 	upgrader websocket.Upgrader
+}
+
+type websocketConn struct {
+	conn *websocket.Conn
+}
+
+func (c *websocketConn) Write(data []byte) error {
+	if c == nil || c.conn == nil {
+		return errors.New("websocket closed")
+	}
+	return c.conn.WriteMessage(websocket.TextMessage, data)
+}
+
+func (c *websocketConn) SetWriteDeadline(t time.Time) error {
+	if c == nil || c.conn == nil {
+		return errors.New("websocket closed")
+	}
+	return c.conn.SetWriteDeadline(t)
+}
+
+func (c *websocketConn) Close() error {
+	if c == nil || c.conn == nil {
+		return nil
+	}
+	return c.conn.Close()
 }
 
 func NewHandler(hub *server.Hub, cfg HandlerConfig) *Handler {
@@ -62,7 +88,8 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 
-	sub, snapshotPlayers, snapshotNPCs, snapshotGroundItems, ok := h.hub.Subscribe(playerID, conn)
+	wrappedConn := &websocketConn{conn: conn}
+	sub, snapshotPlayers, snapshotNPCs, snapshotGroundItems, ok := h.hub.Subscribe(playerID, wrappedConn)
 	if !ok {
 		message := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unknown player")
 		conn.WriteMessage(websocket.CloseMessage, message)
@@ -83,7 +110,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 
-	if err := session.WriteMessage(websocket.TextMessage, data); err != nil {
+	if err := session.Write(data); err != nil {
 		players, npcs := h.hub.Disconnect(playerID)
 		if players != nil {
 			h.hub.ForceKeyframe()
@@ -124,7 +151,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				h.logger.Printf("failed to marshal response for %s: %v", playerID, err)
 				return true
 			}
-			if err := session.WriteMessage(websocket.TextMessage, data); err != nil {
+			if err := session.Write(data); err != nil {
 				players, npcs := h.hub.Disconnect(playerID)
 				if players != nil {
 					h.hub.ForceKeyframe()
@@ -182,48 +209,28 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				}
 			}
 
-			var (
-				queued   sim.Command
-				accepted bool
-				reason   string
-			)
-
-			switch command.Type {
-			case sim.CommandMove:
-				if command.Move == nil {
-					continue
-				}
-				queued, accepted, reason = h.hub.UpdateIntent(playerID, command.Move.DX, command.Move.DY, string(command.Move.Facing))
-				if !accepted && reason == server.CommandRejectUnknownActor {
-					h.logger.Printf("input ignored for unknown player %s", playerID)
-				}
-			case sim.CommandSetPath:
-				if command.Path == nil {
-					continue
-				}
-				queued, accepted, reason = h.hub.SetPlayerPath(playerID, command.Path.TargetX, command.Path.TargetY)
-				if !accepted && reason == server.CommandRejectUnknownActor {
-					h.logger.Printf("path request ignored for unknown player %s", playerID)
-				}
-			case sim.CommandClearPath:
-				queued, accepted, reason = h.hub.ClearPlayerPath(playerID)
-				if !accepted && reason == server.CommandRejectUnknownActor {
-					h.logger.Printf("cancelPath ignored for unknown player %s", playerID)
-				}
-			case sim.CommandAction:
-				if command.Action == nil {
-					continue
-				}
-				queued, accepted, reason = h.hub.HandleAction(playerID, command.Action.Name)
-				if !accepted {
+			queued, accepted, reason := h.hub.HandleCommand(playerID, command)
+			if !accepted {
+				switch command.Type {
+				case sim.CommandMove:
+					if reason == server.CommandRejectUnknownActor {
+						h.logger.Printf("input ignored for unknown player %s", playerID)
+					}
+				case sim.CommandSetPath:
+					if reason == server.CommandRejectUnknownActor {
+						h.logger.Printf("path request ignored for unknown player %s", playerID)
+					}
+				case sim.CommandClearPath:
+					if reason == server.CommandRejectUnknownActor {
+						h.logger.Printf("cancelPath ignored for unknown player %s", playerID)
+					}
+				case sim.CommandAction:
 					if reason == server.CommandRejectInvalidAction {
 						h.logger.Printf("unknown action %q from %s", command.Action.Name, playerID)
 					} else if reason == server.CommandRejectUnknownActor {
 						h.logger.Printf("action ignored for unknown player %s", playerID)
 					}
 				}
-			default:
-				continue
 			}
 
 			if normalizedSeq > 0 {
@@ -279,7 +286,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 					h.logger.Printf("failed to marshal keyframe for %s: %v", playerID, err)
 					continue
 				}
-				if err := session.WriteMessage(websocket.TextMessage, data); err != nil {
+				if err := session.Write(data); err != nil {
 					players, npcs := h.hub.Disconnect(playerID)
 					if players != nil {
 						h.hub.ForceKeyframe()
@@ -294,7 +301,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				h.logger.Printf("failed to marshal keyframe for %s: %v", playerID, err)
 				continue
 			}
-			if err := session.WriteMessage(websocket.TextMessage, data); err != nil {
+			if err := session.Write(data); err != nil {
 				players, npcs := h.hub.Disconnect(playerID)
 				if players != nil {
 					h.hub.ForceKeyframe()
