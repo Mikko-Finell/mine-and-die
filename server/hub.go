@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
 	simpaches "mine-and-die/server/internal/sim/patches"
 	"mine-and-die/server/logging"
@@ -733,8 +734,8 @@ func (h *Hub) HandleAction(playerID, action string) (sim.Command, bool, string) 
 }
 
 // HandleConsoleCommand executes a debug console command for the player.
-func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (consoleAckMessage, bool) {
-	ack := consoleAckMessage{Ver: ProtocolVersion, Type: "console_ack", Cmd: cmd}
+func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.ConsoleAck, bool) {
+	ack := proto.NewConsoleAck(cmd)
 	switch cmd {
 	case "drop_gold":
 		if qty <= 0 {

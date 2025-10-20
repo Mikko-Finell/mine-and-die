@@ -1,9 +1,13 @@
 package server
 
-import "time"
+import (
+	"time"
+
+	"mine-and-die/server/internal/net/proto"
+)
 
 const (
-	ProtocolVersion       = 1
+	ProtocolVersion       = proto.Version
 	writeWait             = 10 * time.Second
 	tickRate              = 15    // ticks per second (10–20 Hz)
 	moveSpeed             = 160.0 // pixels per second
