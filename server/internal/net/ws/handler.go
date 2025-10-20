@@ -172,8 +172,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			return writeMessage(proto.EncodeCommandReject(reject))
 		}
 
-		switch msg.Type {
-		case "input":
+		if command, ok := proto.ClientCommand(msg); ok {
 			if normalizedSeq > 0 {
 				if last := session.LastCommandSeq(); last > 0 && normalizedSeq <= last {
 					if !sendDuplicateAck() {
@@ -182,90 +181,54 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 					continue
 				}
 			}
-			cmd, ok, reason := h.hub.UpdateIntent(playerID, msg.DX, msg.DY, msg.Facing)
-			if normalizedSeq > 0 {
-				if ok {
-					if !sendCommandAck(cmd) {
-						return
-					}
-				} else {
-					retry := reason == server.CommandRejectQueueLimit
-					if !sendCommandReject(reason, retry) {
-						return
-					}
+
+			var (
+				queued   sim.Command
+				accepted bool
+				reason   string
+			)
+
+			switch command.Type {
+			case sim.CommandMove:
+				if command.Move == nil {
+					continue
 				}
-			}
-			if !ok {
-				if reason == server.CommandRejectUnknownActor {
+				queued, accepted, reason = h.hub.UpdateIntent(playerID, command.Move.DX, command.Move.DY, string(command.Move.Facing))
+				if !accepted && reason == server.CommandRejectUnknownActor {
 					h.logger.Printf("input ignored for unknown player %s", playerID)
 				}
-			}
-		case "path":
-			if normalizedSeq > 0 {
-				if last := session.LastCommandSeq(); last > 0 && normalizedSeq <= last {
-					if !sendDuplicateAck() {
-						return
-					}
+			case sim.CommandSetPath:
+				if command.Path == nil {
 					continue
 				}
-			}
-			cmd, ok, reason := h.hub.SetPlayerPath(playerID, msg.X, msg.Y)
-			if normalizedSeq > 0 {
-				if ok {
-					if !sendCommandAck(cmd) {
-						return
-					}
-				} else {
-					retry := reason == server.CommandRejectQueueLimit
-					if !sendCommandReject(reason, retry) {
-						return
-					}
+				queued, accepted, reason = h.hub.SetPlayerPath(playerID, command.Path.TargetX, command.Path.TargetY)
+				if !accepted && reason == server.CommandRejectUnknownActor {
+					h.logger.Printf("path request ignored for unknown player %s", playerID)
 				}
-			}
-			if !ok && reason == server.CommandRejectUnknownActor {
-				h.logger.Printf("path request ignored for unknown player %s", playerID)
-			}
-		case "cancelPath":
-			if normalizedSeq > 0 {
-				if last := session.LastCommandSeq(); last > 0 && normalizedSeq <= last {
-					if !sendDuplicateAck() {
-						return
-					}
+			case sim.CommandClearPath:
+				queued, accepted, reason = h.hub.ClearPlayerPath(playerID)
+				if !accepted && reason == server.CommandRejectUnknownActor {
+					h.logger.Printf("cancelPath ignored for unknown player %s", playerID)
+				}
+			case sim.CommandAction:
+				if command.Action == nil {
 					continue
 				}
-			}
-			cmd, ok, reason := h.hub.ClearPlayerPath(playerID)
-			if normalizedSeq > 0 {
-				if ok {
-					if !sendCommandAck(cmd) {
-						return
-					}
-				} else {
-					retry := reason == server.CommandRejectQueueLimit
-					if !sendCommandReject(reason, retry) {
-						return
+				queued, accepted, reason = h.hub.HandleAction(playerID, command.Action.Name)
+				if !accepted {
+					if reason == server.CommandRejectInvalidAction {
+						h.logger.Printf("unknown action %q from %s", command.Action.Name, playerID)
+					} else if reason == server.CommandRejectUnknownActor {
+						h.logger.Printf("action ignored for unknown player %s", playerID)
 					}
 				}
-			}
-			if !ok && reason == server.CommandRejectUnknownActor {
-				h.logger.Printf("cancelPath ignored for unknown player %s", playerID)
-			}
-		case "action":
-			if msg.Action == "" {
+			default:
 				continue
 			}
+
 			if normalizedSeq > 0 {
-				if last := session.LastCommandSeq(); last > 0 && normalizedSeq <= last {
-					if !sendDuplicateAck() {
-						return
-					}
-					continue
-				}
-			}
-			cmd, ok, reason := h.hub.HandleAction(playerID, msg.Action)
-			if normalizedSeq > 0 {
-				if ok {
-					if !sendCommandAck(cmd) {
+				if accepted {
+					if !sendCommandAck(queued) {
 						return
 					}
 				} else {
@@ -275,14 +238,11 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 					}
 				}
 			}
-			if !ok {
-				if reason == server.CommandRejectInvalidAction {
-					h.logger.Printf("unknown action %q from %s", msg.Action, playerID)
-				} else if reason == server.CommandRejectUnknownActor {
-					h.logger.Printf("action ignored for unknown player %s", playerID)
-				}
-			}
-		case "heartbeat":
+			continue
+		}
+
+		switch msg.Type {
+		case proto.TypeHeartbeat:
 			now := time.Now()
 			rtt, ok := h.hub.UpdateHeartbeat(playerID, now, msg.SentAt)
 			if !ok {
@@ -297,7 +257,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			if !writeMessage(proto.EncodeHeartbeat(heartbeat)) {
 				return
 			}
-		case "console":
+		case proto.TypeConsole:
 			ack, handled := h.hub.HandleConsoleCommand(playerID, msg.Cmd, msg.Qty)
 			if !handled {
 				continue
@@ -305,7 +265,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			if !writeMessage(proto.EncodeConsoleAck(ack)) {
 				return
 			}
-		case "keyframeRequest":
+		case proto.TypeKeyframeReq:
 			if msg.KeyframeSeq == nil {
 				continue
 			}
@@ -342,13 +302,16 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				}
 				return
 			}
-		case "keyframeCadence":
+		case proto.TypeKeyframeCadence:
 			requested := 0
 			if msg.KeyframeInterval != nil {
 				requested = *msg.KeyframeInterval
 			}
 			applied := h.hub.SetKeyframeInterval(requested)
 			h.logger.Printf("[keyframe] player=%s requested cadence=%d", playerID, applied)
+		case proto.TypeInput, proto.TypePath, proto.TypeCancelPath, proto.TypeAction:
+			// Command messages without valid payloads were already ignored.
+			continue
 		default:
 			h.logger.Printf("unknown message type %q from %s", msg.Type, playerID)
 		}

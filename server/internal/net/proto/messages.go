@@ -1,6 +1,10 @@
 package proto
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"mine-and-die/server/internal/sim"
+)
 
 const (
 	// Version tracks the wire-protocol revision expected by clients.
@@ -16,6 +20,18 @@ const (
 	typeKeyframeNack  = "keyframeNack"
 )
 
+// Client message type identifiers.
+const (
+	TypeInput           = "input"
+	TypePath            = "path"
+	TypeCancelPath      = "cancelPath"
+	TypeAction          = "action"
+	TypeHeartbeat       = "heartbeat"
+	TypeConsole         = "console"
+	TypeKeyframeReq     = "keyframeRequest"
+	TypeKeyframeCadence = "keyframeCadence"
+)
+
 // Exported aliases for outbound message type identifiers.
 const (
 	TypeState        = typeState
@@ -29,6 +45,15 @@ type stateSnapshot interface {
 
 // EncodeStateSnapshot renders a state snapshot payload.
 func EncodeStateSnapshot(msg stateSnapshot) ([]byte, error) {
+	return json.Marshal(msg)
+}
+
+type joinResponse interface {
+	ProtoJoinResponse()
+}
+
+// EncodeJoinResponse renders a join response payload.
+func EncodeJoinResponse(msg joinResponse) ([]byte, error) {
 	return json.Marshal(msg)
 }
 
@@ -73,6 +98,54 @@ type ClientMessage struct {
 func DecodeClientMessage(payload []byte) (ClientMessage, error) {
 	var msg ClientMessage
 	return msg, json.Unmarshal(payload, &msg)
+}
+
+// ClientCommand captures the structured simulation command carried by a
+// websocket message. Origin metadata is populated by the hub when the command
+// is accepted for processing.
+func ClientCommand(msg ClientMessage) (sim.Command, bool) {
+	switch msg.Type {
+	case TypeInput:
+		return sim.Command{
+			Type: sim.CommandMove,
+			Move: &sim.MoveCommand{
+				DX:     msg.DX,
+				DY:     msg.DY,
+				Facing: parseFacing(msg.Facing),
+			},
+		}, true
+	case TypePath:
+		return sim.Command{
+			Type: sim.CommandSetPath,
+			Path: &sim.PathCommand{
+				TargetX: msg.X,
+				TargetY: msg.Y,
+			},
+		}, true
+	case TypeCancelPath:
+		return sim.Command{Type: sim.CommandClearPath}, true
+	case TypeAction:
+		if msg.Action == "" {
+			return sim.Command{}, false
+		}
+		return sim.Command{
+			Type: sim.CommandAction,
+			Action: &sim.ActionCommand{
+				Name: msg.Action,
+			},
+		}, true
+	default:
+		return sim.Command{}, false
+	}
+}
+
+func parseFacing(value string) sim.FacingDirection {
+	switch sim.FacingDirection(value) {
+	case sim.FacingUp, sim.FacingDown, sim.FacingLeft, sim.FacingRight:
+		return sim.FacingDirection(value)
+	default:
+		return ""
+	}
 }
 
 // CommandAck describes an acknowledgement of a processed command.

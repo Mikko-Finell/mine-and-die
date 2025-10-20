@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mine-and-die/server"
+	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/net/ws"
 )
 
@@ -167,11 +168,56 @@ func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
 		}
 
 		join := hub.Join()
-		data, err := json.Marshal(join)
+		data, err := proto.EncodeJoinResponse(join)
 		if err != nil {
 			httpError(w, "failed to encode", nethttp.StatusInternalServerError)
 			return
 		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+	})
+
+	mux.HandleFunc("/resubscribe", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		if r.Method != nethttp.MethodPost {
+			httpError(w, "method not allowed", nethttp.StatusMethodNotAllowed)
+			return
+		}
+
+		type resubscribeRequest struct {
+			Players         []server.Player        `json:"players"`
+			NPCs            []server.NPC           `json:"npcs"`
+			EffectTriggers  []server.EffectTrigger `json:"effectTriggers"`
+			GroundItems     []server.GroundItem    `json:"groundItems"`
+			DrainPatches    *bool                  `json:"drainPatches"`
+			IncludeSnapshot *bool                  `json:"includeSnapshot"`
+		}
+
+		var req resubscribeRequest
+		if r.Body != nil {
+			defer r.Body.Close()
+			decoder := json.NewDecoder(r.Body)
+			if err := decoder.Decode(&req); err != nil && err != io.EOF {
+				httpError(w, "invalid payload", nethttp.StatusBadRequest)
+				return
+			}
+		}
+
+		drainPatches := false
+		if req.DrainPatches != nil {
+			drainPatches = *req.DrainPatches
+		}
+
+		includeSnapshot := true
+		if req.IncludeSnapshot != nil {
+			includeSnapshot = *req.IncludeSnapshot
+		}
+
+		data, _, err := hub.MarshalState(req.Players, req.NPCs, req.EffectTriggers, req.GroundItems, drainPatches, includeSnapshot)
+		if err != nil {
+			httpError(w, "failed to encode", nethttp.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(data)
 	})
