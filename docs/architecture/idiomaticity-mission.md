@@ -297,7 +297,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the navigation grid helpers (`path_utils.go`) into `internal/world`, exposing wrappers in the legacy world so pathfinding continues to compile without depending on server internals.
 - [x] Move the player path-following helpers (`player_path.go`) into `internal/world`, exposing adapters on the legacy world so intent updates sit alongside the navigation grid.
 - [x] Move the NPC path-following helpers (`npc_path.go`) into `internal/world`, exposing adapters on the legacy world so NPC intent updates share the centralized navigation logic.
-- [ ] Move the path navigation helpers (`computePathFrom`, `dynamicBlockerPositions`, and `convertWorldPath` in `path_navigation.go`) into `internal/world`, exposing thin wrappers on the legacy world that delegate to the centralized pathfinding package.
+- [x] Move the path navigation helpers (`computePathFrom`, `dynamicBlockerPositions`, and `convertWorldPath` in `path_navigation.go`) into `internal/world`, exposing thin wrappers on the legacy world that delegate to the centralized pathfinding package.
+- [ ] Move the actor movement helpers (`moveActorWithObstacles`, `resolveAxisMoveX`, `resolveAxisMoveY`, and `resolveObstaclePenetration` in `movement.go`) into `internal/world`, exposing thin wrappers on the legacy world that delegate to the centralized movement helpers.
 
 - [x] Keep the tick loop in `sim/engine`:
 

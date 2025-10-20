@@ -506,6 +506,55 @@ func ComputePathFrom(req ComputePathRequest) ([]Vec2, Vec2, bool) {
 	return bestPath, bestGoal, true
 }
 
+// PathActor captures the minimal information required to treat an entity as a
+// navigation blocker when computing a path.
+type PathActor struct {
+	ID       string
+	Position Vec2
+}
+
+// DynamicBlockerPositions converts the provided actor set into positions while
+// skipping the ignored actor identifier. The returned slice mirrors the legacy
+// world helper by producing nil when no blockers remain after filtering.
+func DynamicBlockerPositions(actors []PathActor, ignoreID string) []Vec2 {
+	if len(actors) == 0 {
+		return nil
+	}
+	positions := make([]Vec2, 0, len(actors))
+	for _, actor := range actors {
+		if actor.ID == ignoreID {
+			continue
+		}
+		positions = append(positions, actor.Position)
+	}
+	if len(positions) == 0 {
+		return nil
+	}
+	return positions
+}
+
+// ConvertPath clones the provided path so callers receive a slice with
+// independent backing storage, matching the historical server helper.
+func ConvertPath(path []Vec2) []Vec2 {
+	if len(path) == 0 {
+		return nil
+	}
+	cloned := make([]Vec2, len(path))
+	copy(cloned, path)
+	return cloned
+}
+
+// ComputeNavigationPath mirrors the legacy world helper that assembled a path
+// request from the active world snapshot, including dynamic blockers.
+func ComputeNavigationPath(req ComputePathRequest, actors []PathActor, ignoreID string) ([]Vec2, Vec2, bool) {
+	req.Blockers = DynamicBlockerPositions(actors, ignoreID)
+	path, goal, ok := ComputePathFrom(req)
+	if !ok {
+		return nil, Vec2{}, false
+	}
+	return ConvertPath(path), goal, true
+}
+
 // NavigationGrid exposes a minimal view of the legacy navigation grid for
 // callers that need to inspect the generated layout (primarily tests during the
 // migration).
