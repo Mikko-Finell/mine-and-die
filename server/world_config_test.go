@@ -10,7 +10,7 @@ func TestWorldConfigNormalizedPreservesAggregateNPCCount(t *testing.T) {
 		RatCount:    0,
 	}
 
-	normalized := cfg.normalized()
+	normalized := cfg.Normalized()
 
 	if normalized.NPCCount != 7 {
 		t.Fatalf("expected NPCCount to remain 7, got %d", normalized.NPCCount)
@@ -25,7 +25,7 @@ func TestWorldConfigNormalizedTotalsSpeciesCountsWhenProvided(t *testing.T) {
 		RatCount:    4,
 	}
 
-	normalized := cfg.normalized()
+	normalized := cfg.Normalized()
 
 	if normalized.NPCCount != 7 {
 		t.Fatalf("expected NPCCount to match species sum (7), got %d", normalized.NPCCount)

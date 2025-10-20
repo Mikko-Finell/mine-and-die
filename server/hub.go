@@ -257,7 +257,7 @@ func newHub(pubs ...logging.Publisher) *Hub {
 }
 
 func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
-	cfg := defaultWorldConfig().normalized()
+	cfg := defaultWorldConfig().Normalized()
 	var pub logging.Publisher
 	if len(pubs) > 0 && pubs[0] != nil {
 		pub = pubs[0]
@@ -592,7 +592,7 @@ func (h *Hub) Join() joinResponse {
 
 // ResetWorld replaces the current world with a freshly generated instance.
 func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
-	cfg = cfg.normalized()
+	cfg = cfg.Normalized()
 	now := h.now()
 
 	if h.engine != nil {
