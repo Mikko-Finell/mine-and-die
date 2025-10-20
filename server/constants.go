@@ -14,27 +14,27 @@ const (
 	moveSpeed             = 160.0 // pixels per second
 	worldWidth            = worldpkg.DefaultWidth
 	worldHeight           = worldpkg.DefaultHeight
-	defaultSpawnX         = worldWidth / 2
-	defaultSpawnY         = worldHeight / 2
-	playerHalf            = 14.0
+	defaultSpawnX         = worldpkg.DefaultSpawnX
+	defaultSpawnY         = worldpkg.DefaultSpawnY
+	playerHalf            = worldpkg.PlayerHalf
 	lavaDamagePerSecond   = 20.0
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
 	defaultObstacleCount  = 0
-	obstacleMinWidth      = 60.0
-	obstacleMaxWidth      = 140.0
-	obstacleMinHeight     = 60.0
-	obstacleMaxHeight     = 140.0
-	obstacleSpawnMargin   = 100.0
-	playerSpawnSafeRadius = 120.0
+	obstacleMinWidth      = worldpkg.ObstacleMinWidth
+	obstacleMaxWidth      = worldpkg.ObstacleMaxWidth
+	obstacleMinHeight     = worldpkg.ObstacleMinHeight
+	obstacleMaxHeight     = worldpkg.ObstacleMaxHeight
+	obstacleSpawnMargin   = worldpkg.ObstacleSpawnMargin
+	playerSpawnSafeRadius = worldpkg.PlayerSpawnSafeRadius
 	defaultGoldMineCount  = 0
 	defaultGoblinCount    = 0
 	defaultRatCount       = 0
 	defaultNPCCount       = defaultGoblinCount + defaultRatCount
 	defaultLavaCount      = 0
 	tileSize              = 40.0
-	goldOreMinSize        = 56.0
-	goldOreMaxSize        = 96.0
+	goldOreMinSize        = worldpkg.GoldOreMinSize
+	goldOreMaxSize        = worldpkg.GoldOreMaxSize
 )
 
 // TickRate reports the server tick frequency in hertz.
