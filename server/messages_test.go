@@ -12,6 +12,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	"mine-and-die/server/internal/net/proto"
 )
 
 type failingPayload struct{}
@@ -81,7 +82,7 @@ func TestJoinResponseAdvertisesHashOnly(t *testing.T) {
 		t.Fatalf("expected join response to include catalog hash %q, got %q", effectcontract.EffectCatalogHash, join.EffectCatalogHash)
 	}
 
-	data, err := json.Marshal(join)
+	data, err := proto.EncodeJoinResponse(join)
 	if err != nil {
 		t.Fatalf("failed to encode join response: %v", err)
 	}

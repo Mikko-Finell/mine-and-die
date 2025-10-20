@@ -17,6 +17,8 @@ type joinResponse struct {
 	EffectCatalogHash string          `json:"effectCatalogHash"`
 }
 
+func (joinResponse) ProtoJoinResponse() {}
+
 type stateMessage struct {
 	Ver              int                                `json:"ver"`
 	Type             string                             `json:"type"`
