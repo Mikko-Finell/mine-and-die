@@ -1722,9 +1722,8 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 	}
 	h.mu.Unlock()
 
-	base := h.now()
 	for id, sub := range subs {
-		err := sub.writeWithDeadline(base, data)
+		err := sub.writeWithDeadline(h.now(), data)
 		if err != nil {
 			h.logf("failed to send update to %s: %v", id, err)
 			players, npcs := h.Disconnect(id)
