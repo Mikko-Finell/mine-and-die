@@ -8,6 +8,7 @@ import (
 
 	effectcontract "mine-and-die/server/effects/contract"
 	internaleffects "mine-and-die/server/internal/effects"
+	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingstatuseffects "mine-and-die/server/logging/status_effects"
 )
@@ -35,6 +36,26 @@ type statusEffectInstance struct {
 	LastTick       time.Time
 	attachedEffect *effectState
 }
+
+func (inst *statusEffectInstance) AttachEffect(value any) {
+	if inst == nil {
+		return
+	}
+	eff, ok := value.(*effectState)
+	if !ok || eff == nil {
+		return
+	}
+	inst.attachedEffect = eff
+}
+
+func (inst *statusEffectInstance) DefinitionType() string {
+	if inst == nil || inst.Definition == nil {
+		return ""
+	}
+	return string(inst.Definition.Type)
+}
+
+var _ worldpkg.StatusEffectInstance = (*statusEffectInstance)(nil)
 
 const (
 	StatusEffectBurning StatusEffectType = "burning"
