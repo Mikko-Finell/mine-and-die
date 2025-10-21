@@ -354,7 +354,7 @@ func (w *World) SetGroundItemPosition(item *groundItemState, x, y float64) {
 		return
 	}
 
-	item.version++
+	item.Version++
 
 	w.appendPatch(PatchGroundItemPos, item.ID, GroundItemPosPayload{X: item.X, Y: item.Y})
 }
@@ -369,7 +369,7 @@ func (w *World) SetGroundItemQuantity(item *groundItemState, qty int) {
 		return
 	}
 
-	item.version++
+	item.Version++
 
 	w.appendPatch(PatchGroundItemQty, item.ID, GroundItemQtyPayload{Qty: item.Qty})
 }
