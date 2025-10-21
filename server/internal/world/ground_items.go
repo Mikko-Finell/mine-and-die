@@ -226,6 +226,42 @@ func RemoveGroundItem(
 	}
 }
 
+// NearestGroundItem finds the closest stack of the requested type relative to the actor.
+// Returns nil when no matching stack is available.
+func NearestGroundItem(
+	items map[string]*GroundItemState,
+	actor *Actor,
+	itemType string,
+) (*GroundItemState, float64) {
+	if len(items) == 0 || actor == nil || itemType == "" {
+		return nil, 0
+	}
+
+	var best *GroundItemState
+	bestDistance := math.MaxFloat64
+
+	for _, item := range items {
+		if item == nil || item.Qty <= 0 || item.Type != itemType {
+			continue
+		}
+
+		dx := item.X - actor.X
+		dy := item.Y - actor.Y
+		distance := math.Hypot(dx, dy)
+
+		if distance < bestDistance {
+			bestDistance = distance
+			best = item
+		}
+	}
+
+	if best == nil {
+		return nil, 0
+	}
+
+	return best, bestDistance
+}
+
 // SetGroundItemPosition updates the ground item's coordinates when they change.
 // Returns true when the mutation was applied.
 func SetGroundItemPosition(x, y *float64, newX, newY float64) bool {
@@ -288,6 +324,280 @@ func GroundItemsSnapshot(items map[string]*GroundItemState) []GroundItem {
 		return make([]GroundItem, 0)
 	}
 	return snapshot
+}
+
+const goldItemType = "gold"
+
+const (
+	// PickupFailureReasonNotFound indicates no matching stack could be collected.
+	PickupFailureReasonNotFound = "not_found"
+	// PickupFailureReasonOutOfRange indicates the nearest stack was beyond the allowed radius.
+	PickupFailureReasonOutOfRange = "out_of_range"
+	// PickupFailureReasonInventoryError indicates the inventory mutation failed.
+	PickupFailureReasonInventoryError = "inventory_error"
+)
+
+// PickupResult captures the outcome of a successful ground item pickup.
+type PickupResult struct {
+	StackID  string
+	Quantity int
+	Distance float64
+}
+
+// PickupFailure describes why a pickup attempt failed.
+type PickupFailure struct {
+	Reason   string
+	StackID  string
+	Distance float64
+	Err      string
+}
+
+// PickupNearestItem moves the nearest stack of the requested type into the inventory via the
+// provided callback when it falls within the allowed radius. The remove callback is invoked once
+// the transfer succeeds or when the stack quantity is already depleted. Returns a PickupResult on
+// success or a PickupFailure when the attempt cannot be completed.
+func PickupNearestItem(
+	items map[string]*GroundItemState,
+	actor *Actor,
+	itemType string,
+	maxDistance float64,
+	addToInventory func(ItemStack) error,
+	removeItem func(*GroundItemState),
+) (*PickupResult, *PickupFailure) {
+	if len(items) == 0 || actor == nil || itemType == "" || addToInventory == nil || removeItem == nil {
+		return nil, &PickupFailure{Reason: PickupFailureReasonNotFound}
+	}
+
+	var item *GroundItemState
+	bestDistance := math.MaxFloat64
+	var depleted *GroundItemState
+	depletedDistance := math.MaxFloat64
+
+	for _, candidate := range items {
+		if candidate == nil || candidate.Type != itemType {
+			continue
+		}
+
+		dx := candidate.X - actor.X
+		dy := candidate.Y - actor.Y
+		distance := math.Hypot(dx, dy)
+
+		if candidate.Qty <= 0 {
+			if distance < depletedDistance {
+				depleted = candidate
+				depletedDistance = distance
+			}
+			continue
+		}
+
+		if distance < bestDistance {
+			item = candidate
+			bestDistance = distance
+		}
+	}
+
+	if item == nil {
+		if depleted != nil {
+			removeItem(depleted)
+			return nil, &PickupFailure{Reason: PickupFailureReasonNotFound, StackID: depleted.ID}
+		}
+		return nil, &PickupFailure{Reason: PickupFailureReasonNotFound}
+	}
+
+	if maxDistance >= 0 && bestDistance > maxDistance {
+		return nil, &PickupFailure{Reason: PickupFailureReasonOutOfRange, StackID: item.ID, Distance: bestDistance}
+	}
+
+	qty := item.Qty
+	if qty <= 0 {
+		removeItem(item)
+		return nil, &PickupFailure{Reason: PickupFailureReasonNotFound, StackID: item.ID}
+	}
+
+	stack := ItemStack{Type: item.Type, FungibilityKey: item.FungibilityKey, Quantity: qty}
+	if err := addToInventory(stack); err != nil {
+		failure := &PickupFailure{
+			Reason:   PickupFailureReasonInventoryError,
+			StackID:  item.ID,
+			Distance: bestDistance,
+		}
+		if err != nil {
+			failure.Err = err.Error()
+		}
+		return nil, failure
+	}
+
+	removeItem(item)
+	return &PickupResult{StackID: item.ID, Quantity: qty, Distance: bestDistance}, nil
+}
+
+// DropAllGold removes all gold stacks from the actor and places them on the ground.
+// Returns the total quantity dropped.
+func DropAllGold(
+	items map[string]*GroundItemState,
+	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
+	nextID *uint64,
+	actor *Actor,
+	reason string,
+	cfg ScatterConfig,
+	randomAngle func() float64,
+	randomDistance func(min, max float64) float64,
+	ensureKey func(*ItemStack) bool,
+	setQuantity func(*GroundItemState, int),
+	setPosition func(*GroundItemState, float64, float64),
+	logDrop func(*Actor, ItemStack, string, string),
+	removeStacks func(string) []ItemStack,
+) int {
+	return DropAllItemsOfType(
+		items,
+		itemsByTile,
+		nextID,
+		actor,
+		goldItemType,
+		reason,
+		cfg,
+		randomAngle,
+		randomDistance,
+		ensureKey,
+		setQuantity,
+		setPosition,
+		logDrop,
+		removeStacks,
+	)
+}
+
+// DropAllItemsOfType removes all stacks of the requested item type from the actor and
+// places them on the ground. Returns the total quantity dropped.
+func DropAllItemsOfType(
+	items map[string]*GroundItemState,
+	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
+	nextID *uint64,
+	actor *Actor,
+	itemType string,
+	reason string,
+	cfg ScatterConfig,
+	randomAngle func() float64,
+	randomDistance func(min, max float64) float64,
+	ensureKey func(*ItemStack) bool,
+	setQuantity func(*GroundItemState, int),
+	setPosition func(*GroundItemState, float64, float64),
+	logDrop func(*Actor, ItemStack, string, string),
+	removeStacks func(string) []ItemStack,
+) int {
+	if actor == nil || itemType == "" || removeStacks == nil {
+		return 0
+	}
+
+	stacks := removeStacks(itemType)
+	return dropStacks(
+		items,
+		itemsByTile,
+		nextID,
+		actor,
+		stacks,
+		reason,
+		cfg,
+		randomAngle,
+		randomDistance,
+		ensureKey,
+		setQuantity,
+		setPosition,
+		logDrop,
+	)
+}
+
+// DropAllInventory drains the actor's inventory and equipment, placing the collected
+// stacks on the ground. Returns the total quantity dropped.
+func DropAllInventory(
+	items map[string]*GroundItemState,
+	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
+	nextID *uint64,
+	actor *Actor,
+	reason string,
+	cfg ScatterConfig,
+	randomAngle func() float64,
+	randomDistance func(min, max float64) float64,
+	ensureKey func(*ItemStack) bool,
+	setQuantity func(*GroundItemState, int),
+	setPosition func(*GroundItemState, float64, float64),
+	logDrop func(*Actor, ItemStack, string, string),
+	drainInventory func() []ItemStack,
+	drainEquipment func() []ItemStack,
+) int {
+	if actor == nil {
+		return 0
+	}
+
+	var stacks []ItemStack
+	if drainInventory != nil {
+		stacks = append(stacks, drainInventory()...)
+	}
+	if drainEquipment != nil {
+		stacks = append(stacks, drainEquipment()...)
+	}
+
+	return dropStacks(
+		items,
+		itemsByTile,
+		nextID,
+		actor,
+		stacks,
+		reason,
+		cfg,
+		randomAngle,
+		randomDistance,
+		ensureKey,
+		setQuantity,
+		setPosition,
+		logDrop,
+	)
+}
+
+func dropStacks(
+	items map[string]*GroundItemState,
+	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
+	nextID *uint64,
+	actor *Actor,
+	stacks []ItemStack,
+	reason string,
+	cfg ScatterConfig,
+	randomAngle func() float64,
+	randomDistance func(min, max float64) float64,
+	ensureKey func(*ItemStack) bool,
+	setQuantity func(*GroundItemState, int),
+	setPosition func(*GroundItemState, float64, float64),
+	logDrop func(*Actor, ItemStack, string, string),
+) int {
+	if items == nil || itemsByTile == nil || nextID == nil || actor == nil {
+		return 0
+	}
+	if len(stacks) == 0 {
+		return 0
+	}
+
+	total := 0
+	for _, stack := range stacks {
+		if stack.Type == "" || stack.Quantity <= 0 {
+			continue
+		}
+		UpsertGroundItem(
+			items,
+			itemsByTile,
+			nextID,
+			actor,
+			stack,
+			reason,
+			cfg,
+			randomAngle,
+			randomDistance,
+			ensureKey,
+			setQuantity,
+			setPosition,
+			logDrop,
+		)
+		total += stack.Quantity
+	}
+	return total
 }
 
 func clampFloat(value, min, max float64) float64 {

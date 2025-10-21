@@ -310,7 +310,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the ground item mutation helpers (`SetGroundItemPosition` and `SetGroundItemQuantity` in `world_mutators.go`) into `internal/world`, exposing wrappers on the legacy world so ground item patch emission shares the centralized mutation utilities.
 - [x] Move the ground item lifecycle helpers (`scatterGroundItemPosition`, `upsertGroundItem`, and `removeGroundItem` in `ground_items.go`) into `internal/world`, exposing wrappers on the legacy world so item placement and cleanup share the centralized ground item utilities.
 - [x] Move the ground item snapshot helpers (`groundItemsSnapshot`, `GroundItemsSnapshot`) and the shared `GroundItem` state definition into `internal/world`, adding legacy adapters so broadcast assembly keeps using the centralized structures.
-- [ ] Move the ground item proximity helper (`nearestGroundItem`) into `internal/world`, exposing wrappers on the legacy world so pickup targeting relies on the centralized search utilities.
+- [x] Move the ground item proximity helper (`nearestGroundItem`) into `internal/world`, exposing wrappers on the legacy world so pickup targeting relies on the centralized search utilities.
+- [x] Move the ground item drop helpers (`dropAllGold`, `dropAllInventory`, and `dropAllItemsOfType`) into `internal/world`, exposing wrappers on the legacy world so drop flows live alongside the centralized ground item utilities.
+- [x] Move the gold pickup console flow (`pickup_gold` handling in `hub.go`) into `internal/world`, exposing thin wrappers on the hub/world so pickup validation and transfers sit with the centralized ground item utilities.
+- [ ] Move the gold drop console flow (`drop_gold` handling in `hub.go`) into `internal/world`, exposing thin wrappers on the hub/world so inventory removal and ground placement rely on the centralized ground item utilities.
 
 - [x] Keep the tick loop in `sim/engine`:
 

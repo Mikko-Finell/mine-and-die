@@ -925,71 +925,59 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 			return ack, true
 		}
 		actorRef := h.world.entityRef(playerID)
-		item, distance := h.world.nearestGroundItem(&player.actorState, ItemTypeGold)
-		if item == nil {
+		result, failure := h.world.pickupNearestGold(&player.actorState)
+		if failure != nil {
+			failureReason := failure.Reason
+			failureStackID := failure.StackID
+			failureDistance := failure.Distance
+			errMsg := failure.Err
 			h.mu.Unlock()
+
 			ack.Status = "error"
-			ack.Reason = "not_found"
+			ack.Reason = failureReason
+
+			var metadata map[string]any
+			switch failureReason {
+			case worldpkg.PickupFailureReasonOutOfRange:
+				meta := make(map[string]any)
+				if failureStackID != "" {
+					meta["stackId"] = failureStackID
+				}
+				if failureDistance > 0 {
+					meta["distance"] = failureDistance
+				}
+				if len(meta) > 0 {
+					metadata = meta
+				}
+			case worldpkg.PickupFailureReasonInventoryError:
+				meta := make(map[string]any)
+				if errMsg != "" {
+					meta["error"] = errMsg
+				}
+				if failureStackID != "" {
+					meta["stackId"] = failureStackID
+				}
+				if len(meta) > 0 {
+					metadata = meta
+				}
+			default:
+				if failureStackID != "" {
+					metadata = map[string]any{"stackId": failureStackID}
+				}
+			}
+
 			loggingeconomy.GoldPickupFailed(
 				context.Background(),
 				h.publisher,
 				h.tick.Load(),
 				actorRef,
-				loggingeconomy.GoldPickupFailedPayload{Reason: "not_found"},
-				nil,
+				loggingeconomy.GoldPickupFailedPayload{Reason: failureReason},
+				metadata,
 			)
 			return ack, true
 		}
-		if distance > groundPickupRadius {
-			h.mu.Unlock()
-			ack.Status = "error"
-			ack.Reason = "out_of_range"
-			loggingeconomy.GoldPickupFailed(
-				context.Background(),
-				h.publisher,
-				h.tick.Load(),
-				actorRef,
-				loggingeconomy.GoldPickupFailedPayload{Reason: "out_of_range"},
-				map[string]any{"stackId": item.ID, "distance": distance},
-			)
-			return ack, true
-		}
-		qty := item.Qty
-		stackID := item.ID
-		if qty <= 0 {
-			h.world.removeGroundItem(item)
-			h.mu.Unlock()
-			ack.Status = "error"
-			ack.Reason = "not_found"
-			loggingeconomy.GoldPickupFailed(
-				context.Background(),
-				h.publisher,
-				h.tick.Load(),
-				actorRef,
-				loggingeconomy.GoldPickupFailedPayload{Reason: "not_found"},
-				map[string]any{"stackId": item.ID},
-			)
-			return ack, true
-		}
-		err := h.world.MutateInventory(playerID, func(inv *Inventory) error {
-			_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: qty})
-			return addErr
-		})
-		if err != nil {
-			h.mu.Unlock()
-			ack.Status = "error"
-			ack.Reason = "inventory_error"
-			loggingeconomy.GoldPickupFailed(
-				context.Background(),
-				h.publisher,
-				h.tick.Load(),
-				actorRef,
-				loggingeconomy.GoldPickupFailedPayload{Reason: "inventory_error"},
-				map[string]any{"error": err.Error(), "stackId": item.ID},
-			)
-			return ack, true
-		}
-		h.world.removeGroundItem(item)
+		qty := result.Quantity
+		stackID := result.StackID
 		groundItems := h.legacyGroundItemsSnapshotLocked()
 		h.mu.Unlock()
 
