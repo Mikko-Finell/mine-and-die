@@ -3,10 +3,10 @@ package server
 import (
 	"math"
 
+	worldpkg "mine-and-die/server/internal/world"
 	stats "mine-and-die/server/stats"
 )
 
-const positionEpsilon = 1e-6
 const healthEpsilon = 1e-6
 const intentEpsilon = 1e-6
 
@@ -36,7 +36,7 @@ func (w *World) setActorPosition(actor *actorState, version *uint64, entityID st
 		return
 	}
 
-	if positionsEqual(actor.X, actor.Y, x, y) {
+	if worldpkg.PositionsEqual(actor.X, actor.Y, x, y) {
 		return
 	}
 
@@ -157,11 +157,6 @@ func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityI
 	incrementVersion(version)
 	w.appendPatch(kind, entityID, EquipmentPayload{Slots: cloneEquipmentSlots(actor.Equipment.Slots)})
 	return nil
-}
-
-// positionsEqual reports whether two coordinate pairs are effectively the same.
-func positionsEqual(ax, ay, bx, by float64) bool {
-	return math.Abs(ax-bx) <= positionEpsilon && math.Abs(ay-by) <= positionEpsilon
 }
 
 // SetPosition updates a player's position, bumps the version, and records a patch.
@@ -332,7 +327,7 @@ func (w *World) SetEffectPosition(eff *effectState, x, y float64) {
 		return
 	}
 
-	if positionsEqual(eff.X, eff.Y, x, y) {
+	if worldpkg.PositionsEqual(eff.X, eff.Y, x, y) {
 		return
 	}
 
@@ -381,7 +376,7 @@ func (w *World) SetGroundItemPosition(item *groundItemState, x, y float64) {
 		return
 	}
 
-	if positionsEqual(item.X, item.Y, x, y) {
+	if worldpkg.PositionsEqual(item.X, item.Y, x, y) {
 		return
 	}
 
