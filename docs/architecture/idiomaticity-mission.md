@@ -316,7 +316,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the gold drop console flow (`drop_gold` handling in `hub.go`) into `internal/world`, exposing thin wrappers on the hub/world so inventory removal and ground placement rely on the centralized ground item utilities.
 
 - [x] Start carving out the journal subsystem by moving the `Journal` struct and `newJournal` constructor from `server/patches.go` into a new `internal/journal` package, exposing legacy adapters so existing callers continue to compile.
-- [ ] Add focused tests for `internal/journal` that cover patch/effect cloning and resync policy signals so the new package's API stays locked.
+- [x] Add focused tests for `internal/journal` that cover patch/effect cloning and resync policy signals so the new package's API stays locked.
+
+- [ ] Begin carving out `internal/effects` by moving the effect manager state and lifecycle helpers from `server/effects_manager.go` into the new package, leaving legacy wrappers for existing call sites.
 
 - [x] Keep the tick loop in `sim/engine`:
 
@@ -325,7 +327,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [ ] Extract subpackages:
 
   - [x] Carve out `world/` for tiles, spatial index, RNG/time, and map helpers.
-  - [ ] Carve out `journal/` for write-barriers and diff recording.
+  - [x] Carve out `journal/` for write-barriers and diff recording.
   - [ ] Carve out `effects/` for authoritative visual events.
   - [ ] Carve out `combat/` for hit and damage rules.
   - [ ] Carve out `stats/` for actor stats.
