@@ -335,7 +335,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the status visual lifetime helpers (`extendAttachedEffect` and `expireAttachedEffect`) into `internal/world` so contract-managed visuals share centralized duration bookkeeping.
 - [x] Teach the contract burning visual hook in `effects_manager.go` to call the new `internal/world` lifetime helpers when extending or ending the attached effect so contract-managed visuals reuse the centralized bookkeeping.
 - [x] Extract the contract burning visual hook into `internal/effects`, introducing a configuration struct so the server wrapper only wires actor lookup and lifetime helper adapters.
-- [ ] Move the contract burning damage hook into `internal/effects`, reusing the shared actor lookup seam so lava damage continues to read status metadata without touching legacy world state.
+- [x] Move the contract burning damage hook into `internal/effects`, reusing the shared actor lookup seam so lava damage continues to read status metadata without touching legacy world state.
+- [x] Move the legacy burning damage helper (`applyBurningDamage` and its wrapper) into `internal/world`, exposing a thin adapter on `World` so the new effects hook applies lava damage through the centralized world package.
+- [x] Move `NewBurningTickIntent` into `internal/effects`, returning a contract intent helper that reuses the new world burning damage API so lava damage queues share the centralized implementation.
+- [ ] Move `NewBloodSplatterIntent` into `internal/effects`, exposing an intent helper that reuses the shared quantization utilities so world callers stop depending on server-level geometry helpers when queuing blood decals.
 
 - [x] Keep the tick loop in `sim/engine`:
 

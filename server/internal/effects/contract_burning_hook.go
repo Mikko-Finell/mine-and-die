@@ -21,10 +21,11 @@ type ContractStatusInstance struct {
 // contract-managed burning visual hook. Position fields mirror the legacy
 // world actor coordinates so the visual can follow the target deterministically.
 type ContractStatusActor struct {
-	ID             string
-	X              float64
-	Y              float64
-	StatusInstance *ContractStatusInstance
+	ID                 string
+	X                  float64
+	Y                  float64
+	StatusInstance     *ContractStatusInstance
+	ApplyBurningDamage func(ownerID string, status StatusEffectType, delta float64, now time.Time)
 }
 
 // ContractBurningVisualHookConfig bundles the dependencies required to keep the
@@ -52,7 +53,7 @@ func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) HookSet {
 				return
 			}
 
-			actor := lookupContractStatusActor(cfg, instance)
+			actor := lookupContractStatusActor(cfg.LookupActor, instance)
 			effect := loadContractStatusVisual(rt, instance.ID)
 
 			if effect == nil && actor != nil {
@@ -90,7 +91,7 @@ func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) HookSet {
 				return
 			}
 
-			actor := lookupContractStatusActor(cfg, instance)
+			actor := lookupContractStatusActor(cfg.LookupActor, instance)
 			effect := loadContractStatusVisual(rt, instance.ID)
 
 			if effect == nil && actor != nil {
@@ -135,8 +136,8 @@ func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) HookSet {
 	}
 }
 
-func lookupContractStatusActor(cfg ContractBurningVisualHookConfig, instance *effectcontract.EffectInstance) *ContractStatusActor {
-	if instance == nil || cfg.LookupActor == nil {
+func lookupContractStatusActor(lookup func(string) *ContractStatusActor, instance *effectcontract.EffectInstance) *ContractStatusActor {
+	if instance == nil || lookup == nil {
 		return nil
 	}
 	targetID := instance.FollowActorID
@@ -146,7 +147,7 @@ func lookupContractStatusActor(cfg ContractBurningVisualHookConfig, instance *ef
 	if targetID == "" {
 		return nil
 	}
-	return cfg.LookupActor(targetID)
+	return lookup(targetID)
 }
 
 func attachAndExtendStatusVisual(cfg ContractBurningVisualHookConfig, inst *ContractStatusInstance, effect *State) {

@@ -267,6 +267,32 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			}
 		},
 	}
+	lookupContractActor := func(actorID string) *internaleffects.ContractStatusActor {
+		if world == nil || actorID == "" {
+			return nil
+		}
+		actor := world.actorByID(actorID)
+		if actor == nil {
+			return nil
+		}
+		contractActor := &internaleffects.ContractStatusActor{
+			ID: actor.ID,
+			X:  actor.X,
+			Y:  actor.Y,
+			ApplyBurningDamage: func(ownerID string, status internaleffects.StatusEffectType, delta float64, now time.Time) {
+				world.applyBurningDamage(ownerID, actor, StatusEffectType(status), delta, now)
+			},
+		}
+		if actor.statusEffects != nil {
+			if inst := actor.statusEffects[StatusEffectBurning]; inst != nil {
+				contractActor.StatusInstance = &internaleffects.ContractStatusInstance{
+					Instance:  inst,
+					ExpiresAt: func() time.Time { return inst.ExpiresAt },
+				}
+			}
+		}
+		return contractActor
+	}
 	hooks[effectcontract.HookStatusBurningVisual] = internaleffects.ContractBurningVisualHook(internaleffects.ContractBurningVisualHookConfig{
 		StatusEffect:     internaleffects.StatusEffectType(StatusEffectBurning),
 		DefaultLifetime:  burningStatusEffectDuration,
@@ -274,29 +300,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		TileSize:         tileSize,
 		DefaultFootprint: playerHalf * 2,
 		TickRate:         tickRate,
-		LookupActor: func(actorID string) *internaleffects.ContractStatusActor {
-			if world == nil || actorID == "" {
-				return nil
-			}
-			actor := world.actorByID(actorID)
-			if actor == nil {
-				return nil
-			}
-			contractActor := &internaleffects.ContractStatusActor{
-				ID: actor.ID,
-				X:  actor.X,
-				Y:  actor.Y,
-			}
-			if actor.statusEffects != nil {
-				if inst := actor.statusEffects[StatusEffectBurning]; inst != nil {
-					contractActor.StatusInstance = &internaleffects.ContractStatusInstance{
-						Instance:  inst,
-						ExpiresAt: func() time.Time { return inst.ExpiresAt },
-					}
-				}
-			}
-			return contractActor
-		},
+		LookupActor:      lookupContractActor,
 		ExtendLifetime: func(fields worldpkg.StatusEffectLifetimeFields, expiresAt time.Time) {
 			worldpkg.ExtendStatusEffectLifetime(fields, expiresAt)
 		},
@@ -310,40 +314,12 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			world.recordEffectSpawn(effectType, category)
 		},
 	})
-	hooks[effectcontract.HookStatusBurningDamage] = internaleffects.HookSet{
-		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if instance == nil || world == nil {
-				return
-			}
-			targetID := instance.FollowActorID
-			if targetID == "" {
-				targetID = instance.DeliveryState.AttachedActorID
-			}
-			if targetID == "" {
-				return
-			}
-			actor := world.actorByID(targetID)
-			if actor == nil {
-				return
-			}
-			delta := 0.0
-			if instance.BehaviorState.Extra != nil {
-				if value, ok := instance.BehaviorState.Extra["healthDelta"]; ok {
-					delta = float64(value)
-				}
-			}
-			if delta == 0 {
-				delta = -lavaDamagePerSecond * burningTickInterval.Seconds()
-			}
-			statusType := StatusEffectBurning
-			if actor.statusEffects != nil {
-				if inst, ok := actor.statusEffects[StatusEffectBurning]; ok && inst != nil && inst.Definition != nil {
-					statusType = inst.Definition.Type
-				}
-			}
-			world.applyBurningDamage(instance.OwnerActorID, actor, statusType, delta, now)
-		},
-	}
+	hooks[effectcontract.HookStatusBurningDamage] = internaleffects.ContractBurningDamageHook(internaleffects.ContractBurningDamageHookConfig{
+		StatusEffect:    internaleffects.StatusEffectType(StatusEffectBurning),
+		DamagePerSecond: lavaDamagePerSecond,
+		TickInterval:    burningTickInterval,
+		LookupActor:     lookupContractActor,
+	})
 	hooks[effectcontract.HookVisualBloodSplatter] = internaleffects.HookSet{
 		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			ensureBloodDecalInstance(rt, world, instance, now)
