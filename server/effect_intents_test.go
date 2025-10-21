@@ -156,45 +156,6 @@ func TestNewStatusVisualIntent(t *testing.T) {
 	}
 }
 
-func TestNewBurningTickIntent(t *testing.T) {
-	target := &actorState{Actor: Actor{ID: "player-burning", X: 160, Y: 200}}
-
-	intent, ok := NewBurningTickIntent(target, "lava-2", -4)
-	if !ok {
-		t.Fatal("expected burning tick intent to be constructed")
-	}
-	if intent.EntryID != effectTypeBurningTick {
-		t.Fatalf("expected EntryID %q, got %q", effectTypeBurningTick, intent.EntryID)
-	}
-	if intent.TypeID != effectTypeBurningTick {
-		t.Fatalf("expected TypeID %q, got %q", effectTypeBurningTick, intent.TypeID)
-	}
-	if intent.SourceActorID != "lava-2" {
-		t.Fatalf("expected SourceActorID 'lava-2', got %q", intent.SourceActorID)
-	}
-	if intent.TargetActorID != target.ID {
-		t.Fatalf("expected TargetActorID %q, got %q", target.ID, intent.TargetActorID)
-	}
-	if intent.DurationTicks != 1 {
-		t.Fatalf("expected DurationTicks 1, got %d", intent.DurationTicks)
-	}
-	expectedFootprint := quantizeWorldCoord(playerHalf * 2)
-	if intent.Geometry.Width != expectedFootprint || intent.Geometry.Height != expectedFootprint {
-		t.Fatalf("expected footprint %d, got width=%d height=%d", expectedFootprint, intent.Geometry.Width, intent.Geometry.Height)
-	}
-	if intent.Params["healthDelta"] != -4 {
-		t.Fatalf("expected healthDelta -4, got %d", intent.Params["healthDelta"])
-	}
-
-	fallback, ok := NewBurningTickIntent(target, "", -4)
-	if !ok {
-		t.Fatal("expected fallback burning tick intent to be constructed")
-	}
-	if fallback.SourceActorID != target.ID {
-		t.Fatalf("expected fallback SourceActorID %q, got %q", target.ID, fallback.SourceActorID)
-	}
-}
-
 func TestNewBloodSplatterIntent(t *testing.T) {
 	target := &actorState{Actor: Actor{ID: "npc-5", X: 200, Y: 260}}
 

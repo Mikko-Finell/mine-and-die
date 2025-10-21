@@ -260,16 +260,26 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 	if owner == "" {
 		owner = actor.ID
 	}
-	delta := -amount
-	if w.effectManager != nil {
-		if intent, ok := NewBurningTickIntent(actor, owner, delta); ok {
-			w.effectManager.EnqueueIntent(intent)
-		}
-		return
-	}
 	statusType := StatusEffectBurning
 	if inst != nil && inst.Definition != nil {
 		statusType = inst.Definition.Type
+	}
+	delta := -amount
+	if w.effectManager != nil {
+		if intent, ok := internaleffects.NewBurningTickIntent(internaleffects.BurningTickIntentConfig{
+			EffectType:    effectTypeBurningTick,
+			TargetActorID: actor.ID,
+			SourceActorID: owner,
+			StatusEffect:  internaleffects.StatusEffectType(statusType),
+			Delta:         delta,
+			TileSize:      tileSize,
+			Footprint:     playerHalf * 2,
+			Now:           now,
+			CurrentTick:   w.currentTick,
+		}); ok {
+			w.effectManager.EnqueueIntent(intent)
+		}
+		return
 	}
 	w.applyBurningDamage(owner, actor, statusType, delta, now)
 }
@@ -278,24 +288,33 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 	if w == nil || actor == nil {
 		return
 	}
-	if delta >= 0 || math.IsNaN(delta) || math.IsInf(delta, 0) {
-		return
-	}
-	eff := &effectState{
-		Type:               effectTypeBurningTick,
-		Owner:              owner,
-		Start:              now.UnixMilli(),
-		Params:             map[string]float64{"healthDelta": delta},
-		Instance:           effectcontract.EffectInstance{DefinitionID: effectTypeBurningTick, OwnerActorID: owner, StartTick: effectcontract.Tick(int64(w.currentTick))},
-		StatusEffect:       status,
-		TelemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
-	}
-	if eff.Owner == "" {
-		eff.Owner = actor.ID
-		eff.Instance.OwnerActorID = actor.ID
-	}
-	w.applyEffectHitActor(eff, actor, now)
-	w.flushEffectTelemetry(eff)
+
+	worldpkg.ApplyBurningDamage(worldpkg.ApplyBurningDamageConfig{
+		EffectType:   effectTypeBurningTick,
+		OwnerID:      owner,
+		ActorID:      actor.ID,
+		StatusEffect: string(status),
+		Delta:        delta,
+		Now:          now,
+		CurrentTick:  w.currentTick,
+		Apply: func(effect worldpkg.BurningDamageEffect) {
+			eff := &effectState{
+				Type:   effect.EffectType,
+				Owner:  effect.OwnerID,
+				Start:  effect.StartMillis,
+				Params: map[string]float64{"healthDelta": effect.HealthDelta},
+				Instance: effectcontract.EffectInstance{
+					DefinitionID: effect.EffectType,
+					OwnerActorID: effect.OwnerID,
+					StartTick:    effect.SpawnTick,
+				},
+				StatusEffect:       StatusEffectType(effect.StatusEffect),
+				TelemetrySpawnTick: effect.SpawnTick,
+			}
+			w.applyEffectHitActor(eff, actor, now)
+			w.flushEffectTelemetry(eff)
+		},
+	})
 }
 
 func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, lifetime time.Duration, now time.Time) *effectState {
