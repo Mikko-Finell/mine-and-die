@@ -329,7 +329,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the contract projectile spawn helper into `internal/effects` so the manager owns contract effect instantiation without routing through the legacy world wrapper.
 - [x] Move the contract blood decal spawn helper into `internal/effects` so the manager owns blood decal instantiation without relying on the legacy world wrapper.
 - [x] Move the contract blood decal sync helper into `internal/effects` so the manager updates contract instances without depending on the legacy world wrapper.
-- [ ] Move the contract status visual sync helper into `internal/effects` so the manager updates burning visuals without depending on the legacy world wrapper.
+- [x] Move the contract status visual sync helper into `internal/effects` so the manager updates burning visuals without depending on the legacy world wrapper.
+- [x] Move the contract status visual spawn helper into `internal/effects` so the manager can instantiate burning visuals without relying on the legacy world wrapper.
+- [x] Move the status visual attachment helper (`attachVisualToStatusEffect`) into `internal/world` so the effect manager can link burning visuals to actor status state without mutating legacy structs directly.
+- [ ] Move the status visual lifetime helpers (`extendAttachedEffect` and `expireAttachedEffect`) into `internal/world` so contract-managed visuals share centralized duration bookkeeping.
 
 - [x] Keep the tick loop in `sim/engine`:
 

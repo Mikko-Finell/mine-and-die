@@ -7,6 +7,7 @@ import (
 	effectcatalog "mine-and-die/server/effects/catalog"
 	effectcontract "mine-and-die/server/effects/contract"
 	internaleffects "mine-and-die/server/internal/effects"
+	worldpkg "mine-and-die/server/internal/world"
 )
 
 type EffectManager struct {
@@ -170,6 +171,24 @@ func (a projectileOwnerAdapter) Position() (float64, float64) {
 	return a.state.X, a.state.Y
 }
 
+type statusEffectVisualAdapter struct {
+	state *effectState
+}
+
+func (a statusEffectVisualAdapter) SetStatusEffect(value string) {
+	if a.state == nil {
+		return
+	}
+	a.state.StatusEffect = StatusEffectType(value)
+}
+
+func (a statusEffectVisualAdapter) EffectState() any {
+	if a.state == nil {
+		return nil
+	}
+	return a.state
+}
+
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
 	hooks := make(map[string]internaleffects.HookSet)
 	hooks[effectcontract.HookMeleeSpawn] = internaleffects.HookSet{
@@ -288,11 +307,28 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 				if lifetime <= 0 {
 					lifetime = burningStatusEffectDuration
 				}
-				effect = spawnStatusVisualFromInstance(world, instance, actor, lifetime, now)
+				target := &internaleffects.StatusVisualTarget{ID: actor.ID, X: actor.X, Y: actor.Y}
+				effect = internaleffects.SpawnContractStatusVisualFromInstance(internaleffects.StatusVisualSpawnConfig{
+					Instance:         instance,
+					Target:           target,
+					Lifetime:         lifetime,
+					Now:              now,
+					DefaultFootprint: playerHalf * 2,
+					FallbackLifetime: burningTickInterval,
+					StatusEffect:     internaleffects.StatusEffectType(StatusEffectBurning),
+				})
 				if effect == nil {
 					return
 				}
-				attachVisualToStatusEffect(actor, effect)
+				if actor.statusEffects != nil {
+					if inst := actor.statusEffects[StatusEffectBurning]; inst != nil {
+						worldpkg.AttachStatusEffectVisual(worldpkg.AttachStatusEffectVisualConfig{
+							Instance:    inst,
+							Effect:      statusEffectVisualAdapter{state: effect},
+							DefaultType: string(StatusEffectBurning),
+						})
+					}
+				}
 				if registerWorldEffect(rt, effect) {
 					world.recordEffectSpawn(effect.Type, "status-effect")
 				} else {
@@ -301,7 +337,17 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 				}
 				storeWorldEffect(rt, instance.ID, effect)
 			}
-			syncStatusVisualInstance(instance, actor, effect)
+			var actorPos *internaleffects.ActorPosition
+			if actor != nil {
+				actorPos = &internaleffects.ActorPosition{X: actor.X, Y: actor.Y}
+			}
+			internaleffects.SyncContractStatusVisualInstance(internaleffects.StatusVisualSyncConfig{
+				Instance:         instance,
+				Effect:           effect,
+				Actor:            actorPos,
+				TileSize:         tileSize,
+				DefaultFootprint: playerHalf * 2,
+			})
 		},
 		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			if instance == nil || world == nil {
@@ -318,9 +364,26 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 				if lifetime <= 0 {
 					lifetime = burningStatusEffectDuration
 				}
-				effect = spawnStatusVisualFromInstance(world, instance, actor, lifetime, now)
+				target := &internaleffects.StatusVisualTarget{ID: actor.ID, X: actor.X, Y: actor.Y}
+				effect = internaleffects.SpawnContractStatusVisualFromInstance(internaleffects.StatusVisualSpawnConfig{
+					Instance:         instance,
+					Target:           target,
+					Lifetime:         lifetime,
+					Now:              now,
+					DefaultFootprint: playerHalf * 2,
+					FallbackLifetime: burningTickInterval,
+					StatusEffect:     internaleffects.StatusEffectType(StatusEffectBurning),
+				})
 				if effect != nil {
-					attachVisualToStatusEffect(actor, effect)
+					if actor.statusEffects != nil {
+						if inst := actor.statusEffects[StatusEffectBurning]; inst != nil {
+							worldpkg.AttachStatusEffectVisual(worldpkg.AttachStatusEffectVisualConfig{
+								Instance:    inst,
+								Effect:      statusEffectVisualAdapter{state: effect},
+								DefaultType: string(StatusEffectBurning),
+							})
+						}
+					}
 					if registerWorldEffect(rt, effect) {
 						world.recordEffectSpawn(effect.Type, "status-effect")
 					} else {
@@ -333,7 +396,17 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			if effect == nil {
 				return
 			}
-			syncStatusVisualInstance(instance, actor, effect)
+			var actorPos *internaleffects.ActorPosition
+			if actor != nil {
+				actorPos = &internaleffects.ActorPosition{X: actor.X, Y: actor.Y}
+			}
+			internaleffects.SyncContractStatusVisualInstance(internaleffects.StatusVisualSyncConfig{
+				Instance:         instance,
+				Effect:           effect,
+				Actor:            actorPos,
+				TileSize:         tileSize,
+				DefaultFootprint: playerHalf * 2,
+			})
 			if actor != nil && actor.statusEffects != nil {
 				if inst, ok := actor.statusEffects[StatusEffectBurning]; ok && inst != nil {
 					remaining := inst.ExpiresAt.Sub(now)
@@ -501,79 +574,6 @@ func syncProjectileInstance(instance *effectcontract.EffectInstance, owner *acto
 	}
 	instance.DeliveryState.Motion = motion
 	instance.DeliveryState.Geometry = geometry
-}
-
-func syncStatusVisualInstance(instance *effectcontract.EffectInstance, actor *actorState, effect *effectState) {
-	if instance == nil || effect == nil {
-		return
-	}
-	geometry := instance.DeliveryState.Geometry
-	width := effect.Width
-	if width <= 0 {
-		width = playerHalf * 2
-	}
-	height := effect.Height
-	if height <= 0 {
-		height = playerHalf * 2
-	}
-	geometry.Width = quantizeWorldCoord(width)
-	geometry.Height = quantizeWorldCoord(height)
-	if actor != nil {
-		geometry.OffsetX = quantizeWorldCoord(centerX(effect) - actor.X)
-		geometry.OffsetY = quantizeWorldCoord(centerY(effect) - actor.Y)
-	}
-	centerXVal := centerX(effect)
-	centerYVal := centerY(effect)
-	if actor != nil {
-		centerXVal = actor.X
-		centerYVal = actor.Y
-	}
-	motion := instance.DeliveryState.Motion
-	motion.PositionX = quantizeWorldCoord(centerXVal)
-	motion.PositionY = quantizeWorldCoord(centerYVal)
-	motion.VelocityX = 0
-	motion.VelocityY = 0
-	instance.DeliveryState.Motion = motion
-	instance.DeliveryState.Geometry = geometry
-}
-
-func spawnStatusVisualFromInstance(world *World, instance *effectcontract.EffectInstance, actor *actorState, lifetime time.Duration, now time.Time) *effectState {
-	if world == nil || instance == nil || actor == nil {
-		return nil
-	}
-	if lifetime <= 0 {
-		lifetime = burningTickInterval
-	}
-	effect := world.attachStatusEffectVisual(actor, instance.DefinitionID, lifetime, now)
-	if effect == nil {
-		return nil
-	}
-	effect.ContractManaged = true
-	effect.ID = instance.ID
-	effect.Instance = *instance
-	effect.StatusEffect = StatusEffectBurning
-	effect.FollowActorID = actor.ID
-	effect.TelemetrySpawnTick = instance.StartTick
-	return effect
-}
-
-func attachVisualToStatusEffect(actor *actorState, effect *effectState) {
-	if actor == nil || effect == nil {
-		return
-	}
-	if actor.statusEffects == nil {
-		return
-	}
-	inst, ok := actor.statusEffects[StatusEffectBurning]
-	if !ok || inst == nil {
-		return
-	}
-	inst.attachedEffect = effect
-	if inst.Definition != nil {
-		effect.StatusEffect = inst.Definition.Type
-	} else {
-		effect.StatusEffect = StatusEffectBurning
-	}
 }
 
 func ensureBloodDecalInstance(rt internaleffects.Runtime, world *World, instance *effectcontract.EffectInstance, now time.Time) *effectState {
