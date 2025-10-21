@@ -582,7 +582,17 @@ func ensureBloodDecalInstance(rt internaleffects.Runtime, world *World, instance
 	}
 	effect := loadWorldEffect(rt, instance.ID)
 	if effect == nil {
-		effect = world.spawnContractBloodDecalFromInstance(instance, now)
+		world.pruneEffects(now)
+		effect = internaleffects.SpawnContractBloodDecalFromInstance(internaleffects.BloodDecalSpawnConfig{
+			Instance:        instance,
+			Now:             now,
+			TileSize:        tileSize,
+			TickRate:        tickRate,
+			DefaultSize:     playerHalf * 2,
+			DefaultDuration: bloodSplatterDuration,
+			Params:          newBloodSplatterParams(),
+			Colors:          bloodSplatterColors(),
+		})
 		if effect == nil {
 			return nil
 		}
@@ -594,39 +604,14 @@ func ensureBloodDecalInstance(rt internaleffects.Runtime, world *World, instance
 		}
 		storeWorldEffect(rt, instance.ID, effect)
 	}
-	syncBloodDecalInstance(instance, effect)
+	internaleffects.SyncContractBloodDecalInstance(internaleffects.BloodDecalSyncConfig{
+		Instance:    instance,
+		Effect:      effect,
+		TileSize:    tileSize,
+		DefaultSize: playerHalf * 2,
+		Colors:      bloodSplatterColors(),
+	})
 	return effect
-}
-
-func syncBloodDecalInstance(instance *effectcontract.EffectInstance, effect *effectState) {
-	if instance == nil || effect == nil {
-		return
-	}
-	geometry := instance.DeliveryState.Geometry
-	width := effect.Width
-	if width <= 0 {
-		width = playerHalf * 2
-	}
-	height := effect.Height
-	if height <= 0 {
-		height = playerHalf * 2
-	}
-	geometry.Width = quantizeWorldCoord(width)
-	geometry.Height = quantizeWorldCoord(height)
-	instance.DeliveryState.Geometry = geometry
-	if instance.BehaviorState.Extra == nil {
-		instance.BehaviorState.Extra = make(map[string]int)
-	}
-	if instance.Params == nil {
-		instance.Params = make(map[string]int)
-	}
-	centerX := quantizeWorldCoord(centerX(effect))
-	centerY := quantizeWorldCoord(centerY(effect))
-	instance.BehaviorState.Extra["centerX"] = centerX
-	instance.BehaviorState.Extra["centerY"] = centerY
-	instance.Params["centerX"] = centerX
-	instance.Params["centerY"] = centerY
-	instance.Colors = bloodSplatterColors()
 }
 
 func runtimeRegistry(rt internaleffects.Runtime) internaleffects.Registry {

@@ -258,6 +258,17 @@ func TicksToDuration(ticks int, tickRate int) time.Duration {
 	return time.Duration(seconds * float64(time.Second))
 }
 
+// QuantizeWorldCoord converts a world-space measurement into the quantized
+// coordinate system used by effect contracts. World units are normalized to tile
+// units before quantization so callers can round-trip geometry using the shared
+// tile size.
+func QuantizeWorldCoord(value float64, tileSize float64) int {
+	if tileSize <= 0 {
+		tileSize = 40
+	}
+	return quantizeCoord(value / tileSize)
+}
+
 // DequantizeWorldCoord converts quantized geometry coordinates back into world
 // units using the provided tile size.
 func DequantizeWorldCoord(value int, tileSize float64) float64 {
@@ -265,6 +276,10 @@ func DequantizeWorldCoord(value int, tileSize float64) float64 {
 		tileSize = 40
 	}
 	return dequantizeCoord(value) * tileSize
+}
+
+func quantizeCoord(value float64) int {
+	return int(math.Round(value * effectcontract.CoordScale))
 }
 
 func dequantizeCoord(value int) float64 {

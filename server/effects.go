@@ -562,61 +562,6 @@ func (w *World) triggerFireball(actorID string, now time.Time) bool {
 	return w.effectManager != nil
 }
 
-func (w *World) spawnContractBloodDecalFromInstance(instance *effectcontract.EffectInstance, now time.Time) *effectState {
-	if w == nil || instance == nil {
-		return nil
-	}
-	params := instance.BehaviorState.Extra
-	if len(params) == 0 {
-		return nil
-	}
-	centerXVal, okX := params["centerX"]
-	centerYVal, okY := params["centerY"]
-	if !okX || !okY {
-		return nil
-	}
-	centerX := internaleffects.DequantizeWorldCoord(centerXVal, tileSize)
-	centerY := internaleffects.DequantizeWorldCoord(centerYVal, tileSize)
-	width := internaleffects.DequantizeWorldCoord(instance.DeliveryState.Geometry.Width, tileSize)
-	if width <= 0 {
-		width = playerHalf * 2
-	}
-	height := internaleffects.DequantizeWorldCoord(instance.DeliveryState.Geometry.Height, tileSize)
-	if height <= 0 {
-		height = playerHalf * 2
-	}
-	lifetime := internaleffects.TicksToDuration(instance.BehaviorState.TicksRemaining, tickRate)
-	if lifetime <= 0 {
-		lifetime = bloodSplatterDuration
-	}
-	if lifetime <= 0 {
-		lifetime = time.Millisecond
-	}
-	effectType := instance.DefinitionID
-	if effectType == "" {
-		effectType = effectTypeBloodSplatter
-	}
-	w.pruneEffects(now)
-	effect := &effectState{
-		ID:                 instance.ID,
-		Type:               effectType,
-		Owner:              instance.OwnerActorID,
-		Start:              now.UnixMilli(),
-		Duration:           lifetime.Milliseconds(),
-		X:                  centerX - width/2,
-		Y:                  centerY - height/2,
-		Width:              width,
-		Height:             height,
-		Params:             newBloodSplatterParams(),
-		Colors:             bloodSplatterColors(),
-		Instance:           *instance,
-		ExpiresAt:          now.Add(lifetime),
-		ContractManaged:    true,
-		TelemetrySpawnTick: instance.StartTick,
-	}
-	return effect
-}
-
 func ownerHalfExtent(owner *actorState) float64 {
 	if owner == nil {
 		return playerHalf
