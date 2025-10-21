@@ -1,42 +1,17 @@
 package server
 
 import (
-	"fmt"
 	"math"
 	"time"
 
 	effectcatalog "mine-and-die/server/effects/catalog"
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 )
 
-type endDecision struct {
-	shouldEnd bool
-	reason    effectcontract.EndReason
-}
-
-// EffectManager owns the contract-driven effect pipeline. It translates queued
-// intents into EffectInstance records, emits lifecycle events for transport,
-// and mirrors authoritative world bookkeeping for gameplay resolution.
 type EffectManager struct {
-	intentQueue       []effectcontract.EffectIntent
-	instances         map[string]*effectcontract.EffectInstance
-	definitions       map[string]*effectcontract.EffectDefinition
-	catalog           *effectcatalog.Resolver
-	seqByInstance     map[string]effectcontract.Seq
-	hooks             map[string]effectHookSet
-	worldEffects      map[string]*effectState
-	totalEnqueued     int
-	totalDrained      int
-	lastTickProcessed effectcontract.Tick
-	nextInstanceID    uint64
-	world             *World
-}
-
-type effectHookFunc func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time)
-
-type effectHookSet struct {
-	OnSpawn effectHookFunc
-	OnTick  effectHookFunc
+	core  *internaleffects.Manager
+	world *World
 }
 
 func newEffectManager(world *World) *EffectManager {
@@ -54,469 +29,195 @@ func newEffectManager(world *World) *EffectManager {
 		resolver = r
 	}
 
-	return &EffectManager{
-		intentQueue:   make([]effectcontract.EffectIntent, 0),
-		instances:     make(map[string]*effectcontract.EffectInstance),
-		definitions:   definitions,
-		catalog:       resolver,
-		hooks:         defaultEffectHookRegistry(world),
-		worldEffects:  make(map[string]*effectState),
-		seqByInstance: make(map[string]effectcontract.Seq),
-		world:         world,
-	}
+	hooks := defaultEffectHookRegistry(world)
+	manager := internaleffects.NewManager(internaleffects.ManagerConfig{
+		Definitions: definitions,
+		Catalog:     resolver,
+		Hooks:       hooks,
+		OwnerMissing: func(actorID string) bool {
+			if actorID == "" || world == nil {
+				return false
+			}
+			if _, ok := world.players[actorID]; ok {
+				return false
+			}
+			if _, ok := world.npcs[actorID]; ok {
+				return false
+			}
+			return true
+		},
+	})
+
+	return &EffectManager{core: manager, world: world}
 }
 
-// EnqueueIntent stages an EffectIntent for processing on the next tick.
+func (m *EffectManager) Definitions() map[string]*effectcontract.EffectDefinition {
+	if m == nil || m.core == nil {
+		return nil
+	}
+	return m.core.Definitions()
+}
+
+func (m *EffectManager) Hooks() map[string]internaleffects.HookSet {
+	if m == nil || m.core == nil {
+		return nil
+	}
+	return m.core.Hooks()
+}
+
+func (m *EffectManager) Instances() map[string]*effectcontract.EffectInstance {
+	if m == nil || m.core == nil {
+		return nil
+	}
+	return m.core.Instances()
+}
+
+func (m *EffectManager) Catalog() *effectcatalog.Resolver {
+	if m == nil || m.core == nil {
+		return nil
+	}
+	return m.core.Catalog()
+}
+
+func (m *EffectManager) TotalEnqueued() int {
+	if m == nil || m.core == nil {
+		return 0
+	}
+	return m.core.TotalEnqueued()
+}
+
+func (m *EffectManager) TotalDrained() int {
+	if m == nil || m.core == nil {
+		return 0
+	}
+	return m.core.TotalDrained()
+}
+
+func (m *EffectManager) LastTickProcessed() effectcontract.Tick {
+	if m == nil || m.core == nil {
+		return 0
+	}
+	return m.core.LastTickProcessed()
+}
+
+func (m *EffectManager) PendingIntentCount() int {
+	if m == nil || m.core == nil {
+		return 0
+	}
+	return m.core.PendingIntentCount()
+}
+
+func (m *EffectManager) WorldEffect(id string) *effectState {
+	if m == nil || m.core == nil {
+		return nil
+	}
+	return loadWorldEffect(m.core, id)
+}
+
+func (m *EffectManager) PendingIntents() []effectcontract.EffectIntent {
+	if m == nil || m.core == nil {
+		return nil
+	}
+	return m.core.PendingIntents()
+}
+
+func (m *EffectManager) ResetPendingIntents() {
+	if m == nil || m.core == nil {
+		return
+	}
+	m.core.ResetPendingIntents()
+}
+
 func (m *EffectManager) EnqueueIntent(intent effectcontract.EffectIntent) {
-	if m == nil {
+	if m == nil || m.core == nil {
 		return
 	}
-	m.intentQueue = append(m.intentQueue, intent)
-	m.totalEnqueued++
+	m.core.EnqueueIntent(intent)
 }
 
-// RunTick advances the manager by one simulation tick. It drains the queued
-// intents, instantiates effect records, and emits contract lifecycle events for
-// downstream consumers before invoking per-effect hooks.
 func (m *EffectManager) RunTick(tick effectcontract.Tick, now time.Time, emit func(effectcontract.EffectLifecycleEvent)) {
-	if m == nil {
+	if m == nil || m.core == nil {
 		return
 	}
-	m.lastTickProcessed = tick
-
-	drainedQueue := append([]effectcontract.EffectIntent(nil), m.intentQueue...)
-	if len(m.intentQueue) > 0 {
-		for i := range m.intentQueue {
-			m.intentQueue[i] = effectcontract.EffectIntent{}
-		}
-		m.intentQueue = m.intentQueue[:0]
-	}
-
-	drained := len(drainedQueue)
-	newInstances := make([]*effectcontract.EffectInstance, 0, drained)
-	if drained > 0 {
-		for _, intent := range drainedQueue {
-			instance := m.instantiateIntent(intent, tick)
-			if instance == nil {
-				continue
-			}
-			m.instances[instance.ID] = instance
-			m.seqByInstance[instance.ID] = 0
-			newInstances = append(newInstances, instance)
-			m.invokeOnSpawn(instance, tick, now)
-		}
-	}
-	if drained > 0 {
-		m.totalDrained += drained
-	}
-	if emit != nil {
-		for _, instance := range newInstances {
-			if instance == nil {
-				continue
-			}
-			if !instance.Replication.SendSpawn {
-				continue
-			}
-			spawn := effectcontract.EffectSpawnEvent{
-				Tick:     tick,
-				Seq:      m.nextSequenceFor(instance.ID),
-				Instance: m.cloneInstanceForSpawn(instance),
-			}
-			emit(spawn)
-		}
-	}
-	ended := make([]string, 0)
-	for _, instance := range m.instances {
-		if instance == nil {
-			continue
-		}
-		shouldTick := m.shouldInvokeOnTick(instance)
-		if shouldTick {
-			m.invokeOnTick(instance, tick, now)
-		}
-		if !instance.Replication.SendUpdates {
-			// Even when updates are suppressed, lifecycle evaluation still runs.
-		} else if shouldTick && emit != nil {
-			delivery := m.cloneDeliveryState(instance.DeliveryState)
-			behavior := m.cloneBehaviorState(instance.BehaviorState)
-			update := effectcontract.EffectUpdateEvent{
-				Tick:          tick,
-				Seq:           m.nextSequenceFor(instance.ID),
-				ID:            instance.ID,
-				DeliveryState: &delivery,
-				BehaviorState: &behavior,
-			}
-			emit(update)
-		}
-		decision := m.evaluateEndPolicy(instance, tick)
-		if decision.shouldEnd {
-			if instance.Replication.SendEnd && emit != nil {
-				end := effectcontract.EffectEndEvent{
-					Tick:   tick,
-					Seq:    m.nextSequenceFor(instance.ID),
-					ID:     instance.ID,
-					Reason: decision.reason,
-				}
-				emit(end)
-			}
-			ended = append(ended, instance.ID)
-		}
-	}
-	for _, id := range ended {
-		delete(m.instances, id)
-		delete(m.seqByInstance, id)
-		delete(m.worldEffects, id)
-	}
+	m.core.RunTick(tick, now, emit)
 }
 
-func (m *EffectManager) instantiateIntent(intent effectcontract.EffectIntent, tick effectcontract.Tick) *effectcontract.EffectInstance {
-	m.nextInstanceID++
-	id := fmt.Sprintf("contract-effect-%d", m.nextInstanceID)
-	geometry := intent.Geometry
-	if geometry.Variants != nil {
-		geometry.Variants = copyIntMap(geometry.Variants)
-	}
-	entryID := intent.EntryID
-	if entryID == "" {
-		entryID = intent.TypeID
-	}
-	if entryID == "" {
-		return nil
-	}
-	definition, definitionID := m.resolveDefinition(entryID)
-	if definitionID == "" {
-		definitionID = intent.TypeID
-	}
-	if definitionID == "" {
-		definitionID = entryID
-	}
-	replication := effectcontract.ReplicationSpec{SendSpawn: true, SendUpdates: true, SendEnd: true}
-	endPolicy := effectcontract.EndPolicy{Kind: effectcontract.EndDuration}
-	if definition != nil {
-		replication = definition.Client
-		endPolicy = definition.End
-	}
-	deliveryKind := intent.Delivery
-	if deliveryKind == "" && definition != nil {
-		deliveryKind = definition.Delivery
-	}
-	if deliveryKind == "" {
-		deliveryKind = effectcontract.DeliveryKindArea
-	}
-	follow := effectcontract.FollowNone
-	if deliveryKind == effectcontract.DeliveryKindTarget {
-		follow = effectcontract.FollowTarget
-	}
-	ticksRemaining := intent.DurationTicks
-	if ticksRemaining <= 0 && definition != nil && endPolicy.Kind == effectcontract.EndDuration {
-		ticksRemaining = definition.LifetimeTicks
-	}
-	params := copyIntMap(intent.Params)
-	extra := copyIntMap(intent.Params)
-	cadence := normalizedTickCadence(intent.TickCadence)
-	cooldown := 0
-	if cadence > 1 {
-		cooldown = cadence
-	}
-	instance := &effectcontract.EffectInstance{
-		ID:           id,
-		EntryID:      entryID,
-		DefinitionID: definitionID,
-		Definition:   definition,
-		StartTick:    tick,
-		DeliveryState: effectcontract.EffectDeliveryState{
-			Geometry:        geometry,
-			Follow:          follow,
-			AttachedActorID: intent.TargetActorID,
-		},
-		BehaviorState: effectcontract.EffectBehaviorState{
-			TicksRemaining: ticksRemaining,
-			CooldownTicks:  cooldown,
-			TickCadence:    cadence,
-			Extra:          extra,
-		},
-		Params:        params,
-		FollowActorID: intent.TargetActorID,
-		OwnerActorID:  intent.SourceActorID,
-		Replication:   replication,
-		End:           endPolicy,
-	}
-	return instance
-}
-
-func normalizedTickCadence(raw int) int {
-	if raw <= 0 {
-		return 1
-	}
-	return raw
-}
-
-func (m *EffectManager) nextSequenceFor(id string) effectcontract.Seq {
-	if id == "" {
-		return 0
-	}
-	next := m.seqByInstance[id] + 1
-	m.seqByInstance[id] = next
-	return next
-}
-
-func (m *EffectManager) cloneInstanceForSpawn(instance *effectcontract.EffectInstance) effectcontract.EffectInstance {
-	if instance == nil {
-		return effectcontract.EffectInstance{}
-	}
-	clone := *instance
-	clone.DeliveryState.Geometry = cloneGeometry(clone.DeliveryState.Geometry)
-	clone.BehaviorState.Extra = copyIntMap(clone.BehaviorState.Extra)
-	clone.BehaviorState.Stacks = copyIntMap(clone.BehaviorState.Stacks)
-	clone.Params = copyIntMap(clone.Params)
-	if len(clone.Colors) > 0 {
-		clone.Colors = append([]string(nil), clone.Colors...)
-	}
-	clone.Replication.UpdateFields = copyBoolMap(clone.Replication.UpdateFields)
-	return clone
-}
-
-func (m *EffectManager) cloneDeliveryState(state effectcontract.EffectDeliveryState) effectcontract.EffectDeliveryState {
-	clone := state
-	clone.Geometry = cloneGeometry(state.Geometry)
-	return clone
-}
-
-func (m *EffectManager) cloneBehaviorState(state effectcontract.EffectBehaviorState) effectcontract.EffectBehaviorState {
-	clone := state
-	clone.Extra = copyIntMap(state.Extra)
-	clone.Stacks = copyIntMap(state.Stacks)
-	return clone
-}
-
-func (m *EffectManager) shouldInvokeOnTick(instance *effectcontract.EffectInstance) bool {
-	if m == nil || instance == nil {
-		return false
-	}
-	cadence := instance.BehaviorState.TickCadence
-	if cadence <= 1 {
-		if cadence <= 0 {
-			instance.BehaviorState.TickCadence = 1
-		}
-		instance.BehaviorState.CooldownTicks = 0
-		return true
-	}
-	if instance.BehaviorState.CooldownTicks <= 1 {
-		instance.BehaviorState.CooldownTicks = cadence
-		return true
-	}
-	instance.BehaviorState.CooldownTicks--
-	return false
-}
-
-func (m *EffectManager) invokeOnSpawn(instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-	if instance == nil || m == nil || m.hooks == nil {
-		return
-	}
-	def := instance.Definition
-	if def == nil || def.Hooks.OnSpawn == "" {
-		return
-	}
-	hook, ok := m.hooks[def.Hooks.OnSpawn]
-	if !ok || hook.OnSpawn == nil {
-		return
-	}
-	hook.OnSpawn(m, instance, tick, now)
-}
-
-func (m *EffectManager) invokeOnTick(instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-	if instance == nil || m == nil || m.hooks == nil {
-		return
-	}
-	def := instance.Definition
-	if def == nil || def.Hooks.OnTick == "" {
-		return
-	}
-	hook, ok := m.hooks[def.Hooks.OnTick]
-	if !ok || hook.OnTick == nil {
-		return
-	}
-	hook.OnTick(m, instance, tick, now)
-}
-
-func (m *EffectManager) resolveDefinition(typeID string) (*effectcontract.EffectDefinition, string) {
-	if typeID == "" {
-		return nil, ""
-	}
-	contractID := typeID
-	var catalogDef *effectcontract.EffectDefinition
-	if m != nil && m.catalog != nil {
-		if entry, ok := m.catalog.Resolve(typeID); ok {
-			contractID = entry.ContractID
-			catalogDef = entry.Definition
-		}
-	}
-	if m == nil {
-		return catalogDef, contractID
-	}
-	if def, ok := m.definitions[contractID]; ok && def != nil {
-		return def, contractID
-	}
-	if catalogDef != nil {
-		return catalogDef, contractID
-	}
-	return nil, contractID
-}
-
-func (m *EffectManager) evaluateEndPolicy(instance *effectcontract.EffectInstance, tick effectcontract.Tick) endDecision {
-	if instance == nil {
-		return endDecision{}
-	}
-	switch instance.End.Kind {
-	case effectcontract.EndInstant:
-		if tick >= instance.StartTick {
-			return endDecision{shouldEnd: true, reason: effectcontract.EndReasonExpired}
-		}
-	case effectcontract.EndDuration:
-		if instance.BehaviorState.TicksRemaining > 0 {
-			instance.BehaviorState.TicksRemaining--
-		}
-		if instance.BehaviorState.TicksRemaining <= 0 {
-			return endDecision{shouldEnd: true, reason: effectcontract.EndReasonExpired}
-		}
-	case effectcontract.EndCondition:
-		if instance.End.Conditions.OnOwnerLost && m.ownerMissing(instance.OwnerActorID) {
-			return endDecision{shouldEnd: true, reason: effectcontract.EndReasonOwnerLost}
-		}
-	}
-	return endDecision{}
-}
-
-func (m *EffectManager) ownerMissing(actorID string) bool {
-	if actorID == "" || m == nil || m.world == nil {
-		return false
-	}
-	if _, ok := m.world.players[actorID]; ok {
-		return false
-	}
-	if _, ok := m.world.npcs[actorID]; ok {
-		return false
-	}
-	return true
-}
-
-func cloneGeometry(src effectcontract.EffectGeometry) effectcontract.EffectGeometry {
-	dst := src
-	if src.Variants != nil {
-		dst.Variants = copyIntMap(src.Variants)
-	}
-	return dst
-}
-
-func copyIntMap(src map[string]int) map[string]int {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make(map[string]int, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
-func copyBoolMap(src map[string]bool) map[string]bool {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make(map[string]bool, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
-func ticksToDuration(ticks int) time.Duration {
-	if ticks <= 0 {
-		return 0
-	}
-	seconds := float64(ticks) / float64(tickRate)
-	if seconds <= 0 {
-		return 0
-	}
-	return time.Duration(seconds * float64(time.Second))
-}
-
-func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
-	registry := make(map[string]effectHookSet)
-	registry[effectcontract.HookMeleeSpawn] = effectHookSet{
-		OnSpawn: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if m == nil || instance == nil || m.world == nil {
+func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
+	registry := make(map[string]internaleffects.HookSet)
+	registry[effectcontract.HookMeleeSpawn] = internaleffects.HookSet{
+		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+			if instance == nil || world == nil {
 				return
 			}
-			owner, _ := m.world.abilityOwner(instance.OwnerActorID)
+			owner, _ := world.abilityOwner(instance.OwnerActorID)
 			if owner == nil {
 				return
 			}
-			effect, area := m.meleeEffectForInstance(instance, owner, now)
+			effect, area := meleeEffectForInstance(instance, owner, now)
 			if effect == nil {
 				return
 			}
-			m.world.resolveMeleeImpact(effect, owner, instance.OwnerActorID, uint64(tick), now, area)
+			world.resolveMeleeImpact(effect, owner, instance.OwnerActorID, uint64(tick), now, area)
 		},
 	}
-	registry[effectcontract.HookProjectileLifecycle] = effectHookSet{
-		OnSpawn: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if m == nil || instance == nil || m.world == nil {
+	registry[effectcontract.HookProjectileLifecycle] = internaleffects.HookSet{
+		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+			if instance == nil || world == nil {
 				return
 			}
-			if existing := m.worldEffects[instance.ID]; existing != nil {
-				owner, _ := m.world.abilityOwner(instance.OwnerActorID)
-				m.syncProjectileInstance(instance, owner, existing)
+			if existing := loadWorldEffect(rt, instance.ID); existing != nil {
+				owner, _ := world.abilityOwner(instance.OwnerActorID)
+				syncProjectileInstance(instance, owner, existing)
 				return
 			}
-			tpl := m.world.projectileTemplates[instance.DefinitionID]
+			tpl := world.projectileTemplates[instance.DefinitionID]
 			if tpl == nil {
 				return
 			}
-			owner, _ := m.world.abilityOwner(instance.OwnerActorID)
+			owner, _ := world.abilityOwner(instance.OwnerActorID)
 			if owner == nil {
 				return
 			}
-			if effect := m.world.spawnContractProjectileFromInstance(instance, owner, tpl, now); effect != nil {
-				m.worldEffects[instance.ID] = effect
-				m.syncProjectileInstance(instance, owner, effect)
+			if effect := world.spawnContractProjectileFromInstance(instance, owner, tpl, now); effect != nil {
+				storeWorldEffect(rt, instance.ID, effect)
+				syncProjectileInstance(instance, owner, effect)
 			}
 		},
-		OnTick: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if m == nil || instance == nil || m.world == nil {
+		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+			if instance == nil || world == nil {
 				return
 			}
-			effect := m.worldEffects[instance.ID]
+			effect := loadWorldEffect(rt, instance.ID)
 			if effect == nil {
-				effect = m.world.findEffectByID(instance.ID)
+				effect = world.findEffectByID(instance.ID)
 				if effect != nil {
-					m.worldEffects[instance.ID] = effect
+					storeWorldEffect(rt, instance.ID, effect)
 				}
 			}
-			tpl := m.world.projectileTemplates[instance.DefinitionID]
-			owner, _ := m.world.abilityOwner(instance.OwnerActorID)
+			tpl := world.projectileTemplates[instance.DefinitionID]
+			owner, _ := world.abilityOwner(instance.OwnerActorID)
 			if effect == nil {
 				if tpl == nil || owner == nil {
 					return
 				}
-				effect = m.world.spawnContractProjectileFromInstance(instance, owner, tpl, now)
+				effect = world.spawnContractProjectileFromInstance(instance, owner, tpl, now)
 				if effect == nil {
 					return
 				}
-				m.worldEffects[instance.ID] = effect
+				storeWorldEffect(rt, instance.ID, effect)
 			}
 			dt := 1.0 / float64(tickRate)
-			ended := m.world.advanceProjectile(effect, now, dt)
-			m.syncProjectileInstance(instance, owner, effect)
+			ended := world.advanceProjectile(effect, now, dt)
+			syncProjectileInstance(instance, owner, effect)
 			if ended {
 				instance.BehaviorState.TicksRemaining = 0
-				delete(m.worldEffects, instance.ID)
+				storeWorldEffect(rt, instance.ID, nil)
 			}
 		},
 	}
-	registry[effectcontract.HookStatusBurningVisual] = effectHookSet{
-		OnSpawn: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if m == nil || instance == nil || m.world == nil {
+	registry[effectcontract.HookStatusBurningVisual] = internaleffects.HookSet{
+		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+			if instance == nil || world == nil {
 				return
 			}
 			targetID := instance.FollowActorID
@@ -526,38 +227,39 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			if targetID == "" {
 				return
 			}
-			actor := m.world.actorByID(targetID)
+			actor := world.actorByID(targetID)
 			if actor == nil {
 				return
 			}
-			effect := m.worldEffects[instance.ID]
+			effect := loadWorldEffect(rt, instance.ID)
 			if effect == nil {
 				lifetime := ticksToDuration(instance.BehaviorState.TicksRemaining)
 				if lifetime <= 0 {
 					lifetime = burningStatusEffectDuration
 				}
-				effect = m.spawnStatusVisualFromInstance(instance, actor, lifetime, now)
+				effect = spawnStatusVisualFromInstance(world, instance, actor, lifetime, now)
 				if effect == nil {
 					return
 				}
-				m.attachVisualToStatusEffect(actor, effect)
+				attachVisualToStatusEffect(actor, effect)
+				storeWorldEffect(rt, instance.ID, effect)
 			}
-			m.syncStatusVisualInstance(instance, actor, effect)
+			syncStatusVisualInstance(instance, actor, effect)
 		},
-		OnTick: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if m == nil || instance == nil || m.world == nil {
+		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+			if instance == nil || world == nil {
 				return
 			}
 			targetID := instance.FollowActorID
 			if targetID == "" {
 				targetID = instance.DeliveryState.AttachedActorID
 			}
-			actor := m.world.actorByID(targetID)
-			effect := m.worldEffects[instance.ID]
+			actor := world.actorByID(targetID)
+			effect := loadWorldEffect(rt, instance.ID)
 			if effect == nil {
-				effect = m.world.findEffectByID(instance.ID)
+				effect = world.findEffectByID(instance.ID)
 				if effect != nil {
-					m.worldEffects[instance.ID] = effect
+					storeWorldEffect(rt, instance.ID, effect)
 				}
 			}
 			if effect == nil && actor != nil {
@@ -565,15 +267,16 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 				if lifetime <= 0 {
 					lifetime = burningStatusEffectDuration
 				}
-				effect = m.spawnStatusVisualFromInstance(instance, actor, lifetime, now)
+				effect = spawnStatusVisualFromInstance(world, instance, actor, lifetime, now)
 				if effect != nil {
-					m.attachVisualToStatusEffect(actor, effect)
+					attachVisualToStatusEffect(actor, effect)
+					storeWorldEffect(rt, instance.ID, effect)
 				}
 			}
 			if effect == nil {
 				return
 			}
-			m.syncStatusVisualInstance(instance, actor, effect)
+			syncStatusVisualInstance(instance, actor, effect)
 			if actor != nil && actor.statusEffects != nil {
 				if inst, ok := actor.statusEffects[StatusEffectBurning]; ok && inst != nil {
 					remaining := inst.ExpiresAt.Sub(now)
@@ -589,9 +292,9 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			}
 		},
 	}
-	registry[effectcontract.HookStatusBurningDamage] = effectHookSet{
-		OnSpawn: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if m == nil || instance == nil || m.world == nil {
+	registry[effectcontract.HookStatusBurningDamage] = internaleffects.HookSet{
+		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+			if instance == nil || world == nil {
 				return
 			}
 			targetID := instance.FollowActorID
@@ -601,7 +304,7 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 			if targetID == "" {
 				return
 			}
-			actor := m.world.actorByID(targetID)
+			actor := world.actorByID(targetID)
 			if actor == nil {
 				return
 			}
@@ -620,21 +323,21 @@ func defaultEffectHookRegistry(world *World) map[string]effectHookSet {
 					statusType = inst.Definition.Type
 				}
 			}
-			m.world.applyBurningDamage(instance.OwnerActorID, actor, statusType, delta, now)
+			world.applyBurningDamage(instance.OwnerActorID, actor, statusType, delta, now)
 		},
 	}
-	registry[effectcontract.HookVisualBloodSplatter] = effectHookSet{
-		OnSpawn: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			m.ensureBloodDecalInstance(instance, now)
+	registry[effectcontract.HookVisualBloodSplatter] = internaleffects.HookSet{
+		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+			ensureBloodDecalInstance(rt, world, instance, now)
 		},
-		OnTick: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			m.ensureBloodDecalInstance(instance, now)
+		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+			ensureBloodDecalInstance(rt, world, instance, now)
 		},
 	}
 	return registry
 }
 
-func (m *EffectManager) meleeEffectForInstance(instance *effectcontract.EffectInstance, owner *actorState, now time.Time) (*effectState, Obstacle) {
+func meleeEffectForInstance(instance *effectcontract.EffectInstance, owner *actorState, now time.Time) (*effectState, Obstacle) {
 	if instance == nil || owner == nil {
 		return nil, Obstacle{}
 	}
@@ -690,8 +393,8 @@ func (m *EffectManager) meleeEffectForInstance(instance *effectcontract.EffectIn
 	return effect, area
 }
 
-func (m *EffectManager) syncProjectileInstance(instance *effectcontract.EffectInstance, owner *actorState, effect *effectState) {
-	if m == nil || instance == nil || effect == nil {
+func syncProjectileInstance(instance *effectcontract.EffectInstance, owner *actorState, effect *effectState) {
+	if instance == nil || effect == nil {
 		return
 	}
 	if instance.BehaviorState.Extra == nil {
@@ -743,8 +446,8 @@ func (m *EffectManager) syncProjectileInstance(instance *effectcontract.EffectIn
 	instance.DeliveryState.Geometry = geometry
 }
 
-func (m *EffectManager) syncStatusVisualInstance(instance *effectcontract.EffectInstance, actor *actorState, effect *effectState) {
-	if m == nil || instance == nil || effect == nil {
+func syncStatusVisualInstance(instance *effectcontract.EffectInstance, actor *actorState, effect *effectState) {
+	if instance == nil || effect == nil {
 		return
 	}
 	geometry := instance.DeliveryState.Geometry
@@ -777,14 +480,14 @@ func (m *EffectManager) syncStatusVisualInstance(instance *effectcontract.Effect
 	instance.DeliveryState.Geometry = geometry
 }
 
-func (m *EffectManager) spawnStatusVisualFromInstance(instance *effectcontract.EffectInstance, actor *actorState, lifetime time.Duration, now time.Time) *effectState {
-	if m == nil || m.world == nil || instance == nil || actor == nil {
+func spawnStatusVisualFromInstance(world *World, instance *effectcontract.EffectInstance, actor *actorState, lifetime time.Duration, now time.Time) *effectState {
+	if world == nil || instance == nil || actor == nil {
 		return nil
 	}
 	if lifetime <= 0 {
 		lifetime = burningTickInterval
 	}
-	effect := m.world.attachStatusEffectVisual(actor, instance.DefinitionID, lifetime, now)
+	effect := world.attachStatusEffectVisual(actor, instance.DefinitionID, lifetime, now)
 	if effect == nil {
 		return nil
 	}
@@ -794,11 +497,10 @@ func (m *EffectManager) spawnStatusVisualFromInstance(instance *effectcontract.E
 	effect.StatusEffect = StatusEffectBurning
 	effect.FollowActorID = actor.ID
 	effect.telemetrySpawnTick = instance.StartTick
-	m.worldEffects[instance.ID] = effect
 	return effect
 }
 
-func (m *EffectManager) attachVisualToStatusEffect(actor *actorState, effect *effectState) {
+func attachVisualToStatusEffect(actor *actorState, effect *effectState) {
 	if actor == nil || effect == nil {
 		return
 	}
@@ -817,30 +519,30 @@ func (m *EffectManager) attachVisualToStatusEffect(actor *actorState, effect *ef
 	}
 }
 
-func (m *EffectManager) ensureBloodDecalInstance(instance *effectcontract.EffectInstance, now time.Time) *effectState {
-	if m == nil || instance == nil || m.world == nil {
+func ensureBloodDecalInstance(rt internaleffects.Runtime, world *World, instance *effectcontract.EffectInstance, now time.Time) *effectState {
+	if instance == nil || world == nil {
 		return nil
 	}
-	effect := m.worldEffects[instance.ID]
+	effect := loadWorldEffect(rt, instance.ID)
 	if effect == nil {
-		effect = m.world.findEffectByID(instance.ID)
+		effect = world.findEffectByID(instance.ID)
 		if effect != nil {
-			m.worldEffects[instance.ID] = effect
+			storeWorldEffect(rt, instance.ID, effect)
 		}
 	}
 	if effect == nil {
-		effect = m.world.spawnContractBloodDecalFromInstance(instance, now)
+		effect = world.spawnContractBloodDecalFromInstance(instance, now)
 		if effect == nil {
 			return nil
 		}
-		m.worldEffects[instance.ID] = effect
+		storeWorldEffect(rt, instance.ID, effect)
 	}
-	m.syncBloodDecalInstance(instance, effect)
+	syncBloodDecalInstance(instance, effect)
 	return effect
 }
 
-func (m *EffectManager) syncBloodDecalInstance(instance *effectcontract.EffectInstance, effect *effectState) {
-	if m == nil || instance == nil || effect == nil {
+func syncBloodDecalInstance(instance *effectcontract.EffectInstance, effect *effectState) {
+	if instance == nil || effect == nil {
 		return
 	}
 	geometry := instance.DeliveryState.Geometry
@@ -868,6 +570,40 @@ func (m *EffectManager) syncBloodDecalInstance(instance *effectcontract.EffectIn
 	instance.Params["centerX"] = centerX
 	instance.Params["centerY"] = centerY
 	instance.Colors = bloodSplatterColors()
+}
+
+func storeWorldEffect(rt internaleffects.Runtime, id string, effect *effectState) {
+	if rt == nil || id == "" {
+		return
+	}
+	if effect == nil {
+		rt.ClearInstanceState(id)
+		return
+	}
+	rt.SetInstanceState(id, effect)
+}
+
+func loadWorldEffect(rt internaleffects.Runtime, id string) *effectState {
+	if rt == nil || id == "" {
+		return nil
+	}
+	if value := rt.InstanceState(id); value != nil {
+		if effect, ok := value.(*effectState); ok {
+			return effect
+		}
+	}
+	return nil
+}
+
+func ticksToDuration(ticks int) time.Duration {
+	if ticks <= 0 {
+		return 0
+	}
+	seconds := float64(ticks) / float64(tickRate)
+	if seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds * float64(time.Second))
 }
 
 func intMapToFloat64(src map[string]int) map[string]float64 {

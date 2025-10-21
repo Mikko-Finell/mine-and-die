@@ -360,7 +360,7 @@ func (h *Hub) effectCatalogSnapshotLocked() map[string]effectCatalogMetadata {
 	if h == nil || h.world == nil || h.world.effectManager == nil {
 		return nil
 	}
-	return snapshotEffectCatalog(h.world.effectManager.catalog)
+	return snapshotEffectCatalog(h.world.effectManager.Catalog())
 }
 
 func (h *Hub) resyncConfigSnapshot() worldConfig {

@@ -30,8 +30,7 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 		},
 	}
 
-	manager := &EffectManager{}
-	manager.syncProjectileInstance(instance, owner, effect)
+	syncProjectileInstance(instance, owner, effect)
 
 	rawDX, ok := instance.BehaviorState.Extra["dx"]
 	if !ok {

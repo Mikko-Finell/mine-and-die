@@ -5,6 +5,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 )
 
 func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
@@ -13,7 +14,7 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 	const effectType = "effect.test"
 	const hookID = "hook.test.tick"
 
-	manager.definitions[effectType] = &effectcontract.EffectDefinition{
+	manager.Definitions()[effectType] = &effectcontract.EffectDefinition{
 		TypeID:        effectType,
 		LifetimeTicks: 2,
 		Hooks: effectcontract.EffectHooks{
@@ -24,8 +25,8 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 	}
 
 	tickCount := 0
-	manager.hooks[hookID] = effectHookSet{
-		OnTick: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+	manager.Hooks()[hookID] = internaleffects.HookSet{
+		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			tickCount++
 		},
 	}
@@ -43,10 +44,10 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 		t.Fatalf("expected hook to be invoked once on first tick, got %d", tickCount)
 	}
 
-	if len(manager.instances) != 1 {
-		t.Fatalf("expected one active instance after first tick, got %d", len(manager.instances))
+	if len(manager.Instances()) != 1 {
+		t.Fatalf("expected one active instance after first tick, got %d", len(manager.Instances()))
 	}
-	for _, inst := range manager.instances {
+	for _, inst := range manager.Instances() {
 		if inst.EntryID != effectType {
 			t.Fatalf("expected instance entry id %q, got %q", effectType, inst.EntryID)
 		}
@@ -57,7 +58,7 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 		t.Fatalf("expected hook to continue firing without emitter, got %d invocations", tickCount)
 	}
 
-	if len(manager.instances) != 0 {
-		t.Fatalf("expected effect instance to end after duration without emitter, found %d instances", len(manager.instances))
+	if len(manager.Instances()) != 0 {
+		t.Fatalf("expected effect instance to end after duration without emitter, found %d instances", len(manager.Instances()))
 	}
 }

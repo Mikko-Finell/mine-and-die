@@ -5,6 +5,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	"mine-and-die/server/logging"
 )
 
@@ -148,7 +149,7 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-			world.effectManager.definitions[tc.definition.TypeID] = tc.definition
+			world.effectManager.Definitions()[tc.definition.TypeID] = tc.definition
 
 			collector := &lifecycleCollector{}
 			world.effectManager.EnqueueIntent(tc.intent)
@@ -223,8 +224,8 @@ func TestEffectManagerRespectsTickCadence(t *testing.T) {
 
 	invocationTicks := make([]effectcontract.Tick, 0)
 	hookID := "contract.test.tickCadence"
-	manager.hooks[hookID] = effectHookSet{
-		OnTick: func(m *EffectManager, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
+	manager.Hooks()[hookID] = internaleffects.HookSet{
+		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			invocationTicks = append(invocationTicks, tick)
 		},
 	}
@@ -247,7 +248,7 @@ func TestEffectManagerRespectsTickCadence(t *testing.T) {
 		End: effectcontract.EndPolicy{Kind: effectcontract.EndDuration},
 	}
 
-	manager.definitions[definition.TypeID] = definition
+	manager.Definitions()[definition.TypeID] = definition
 
 	manager.EnqueueIntent(effectcontract.EffectIntent{
 		EntryID:     definition.TypeID,

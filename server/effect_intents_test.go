@@ -238,7 +238,7 @@ func TestApplyStatusEffectQueuesIntent(t *testing.T) {
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialised")
 	}
-	world.effectManager.intentQueue = world.effectManager.intentQueue[:0]
+	world.effectManager.ResetPendingIntents()
 
 	actor := &actorState{Actor: Actor{ID: "player-status", X: 140, Y: 160}}
 	now := time.Unix(0, 0)
@@ -247,11 +247,12 @@ func TestApplyStatusEffectQueuesIntent(t *testing.T) {
 		t.Fatal("expected status effect to be applied")
 	}
 
-	if len(world.effectManager.intentQueue) != 2 {
-		t.Fatalf("expected 2 intents enqueued (visual + tick), got %d", len(world.effectManager.intentQueue))
+	if world.effectManager.PendingIntentCount() != 2 {
+		t.Fatalf("expected 2 intents enqueued (visual + tick), got %d", world.effectManager.PendingIntentCount())
 	}
 
-	visual := world.effectManager.intentQueue[0]
+	intents := world.effectManager.PendingIntents()
+	visual := intents[0]
 	if visual.TypeID != effectTypeBurningVisual {
 		t.Fatalf("expected first intent TypeID %q, got %q", effectTypeBurningVisual, visual.TypeID)
 	}
@@ -262,7 +263,7 @@ func TestApplyStatusEffectQueuesIntent(t *testing.T) {
 		t.Fatalf("expected visual SourceActorID 'lava-bridge', got %q", visual.SourceActorID)
 	}
 
-	tick := world.effectManager.intentQueue[1]
+	tick := intents[1]
 	if tick.TypeID != effectTypeBurningTick {
 		t.Fatalf("expected second intent TypeID %q, got %q", effectTypeBurningTick, tick.TypeID)
 	}
@@ -276,7 +277,7 @@ func TestMaybeSpawnBloodSplatterQueuesIntent(t *testing.T) {
 	if world.effectManager == nil {
 		t.Fatal("expected effect manager to be initialised")
 	}
-	world.effectManager.intentQueue = world.effectManager.intentQueue[:0]
+	world.effectManager.ResetPendingIntents()
 
 	eff := &effectState{Type: effectTypeAttack, Owner: "player-attacker"}
 	target := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 220, Y: 300}}, Type: NPCTypeGoblin}
@@ -284,11 +285,11 @@ func TestMaybeSpawnBloodSplatterQueuesIntent(t *testing.T) {
 
 	world.maybeSpawnBloodSplatter(eff, target, now)
 
-	if len(world.effectManager.intentQueue) != 1 {
-		t.Fatalf("expected 1 intent enqueued, got %d", len(world.effectManager.intentQueue))
+	if world.effectManager.PendingIntentCount() != 1 {
+		t.Fatalf("expected 1 intent enqueued, got %d", world.effectManager.PendingIntentCount())
 	}
 
-	intent := world.effectManager.intentQueue[0]
+	intent := world.effectManager.PendingIntents()[0]
 	if intent.TypeID != effectTypeBloodSplatter {
 		t.Fatalf("expected TypeID %q, got %q", effectTypeBloodSplatter, intent.TypeID)
 	}
