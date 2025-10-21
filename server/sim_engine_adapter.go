@@ -355,7 +355,7 @@ func simGroundItemsFromLegacy(items []GroundItem) []sim.GroundItem {
 	for i, item := range items {
 		converted[i] = sim.GroundItem{
 			ID:             item.ID,
-			Type:           toSimItemType(item.Type),
+			Type:           toSimItemType(ItemType(item.Type)),
 			FungibilityKey: item.FungibilityKey,
 			X:              item.X,
 			Y:              item.Y,
@@ -373,7 +373,7 @@ func legacyGroundItemsFromSim(items []sim.GroundItem) []GroundItem {
 	for i, item := range items {
 		converted[i] = GroundItem{
 			ID:             item.ID,
-			Type:           legacyItemTypeFromSim(item.Type),
+			Type:           string(legacyItemTypeFromSim(item.Type)),
 			FungibilityKey: item.FungibilityKey,
 			X:              item.X,
 			Y:              item.Y,

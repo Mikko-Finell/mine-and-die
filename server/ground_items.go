@@ -3,21 +3,10 @@ package server
 import (
 	"context"
 	"math"
-	"sort"
 
 	worldpkg "mine-and-die/server/internal/world"
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
-
-// GroundItem represents a stack of items that exists in the world.
-type GroundItem struct {
-	ID             string   `json:"id"`
-	Type           ItemType `json:"type"`
-	FungibilityKey string   `json:"fungibility_key"`
-	X              float64  `json:"x"`
-	Y              float64  `json:"y"`
-	Qty            int      `json:"qty"`
-}
 
 const groundPickupRadius = tileSize
 
@@ -26,28 +15,6 @@ const (
 	groundScatterMaxDistance = tileSize * 0.35
 	groundScatterPadding     = tileSize * 0.1
 )
-
-func fromWorldGroundItem(item worldpkg.GroundItem) GroundItem {
-	return GroundItem{
-		ID:             item.ID,
-		Type:           ItemType(item.Type),
-		FungibilityKey: item.FungibilityKey,
-		X:              item.X,
-		Y:              item.Y,
-		Qty:            item.Qty,
-	}
-}
-
-func toWorldGroundItem(item GroundItem) worldpkg.GroundItem {
-	return worldpkg.GroundItem{
-		ID:             item.ID,
-		Type:           string(item.Type),
-		FungibilityKey: item.FungibilityKey,
-		X:              item.X,
-		Y:              item.Y,
-		Qty:            item.Qty,
-	}
-}
 
 func toWorldItemStack(stack ItemStack) worldpkg.ItemStack {
 	return worldpkg.ItemStack{Type: string(stack.Type), FungibilityKey: stack.FungibilityKey, Quantity: stack.Quantity}
@@ -73,26 +40,12 @@ func scatterConfig() worldpkg.ScatterConfig {
 	}
 }
 
-func (w *World) groundItemsSnapshot() []GroundItem {
-	if w == nil || len(w.groundItems) == 0 {
-		return make([]GroundItem, 0)
-	}
-	items := make([]GroundItem, 0, len(w.groundItems))
-	for _, item := range w.groundItems {
-		if item == nil {
-			continue
-		}
-		items = append(items, fromWorldGroundItem(item.GroundItem))
-	}
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].ID < items[j].ID
-	})
-	return items
-}
-
 // GroundItemsSnapshot returns a copy of the ground items for broadcasting.
 func (w *World) GroundItemsSnapshot() []GroundItem {
-	return w.groundItemsSnapshot()
+	if w == nil {
+		return make([]GroundItem, 0)
+	}
+	return worldpkg.GroundItemsSnapshot(w.groundItems)
 }
 
 func tileForPosition(x, y float64) groundTileKey {

@@ -76,7 +76,7 @@ func TestSimSnapshotConversionRoundTrip(t *testing.T) {
 	}}
 	legacyGround := []GroundItem{{
 		ID:             "ground-1",
-		Type:           ItemType("potion"),
+		Type:           "potion",
 		FungibilityKey: "potion-small",
 		X:              1.25,
 		Y:              -6.5,
@@ -230,7 +230,7 @@ func TestSimKeyframeConversionRoundTripPreservesSequencing(t *testing.T) {
 		}},
 		GroundItems: []GroundItem{{
 			ID:             "ground-1",
-			Type:           ItemType("potion"),
+			Type:           "potion",
 			FungibilityKey: "potion-small",
 			X:              6,
 			Y:              7,
@@ -416,7 +416,7 @@ func TestSimKeyframeConversionRoundTrip(t *testing.T) {
 			ID: "obstacle-1", Type: "rock", X: 1.5, Y: 2.5, Width: 3, Height: 4,
 		}},
 		GroundItems: []GroundItem{{
-			ID: "ground-1", Type: ItemType("potion"), FungibilityKey: "potion", X: 3, Y: 4, Qty: 2,
+			ID: "ground-1", Type: "potion", FungibilityKey: "potion", X: 3, Y: 4, Qty: 2,
 		}},
 		Config: worldConfig{
 			Obstacles:      true,

@@ -352,7 +352,7 @@ func TestBroadcastLoggingRedactsPayload(t *testing.T) {
 	hub := newHub()
 	groundItems := []GroundItem{{
 		ID:   "ground-fireball",
-		Type: ItemType("fireball"),
+		Type: "fireball",
 		X:    1,
 		Y:    2,
 		Qty:  1,
