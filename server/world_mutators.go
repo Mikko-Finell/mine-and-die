@@ -7,7 +7,6 @@ import (
 	stats "mine-and-die/server/stats"
 )
 
-const healthEpsilon = 1e-6
 const intentEpsilon = 1e-6
 
 func (w *World) appendPatch(kind PatchKind, entityID string, payload any) {
@@ -87,36 +86,16 @@ func (w *World) setActorHealth(actor *actorState, version *uint64, entityID stri
 		return
 	}
 
-	if math.IsNaN(health) || math.IsInf(health, 0) {
+	state := worldpkg.HealthState{Health: actor.Health, MaxHealth: actor.MaxHealth}
+	if !worldpkg.SetActorHealth(&state, computedMax, health) {
 		return
 	}
 
-	max := computedMax
-	if max <= 0 {
-		max = actor.MaxHealth
-	}
-	if max <= 0 {
-		max = health
-	}
-
-	if health < 0 {
-		health = 0
-	}
-	if max > 0 && health > max {
-		health = max
-	}
-
-	maxDiff := math.Abs(actor.MaxHealth - max)
-	healthDiff := math.Abs(actor.Health - health)
-	if maxDiff < healthEpsilon && healthDiff < healthEpsilon {
-		return
-	}
-
-	actor.Health = health
-	actor.MaxHealth = max
+	actor.Health = state.Health
+	actor.MaxHealth = state.MaxHealth
 	incrementVersion(version)
 
-	w.appendPatch(kind, entityID, HealthPayload{Health: health, MaxHealth: max})
+	w.appendPatch(kind, entityID, HealthPayload{Health: state.Health, MaxHealth: state.MaxHealth})
 }
 
 func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityID string, kind PatchKind, mutate func(inv *Inventory) error) error {
@@ -124,19 +103,16 @@ func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityI
 		return nil
 	}
 
-	before := actor.Inventory.Clone()
-	if err := mutate(&actor.Inventory); err != nil {
-		actor.Inventory = before
-		return err
-	}
-
-	if inventoriesEqual(before, actor.Inventory) {
-		return nil
-	}
-
-	incrementVersion(version)
-	w.appendPatch(kind, entityID, InventoryPayload{Slots: cloneInventorySlots(actor.Inventory.Slots)})
-	return nil
+	return worldpkg.MutateActorInventory(
+		&actor.Inventory,
+		version,
+		mutate,
+		func(inv Inventory) Inventory { return inv.Clone() },
+		inventoriesEqual,
+		func(inv Inventory) {
+			w.appendPatch(kind, entityID, InventoryPayload{Slots: cloneInventorySlots(inv.Slots)})
+		},
+	)
 }
 
 func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityID string, kind PatchKind, mutate func(eq *Equipment) error) error {
@@ -144,19 +120,16 @@ func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityI
 		return nil
 	}
 
-	before := actor.Equipment.Clone()
-	if err := mutate(&actor.Equipment); err != nil {
-		actor.Equipment = before
-		return err
-	}
-
-	if equipmentsEqual(before, actor.Equipment) {
-		return nil
-	}
-
-	incrementVersion(version)
-	w.appendPatch(kind, entityID, EquipmentPayload{Slots: cloneEquipmentSlots(actor.Equipment.Slots)})
-	return nil
+	return worldpkg.MutateActorEquipment(
+		&actor.Equipment,
+		version,
+		mutate,
+		func(eq Equipment) Equipment { return eq.Clone() },
+		equipmentsEqual,
+		func(eq Equipment) {
+			w.appendPatch(kind, entityID, EquipmentPayload{Slots: cloneEquipmentSlots(eq.Slots)})
+		},
+	)
 }
 
 // SetPosition updates a player's position, bumps the version, and records a patch.
