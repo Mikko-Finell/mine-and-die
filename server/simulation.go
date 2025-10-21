@@ -524,58 +524,6 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	return removedPlayers
 }
 
-// applyPlayerPositionMutations commits any movement resolved during the tick
-// via the SetPosition write barrier so patches and versions stay consistent.
-func (w *World) applyPlayerPositionMutations(initial map[string]vec2, proposed map[string]vec2) {
-	if w == nil {
-		return
-	}
-
-	for id, player := range w.players {
-		start, ok := initial[id]
-		if !ok {
-			start = vec2{X: player.X, Y: player.Y}
-		}
-
-		target, ok := proposed[id]
-		if !ok {
-			target = vec2{X: player.X, Y: player.Y}
-		}
-
-		if positionsEqual(start.X, start.Y, target.X, target.Y) {
-			continue
-		}
-
-		w.SetPosition(id, target.X, target.Y)
-	}
-}
-
-// applyNPCPositionMutations commits NPC movement resolved during the tick through
-// the NPC write barrier so patches and versions stay consistent.
-func (w *World) applyNPCPositionMutations(initial map[string]vec2, proposed map[string]vec2) {
-	if w == nil {
-		return
-	}
-
-	for id, npc := range w.npcs {
-		start, ok := initial[id]
-		if !ok {
-			start = vec2{X: npc.X, Y: npc.Y}
-		}
-
-		target, ok := proposed[id]
-		if !ok {
-			target = vec2{X: npc.X, Y: npc.Y}
-		}
-
-		if positionsEqual(start.X, start.Y, target.X, target.Y) {
-			continue
-		}
-
-		w.SetNPCPosition(id, target.X, target.Y)
-	}
-}
-
 func (w *World) spawnInitialNPCs() {
 	worldpkg.SeedInitialNPCs(worldNPCSpawner{world: w})
 }

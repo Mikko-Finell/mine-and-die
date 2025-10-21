@@ -300,7 +300,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the path navigation helpers (`computePathFrom`, `dynamicBlockerPositions`, and `convertWorldPath` in `path_navigation.go`) into `internal/world`, exposing thin wrappers on the legacy world that delegate to the centralized pathfinding package.
 - [x] Move the actor movement helpers (`moveActorWithObstacles`, `resolveAxisMoveX`, `resolveAxisMoveY`, and `resolveObstaclePenetration` in `movement.go`) into `internal/world`, exposing thin wrappers on the legacy world that delegate to the centralized movement helpers.
 - [x] Move the actor collision resolver (`resolveActorCollisions` in `movement.go`) into `internal/world`, providing wrappers on the legacy world so collision separation sits alongside the movement helpers.
-- [ ] Move the player and NPC position mutation helpers (`applyPlayerPositionMutations` and `applyNPCPositionMutations` in `simulation.go`) into `internal/world`, exposing wrappers on the legacy world so movement commits live alongside collision handling.
+- [x] Move the player and NPC position mutation helpers (`applyPlayerPositionMutations` and `applyNPCPositionMutations` in `simulation.go`) into `internal/world`, exposing wrappers on the legacy world so movement commits live alongside collision handling.
+- [ ] Move the NPC spawn helpers (`spawnGoblinAt`, `initializeGoblinState`, `spawnRatAt`, and `initializeRatState` in `simulation.go`) into `internal/world`, exposing wrappers on the legacy world so seeding and initialization sit beside the shared NPC utilities.
 
 - [x] Keep the tick loop in `sim/engine`:
 
