@@ -323,14 +323,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Use a **ring buffer** (`CommandBuffer`) for deterministic input instead of unbounded channels.
 - [ ] Extract subpackages:
 
-  - [ ] Carve out `world/` for tiles, spatial index, RNG/time, and map helpers.
+  - [x] Carve out `world/` for tiles, spatial index, RNG/time, and map helpers.
   - [ ] Carve out `journal/` for write-barriers and diff recording.
   - [ ] Carve out `effects/` for authoritative visual events.
   - [ ] Carve out `combat/` for hit and damage rules.
   - [ ] Carve out `stats/` for actor stats.
   - [ ] Carve out `items/` for items and equipment.
   - [ ] Carve out `ai/` for NPC logic and behaviors.
-  - [ ] Others as needed. Possibly `net/` etc if it makes sense.
 - [ ] Route mutations only through `journal` APIs to record diffs.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
