@@ -29,6 +29,11 @@ func newEffectManager(world *World) *EffectManager {
 		resolver = r
 	}
 
+	var registryProvider func() internaleffects.Registry
+	if world != nil {
+		registryProvider = world.effectRegistry
+	}
+
 	hooks := defaultEffectHookRegistry(world)
 	manager := internaleffects.NewManager(internaleffects.ManagerConfig{
 		Definitions: definitions,
@@ -46,6 +51,7 @@ func newEffectManager(world *World) *EffectManager {
 			}
 			return true
 		},
+		Registry: registryProvider,
 	})
 
 	return &EffectManager{core: manager, world: world}
@@ -142,9 +148,31 @@ func (m *EffectManager) RunTick(tick effectcontract.Tick, now time.Time, emit fu
 	m.core.RunTick(tick, now, emit)
 }
 
+type projectileOwnerAdapter struct {
+	state *actorState
+}
+
+func (a projectileOwnerAdapter) Facing() string {
+	if a.state == nil || a.state.Facing == "" {
+		return string(defaultFacing)
+	}
+	return string(a.state.Facing)
+}
+
+func (a projectileOwnerAdapter) FacingVector() (float64, float64) {
+	return facingToVector(FacingDirection(a.Facing()))
+}
+
+func (a projectileOwnerAdapter) Position() (float64, float64) {
+	if a.state == nil {
+		return 0, 0
+	}
+	return a.state.X, a.state.Y
+}
+
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
-	registry := make(map[string]internaleffects.HookSet)
-	registry[effectcontract.HookMeleeSpawn] = internaleffects.HookSet{
+	hooks := make(map[string]internaleffects.HookSet)
+	hooks[effectcontract.HookMeleeSpawn] = internaleffects.HookSet{
 		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			if instance == nil || world == nil {
 				return
@@ -160,7 +188,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			world.resolveMeleeImpact(effect, owner, instance.OwnerActorID, uint64(tick), now, area)
 		},
 	}
-	registry[effectcontract.HookProjectileLifecycle] = internaleffects.HookSet{
+	hooks[effectcontract.HookProjectileLifecycle] = internaleffects.HookSet{
 		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			if instance == nil || world == nil {
 				return
@@ -178,32 +206,54 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			if owner == nil {
 				return
 			}
-			if effect := world.spawnContractProjectileFromInstance(instance, owner, tpl, now); effect != nil {
-				storeWorldEffect(rt, instance.ID, effect)
-				syncProjectileInstance(instance, owner, effect)
+			world.pruneEffects(now)
+			effect := internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
+				Instance: instance,
+				Owner:    projectileOwnerAdapter{state: owner},
+				Template: tpl,
+				Now:      now,
+				TileSize: tileSize,
+				TickRate: tickRate,
+			})
+			if effect == nil {
+				return
 			}
+			if !registerWorldEffect(rt, effect) {
+				instance.BehaviorState.TicksRemaining = 0
+				return
+			}
+			world.recordEffectSpawn(tpl.Type, "projectile")
+			storeWorldEffect(rt, instance.ID, effect)
+			syncProjectileInstance(instance, owner, effect)
 		},
 		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			if instance == nil || world == nil {
 				return
 			}
 			effect := loadWorldEffect(rt, instance.ID)
-			if effect == nil {
-				effect = world.findEffectByID(instance.ID)
-				if effect != nil {
-					storeWorldEffect(rt, instance.ID, effect)
-				}
-			}
 			tpl := world.projectileTemplates[instance.DefinitionID]
 			owner, _ := world.abilityOwner(instance.OwnerActorID)
 			if effect == nil {
 				if tpl == nil || owner == nil {
 					return
 				}
-				effect = world.spawnContractProjectileFromInstance(instance, owner, tpl, now)
+				world.pruneEffects(now)
+				effect = internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
+					Instance: instance,
+					Owner:    projectileOwnerAdapter{state: owner},
+					Template: tpl,
+					Now:      now,
+					TileSize: tileSize,
+					TickRate: tickRate,
+				})
 				if effect == nil {
 					return
 				}
+				if !registerWorldEffect(rt, effect) {
+					instance.BehaviorState.TicksRemaining = 0
+					return
+				}
+				world.recordEffectSpawn(tpl.Type, "projectile")
 				storeWorldEffect(rt, instance.ID, effect)
 			}
 			dt := 1.0 / float64(tickRate)
@@ -211,11 +261,12 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			syncProjectileInstance(instance, owner, effect)
 			if ended {
 				instance.BehaviorState.TicksRemaining = 0
+				unregisterWorldEffect(rt, effect)
 				storeWorldEffect(rt, instance.ID, nil)
 			}
 		},
 	}
-	registry[effectcontract.HookStatusBurningVisual] = internaleffects.HookSet{
+	hooks[effectcontract.HookStatusBurningVisual] = internaleffects.HookSet{
 		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			if instance == nil || world == nil {
 				return
@@ -233,7 +284,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			}
 			effect := loadWorldEffect(rt, instance.ID)
 			if effect == nil {
-				lifetime := ticksToDuration(instance.BehaviorState.TicksRemaining)
+				lifetime := internaleffects.TicksToDuration(instance.BehaviorState.TicksRemaining, tickRate)
 				if lifetime <= 0 {
 					lifetime = burningStatusEffectDuration
 				}
@@ -242,6 +293,12 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 					return
 				}
 				attachVisualToStatusEffect(actor, effect)
+				if registerWorldEffect(rt, effect) {
+					world.recordEffectSpawn(effect.Type, "status-effect")
+				} else {
+					instance.BehaviorState.TicksRemaining = 0
+					return
+				}
 				storeWorldEffect(rt, instance.ID, effect)
 			}
 			syncStatusVisualInstance(instance, actor, effect)
@@ -256,20 +313,20 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			}
 			actor := world.actorByID(targetID)
 			effect := loadWorldEffect(rt, instance.ID)
-			if effect == nil {
-				effect = world.findEffectByID(instance.ID)
-				if effect != nil {
-					storeWorldEffect(rt, instance.ID, effect)
-				}
-			}
 			if effect == nil && actor != nil {
-				lifetime := ticksToDuration(instance.BehaviorState.TicksRemaining)
+				lifetime := internaleffects.TicksToDuration(instance.BehaviorState.TicksRemaining, tickRate)
 				if lifetime <= 0 {
 					lifetime = burningStatusEffectDuration
 				}
 				effect = spawnStatusVisualFromInstance(world, instance, actor, lifetime, now)
 				if effect != nil {
 					attachVisualToStatusEffect(actor, effect)
+					if registerWorldEffect(rt, effect) {
+						world.recordEffectSpawn(effect.Type, "status-effect")
+					} else {
+						instance.BehaviorState.TicksRemaining = 0
+						return
+					}
 					storeWorldEffect(rt, instance.ID, effect)
 				}
 			}
@@ -292,7 +349,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			}
 		},
 	}
-	registry[effectcontract.HookStatusBurningDamage] = internaleffects.HookSet{
+	hooks[effectcontract.HookStatusBurningDamage] = internaleffects.HookSet{
 		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			if instance == nil || world == nil {
 				return
@@ -326,7 +383,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			world.applyBurningDamage(instance.OwnerActorID, actor, statusType, delta, now)
 		},
 	}
-	registry[effectcontract.HookVisualBloodSplatter] = internaleffects.HookSet{
+	hooks[effectcontract.HookVisualBloodSplatter] = internaleffects.HookSet{
 		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			ensureBloodDecalInstance(rt, world, instance, now)
 		},
@@ -334,7 +391,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			ensureBloodDecalInstance(rt, world, instance, now)
 		},
 	}
-	return registry
+	return hooks
 }
 
 func meleeEffectForInstance(instance *effectcontract.EffectInstance, owner *actorState, now time.Time) (*effectState, Obstacle) {
@@ -342,16 +399,16 @@ func meleeEffectForInstance(instance *effectcontract.EffectInstance, owner *acto
 		return nil, Obstacle{}
 	}
 	geom := instance.DeliveryState.Geometry
-	width := dequantizeWorldCoord(geom.Width)
-	height := dequantizeWorldCoord(geom.Height)
+	width := internaleffects.DequantizeWorldCoord(geom.Width, tileSize)
+	height := internaleffects.DequantizeWorldCoord(geom.Height, tileSize)
 	if width <= 0 {
 		width = meleeAttackWidth
 	}
 	if height <= 0 {
 		height = meleeAttackReach
 	}
-	offsetX := dequantizeWorldCoord(geom.OffsetX)
-	offsetY := dequantizeWorldCoord(geom.OffsetY)
+	offsetX := internaleffects.DequantizeWorldCoord(geom.OffsetX, tileSize)
+	offsetY := internaleffects.DequantizeWorldCoord(geom.OffsetY, tileSize)
 	centerX := owner.X + offsetX
 	centerY := owner.Y + offsetY
 	rectX := centerX - width/2
@@ -362,7 +419,7 @@ func meleeEffectForInstance(instance *effectcontract.EffectInstance, owner *acto
 	motion.VelocityX = 0
 	motion.VelocityY = 0
 	instance.DeliveryState.Motion = motion
-	params := intMapToFloat64(instance.BehaviorState.Extra)
+	params := internaleffects.IntMapToFloat64(instance.BehaviorState.Extra)
 	if params == nil {
 		params = make(map[string]float64)
 	}
@@ -525,14 +582,14 @@ func ensureBloodDecalInstance(rt internaleffects.Runtime, world *World, instance
 	}
 	effect := loadWorldEffect(rt, instance.ID)
 	if effect == nil {
-		effect = world.findEffectByID(instance.ID)
-		if effect != nil {
-			storeWorldEffect(rt, instance.ID, effect)
-		}
-	}
-	if effect == nil {
 		effect = world.spawnContractBloodDecalFromInstance(instance, now)
 		if effect == nil {
+			return nil
+		}
+		if registerWorldEffect(rt, effect) {
+			world.recordEffectSpawn(effect.Type, "blood-decal")
+		} else {
+			instance.BehaviorState.TicksRemaining = 0
 			return nil
 		}
 		storeWorldEffect(rt, instance.ID, effect)
@@ -572,6 +629,27 @@ func syncBloodDecalInstance(instance *effectcontract.EffectInstance, effect *eff
 	instance.Colors = bloodSplatterColors()
 }
 
+func runtimeRegistry(rt internaleffects.Runtime) internaleffects.Registry {
+	if rt == nil {
+		return internaleffects.Registry{}
+	}
+	return rt.Registry()
+}
+
+func registerWorldEffect(rt internaleffects.Runtime, effect *effectState) bool {
+	if effect == nil {
+		return false
+	}
+	return internaleffects.RegisterEffect(runtimeRegistry(rt), effect)
+}
+
+func unregisterWorldEffect(rt internaleffects.Runtime, effect *effectState) {
+	if effect == nil {
+		return
+	}
+	internaleffects.UnregisterEffect(runtimeRegistry(rt), effect)
+}
+
 func storeWorldEffect(rt internaleffects.Runtime, id string, effect *effectState) {
 	if rt == nil || id == "" {
 		return
@@ -584,42 +662,19 @@ func storeWorldEffect(rt internaleffects.Runtime, id string, effect *effectState
 }
 
 func loadWorldEffect(rt internaleffects.Runtime, id string) *effectState {
-	if rt == nil || id == "" {
+	if id == "" {
 		return nil
 	}
-	if value := rt.InstanceState(id); value != nil {
-		if effect, ok := value.(*effectState); ok {
-			return effect
+	if rt != nil {
+		if value := rt.InstanceState(id); value != nil {
+			if effect, ok := value.(*effectState); ok {
+				return effect
+			}
 		}
 	}
-	return nil
-}
-
-func ticksToDuration(ticks int) time.Duration {
-	if ticks <= 0 {
-		return 0
+	effect := internaleffects.FindByID(runtimeRegistry(rt), id)
+	if effect != nil && rt != nil {
+		rt.SetInstanceState(id, effect)
 	}
-	seconds := float64(ticks) / float64(tickRate)
-	if seconds <= 0 {
-		return 0
-	}
-	return time.Duration(seconds * float64(time.Second))
-}
-
-func intMapToFloat64(src map[string]int) map[string]float64 {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make(map[string]float64, len(src))
-	for k, v := range src {
-		dst[k] = float64(v)
-	}
-	return dst
-}
-
-func dequantizeWorldCoord(value int) float64 {
-	if value == 0 {
-		return 0
-	}
-	return DequantizeCoord(value) * tileSize
+	return effect
 }

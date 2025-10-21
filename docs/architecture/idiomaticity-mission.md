@@ -321,7 +321,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Begin carving out `internal/effects` by moving the effect manager state and lifecycle helpers from `server/effects_manager.go` into the new package, leaving legacy wrappers for existing call sites.
 - [x] Move the legacy `effectState`/projectile/status helper definitions from `server/effects.go` into `internal/effects`, introducing adapters so world mutation code continues to operate on the shared types.
 - [x] Move the effect spatial index (`effectSpatialIndex` and its helpers) from `server/effects_spatial_index.go` into `internal/effects`, leaving thin wrappers so hub/world code continues to compile against the shared structures.
-- [ ] Move the effect registration helpers (`registerEffect`/`unregisterEffect` in `effects.go`) into `internal/effects`, exposing adapters so telemetry and world slices keep using the centralized index bookkeeping.
+- [x] Move the effect registration helpers (`registerEffect`/`unregisterEffect` in `effects.go`) into `internal/effects`, exposing adapters so telemetry and world slices keep using the centralized index bookkeeping.
+- [x] Move the effect lookup (`findEffectByID`) and pruning (`pruneEffects`) helpers from `effects.go` into `internal/effects`, exposing legacy adapters so the centralized registry owns active-instance bookkeeping.
+- [x] Persist an `internal/effects.Registry` on the legacy world so register/find/prune call sites reuse a shared instance with wired telemetry callbacks instead of rebuilding the struct each time.
+- [x] Thread the world's persisted `effects.Registry` into `EffectManager` so contract-managed hooks interact with the shared bookkeeping without reaching directly into legacy slices.
+- [x] Teach `internal/effects.Manager` to accept a shared registry view so contract-managed spawn and teardown hooks can register or unregister effects without calling the legacy world wrappers.
+- [x] Move the contract projectile spawn helper into `internal/effects` so the manager owns contract effect instantiation without routing through the legacy world wrapper.
+- [ ] Move the contract blood decal spawn helper into `internal/effects` so the manager owns blood decal instantiation without relying on the legacy world wrapper.
 
 - [x] Keep the tick loop in `sim/engine`:
 

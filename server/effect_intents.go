@@ -5,6 +5,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 )
 
 // durationToTicks converts a wall-clock duration into the number of simulation
@@ -107,7 +108,7 @@ func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (effectcont
 		dirX, dirY = 0, 1
 	}
 
-	spawnRadius := sanitizedSpawnRadius(tpl.SpawnRadius)
+	spawnRadius := internaleffects.SanitizedSpawnRadius(tpl.SpawnRadius)
 	spawnOffset := tpl.SpawnOffset
 	if spawnOffset == 0 {
 		spawnOffset = ownerHalfExtent(owner) + spawnRadius
@@ -116,7 +117,7 @@ func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (effectcont
 	centerX := owner.X + dirX*spawnOffset
 	centerY := owner.Y + dirY*spawnOffset
 
-	width, height := spawnSizeFromShape(tpl)
+	width, height := internaleffects.SpawnSizeFromShape(tpl)
 
 	geometry := effectcontract.EffectGeometry{
 		Shape:   effectcontract.GeometryShapeCircle,

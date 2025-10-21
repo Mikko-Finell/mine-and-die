@@ -9,6 +9,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	"mine-and-die/server/internal/sim"
 	simpaches "mine-and-die/server/internal/sim/patches"
 	"mine-and-die/server/logging"
@@ -1353,8 +1354,8 @@ func TestContractMeleeSpawnPopulatesMotionCenter(t *testing.T) {
 		t.Fatalf("expected motion center to be populated, got position=(%d,%d)", motion.PositionX, motion.PositionY)
 	}
 	geom := spawn.Instance.DeliveryState.Geometry
-	expectedCenterX := quantizeWorldCoord(attacker.X + dequantizeWorldCoord(geom.OffsetX))
-	expectedCenterY := quantizeWorldCoord(attacker.Y + dequantizeWorldCoord(geom.OffsetY))
+	expectedCenterX := quantizeWorldCoord(attacker.X + internaleffects.DequantizeWorldCoord(geom.OffsetX, tileSize))
+	expectedCenterY := quantizeWorldCoord(attacker.Y + internaleffects.DequantizeWorldCoord(geom.OffsetY, tileSize))
 	if motion.PositionX != expectedCenterX {
 		t.Fatalf("expected motion positionX %d, got %d", expectedCenterX, motion.PositionX)
 	}
@@ -1469,8 +1470,8 @@ func TestContractProjectileSpawnPopulatesMotionCenter(t *testing.T) {
 		t.Fatalf("expected projectile motion center to be populated, got position=(%d,%d)", motion.PositionX, motion.PositionY)
 	}
 	geom := spawn.Instance.DeliveryState.Geometry
-	expectedCenterX := quantizeWorldCoord(caster.X + dequantizeWorldCoord(geom.OffsetX))
-	expectedCenterY := quantizeWorldCoord(caster.Y + dequantizeWorldCoord(geom.OffsetY))
+	expectedCenterX := quantizeWorldCoord(caster.X + internaleffects.DequantizeWorldCoord(geom.OffsetX, tileSize))
+	expectedCenterY := quantizeWorldCoord(caster.Y + internaleffects.DequantizeWorldCoord(geom.OffsetY, tileSize))
 	if motion.PositionX != expectedCenterX {
 		t.Fatalf("expected projectile positionX %d, got %d", expectedCenterX, motion.PositionX)
 	}
@@ -1644,16 +1645,16 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 		t.Fatalf("expected instance centerY %d, got %d", centerYQuant, instance.BehaviorState.Extra["centerY"])
 	}
 
-	width := dequantizeWorldCoord(instance.DeliveryState.Geometry.Width)
+	width := internaleffects.DequantizeWorldCoord(instance.DeliveryState.Geometry.Width, tileSize)
 	if width <= 0 {
 		width = playerHalf * 2
 	}
-	height := dequantizeWorldCoord(instance.DeliveryState.Geometry.Height)
+	height := internaleffects.DequantizeWorldCoord(instance.DeliveryState.Geometry.Height, tileSize)
 	if height <= 0 {
 		height = playerHalf * 2
 	}
-	centerX := dequantizeWorldCoord(centerXQuant)
-	centerY := dequantizeWorldCoord(centerYQuant)
+	centerX := internaleffects.DequantizeWorldCoord(centerXQuant, tileSize)
+	centerY := internaleffects.DequantizeWorldCoord(centerYQuant, tileSize)
 	expectedX := centerX - width/2
 	expectedY := centerY - height/2
 	if math.Abs(effect.X-expectedX) > 1e-6 {

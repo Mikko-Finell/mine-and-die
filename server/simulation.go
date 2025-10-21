@@ -8,6 +8,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
@@ -72,6 +73,7 @@ type World struct {
 	effects             []*effectState
 	effectsByID         map[string]*effectState
 	effectsIndex        *effectSpatialIndex
+	effectsRegistry     internaleffects.Registry
 	effectTriggers      []EffectTrigger
 	effectManager       *EffectManager
 	obstacles           []Obstacle
@@ -176,10 +178,44 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		groundItemsByTile:   make(map[groundTileKey]map[string]*groundItemState),
 		journal:             newJournal(capacity, maxAge),
 	}
+	w.effectsRegistry = internaleffects.Registry{
+		Effects: &w.effects,
+		ByID:    &w.effectsByID,
+		Index:   w.effectsIndex,
+	}
 	w.effectManager = newEffectManager(w)
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
 	return w
+}
+
+func (w *World) effectRegistry() internaleffects.Registry {
+	if w == nil {
+		return internaleffects.Registry{}
+	}
+	if w.effectsRegistry.Effects == nil || w.effectsRegistry.Effects != &w.effects {
+		w.effectsRegistry.Effects = &w.effects
+	}
+	if w.effectsRegistry.ByID == nil || w.effectsRegistry.ByID != &w.effectsByID {
+		w.effectsRegistry.ByID = &w.effectsByID
+	}
+	if w.effectsRegistry.Index != w.effectsIndex {
+		w.effectsRegistry.Index = w.effectsIndex
+	}
+	return w.effectsRegistry
+}
+
+func (w *World) attachTelemetry(t *telemetryCounters) {
+	if w == nil {
+		return
+	}
+	w.telemetry = t
+	w.effectRegistry()
+	if t != nil {
+		w.effectsRegistry.RecordSpatialOverflow = t.RecordEffectSpatialOverflow
+	} else {
+		w.effectsRegistry.RecordSpatialOverflow = nil
+	}
 }
 
 func requireLegacyWorld(instance worldpkg.LegacyWorld) *World {

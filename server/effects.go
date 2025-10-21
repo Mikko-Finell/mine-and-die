@@ -562,147 +562,6 @@ func (w *World) triggerFireball(actorID string, now time.Time) bool {
 	return w.effectManager != nil
 }
 
-func (w *World) spawnContractProjectileFromInstance(instance *effectcontract.EffectInstance, owner *actorState, tpl *ProjectileTemplate, now time.Time) *effectState {
-	if w == nil || instance == nil || owner == nil || tpl == nil {
-		return nil
-	}
-
-	params := mergeParams(tpl.Params, intMapToFloat64(instance.BehaviorState.Extra))
-	if len(instance.Params) > 0 {
-		params = mergeParams(params, intMapToFloat64(instance.Params))
-	}
-	if params == nil {
-		params = make(map[string]float64)
-	}
-
-	dirX := params["dx"]
-	dirY := params["dy"]
-	if raw, ok := instance.BehaviorState.Extra["dx"]; ok {
-		dirX = float64(raw)
-		if math.Abs(dirX) > 1 {
-			dirX = DequantizeCoord(raw)
-		}
-		params["dx"] = dirX
-	} else if raw, ok := instance.Params["dx"]; ok {
-		dirX = float64(raw)
-		if math.Abs(dirX) > 1 {
-			dirX = DequantizeCoord(raw)
-		}
-		params["dx"] = dirX
-	}
-	if raw, ok := instance.BehaviorState.Extra["dy"]; ok {
-		dirY = float64(raw)
-		if math.Abs(dirY) > 1 {
-			dirY = DequantizeCoord(raw)
-		}
-		params["dy"] = dirY
-	} else if raw, ok := instance.Params["dy"]; ok {
-		dirY = float64(raw)
-		if math.Abs(dirY) > 1 {
-			dirY = DequantizeCoord(raw)
-		}
-		params["dy"] = dirY
-	}
-	if dirX == 0 && dirY == 0 {
-		facing := owner.Facing
-		if facing == "" {
-			facing = defaultFacing
-		}
-		dirX, dirY = facingToVector(facing)
-		if dirX == 0 && dirY == 0 {
-			dirX, dirY = 0, 1
-		}
-	}
-
-	geometry := instance.DeliveryState.Geometry
-	offsetX := dequantizeWorldCoord(geometry.OffsetX)
-	offsetY := dequantizeWorldCoord(geometry.OffsetY)
-	centerX := owner.X + offsetX
-	centerY := owner.Y + offsetY
-
-	width, height := spawnSizeFromShape(tpl)
-	if geometry.Width != 0 {
-		width = dequantizeWorldCoord(geometry.Width)
-	}
-	if geometry.Height != 0 {
-		height = dequantizeWorldCoord(geometry.Height)
-	}
-
-	radius := sanitizedSpawnRadius(tpl.SpawnRadius)
-	if geometry.Radius != 0 {
-		radius = dequantizeWorldCoord(geometry.Radius)
-	} else if val, ok := params["radius"]; ok && val > 0 {
-		radius = val
-	}
-
-	lifetime := effectLifetime(tpl)
-	if ticks := instance.BehaviorState.TicksRemaining; ticks > 0 {
-		if persisted := ticksToDuration(ticks); persisted > 0 {
-			lifetime = persisted
-		}
-	}
-	params = mergeParams(params, map[string]float64{
-		"speed":  tpl.Speed,
-		"radius": radius,
-		"dx":     dirX,
-		"dy":     dirY,
-	})
-	if _, ok := params["range"]; !ok && tpl.MaxDistance > 0 {
-		params["range"] = tpl.MaxDistance
-	}
-
-	remainingRange := tpl.MaxDistance
-	if val, ok := params["remainingRange"]; ok {
-		remainingRange = val
-	} else if raw, ok := instance.BehaviorState.Extra["remainingRange"]; ok {
-		remainingRange = float64(raw)
-		if remainingRange < 0 {
-			remainingRange = 0
-		}
-		if params == nil {
-			params = map[string]float64{"remainingRange": remainingRange}
-		} else {
-			params["remainingRange"] = remainingRange
-		}
-	}
-	if remainingRange < 0 {
-		remainingRange = 0
-	}
-
-	effect := &effectState{
-		ID:        instance.ID,
-		Type:      tpl.Type,
-		Owner:     instance.OwnerActorID,
-		Start:     now.UnixMilli(),
-		Duration:  lifetime.Milliseconds(),
-		X:         centerX - width/2,
-		Y:         centerY - height/2,
-		Width:     width,
-		Height:    height,
-		Params:    params,
-		Instance:  *instance,
-		ExpiresAt: now.Add(lifetime),
-		Projectile: &ProjectileState{
-			Template:       tpl,
-			VelocityUnitX:  dirX,
-			VelocityUnitY:  dirY,
-			RemainingRange: remainingRange,
-		},
-		ContractManaged:    true,
-		TelemetrySpawnTick: instance.StartTick,
-	}
-
-	w.pruneEffects(now)
-	if !w.registerEffect(effect) {
-		if instance != nil {
-			instance.BehaviorState.TicksRemaining = 0
-		}
-		return nil
-	}
-	w.recordEffectSpawn(tpl.Type, "projectile")
-	return effect
-}
-
 func (w *World) spawnContractBloodDecalFromInstance(instance *effectcontract.EffectInstance, now time.Time) *effectState {
 	if w == nil || instance == nil {
 		return nil
@@ -716,17 +575,17 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *effectcontract.Eff
 	if !okX || !okY {
 		return nil
 	}
-	centerX := dequantizeWorldCoord(centerXVal)
-	centerY := dequantizeWorldCoord(centerYVal)
-	width := dequantizeWorldCoord(instance.DeliveryState.Geometry.Width)
+	centerX := internaleffects.DequantizeWorldCoord(centerXVal, tileSize)
+	centerY := internaleffects.DequantizeWorldCoord(centerYVal, tileSize)
+	width := internaleffects.DequantizeWorldCoord(instance.DeliveryState.Geometry.Width, tileSize)
 	if width <= 0 {
 		width = playerHalf * 2
 	}
-	height := dequantizeWorldCoord(instance.DeliveryState.Geometry.Height)
+	height := internaleffects.DequantizeWorldCoord(instance.DeliveryState.Geometry.Height, tileSize)
 	if height <= 0 {
 		height = playerHalf * 2
 	}
-	lifetime := ticksToDuration(instance.BehaviorState.TicksRemaining)
+	lifetime := internaleffects.TicksToDuration(instance.BehaviorState.TicksRemaining, tickRate)
 	if lifetime <= 0 {
 		lifetime = bloodSplatterDuration
 	}
@@ -755,36 +614,7 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *effectcontract.Eff
 		ContractManaged:    true,
 		TelemetrySpawnTick: instance.StartTick,
 	}
-	if !w.registerEffect(effect) {
-		instance.BehaviorState.TicksRemaining = 0
-		return nil
-	}
-	w.recordEffectSpawn(effectType, "blood-decal")
 	return effect
-}
-
-func spawnSizeFromShape(tpl *ProjectileTemplate) (float64, float64) {
-	if tpl == nil {
-		return 0, 0
-	}
-	if tpl.CollisionShape.UseRect {
-		spawnDiameter := sanitizedSpawnRadius(tpl.SpawnRadius) * 2
-		width := math.Max(tpl.CollisionShape.RectWidth, spawnDiameter)
-		height := math.Max(tpl.CollisionShape.RectHeight, spawnDiameter)
-		width = math.Max(width, 1)
-		height = math.Max(height, 1)
-		return width, height
-	}
-	radius := sanitizedSpawnRadius(tpl.SpawnRadius)
-	diameter := radius * 2
-	return diameter, diameter
-}
-
-func sanitizedSpawnRadius(value float64) float64 {
-	if value < 1 {
-		return 1
-	}
-	return value
 }
 
 func ownerHalfExtent(owner *actorState) float64 {
@@ -794,65 +624,18 @@ func ownerHalfExtent(owner *actorState) float64 {
 	return playerHalf
 }
 
-func effectLifetime(tpl *ProjectileTemplate) time.Duration {
-	if tpl == nil {
-		return 0
-	}
-	if tpl.Lifetime > 0 {
-		return tpl.Lifetime
-	}
-	if tpl.Speed <= 0 || tpl.MaxDistance <= 0 {
-		return 0
-	}
-	seconds := tpl.MaxDistance / tpl.Speed
-	if seconds <= 0 {
-		return 0
-	}
-	return time.Duration(seconds * float64(time.Second))
-}
-
-func mergeParams(base map[string]float64, overrides map[string]float64) map[string]float64 {
-	if len(base) == 0 && len(overrides) == 0 {
-		return nil
-	}
-	merged := make(map[string]float64)
-	for k, v := range base {
-		merged[k] = v
-	}
-	for k, v := range overrides {
-		merged[k] = v
-	}
-	return merged
-}
-
 func (w *World) registerEffect(effect *effectState) bool {
-	if w == nil || effect == nil || effect.ID == "" {
+	if w == nil {
 		return false
 	}
-	if w.effectsByID == nil {
-		w.effectsByID = make(map[string]*effectState)
-	}
-	if w.effectsIndex != nil {
-		if !w.effectsIndex.Upsert(effect) {
-			if w.telemetry != nil {
-				w.telemetry.RecordEffectSpatialOverflow(effect.Type)
-			}
-			return false
-		}
-	}
-	w.effects = append(w.effects, effect)
-	w.effectsByID[effect.ID] = effect
-	return true
+	return internaleffects.RegisterEffect(w.effectRegistry(), effect)
 }
 
 func (w *World) unregisterEffect(effect *effectState) {
-	if w == nil || effect == nil || effect.ID == "" {
+	if w == nil {
 		return
 	}
-	if w.effectsIndex != nil {
-		w.effectsIndex.Remove(effect.ID)
-	}
-	delete(w.effectsByID, effect.ID)
+	internaleffects.UnregisterEffect(w.effectRegistry(), effect)
 }
 
 // meleeAttackRectangle builds the hitbox in front of a player for a melee swing.
@@ -1172,7 +955,7 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 			size = 1
 		}
 	}
-	params := mergeParams(spec.Params, map[string]float64{
+	params := internaleffects.MergeParams(spec.Params, map[string]float64{
 		"radius": radius,
 	})
 	if spec.Duration > 0 {
@@ -1222,13 +1005,10 @@ func effectAABB(eff *effectState) Obstacle {
 }
 
 func (w *World) findEffectByID(id string) *effectState {
-	if w == nil || id == "" {
+	if w == nil {
 		return nil
 	}
-	if eff := w.effectsByID[id]; eff != nil {
-		return eff
-	}
-	return nil
+	return internaleffects.FindByID(w.effectRegistry(), id)
 }
 
 func (w *World) anyObstacleOverlap(area Obstacle) bool {
@@ -1253,14 +1033,12 @@ func centerY(eff *effectState) float64 {
 
 // pruneEffects drops expired effects from the in-memory list.
 func (w *World) pruneEffects(now time.Time) {
-	if len(w.effects) == 0 {
+	if w == nil {
 		return
 	}
-	current := w.effects
-	w.effects = w.effects[:0]
-	for _, eff := range current {
-		if now.Before(eff.ExpiresAt) {
-			w.effects = append(w.effects, eff)
+	expired := internaleffects.PruneExpired(w.effectRegistry(), now)
+	for _, eff := range expired {
+		if eff == nil {
 			continue
 		}
 		if eff.Projectile != nil && !eff.Projectile.ExpiryResolved {
@@ -1268,7 +1046,6 @@ func (w *World) pruneEffects(now time.Time) {
 		}
 		w.recordEffectEnd(eff, "expired")
 		w.purgeEntityPatches(eff.ID)
-		w.unregisterEffect(eff)
 	}
 }
 

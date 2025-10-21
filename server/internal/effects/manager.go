@@ -12,6 +12,7 @@ type Runtime interface {
 	InstanceState(id string) any
 	SetInstanceState(id string, state any)
 	ClearInstanceState(id string)
+	Registry() Registry
 }
 
 type HookFunc func(Runtime, *effectcontract.EffectInstance, effectcontract.Tick, time.Time)
@@ -26,6 +27,7 @@ type ManagerConfig struct {
 	Catalog      *effectcatalog.Resolver
 	Hooks        map[string]HookSet
 	OwnerMissing func(actorID string) bool
+	Registry     func() Registry
 }
 
 type Manager struct {
@@ -41,6 +43,7 @@ type Manager struct {
 	lastTickProcessed effectcontract.Tick
 	nextInstanceID    uint64
 	ownerMissing      func(string) bool
+	registry          func() Registry
 }
 
 func NewManager(cfg ManagerConfig) *Manager {
@@ -63,6 +66,7 @@ func NewManager(cfg ManagerConfig) *Manager {
 		instanceState: make(map[string]any),
 		seqByInstance: make(map[string]effectcontract.Seq),
 		ownerMissing:  cfg.OwnerMissing,
+		registry:      cfg.Registry,
 	}
 }
 
@@ -164,6 +168,13 @@ func (m *Manager) ClearInstanceState(id string) {
 	delete(m.instanceState, id)
 }
 
+func (m *Manager) Registry() Registry {
+	if m == nil || m.registry == nil {
+		return Registry{}
+	}
+	return m.registry()
+}
+
 func (m *Manager) EnqueueIntent(intent effectcontract.EffectIntent) {
 	if m == nil {
 		return
@@ -256,6 +267,11 @@ func (m *Manager) RunTick(tick effectcontract.Tick, now time.Time, emit func(eff
 	}
 
 	for _, id := range ended {
+		if value := m.InstanceState(id); value != nil {
+			if effect, ok := value.(*State); ok {
+				UnregisterEffect(m.Registry(), effect)
+			}
+		}
 		delete(m.instances, id)
 		delete(m.seqByInstance, id)
 		m.ClearInstanceState(id)
