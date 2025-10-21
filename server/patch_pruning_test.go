@@ -52,8 +52,8 @@ func TestNPCRemovalPurgesPatches(t *testing.T) {
 func TestEffectExpiryPurgesPatches(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	now := time.Now()
-	expired := &effectState{ID: "effect-test", Type: effectTypeFireball, expiresAt: now.Add(-time.Second)}
-	alive := &effectState{ID: "effect-alive", Type: effectTypeFireball, expiresAt: now.Add(time.Second)}
+	expired := &effectState{ID: "effect-test", Type: effectTypeFireball, ExpiresAt: now.Add(-time.Second)}
+	alive := &effectState{ID: "effect-alive", Type: effectTypeFireball, ExpiresAt: now.Add(time.Second)}
 	w.effects = append(w.effects, expired, alive)
 
 	w.SetEffectPosition(expired, 10, 15)
@@ -127,7 +127,7 @@ func TestMarshalStateRetainsEffectPatches(t *testing.T) {
 
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-anchor", Facing: FacingDown, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	now := time.Now()
-	effect := &effectState{ID: "effect-patch", Type: effectTypeFireball, expiresAt: now.Add(time.Minute)}
+	effect := &effectState{ID: "effect-patch", Type: effectTypeFireball, ExpiresAt: now.Add(time.Minute)}
 
 	hub.mu.Lock()
 	hub.world.AddPlayer(player)

@@ -7,11 +7,12 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	"mine-and-die/server/logging"
 	loggingstatuseffects "mine-and-die/server/logging/status_effects"
 )
 
-type StatusEffectType string
+type StatusEffectType = internaleffects.StatusEffectType
 
 type statusEffectHandler func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time)
 
@@ -266,7 +267,7 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		Params:             map[string]float64{"healthDelta": delta},
 		Instance:           effectcontract.EffectInstance{DefinitionID: effectTypeBurningTick, OwnerActorID: owner, StartTick: effectcontract.Tick(int64(w.currentTick))},
 		StatusEffect:       status,
-		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
+		TelemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
 	if eff.Owner == "" {
 		eff.Owner = actor.ID
@@ -300,9 +301,9 @@ func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, l
 		Width:              width,
 		Height:             height,
 		Instance:           effectcontract.EffectInstance{ID: instanceID, DefinitionID: effectType, OwnerActorID: actor.ID, StartTick: effectcontract.Tick(int64(w.currentTick))},
-		expiresAt:          now.Add(lifetime),
+		ExpiresAt:          now.Add(lifetime),
 		FollowActorID:      actor.ID,
-		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
+		TelemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
 	if !w.registerEffect(eff) {
 		return nil
@@ -315,10 +316,10 @@ func (w *World) extendAttachedEffect(eff *effectState, expiresAt time.Time) {
 	if eff == nil {
 		return
 	}
-	if expiresAt.Before(eff.expiresAt) {
+	if expiresAt.Before(eff.ExpiresAt) {
 		return
 	}
-	eff.expiresAt = expiresAt
+	eff.ExpiresAt = expiresAt
 	start := time.UnixMilli(eff.Start)
 	if eff.Start == 0 {
 		start = expiresAt
@@ -334,9 +335,9 @@ func (w *World) expireAttachedEffect(eff *effectState, now time.Time) {
 	if eff == nil {
 		return
 	}
-	shouldRecord := !eff.telemetryEnded
-	if now.Before(eff.expiresAt) {
-		eff.expiresAt = now
+	shouldRecord := !eff.TelemetryEnded
+	if now.Before(eff.ExpiresAt) {
+		eff.ExpiresAt = now
 	}
 	start := time.UnixMilli(eff.Start)
 	if eff.Start == 0 {

@@ -387,7 +387,7 @@ func meleeEffectForInstance(instance *effectcontract.EffectInstance, owner *acto
 		Height:             height,
 		Params:             params,
 		Instance:           *instance,
-		telemetrySpawnTick: instance.StartTick,
+		TelemetrySpawnTick: instance.StartTick,
 	}
 	area := Obstacle{X: rectX, Y: rectY, Width: width, Height: height}
 	return effect, area
@@ -491,12 +491,12 @@ func spawnStatusVisualFromInstance(world *World, instance *effectcontract.Effect
 	if effect == nil {
 		return nil
 	}
-	effect.contractManaged = true
+	effect.ContractManaged = true
 	effect.ID = instance.ID
 	effect.Instance = *instance
 	effect.StatusEffect = StatusEffectBurning
 	effect.FollowActorID = actor.ID
-	effect.telemetrySpawnTick = instance.StartTick
+	effect.TelemetrySpawnTick = instance.StartTick
 	return effect
 }
 

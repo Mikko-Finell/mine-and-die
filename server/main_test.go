@@ -1403,7 +1403,7 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 	if managed == nil {
 		t.Fatalf("expected contract fireball effect to spawn")
 	}
-	if !managed.contractManaged {
+	if !managed.ContractManaged {
 		t.Fatalf("expected contract-managed projectile, got legacy effect")
 	}
 
@@ -1516,7 +1516,7 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 	if inst.attachedEffect == nil {
 		t.Fatalf("expected burning visual to attach to status effect")
 	}
-	if !inst.attachedEffect.contractManaged {
+	if !inst.attachedEffect.ContractManaged {
 		t.Fatalf("expected burning visual to be contract-managed")
 	}
 	if inst.attachedEffect.FollowActorID != target.ID {
@@ -1610,7 +1610,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	if effect.Type != effectTypeBloodSplatter {
 		t.Fatalf("expected world effect type %q, got %q", effectTypeBloodSplatter, effect.Type)
 	}
-	if !effect.contractManaged {
+	if !effect.ContractManaged {
 		t.Fatalf("expected blood decal to be contract-managed")
 	}
 
@@ -1829,7 +1829,7 @@ func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
 		if eff == nil {
 			continue
 		}
-		if eff.Type == effectTypeAttack && !eff.contractManaged {
+		if eff.Type == effectTypeAttack && !eff.ContractManaged {
 			t.Fatalf("unexpected legacy melee effect when contract pipeline enabled")
 		}
 	}
