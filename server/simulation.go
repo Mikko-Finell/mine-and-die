@@ -531,23 +531,20 @@ func (w *World) applyPlayerPositionMutations(initial map[string]vec2, proposed m
 		return
 	}
 
+	actors := make([]worldpkg.PositionActor, 0, len(w.players))
 	for id, player := range w.players {
-		start, ok := initial[id]
-		if !ok {
-			start = vec2{X: player.X, Y: player.Y}
-		}
-
-		target, ok := proposed[id]
-		if !ok {
-			target = vec2{X: player.X, Y: player.Y}
-		}
-
-		if positionsEqual(start.X, start.Y, target.X, target.Y) {
+		if player == nil {
 			continue
 		}
-
-		w.SetPosition(id, target.X, target.Y)
+		actors = append(actors, worldpkg.PositionActor{
+			ID:      id,
+			Current: worldpkg.Vec2{X: player.X, Y: player.Y},
+		})
 	}
+
+	worldpkg.ApplyPlayerPositionMutations(initial, proposed, actors, func(id string, target worldpkg.Vec2) {
+		w.SetPosition(id, target.X, target.Y)
+	})
 }
 
 // applyNPCPositionMutations commits NPC movement resolved during the tick through
@@ -557,23 +554,20 @@ func (w *World) applyNPCPositionMutations(initial map[string]vec2, proposed map[
 		return
 	}
 
+	actors := make([]worldpkg.PositionActor, 0, len(w.npcs))
 	for id, npc := range w.npcs {
-		start, ok := initial[id]
-		if !ok {
-			start = vec2{X: npc.X, Y: npc.Y}
-		}
-
-		target, ok := proposed[id]
-		if !ok {
-			target = vec2{X: npc.X, Y: npc.Y}
-		}
-
-		if positionsEqual(start.X, start.Y, target.X, target.Y) {
+		if npc == nil {
 			continue
 		}
-
-		w.SetNPCPosition(id, target.X, target.Y)
+		actors = append(actors, worldpkg.PositionActor{
+			ID:      id,
+			Current: worldpkg.Vec2{X: npc.X, Y: npc.Y},
+		})
 	}
+
+	worldpkg.ApplyNPCPositionMutations(initial, proposed, actors, func(id string, target worldpkg.Vec2) {
+		w.SetNPCPosition(id, target.X, target.Y)
+	})
 }
 
 func (w *World) spawnInitialNPCs() {
