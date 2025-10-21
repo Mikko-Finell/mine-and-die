@@ -2321,7 +2321,7 @@ func TestConsoleDropAndPickupSelf(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected exactly one ground item, got %d", len(items))
 	}
-	if items[0].Type != ItemTypeGold {
+	if ItemType(items[0].Type) != ItemTypeGold {
 		t.Fatalf("expected ground item type gold, got %s", items[0].Type)
 	}
 	if items[0].Qty != 10 {
@@ -2584,7 +2584,7 @@ func TestDeathDropsPlayerInventory(t *testing.T) {
 	}
 	totals := map[ItemType]int{}
 	for _, item := range items {
-		totals[item.Type] += item.Qty
+		totals[ItemType(item.Type)] += item.Qty
 	}
 	if totals[ItemTypeGold] != 37 {
 		t.Fatalf("expected ground gold to equal 37, got %d", totals[ItemTypeGold])
@@ -2683,7 +2683,7 @@ func TestDeathDropsNPCInventory(t *testing.T) {
 	}
 	totals := map[ItemType]int{}
 	for _, item := range items {
-		totals[item.Type] += item.Qty
+		totals[ItemType(item.Type)] += item.Qty
 	}
 	if totals[ItemTypeGold] != 12 {
 		t.Fatalf("expected npc drop of 12 gold, got %d", totals[ItemTypeGold])
@@ -2726,7 +2726,7 @@ func TestRatDropsTailOnDeath(t *testing.T) {
 		t.Fatalf("expected one ground drop for rat tail, got %d", len(items))
 	}
 	drop := items[0]
-	if drop.Type != ItemTypeRatTail {
+	if ItemType(drop.Type) != ItemTypeRatTail {
 		t.Fatalf("expected rat tail drop, got %s", drop.Type)
 	}
 	if drop.Qty != 1 {
@@ -2755,7 +2755,7 @@ func TestGroundGoldMergesOnSameTile(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected merged stack, got %d items", len(items))
 	}
-	if items[0].Type != ItemTypeGold {
+	if ItemType(items[0].Type) != ItemTypeGold {
 		t.Fatalf("expected merged stack type gold, got %s", items[0].Type)
 	}
 	if items[0].Qty != 12 {

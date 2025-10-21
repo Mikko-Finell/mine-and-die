@@ -17,7 +17,7 @@ func TestNPCRemovalPurgesPatches(t *testing.T) {
 
 	tile := tileForPosition(npc.X, npc.Y)
 	def, _ := ItemDefinitionFor(ItemTypeGold)
-	existing := &groundItemState{GroundItem: toWorldGroundItem(GroundItem{ID: "ground-existing", Type: ItemTypeGold, FungibilityKey: def.FungibilityKey, Qty: 1}), Tile: tile}
+	existing := &groundItemState{GroundItem: GroundItem{ID: "ground-existing", Type: string(ItemTypeGold), FungibilityKey: def.FungibilityKey, Qty: 1}, Tile: tile}
 	w.groundItems[existing.ID] = existing
 	if w.groundItemsByTile == nil {
 		w.groundItemsByTile = make(map[groundTileKey]map[string]*groundItemState)

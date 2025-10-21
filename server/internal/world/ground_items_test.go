@@ -244,3 +244,35 @@ func TestRemoveGroundItemClearsStoreAndTile(t *testing.T) {
 		t.Fatalf("expected removal to zero the quantity, got %d", item.Qty)
 	}
 }
+
+func TestGroundItemsSnapshotReturnsSortedCopy(t *testing.T) {
+	items := map[string]*GroundItemState{
+		"ground-b": {GroundItem: GroundItem{ID: "ground-b", Qty: 1}},
+		"ground-a": {GroundItem: GroundItem{ID: "ground-a", Qty: 2}},
+		"nil":      nil,
+	}
+
+	snapshot := GroundItemsSnapshot(items)
+
+	if len(snapshot) != 2 {
+		t.Fatalf("expected snapshot to contain 2 items, got %d", len(snapshot))
+	}
+	if snapshot[0].ID != "ground-a" || snapshot[1].ID != "ground-b" {
+		t.Fatalf("expected snapshot order [ground-a ground-b], got [%s %s]", snapshot[0].ID, snapshot[1].ID)
+	}
+
+	snapshot[0].Qty = 99
+	if items["ground-a"].Qty != 2 {
+		t.Fatalf("expected snapshot to copy values, got %d", items["ground-a"].Qty)
+	}
+}
+
+func TestGroundItemsSnapshotHandlesEmptyInput(t *testing.T) {
+	if snapshot := GroundItemsSnapshot(nil); len(snapshot) != 0 {
+		t.Fatalf("expected nil input to produce empty slice, got %d", len(snapshot))
+	}
+
+	if snapshot := GroundItemsSnapshot(map[string]*GroundItemState{}); len(snapshot) != 0 {
+		t.Fatalf("expected empty map to produce empty slice, got %d", len(snapshot))
+	}
+}

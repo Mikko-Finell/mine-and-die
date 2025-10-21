@@ -3,6 +3,7 @@ package world
 import (
 	"fmt"
 	"math"
+	"sort"
 )
 
 // GroundTileKey identifies the map tile that currently contains a ground item stack.
@@ -13,12 +14,12 @@ type GroundTileKey struct {
 
 // GroundItem mirrors the legacy ground-item snapshot exposed to callers.
 type GroundItem struct {
-	ID             string
-	Type           string
-	FungibilityKey string
-	X              float64
-	Y              float64
-	Qty            int
+	ID             string  `json:"id"`
+	Type           string  `json:"type"`
+	FungibilityKey string  `json:"fungibility_key"`
+	X              float64 `json:"x"`
+	Y              float64 `json:"y"`
+	Qty            int     `json:"qty"`
 }
 
 // GroundItemState tracks a ground item along with its tile metadata.
@@ -258,6 +259,35 @@ func SetGroundItemQuantity(qty *int, newQty int) bool {
 
 	*qty = newQty
 	return true
+}
+
+func groundItemsSnapshot(items map[string]*GroundItemState) []GroundItem {
+	if len(items) == 0 {
+		return make([]GroundItem, 0)
+	}
+
+	snapshot := make([]GroundItem, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		snapshot = append(snapshot, item.GroundItem)
+	}
+
+	sort.Slice(snapshot, func(i, j int) bool {
+		return snapshot[i].ID < snapshot[j].ID
+	})
+
+	return snapshot
+}
+
+// GroundItemsSnapshot returns a broadcast-friendly copy of the provided ground items.
+func GroundItemsSnapshot(items map[string]*GroundItemState) []GroundItem {
+	snapshot := groundItemsSnapshot(items)
+	if snapshot == nil {
+		return make([]GroundItem, 0)
+	}
+	return snapshot
 }
 
 func clampFloat(value, min, max float64) float64 {
