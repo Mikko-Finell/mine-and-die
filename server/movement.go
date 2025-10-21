@@ -1,152 +1,38 @@
 package server
 
-import "math"
+import (
+	"math"
+
+	worldpkg "mine-and-die/server/internal/world"
+)
 
 // moveActorWithObstacles advances an actor while clamping speed, bounds, and walls.
 func moveActorWithObstacles(state *actorState, dt float64, obstacles []Obstacle, width, height float64) {
-	dx := state.intentX
-	dy := state.intentY
-	length := math.Hypot(dx, dy)
-	if length != 0 {
-		dx /= length
-		dy /= length
+	if state == nil {
+		return
 	}
 
-	deltaX := dx * moveSpeed * dt
-	deltaY := dy * moveSpeed * dt
-
-	newX := clamp(state.X+deltaX, playerHalf, width-playerHalf)
-	if deltaX != 0 {
-		newX = resolveAxisMoveX(state.X, state.Y, newX, deltaX, obstacles, width)
+	movement := worldpkg.MovementActor{
+		X:       state.X,
+		Y:       state.Y,
+		IntentX: state.intentX,
+		IntentY: state.intentY,
 	}
-
-	newY := clamp(state.Y+deltaY, playerHalf, height-playerHalf)
-	if deltaY != 0 {
-		newY = resolveAxisMoveY(newX, state.Y, newY, deltaY, obstacles, height)
-	}
-
-	state.X = newX
-	state.Y = newY
-
-	resolveObstaclePenetration(state, obstacles, width, height)
-}
-
-// resolveAxisMoveX applies horizontal movement while stopping at obstacle edges.
-func resolveAxisMoveX(oldX, oldY, proposedX, deltaX float64, obstacles []Obstacle, width float64) float64 {
-	newX := proposedX
-	for _, obs := range obstacles {
-		if obs.Type == obstacleTypeLava {
-			continue
-		}
-		minY := obs.Y - playerHalf
-		maxY := obs.Y + obs.Height + playerHalf
-		if oldY < minY || oldY > maxY {
-			continue
-		}
-
-		if deltaX > 0 {
-			boundary := obs.X - playerHalf
-			if oldX <= boundary && newX > boundary {
-				newX = boundary
-			}
-		} else if deltaX < 0 {
-			boundary := obs.X + obs.Width + playerHalf
-			if oldX >= boundary && newX < boundary {
-				newX = boundary
-			}
-		}
-	}
-	return clamp(newX, playerHalf, width-playerHalf)
-}
-
-// resolveAxisMoveY applies vertical movement while stopping at obstacle edges.
-func resolveAxisMoveY(oldX, oldY, proposedY, deltaY float64, obstacles []Obstacle, height float64) float64 {
-	newY := proposedY
-	for _, obs := range obstacles {
-		if obs.Type == obstacleTypeLava {
-			continue
-		}
-		minX := obs.X - playerHalf
-		maxX := obs.X + obs.Width + playerHalf
-		if oldX < minX || oldX > maxX {
-			continue
-		}
-
-		if deltaY > 0 {
-			boundary := obs.Y - playerHalf
-			if oldY <= boundary && newY > boundary {
-				newY = boundary
-			}
-		} else if deltaY < 0 {
-			boundary := obs.Y + obs.Height + playerHalf
-			if oldY >= boundary && newY < boundary {
-				newY = boundary
-			}
-		}
-	}
-	return clamp(newY, playerHalf, height-playerHalf)
+	worldpkg.MoveActorWithObstacles(&movement, dt, obstacles, width, height, moveSpeed)
+	state.X = movement.X
+	state.Y = movement.Y
 }
 
 // resolveObstaclePenetration nudges an actor out of overlapping obstacles.
 func resolveObstaclePenetration(state *actorState, obstacles []Obstacle, width, height float64) {
-	for _, obs := range obstacles {
-		if obs.Type == obstacleTypeLava {
-			continue
-		}
-		if !circleRectOverlap(state.X, state.Y, playerHalf, obs) {
-			continue
-		}
-
-		closestX := clamp(state.X, obs.X, obs.X+obs.Width)
-		closestY := clamp(state.Y, obs.Y, obs.Y+obs.Height)
-		dx := state.X - closestX
-		dy := state.Y - closestY
-		distSq := dx*dx + dy*dy
-
-		if distSq == 0 {
-			left := math.Abs(state.X - obs.X)
-			right := math.Abs((obs.X + obs.Width) - state.X)
-			top := math.Abs(state.Y - obs.Y)
-			bottom := math.Abs((obs.Y + obs.Height) - state.Y)
-
-			minDist := left
-			direction := 0
-			if right < minDist {
-				minDist = right
-				direction = 1
-			}
-			if top < minDist {
-				minDist = top
-				direction = 2
-			}
-			if bottom < minDist {
-				direction = 3
-			}
-
-			switch direction {
-			case 0:
-				state.X = obs.X - playerHalf
-			case 1:
-				state.X = obs.X + obs.Width + playerHalf
-			case 2:
-				state.Y = obs.Y - playerHalf
-			case 3:
-				state.Y = obs.Y + obs.Height + playerHalf
-			}
-		} else {
-			dist := math.Sqrt(distSq)
-			if dist < playerHalf {
-				overlap := playerHalf - dist
-				nx := dx / dist
-				ny := dy / dist
-				state.X += nx * overlap
-				state.Y += ny * overlap
-			}
-		}
-
-		state.X = clamp(state.X, playerHalf, width-playerHalf)
-		state.Y = clamp(state.Y, playerHalf, height-playerHalf)
+	if state == nil {
+		return
 	}
+
+	movement := worldpkg.MovementActor{X: state.X, Y: state.Y}
+	worldpkg.ResolveObstaclePenetration(&movement, obstacles, width, height)
+	state.X = movement.X
+	state.Y = movement.Y
 }
 
 // resolveActorCollisions separates overlapping actors while respecting walls.
