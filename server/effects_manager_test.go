@@ -62,3 +62,76 @@ func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
 		t.Fatalf("expected effect instance to end after duration without emitter, found %d instances", len(manager.Instances()))
 	}
 }
+
+func TestEffectManagerWorldEffectLoadsFromRegistry(t *testing.T) {
+	world := &World{
+		effectsByID: make(map[string]*effectState),
+	}
+	world.effectsRegistry = internaleffects.Registry{
+		Effects: &world.effects,
+		ByID:    &world.effectsByID,
+	}
+
+	effect := &effectState{ID: "effect.registry.lookup"}
+	if !internaleffects.RegisterEffect(world.effectRegistry(), effect) {
+		t.Fatalf("expected register effect to succeed")
+	}
+
+	manager := newEffectManager(world)
+	if got := manager.WorldEffect(effect.ID); got != effect {
+		t.Fatalf("expected world effect lookup to return registered instance, got %#v", got)
+	}
+}
+
+func TestEffectManagerProjectileLifecycleUpdatesRegistry(t *testing.T) {
+	ownerID := "owner-1"
+	world := &World{
+		players: map[string]*playerState{
+			ownerID: {
+				actorState: actorState{Actor: Actor{ID: ownerID, X: 10, Y: 15, Facing: FacingRight}},
+				cooldowns:  make(map[string]time.Time),
+			},
+		},
+		effectsByID:         make(map[string]*effectState),
+		projectileTemplates: newProjectileTemplates(),
+	}
+	world.effectsIndex = internaleffects.NewSpatialIndex(0, 0)
+	world.effectsRegistry = internaleffects.Registry{
+		Effects: &world.effects,
+		ByID:    &world.effectsByID,
+		Index:   world.effectsIndex,
+	}
+
+	manager := newEffectManager(world)
+
+	manager.EnqueueIntent(effectcontract.EffectIntent{
+		EntryID:       effectTypeFireball,
+		TypeID:        effectTypeFireball,
+		DurationTicks: 2,
+		SourceActorID: ownerID,
+	})
+
+	now := time.Unix(0, 0)
+	manager.RunTick(effectcontract.Tick(1), now, nil)
+
+	instances := manager.Instances()
+	if len(instances) != 1 {
+		t.Fatalf("expected one active instance after spawn, got %d", len(instances))
+	}
+	var instanceID string
+	for id := range instances {
+		instanceID = id
+	}
+	if instanceID == "" {
+		t.Fatalf("expected spawned instance id to be populated")
+	}
+	if _, ok := world.effectsByID[instanceID]; !ok {
+		t.Fatalf("expected contract-managed effect to be registered in world registry")
+	}
+
+	manager.RunTick(effectcontract.Tick(2), now.Add(time.Second), nil)
+
+	if _, ok := world.effectsByID[instanceID]; ok {
+		t.Fatalf("expected projectile effect to be unregistered after teardown")
+	}
+}

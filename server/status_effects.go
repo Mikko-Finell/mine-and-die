@@ -305,10 +305,6 @@ func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, l
 		FollowActorID:      actor.ID,
 		TelemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
-	if !w.registerEffect(eff) {
-		return nil
-	}
-	w.recordEffectSpawn(effectType, "status-effect")
 	return eff
 }
 

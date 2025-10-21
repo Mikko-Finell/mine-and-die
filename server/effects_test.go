@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
 )
@@ -71,5 +72,30 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 	}
 	if slots[0].Item.Quantity != 1 {
 		t.Fatalf("expected slot quantity 1, got %d", slots[0].Item.Quantity)
+	}
+}
+
+func TestWorldAttachTelemetryConfiguresEffectRegistryOverflow(t *testing.T) {
+	w := legacyConstructWorld(worldpkg.DefaultConfig(), logging.NopPublisher{})
+	if w == nil {
+		t.Fatalf("expected world to construct")
+	}
+	if reg := w.effectRegistry(); reg.RecordSpatialOverflow != nil {
+		t.Fatalf("expected overflow callback to be unset before telemetry attaches")
+	}
+
+	telemetry := newTelemetryCounters(nil)
+	w.attachTelemetry(telemetry)
+
+	reg := w.effectRegistry()
+	if reg.RecordSpatialOverflow == nil {
+		t.Fatalf("expected overflow callback after telemetry attaches")
+	}
+
+	reg.RecordSpatialOverflow("spark")
+
+	snapshot := telemetry.effectsSpatialOverflow.snapshot()
+	if got := snapshot["spark"]; got != 1 {
+		t.Fatalf("expected overflow counter to increment, got %d", got)
 	}
 }

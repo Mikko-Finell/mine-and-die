@@ -6,6 +6,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	logging "mine-and-die/server/logging"
 )
 
@@ -96,7 +97,7 @@ func TestNewProjectileIntent(t *testing.T) {
 		t.Fatalf("expected SourceActorID %q, got %q", owner.ID, intent.SourceActorID)
 	}
 
-	expectedRadius := quantizeWorldCoord(sanitizedSpawnRadius(tpl.SpawnRadius))
+	expectedRadius := quantizeWorldCoord(internaleffects.SanitizedSpawnRadius(tpl.SpawnRadius))
 	if intent.Geometry.Radius != expectedRadius {
 		t.Fatalf("expected radius %d, got %d", expectedRadius, intent.Geometry.Radius)
 	}

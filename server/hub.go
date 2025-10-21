@@ -348,7 +348,7 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 	}
 	hub.engine = sim.NewLoop(engineAdapter, loopCfg, loopHooks)
 
-	hub.world.telemetry = hub.telemetry
+	hub.world.attachTelemetry(hub.telemetry)
 	hub.world.journal.AttachTelemetry(hub.telemetry)
 	hub.keyframeInterval.Store(int64(interval))
 	hub.forceKeyframe()
@@ -608,7 +608,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 
 	newW := requireLegacyWorld(worldpkg.New(cfg, h.publisher))
 	cfg = newW.config
-	newW.telemetry = h.telemetry
+	newW.attachTelemetry(h.telemetry)
 	newW.journal.AttachTelemetry(h.telemetry)
 	for _, id := range playerIDs {
 		newW.AddPlayer(h.seedPlayerState(id, now))

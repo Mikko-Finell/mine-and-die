@@ -6,6 +6,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 )
 
 func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
@@ -53,8 +54,14 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 		t.Fatalf("expected decodedY to approximate diagonal, got %.4f", decodedY)
 	}
 
-	world := &World{effectsByID: make(map[string]*effectState)}
-	spawned := world.spawnContractProjectileFromInstance(instance, owner, tpl, time.Unix(0, 0))
+	spawned := internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
+		Instance: instance,
+		Owner:    projectileOwnerAdapter{state: owner},
+		Template: tpl,
+		Now:      time.Unix(0, 0),
+		TileSize: tileSize,
+		TickRate: tickRate,
+	})
 	if spawned == nil {
 		t.Fatalf("expected projectile to spawn")
 	}
@@ -102,15 +109,21 @@ func TestSpawnContractProjectileFromInstancePreservesLifetime(t *testing.T) {
 		Lifetime:    3 * time.Second,
 	}
 
-	world := &World{effectsByID: make(map[string]*effectState)}
 	now := time.Unix(0, 0)
 
-	spawned := world.spawnContractProjectileFromInstance(instance, owner, tpl, now)
+	spawned := internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
+		Instance: instance,
+		Owner:    projectileOwnerAdapter{state: owner},
+		Template: tpl,
+		Now:      now,
+		TileSize: tileSize,
+		TickRate: tickRate,
+	})
 	if spawned == nil {
 		t.Fatalf("expected projectile to spawn")
 	}
 
-	expectedLifetime := ticksToDuration(instance.BehaviorState.TicksRemaining)
+	expectedLifetime := internaleffects.TicksToDuration(instance.BehaviorState.TicksRemaining, tickRate)
 	if expectedLifetime <= 0 {
 		t.Fatalf("expected positive lifetime from ticks, got %v", expectedLifetime)
 	}
