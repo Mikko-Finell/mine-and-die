@@ -1,10 +1,10 @@
-package server
+package effects
 
 import "testing"
 
-func TestEffectSpatialIndexInsertAndRemove(t *testing.T) {
-	idx := newEffectSpatialIndex(effectSpatialCellSize, 4)
-	eff := &effectState{ID: "effect-1", X: 10, Y: 10, Width: 20, Height: 20}
+func TestSpatialIndexInsertAndRemove(t *testing.T) {
+	idx := NewSpatialIndex(DefaultSpatialCellSize, 4)
+	eff := &State{ID: "effect-1", X: 10, Y: 10, Width: 20, Height: 20}
 	if !idx.Upsert(eff) {
 		t.Fatalf("expected initial insert to succeed")
 	}
@@ -13,8 +13,8 @@ func TestEffectSpatialIndexInsertAndRemove(t *testing.T) {
 		t.Fatalf("expected entry to track occupied cells")
 	}
 
-	eff.X = effectSpatialCellSize * 1.5
-	eff.Y = effectSpatialCellSize * 0.5
+	eff.X = DefaultSpatialCellSize * 1.5
+	eff.Y = DefaultSpatialCellSize * 0.5
 	if !idx.Upsert(eff) {
 		t.Fatalf("expected update to succeed")
 	}
@@ -32,13 +32,13 @@ func TestEffectSpatialIndexInsertAndRemove(t *testing.T) {
 	}
 }
 
-func TestEffectSpatialIndexCapacity(t *testing.T) {
-	idx := newEffectSpatialIndex(effectSpatialCellSize, 1)
-	first := &effectState{ID: "first", X: 5, Y: 5, Width: 10, Height: 10}
+func TestSpatialIndexCapacity(t *testing.T) {
+	idx := NewSpatialIndex(DefaultSpatialCellSize, 1)
+	first := &State{ID: "first", X: 5, Y: 5, Width: 10, Height: 10}
 	if !idx.Upsert(first) {
 		t.Fatalf("expected first insert to succeed")
 	}
-	second := &effectState{ID: "second", X: 6, Y: 6, Width: 8, Height: 8}
+	second := &State{ID: "second", X: 6, Y: 6, Width: 8, Height: 8}
 	if idx.Upsert(second) {
 		t.Fatalf("expected second insert to fail due to capacity")
 	}
