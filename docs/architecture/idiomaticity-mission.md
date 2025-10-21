@@ -318,7 +318,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Start carving out the journal subsystem by moving the `Journal` struct and `newJournal` constructor from `server/patches.go` into a new `internal/journal` package, exposing legacy adapters so existing callers continue to compile.
 - [x] Add focused tests for `internal/journal` that cover patch/effect cloning and resync policy signals so the new package's API stays locked.
 
-- [ ] Begin carving out `internal/effects` by moving the effect manager state and lifecycle helpers from `server/effects_manager.go` into the new package, leaving legacy wrappers for existing call sites.
+- [x] Begin carving out `internal/effects` by moving the effect manager state and lifecycle helpers from `server/effects_manager.go` into the new package, leaving legacy wrappers for existing call sites.
+- [ ] Move the legacy `effectState`/projectile/status helper definitions from `server/effects.go` into `internal/effects`, introducing adapters so world mutation code continues to operate on the shared types.
 
 - [x] Keep the tick loop in `sim/engine`:
 

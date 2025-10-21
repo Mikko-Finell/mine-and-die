@@ -1497,7 +1497,7 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 		t.Fatalf("expected burning status effect to apply")
 	}
 
-	if len(world.effectManager.intentQueue) == 0 {
+	if world.effectManager.PendingIntentCount() == 0 {
 		t.Fatalf("expected burning application to enqueue contract intents")
 	}
 
@@ -1525,7 +1525,7 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 
 	next := now.Add(burningTickInterval)
 	world.advanceStatusEffects(next)
-	if len(world.effectManager.intentQueue) == 0 {
+	if world.effectManager.PendingIntentCount() == 0 {
 		t.Fatalf("expected burning tick to enqueue contract damage intent")
 	}
 	world.effectManager.RunTick(effectcontract.Tick(2), next, nil)
@@ -1574,7 +1574,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	now := time.Unix(0, 0)
 	world.applyEffectHitNPC(eff, npc, now)
 
-	if len(world.effectManager.intentQueue) == 0 {
+	if world.effectManager.PendingIntentCount() == 0 {
 		t.Fatalf("expected blood splatter to enqueue contract intent")
 	}
 	if len(world.effectTriggers) != 0 {
@@ -1583,16 +1583,16 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 
 	world.effectManager.RunTick(effectcontract.Tick(1), now, nil)
 
-	if len(world.effectManager.intentQueue) != 0 {
-		t.Fatalf("expected intent queue to drain after tick, got %d", len(world.effectManager.intentQueue))
+	if world.effectManager.PendingIntentCount() != 0 {
+		t.Fatalf("expected intent queue to drain after tick, got %d", world.effectManager.PendingIntentCount())
 	}
 
-	if len(world.effectManager.instances) != 1 {
-		t.Fatalf("expected one contract blood decal instance, got %d", len(world.effectManager.instances))
+	if len(world.effectManager.Instances()) != 1 {
+		t.Fatalf("expected one contract blood decal instance, got %d", len(world.effectManager.Instances()))
 	}
 
 	var instance *effectcontract.EffectInstance
-	for _, inst := range world.effectManager.instances {
+	for _, inst := range world.effectManager.Instances() {
 		instance = inst
 		break
 	}
@@ -1603,7 +1603,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 		t.Fatalf("expected DefinitionID %q, got %q", effectTypeBloodSplatter, instance.DefinitionID)
 	}
 
-	effect := world.effectManager.worldEffects[instance.ID]
+	effect := world.effectManager.WorldEffect(instance.ID)
 	if effect == nil {
 		t.Fatal("expected contract blood decal to spawn in world state")
 	}
@@ -1707,21 +1707,21 @@ func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
 	if world.effectManager == nil {
 		t.Fatalf("expected effect manager to be instantiated when feature flag enabled")
 	}
-	if world.effectManager.totalEnqueued != len(commands) {
-		t.Fatalf("expected %d intents to be enqueued, got %d", len(commands), world.effectManager.totalEnqueued)
+	if world.effectManager.TotalEnqueued() != len(commands) {
+		t.Fatalf("expected %d intents to be enqueued, got %d", len(commands), world.effectManager.TotalEnqueued())
 	}
-	if world.effectManager.totalDrained != world.effectManager.totalEnqueued {
-		t.Fatalf("expected total drained %d to match enqueued %d", world.effectManager.totalDrained, world.effectManager.totalEnqueued)
+	if world.effectManager.TotalDrained() != world.effectManager.TotalEnqueued() {
+		t.Fatalf("expected total drained %d to match enqueued %d", world.effectManager.TotalDrained(), world.effectManager.TotalEnqueued())
 	}
-	if len(world.effectManager.intentQueue) != 0 {
-		t.Fatalf("expected intent queue to be drained after RunTick, found %d remaining", len(world.effectManager.intentQueue))
+	if world.effectManager.PendingIntentCount() != 0 {
+		t.Fatalf("expected intent queue to be drained after RunTick, found %d remaining", world.effectManager.PendingIntentCount())
 	}
 	expectedInstances := len(commands) - 1 // melee ends instantly
-	if len(world.effectManager.instances) != expectedInstances {
-		t.Fatalf("expected %d instances to remain active, found %d", expectedInstances, len(world.effectManager.instances))
+	if len(world.effectManager.Instances()) != expectedInstances {
+		t.Fatalf("expected %d instances to remain active, found %d", expectedInstances, len(world.effectManager.Instances()))
 	}
-	if world.effectManager.lastTickProcessed != effectcontract.Tick(1) {
-		t.Fatalf("expected manager to record tick 1, got %d", world.effectManager.lastTickProcessed)
+	if world.effectManager.LastTickProcessed() != effectcontract.Tick(1) {
+		t.Fatalf("expected manager to record tick 1, got %d", world.effectManager.LastTickProcessed())
 	}
 
 	if len(events.spawns) != len(commands) {
@@ -1781,7 +1781,7 @@ func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
 		if update.ID != spawn.Instance.ID {
 			t.Fatalf("expected update id %q to match spawn id", update.ID)
 		}
-		if def := world.effectManager.definitions[spawn.Instance.DefinitionID]; def != nil {
+		if def := world.effectManager.Definitions()[spawn.Instance.DefinitionID]; def != nil {
 			if spawn.Instance.Replication.SendSpawn != def.Client.SendSpawn ||
 				spawn.Instance.Replication.SendUpdates != def.Client.SendUpdates ||
 				spawn.Instance.Replication.SendEnd != def.Client.SendEnd {
@@ -1903,7 +1903,7 @@ func TestContractMeleeEndsInstantly(t *testing.T) {
 	if end.Reason != effectcontract.EndReasonExpired {
 		t.Fatalf("expected melee end reason %q, got %q", effectcontract.EndReasonExpired, end.Reason)
 	}
-	if _, exists := world.effectManager.instances[spawn.Instance.ID]; exists {
+	if _, exists := world.effectManager.Instances()[spawn.Instance.ID]; exists {
 		t.Fatalf("expected melee instance %q to be removed after instant end", spawn.Instance.ID)
 	}
 }
@@ -1918,7 +1918,7 @@ func TestContractProjectileEndsByDuration(t *testing.T) {
 	attacker.Y = worldHeight / 2
 	world.AddPlayer(attacker)
 
-	if def := world.effectManager.definitions[effectTypeFireball]; def != nil {
+	if def := world.effectManager.Definitions()[effectTypeFireball]; def != nil {
 		def.LifetimeTicks = 3
 		def.End = effectcontract.EndPolicy{Kind: effectcontract.EndDuration}
 	}
@@ -1975,7 +1975,7 @@ func TestContractProjectileEndsByDuration(t *testing.T) {
 			t.Fatalf("expected strictly increasing seq, got %v", seqs)
 		}
 	}
-	if _, exists := world.effectManager.instances[spawn.Instance.ID]; exists {
+	if _, exists := world.effectManager.Instances()[spawn.Instance.ID]; exists {
 		t.Fatalf("expected projectile instance %q to be removed after duration end", spawn.Instance.ID)
 	}
 }
@@ -1987,7 +1987,7 @@ func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
 	world.AddPlayer(owner)
 
 	const anchorType = "anchor-effect"
-	world.effectManager.definitions[anchorType] = &effectcontract.EffectDefinition{
+	world.effectManager.Definitions()[anchorType] = &effectcontract.EffectDefinition{
 		TypeID:        anchorType,
 		Delivery:      effectcontract.DeliveryKindTarget,
 		Shape:         effectcontract.GeometryShapeCircle,
@@ -2038,7 +2038,7 @@ func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
 	if end.Reason != effectcontract.EndReasonOwnerLost {
 		t.Fatalf("expected owner-lost reason %q, got %q", effectcontract.EndReasonOwnerLost, end.Reason)
 	}
-	if _, exists := world.effectManager.instances[anchorID]; exists {
+	if _, exists := world.effectManager.Instances()[anchorID]; exists {
 		t.Fatalf("expected anchor instance %q to be removed after owner lost", anchorID)
 	}
 }
@@ -2047,7 +2047,7 @@ func TestContractReplicationOffSkipsUpdates(t *testing.T) {
 	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	const spawnOnlyType = "spawn-only"
-	world.effectManager.definitions[spawnOnlyType] = &effectcontract.EffectDefinition{
+	world.effectManager.Definitions()[spawnOnlyType] = &effectcontract.EffectDefinition{
 		TypeID:        spawnOnlyType,
 		Delivery:      effectcontract.DeliveryKindArea,
 		Shape:         effectcontract.GeometryShapeCircle,
@@ -2092,7 +2092,7 @@ func TestContractSeqMonotonicAcrossTicks(t *testing.T) {
 	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
 	const seqType = "seq-effect"
-	world.effectManager.definitions[seqType] = &effectcontract.EffectDefinition{
+	world.effectManager.Definitions()[seqType] = &effectcontract.EffectDefinition{
 		TypeID:        seqType,
 		Delivery:      effectcontract.DeliveryKindArea,
 		Shape:         effectcontract.GeometryShapeCircle,
