@@ -333,19 +333,11 @@ func (w *World) extendAttachedEffect(eff *effectState, expiresAt time.Time) {
 	if eff == nil {
 		return
 	}
-	if expiresAt.Before(eff.ExpiresAt) {
-		return
-	}
-	eff.ExpiresAt = expiresAt
-	start := time.UnixMilli(eff.Start)
-	if eff.Start == 0 {
-		start = expiresAt
-	}
-	duration := expiresAt.Sub(start)
-	if duration < 0 {
-		duration = 0
-	}
-	eff.Duration = duration.Milliseconds()
+	worldpkg.ExtendStatusEffectLifetime(worldpkg.StatusEffectLifetimeFields{
+		ExpiresAt:      &eff.ExpiresAt,
+		StartMillis:    eff.Start,
+		DurationMillis: &eff.Duration,
+	}, expiresAt)
 }
 
 func (w *World) expireAttachedEffect(eff *effectState, now time.Time) {
@@ -353,18 +345,11 @@ func (w *World) expireAttachedEffect(eff *effectState, now time.Time) {
 		return
 	}
 	shouldRecord := !eff.TelemetryEnded
-	if now.Before(eff.ExpiresAt) {
-		eff.ExpiresAt = now
-	}
-	start := time.UnixMilli(eff.Start)
-	if eff.Start == 0 {
-		start = now
-	}
-	duration := now.Sub(start)
-	if duration < 0 {
-		duration = 0
-	}
-	eff.Duration = duration.Milliseconds()
+	worldpkg.ExpireStatusEffectLifetime(worldpkg.StatusEffectLifetimeFields{
+		ExpiresAt:      &eff.ExpiresAt,
+		StartMillis:    eff.Start,
+		DurationMillis: &eff.Duration,
+	}, now)
 	if shouldRecord {
 		w.recordEffectEnd(eff, "status-effect-expire")
 	}
