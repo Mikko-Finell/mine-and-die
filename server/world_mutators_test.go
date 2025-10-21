@@ -621,8 +621,8 @@ func TestSetEffectPositionRecordsPatch(t *testing.T) {
 
 	w.SetEffectPosition(eff, 5, 7)
 
-	if eff.version != 1 {
-		t.Fatalf("expected effect version to increment, got %d", eff.version)
+	if eff.Version != 1 {
+		t.Fatalf("expected effect version to increment, got %d", eff.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -648,8 +648,8 @@ func TestSetEffectParamRecordsPatch(t *testing.T) {
 
 	w.SetEffectParam(eff, "remainingRange", 3.5)
 
-	if eff.version != 1 {
-		t.Fatalf("expected effect version to increment, got %d", eff.version)
+	if eff.Version != 1 {
+		t.Fatalf("expected effect version to increment, got %d", eff.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()

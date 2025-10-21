@@ -7,6 +7,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingcombat "mine-and-die/server/logging/combat"
@@ -28,121 +29,19 @@ type EffectTrigger struct {
 	Colors   []string           `json:"colors,omitempty"`
 }
 
-// effectState stores the authoritative runtime bookkeeping for contract-driven
-// effects. The struct mirrors key fields from the historical legacy pipeline so
-// existing gameplay systems and telemetry remain stable while the contract
-// manager owns instance lifecycles.
-type effectState struct {
-	ID       string
-	Type     string
-	Owner    string
-	Start    int64
-	Duration int64
-	X        float64
-	Y        float64
-	Width    float64
-	Height   float64
-	Params   map[string]float64
-	Colors   []string
-
-	Instance              effectcontract.EffectInstance
-	expiresAt             time.Time
-	Projectile            *ProjectileState
-	FollowActorID         string
-	StatusEffect          StatusEffectType
-	version               uint64
-	telemetryEnded        bool
-	contractManaged       bool
-	telemetrySpawnTick    effectcontract.Tick
-	telemetryFirstHitTick effectcontract.Tick
-	telemetryHitCount     int
-	telemetryVictims      map[string]struct{}
-	telemetryDamage       float64
-}
-
-// LEGACY: ProjectileTemplate feeds the legacy projectile factory. Future
-// effectsgen catalogs will replace these ad-hoc templates with contract
-// definitions.
-type ProjectileTemplate struct {
-	Type           string
-	Speed          float64
-	MaxDistance    float64
-	Lifetime       time.Duration
-	SpawnRadius    float64
-	SpawnOffset    float64
-	CollisionShape CollisionShapeConfig
-	TravelMode     TravelModeConfig
-	ImpactRules    ImpactRuleConfig
-	Params         map[string]float64
-	Cooldown       time.Duration
-}
-
-// LEGACY: CollisionShapeConfig belongs to the legacy projectile template
-// system and will be superseded by effectsgen schema components.
-type CollisionShapeConfig struct {
-	RectWidth  float64
-	RectHeight float64
-	UseRect    bool
-}
-
-// LEGACY: TravelModeConfig belongs to the legacy projectile motion pipeline
-// slated for removal once effectsgen definitions cover movement semantics.
-type TravelModeConfig struct {
-	StraightLine bool
-}
-
-// LEGACY: ImpactRuleConfig encodes legacy projectile impact policies. The
-// effectsgen contract will supply this metadata so the struct can be removed.
-type ImpactRuleConfig struct {
-	StopOnHit          bool
-	MaxTargets         int
-	AffectsOwner       bool
-	ExplodeOnImpact    *ExplosionSpec
-	ExplodeOnExpiry    *ExplosionSpec
-	ExpiryOnlyIfNoHits bool
-}
-
-// LEGACY: ExplosionSpec is part of the legacy projectile explosion flow and
-// will disappear once the effectsgen catalog exposes reusable explosion
-// components.
-type ExplosionSpec struct {
-	EffectType string
-	Radius     float64
-	Duration   time.Duration
-	Params     map[string]float64
-}
-
-// LEGACY: ProjectileState tracks runtime state for legacy projectiles. The
-// contract manager maintains it only to bridge existing mechanics until
-// effectsgen definitions own motion and collision.
-type ProjectileState struct {
-	Template       *ProjectileTemplate
-	VelocityUnitX  float64
-	VelocityUnitY  float64
-	RemainingRange float64
-	HitCount       int
-	ExpiryResolved bool
-	HitActors      map[string]struct{}
-}
+type (
+	effectState          = internaleffects.State
+	ProjectileTemplate   = internaleffects.ProjectileTemplate
+	CollisionShapeConfig = internaleffects.CollisionShapeConfig
+	TravelModeConfig     = internaleffects.TravelModeConfig
+	ImpactRuleConfig     = internaleffects.ImpactRuleConfig
+	ExplosionSpec        = internaleffects.ExplosionSpec
+	ProjectileState      = internaleffects.ProjectileState
+)
 
 type projectileStopOptions struct {
 	triggerImpact bool
 	triggerExpiry bool
-}
-
-func (p *ProjectileState) markHit(id string) bool {
-	if p == nil || id == "" {
-		return false
-	}
-	if p.HitActors == nil {
-		p.HitActors = make(map[string]struct{})
-	}
-	if _, exists := p.HitActors[id]; exists {
-		return false
-	}
-	p.HitActors[id] = struct{}{}
-	p.HitCount++
-	return true
 }
 
 func (w *World) resolveMeleeImpact(effect *effectState, owner *actorState, actorID string, tick uint64, now time.Time, area Obstacle) {
@@ -494,9 +393,9 @@ func (w *World) recordEffectEnd(eff *effectState, reason string) {
 	if w == nil || eff == nil {
 		return
 	}
-	if !eff.telemetryEnded {
+	if !eff.TelemetryEnded {
 		w.flushEffectTelemetry(eff)
-		eff.telemetryEnded = true
+		eff.TelemetryEnded = true
 	}
 	if w.telemetry != nil {
 		w.telemetry.RecordEffectEnded(eff.Type, reason)
@@ -514,21 +413,21 @@ func (w *World) recordEffectHitTelemetry(eff *effectState, targetID string, delt
 	if w == nil || eff == nil {
 		return
 	}
-	if eff.telemetrySpawnTick == 0 {
-		eff.telemetrySpawnTick = effectcontract.Tick(int64(w.currentTick))
+	if eff.TelemetrySpawnTick == 0 {
+		eff.TelemetrySpawnTick = effectcontract.Tick(int64(w.currentTick))
 	}
-	if eff.telemetryFirstHitTick == 0 {
-		eff.telemetryFirstHitTick = effectcontract.Tick(int64(w.currentTick))
+	if eff.TelemetryFirstHitTick == 0 {
+		eff.TelemetryFirstHitTick = effectcontract.Tick(int64(w.currentTick))
 	}
-	eff.telemetryHitCount++
-	if eff.telemetryVictims == nil {
-		eff.telemetryVictims = make(map[string]struct{})
+	eff.TelemetryHitCount++
+	if eff.TelemetryVictims == nil {
+		eff.TelemetryVictims = make(map[string]struct{})
 	}
 	if targetID != "" {
-		eff.telemetryVictims[targetID] = struct{}{}
+		eff.TelemetryVictims[targetID] = struct{}{}
 	}
 	if delta < 0 {
-		eff.telemetryDamage += -delta
+		eff.TelemetryDamage += -delta
 	}
 }
 
@@ -537,26 +436,26 @@ func (w *World) flushEffectTelemetry(eff *effectState) {
 		return
 	}
 	victims := 0
-	if len(eff.telemetryVictims) > 0 {
-		victims = len(eff.telemetryVictims)
+	if len(eff.TelemetryVictims) > 0 {
+		victims = len(eff.TelemetryVictims)
 	}
-	spawnTick := eff.telemetrySpawnTick
+	spawnTick := eff.TelemetrySpawnTick
 	if spawnTick == 0 {
 		spawnTick = effectcontract.Tick(int64(w.currentTick))
 	}
 	summary := effectParitySummary{
 		EffectType:    eff.Type,
-		Hits:          eff.telemetryHitCount,
+		Hits:          eff.TelemetryHitCount,
 		UniqueVictims: victims,
-		TotalDamage:   eff.telemetryDamage,
+		TotalDamage:   eff.TelemetryDamage,
 		SpawnTick:     spawnTick,
-		FirstHitTick:  eff.telemetryFirstHitTick,
+		FirstHitTick:  eff.TelemetryFirstHitTick,
 	}
 	w.telemetry.RecordEffectParity(summary)
-	eff.telemetryHitCount = 0
-	eff.telemetryDamage = 0
-	eff.telemetryVictims = nil
-	eff.telemetryFirstHitTick = 0
+	eff.TelemetryHitCount = 0
+	eff.TelemetryDamage = 0
+	eff.TelemetryVictims = nil
+	eff.TelemetryFirstHitTick = 0
 }
 
 // QueueEffectTrigger appends a fire-and-forget trigger for clients. The caller
@@ -782,15 +681,15 @@ func (w *World) spawnContractProjectileFromInstance(instance *effectcontract.Eff
 		Height:    height,
 		Params:    params,
 		Instance:  *instance,
-		expiresAt: now.Add(lifetime),
+		ExpiresAt: now.Add(lifetime),
 		Projectile: &ProjectileState{
 			Template:       tpl,
 			VelocityUnitX:  dirX,
 			VelocityUnitY:  dirY,
 			RemainingRange: remainingRange,
 		},
-		contractManaged:    true,
-		telemetrySpawnTick: instance.StartTick,
+		ContractManaged:    true,
+		TelemetrySpawnTick: instance.StartTick,
 	}
 
 	w.pruneEffects(now)
@@ -852,9 +751,9 @@ func (w *World) spawnContractBloodDecalFromInstance(instance *effectcontract.Eff
 		Params:             newBloodSplatterParams(),
 		Colors:             bloodSplatterColors(),
 		Instance:           *instance,
-		expiresAt:          now.Add(lifetime),
-		contractManaged:    true,
-		telemetrySpawnTick: instance.StartTick,
+		ExpiresAt:          now.Add(lifetime),
+		ContractManaged:    true,
+		TelemetrySpawnTick: instance.StartTick,
 	}
 	if !w.registerEffect(effect) {
 		instance.BehaviorState.TicksRemaining = 0
@@ -997,14 +896,14 @@ func (w *World) advanceProjectiles(now time.Time, dt float64) {
 		if eff == nil {
 			continue
 		}
-		if eff.contractManaged {
+		if eff.ContractManaged {
 			continue
 		}
 		p := eff.Projectile
 		if p == nil {
 			continue
 		}
-		if !now.Before(eff.expiresAt) {
+		if !now.Before(eff.ExpiresAt) {
 			w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
 			continue
 		}
@@ -1081,7 +980,7 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 		if !circleRectOverlap(target.X, target.Y, playerHalf, area) {
 			continue
 		}
-		if !p.markHit(id) {
+		if !p.MarkHit(id) {
 			continue
 		}
 		hitPlayers = append(hitPlayers, id)
@@ -1105,7 +1004,7 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 			if !circleRectOverlap(target.X, target.Y, playerHalf, area) {
 				continue
 			}
-			if !p.markHit(id) {
+			if !p.MarkHit(id) {
 				continue
 			}
 			hitNPCs = append(hitNPCs, id)
@@ -1217,8 +1116,8 @@ func (w *World) stopProjectile(eff *effectState, now time.Time, opts projectileS
 	}
 
 	if p.ExpiryResolved {
-		if eff.expiresAt.After(now) {
-			eff.expiresAt = now
+		if eff.ExpiresAt.After(now) {
+			eff.ExpiresAt = now
 		}
 		return
 	}
@@ -1239,7 +1138,7 @@ func (w *World) stopProjectile(eff *effectState, now time.Time, opts projectileS
 	}
 
 	p.ExpiryResolved = true
-	eff.expiresAt = now
+	eff.ExpiresAt = now
 	w.recordEffectEnd(eff, reason)
 }
 
@@ -1302,8 +1201,8 @@ func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *Explosi
 			OwnerActorID: eff.Owner,
 			StartTick:    effectcontract.Tick(int64(w.currentTick)),
 		},
-		expiresAt:          now.Add(spec.Duration),
-		telemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
+		ExpiresAt:          now.Add(spec.Duration),
+		TelemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
 	if !w.registerEffect(area) {
 		return
@@ -1360,7 +1259,7 @@ func (w *World) pruneEffects(now time.Time) {
 	current := w.effects
 	w.effects = w.effects[:0]
 	for _, eff := range current {
-		if now.Before(eff.expiresAt) {
+		if now.Before(eff.ExpiresAt) {
 			w.effects = append(w.effects, eff)
 			continue
 		}

@@ -319,7 +319,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Add focused tests for `internal/journal` that cover patch/effect cloning and resync policy signals so the new package's API stays locked.
 
 - [x] Begin carving out `internal/effects` by moving the effect manager state and lifecycle helpers from `server/effects_manager.go` into the new package, leaving legacy wrappers for existing call sites.
-- [ ] Move the legacy `effectState`/projectile/status helper definitions from `server/effects.go` into `internal/effects`, introducing adapters so world mutation code continues to operate on the shared types.
+- [x] Move the legacy `effectState`/projectile/status helper definitions from `server/effects.go` into `internal/effects`, introducing adapters so world mutation code continues to operate on the shared types.
+- [ ] Move the effect spatial index (`effectSpatialIndex` and its helpers) from `server/effects_spatial_index.go` into `internal/effects`, leaving thin wrappers so hub/world code continues to compile against the shared structures.
 
 - [x] Keep the tick loop in `sim/engine`:
 

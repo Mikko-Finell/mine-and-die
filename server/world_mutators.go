@@ -3,6 +3,7 @@ package server
 import (
 	"math"
 
+	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	stats "mine-and-die/server/stats"
 )
@@ -300,9 +301,8 @@ func (w *World) SetEffectPosition(eff *effectState, x, y float64) {
 		return
 	}
 
-	changed := worldpkg.SetEffectPosition(
-		&eff.X,
-		&eff.Y,
+	changed := internaleffects.SetPosition(
+		eff,
 		x,
 		y,
 		func(oldX, oldY float64) bool {
@@ -322,7 +322,7 @@ func (w *World) SetEffectPosition(eff *effectState, x, y float64) {
 		return
 	}
 
-	eff.version++
+	eff.Version++
 
 	w.appendPatch(PatchEffectPos, eff.ID, EffectPosPayload{X: eff.X, Y: eff.Y})
 	w.recordEffectUpdate(eff, "position")
@@ -334,11 +334,11 @@ func (w *World) SetEffectParam(eff *effectState, key string, value float64) {
 		return
 	}
 
-	if !worldpkg.SetEffectParam(&eff.Params, key, value) {
+	if !internaleffects.SetParam(eff, key, value) {
 		return
 	}
 
-	eff.version++
+	eff.Version++
 
 	w.appendPatch(PatchEffectParams, eff.ID, EffectParamsPayload{Params: cloneEffectParams(eff.Params)})
 	w.recordEffectUpdate(eff, "param")

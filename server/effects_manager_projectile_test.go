@@ -119,7 +119,7 @@ func TestSpawnContractProjectileFromInstancePreservesLifetime(t *testing.T) {
 		t.Fatalf("expected duration %dms, got %dms", expectedLifetime.Milliseconds(), spawned.Duration)
 	}
 
-	actualLifetime := spawned.expiresAt.Sub(now)
+	actualLifetime := spawned.ExpiresAt.Sub(now)
 	if actualLifetime != expectedLifetime {
 		t.Fatalf("expected expiresAt lifetime %v, got %v", expectedLifetime, actualLifetime)
 	}
