@@ -327,7 +327,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Thread the world's persisted `effects.Registry` into `EffectManager` so contract-managed hooks interact with the shared bookkeeping without reaching directly into legacy slices.
 - [x] Teach `internal/effects.Manager` to accept a shared registry view so contract-managed spawn and teardown hooks can register or unregister effects without calling the legacy world wrappers.
 - [x] Move the contract projectile spawn helper into `internal/effects` so the manager owns contract effect instantiation without routing through the legacy world wrapper.
-- [ ] Move the contract blood decal spawn helper into `internal/effects` so the manager owns blood decal instantiation without relying on the legacy world wrapper.
+- [x] Move the contract blood decal spawn helper into `internal/effects` so the manager owns blood decal instantiation without relying on the legacy world wrapper.
+- [x] Move the contract blood decal sync helper into `internal/effects` so the manager updates contract instances without depending on the legacy world wrapper.
+- [ ] Move the contract status visual sync helper into `internal/effects` so the manager updates burning visuals without depending on the legacy world wrapper.
 
 - [x] Keep the tick loop in `sim/engine`:
 
