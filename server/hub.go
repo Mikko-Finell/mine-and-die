@@ -835,33 +835,22 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 			ack.Reason = "unknown_actor"
 			return ack, true
 		}
-		available := player.Inventory.QuantityOf(ItemTypeGold)
-		if available < qty {
+		result, failure := h.world.dropGold(&player.actorState, qty, "manual")
+		if failure != nil {
 			h.mu.Unlock()
 			ack.Status = "error"
-			ack.Reason = "insufficient_gold"
+			ack.Reason = failure.Reason
 			return ack, true
 		}
-		var removed int
-		err := h.world.MutateInventory(playerID, func(inv *Inventory) error {
-			var innerErr error
-			removed, innerErr = inv.RemoveItemTypeQuantity(ItemTypeGold, qty)
-			return innerErr
-		})
-		if err != nil || removed != qty {
-			h.mu.Unlock()
-			ack.Status = "error"
-			ack.Reason = "inventory_error"
-			return ack, true
-		}
-		stack := h.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: removed}, "manual")
 		groundItems := h.legacyGroundItemsSnapshotLocked()
 		h.mu.Unlock()
 
 		ack.Status = "ok"
-		ack.Qty = removed
-		if stack != nil {
-			ack.StackID = stack.ID
+		if result != nil {
+			ack.Qty = result.Quantity
+			if result.StackID != "" {
+				ack.StackID = result.StackID
+			}
 		}
 		go h.broadcastState(nil, nil, nil, groundItems)
 		return ack, true

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	worldpkg "mine-and-die/server/internal/world"
 	loggingeconomy "mine-and-die/server/logging/economy"
@@ -206,6 +207,40 @@ func (w *World) pickupNearestGold(actor *actorState) (*worldpkg.PickupResult, *w
 	)
 }
 
+func (w *World) dropGold(actor *actorState, quantity int, reason string) (*worldpkg.DropResult, *worldpkg.DropFailure) {
+	if w == nil || actor == nil {
+		return nil, &worldpkg.DropFailure{Reason: worldpkg.DropFailureReasonInventoryError}
+	}
+
+	delegates, ok := w.buildGroundDropDelegates(actor, reason)
+	if !ok {
+		return nil, &worldpkg.DropFailure{Reason: worldpkg.DropFailureReasonInventoryError}
+	}
+
+	removeQuantity := w.removeGoldQuantityFunc(actor)
+	if removeQuantity == nil {
+		return nil, &worldpkg.DropFailure{Reason: worldpkg.DropFailureReasonInventoryError}
+	}
+
+	return worldpkg.DropGoldQuantity(
+		delegates.items,
+		delegates.itemsByTile,
+		delegates.nextID,
+		delegates.actor,
+		quantity,
+		reason,
+		delegates.cfg,
+		delegates.angleFn,
+		delegates.distanceFn,
+		delegates.ensureKey,
+		delegates.setQuantity,
+		delegates.setPosition,
+		delegates.logDrop,
+		func() int { return actor.Inventory.QuantityOf(ItemTypeGold) },
+		removeQuantity,
+	)
+}
+
 type groundDropDelegates struct {
 	items       map[string]*groundItemState
 	itemsByTile map[groundTileKey]map[string]*groundItemState
@@ -307,6 +342,31 @@ func (w *World) removeStacksFunc(actor *actorState) func(string) []worldpkg.Item
 			removed = actor.Inventory.RemoveAllOf(ItemType(itemType))
 		}
 		return toWorldStacks(removed)
+	}
+}
+
+func (w *World) removeGoldQuantityFunc(actor *actorState) func(int) (int, error) {
+	if w == nil || actor == nil {
+		return nil
+	}
+	if _, ok := w.players[actor.ID]; !ok {
+		return nil
+	}
+
+	return func(quantity int) (int, error) {
+		var removed int
+		err := w.MutateInventory(actor.ID, func(inv *Inventory) error {
+			var innerErr error
+			removed, innerErr = inv.RemoveItemTypeQuantity(ItemTypeGold, quantity)
+			return innerErr
+		})
+		if err != nil {
+			return removed, err
+		}
+		if removed != quantity {
+			return removed, fmt.Errorf("removed %d of requested %d", removed, quantity)
+		}
+		return removed, nil
 	}
 }
 

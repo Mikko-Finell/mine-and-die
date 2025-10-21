@@ -517,6 +517,166 @@ func TestDropAllGoldUsesGoldItemType(t *testing.T) {
 	}
 }
 
+func TestDropGoldQuantityPlacesStack(t *testing.T) {
+	items := make(map[string]*GroundItemState)
+	byTile := make(map[GroundTileKey]map[string]*GroundItemState)
+	var nextID uint64
+
+	actor := &Actor{ID: "player-1", X: 1, Y: 2}
+	cfg := ScatterConfig{TileSize: 4}
+
+	availableCalls := 0
+	removeCalls := 0
+	logged := false
+
+	result, failure := DropGoldQuantity(
+		items,
+		byTile,
+		&nextID,
+		actor,
+		3,
+		"manual",
+		cfg,
+		nil,
+		nil,
+		func(s *ItemStack) bool {
+			if s.FungibilityKey == "" {
+				s.FungibilityKey = "gold-key"
+			}
+			return true
+		},
+		func(item *GroundItemState, qty int) { item.Qty = qty },
+		func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		func(*Actor, ItemStack, string, string) { logged = true },
+		func() int {
+			availableCalls++
+			return 5
+		},
+		func(qty int) (int, error) {
+			removeCalls++
+			if qty != 3 {
+				t.Fatalf("expected removal request for 3, got %d", qty)
+			}
+			return qty, nil
+		},
+	)
+
+	if failure != nil {
+		t.Fatalf("expected drop to succeed, got failure %#v", failure)
+	}
+	if result == nil {
+		t.Fatalf("expected drop result")
+	}
+	if result.Quantity != 3 {
+		t.Fatalf("expected quantity 3, got %d", result.Quantity)
+	}
+	if result.StackID == "" {
+		t.Fatalf("expected stack ID to be populated")
+	}
+	if availableCalls != 1 {
+		t.Fatalf("expected available callback to run once, got %d", availableCalls)
+	}
+	if removeCalls != 1 {
+		t.Fatalf("expected removeQuantity callback to run once, got %d", removeCalls)
+	}
+	if !logged {
+		t.Fatalf("expected drop to be logged")
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one ground item, got %d", len(items))
+	}
+}
+
+func TestDropGoldQuantityInsufficientGold(t *testing.T) {
+	items := make(map[string]*GroundItemState)
+	byTile := make(map[GroundTileKey]map[string]*GroundItemState)
+	var nextID uint64
+
+	actor := &Actor{ID: "player-2", X: 0, Y: 0}
+	cfg := ScatterConfig{TileSize: 4}
+
+	removeCalled := false
+
+	result, failure := DropGoldQuantity(
+		items,
+		byTile,
+		&nextID,
+		actor,
+		5,
+		"manual",
+		cfg,
+		nil,
+		nil,
+		func(*ItemStack) bool { return true },
+		func(*GroundItemState, int) {},
+		func(*GroundItemState, float64, float64) {},
+		nil,
+		func() int { return 3 },
+		func(int) (int, error) {
+			removeCalled = true
+			return 0, nil
+		},
+	)
+
+	if result != nil {
+		t.Fatalf("expected no drop result, got %#v", result)
+	}
+	if failure == nil || failure.Reason != DropFailureReasonInsufficientGold {
+		t.Fatalf("expected insufficient_gold failure, got %#v", failure)
+	}
+	if removeCalled {
+		t.Fatalf("did not expect removeQuantity to be called when insufficient gold")
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected no ground items to be placed, got %d", len(items))
+	}
+}
+
+func TestDropGoldQuantityInventoryError(t *testing.T) {
+	items := make(map[string]*GroundItemState)
+	byTile := make(map[GroundTileKey]map[string]*GroundItemState)
+	var nextID uint64
+
+	actor := &Actor{ID: "player-3", X: 0, Y: 0}
+	cfg := ScatterConfig{TileSize: 4}
+
+	result, failure := DropGoldQuantity(
+		items,
+		byTile,
+		&nextID,
+		actor,
+		4,
+		"manual",
+		cfg,
+		nil,
+		nil,
+		func(*ItemStack) bool { return true },
+		func(*GroundItemState, int) {},
+		func(*GroundItemState, float64, float64) {},
+		nil,
+		func() int { return 6 },
+		func(qty int) (int, error) {
+			if qty != 4 {
+				t.Fatalf("expected removal request for 4, got %d", qty)
+			}
+			return 2, errors.New("mutation failed")
+		},
+	)
+
+	if result != nil {
+		t.Fatalf("expected no drop result, got %#v", result)
+	}
+	if failure == nil || failure.Reason != DropFailureReasonInventoryError {
+		t.Fatalf("expected inventory_error failure, got %#v", failure)
+	}
+	if failure.Err == "" {
+		t.Fatalf("expected failure error message to be populated")
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected no ground items to be placed, got %d", len(items))
+	}
+}
+
 func TestPickupNearestItemTransfersStack(t *testing.T) {
 	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-1", Type: "gold", FungibilityKey: "gold-key", Qty: 5, X: 3, Y: 4}}
 	items := map[string]*GroundItemState{item.ID: item}

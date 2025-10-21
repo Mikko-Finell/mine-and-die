@@ -313,7 +313,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the ground item proximity helper (`nearestGroundItem`) into `internal/world`, exposing wrappers on the legacy world so pickup targeting relies on the centralized search utilities.
 - [x] Move the ground item drop helpers (`dropAllGold`, `dropAllInventory`, and `dropAllItemsOfType`) into `internal/world`, exposing wrappers on the legacy world so drop flows live alongside the centralized ground item utilities.
 - [x] Move the gold pickup console flow (`pickup_gold` handling in `hub.go`) into `internal/world`, exposing thin wrappers on the hub/world so pickup validation and transfers sit with the centralized ground item utilities.
-- [ ] Move the gold drop console flow (`drop_gold` handling in `hub.go`) into `internal/world`, exposing thin wrappers on the hub/world so inventory removal and ground placement rely on the centralized ground item utilities.
+- [x] Move the gold drop console flow (`drop_gold` handling in `hub.go`) into `internal/world`, exposing thin wrappers on the hub/world so inventory removal and ground placement rely on the centralized ground item utilities.
+
+- [ ] Start carving out the journal subsystem by moving the `Journal` struct and `newJournal` constructor from `server/patches.go` into a new `internal/journal` package, exposing legacy adapters so existing callers continue to compile.
 
 - [x] Keep the tick loop in `sim/engine`:
 

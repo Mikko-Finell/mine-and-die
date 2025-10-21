@@ -337,6 +337,15 @@ const (
 	PickupFailureReasonInventoryError = "inventory_error"
 )
 
+const (
+	// DropFailureReasonInvalidQuantity indicates the requested quantity could not be processed.
+	DropFailureReasonInvalidQuantity = "invalid_quantity"
+	// DropFailureReasonInsufficientGold indicates the actor did not have enough gold available.
+	DropFailureReasonInsufficientGold = "insufficient_gold"
+	// DropFailureReasonInventoryError indicates the inventory mutation failed.
+	DropFailureReasonInventoryError = "inventory_error"
+)
+
 // PickupResult captures the outcome of a successful ground item pickup.
 type PickupResult struct {
 	StackID  string
@@ -350,6 +359,18 @@ type PickupFailure struct {
 	StackID  string
 	Distance float64
 	Err      string
+}
+
+// DropResult captures the outcome of a successful gold drop.
+type DropResult struct {
+	StackID  string
+	Quantity int
+}
+
+// DropFailure describes why a drop attempt failed.
+type DropFailure struct {
+	Reason string
+	Err    string
 }
 
 // PickupNearestItem moves the nearest stack of the requested type into the inventory via the
@@ -429,6 +450,73 @@ func PickupNearestItem(
 
 	removeItem(item)
 	return &PickupResult{StackID: item.ID, Quantity: qty, Distance: bestDistance}, nil
+}
+
+// DropGoldQuantity removes the requested quantity of gold from the actor via the provided
+// callbacks and places it on the ground. Returns a DropResult on success or a DropFailure when
+// the transfer cannot be completed.
+func DropGoldQuantity(
+	items map[string]*GroundItemState,
+	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
+	nextID *uint64,
+	actor *Actor,
+	quantity int,
+	reason string,
+	cfg ScatterConfig,
+	randomAngle func() float64,
+	randomDistance func(min, max float64) float64,
+	ensureKey func(*ItemStack) bool,
+	setQuantity func(*GroundItemState, int),
+	setPosition func(*GroundItemState, float64, float64),
+	logDrop func(*Actor, ItemStack, string, string),
+	available func() int,
+	removeQuantity func(int) (int, error),
+) (*DropResult, *DropFailure) {
+	if actor == nil {
+		return nil, &DropFailure{Reason: DropFailureReasonInventoryError}
+	}
+	if quantity <= 0 {
+		return nil, &DropFailure{Reason: DropFailureReasonInvalidQuantity}
+	}
+	if available == nil || removeQuantity == nil {
+		return nil, &DropFailure{Reason: DropFailureReasonInventoryError}
+	}
+
+	if available() < quantity {
+		return nil, &DropFailure{Reason: DropFailureReasonInsufficientGold}
+	}
+
+	removed, err := removeQuantity(quantity)
+	if err != nil || removed != quantity {
+		failure := &DropFailure{Reason: DropFailureReasonInventoryError}
+		if err != nil {
+			failure.Err = err.Error()
+		}
+		return nil, failure
+	}
+
+	stack := ItemStack{Type: goldItemType, Quantity: removed}
+	item := UpsertGroundItem(
+		items,
+		itemsByTile,
+		nextID,
+		actor,
+		stack,
+		reason,
+		cfg,
+		randomAngle,
+		randomDistance,
+		ensureKey,
+		setQuantity,
+		setPosition,
+		logDrop,
+	)
+
+	result := &DropResult{Quantity: removed}
+	if item != nil {
+		result.StackID = item.ID
+	}
+	return result, nil
 }
 
 // DropAllGold removes all gold stacks from the actor and places them on the ground.
