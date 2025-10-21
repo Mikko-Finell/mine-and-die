@@ -4,6 +4,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/internal/simutil"
 )
@@ -443,14 +444,38 @@ func simPatchesFromLegacy(patches []Patch) []sim.Patch {
 }
 
 func simKeyframeFromLegacy(frame keyframe) sim.Keyframe {
+	var (
+		legacyPlayers     []Player
+		legacyNPCs        []NPC
+		legacyObstacles   []Obstacle
+		legacyGroundItems []GroundItem
+		legacyConfig      worldConfig
+	)
+
+	if typed, ok := frame.Players.([]Player); ok {
+		legacyPlayers = typed
+	}
+	if typed, ok := frame.NPCs.([]NPC); ok {
+		legacyNPCs = typed
+	}
+	if typed, ok := frame.Obstacles.([]Obstacle); ok {
+		legacyObstacles = typed
+	}
+	if typed, ok := frame.GroundItems.([]GroundItem); ok {
+		legacyGroundItems = typed
+	}
+	if typed, ok := frame.Config.(worldConfig); ok {
+		legacyConfig = typed
+	}
+
 	return sim.Keyframe{
 		Tick:        frame.Tick,
 		Sequence:    frame.Sequence,
-		Players:     simPlayersFromLegacy(frame.Players),
-		NPCs:        simNPCsFromLegacy(frame.NPCs),
-		Obstacles:   simObstaclesFromLegacy(frame.Obstacles),
-		GroundItems: simGroundItemsFromLegacy(frame.GroundItems),
-		Config:      simWorldConfigFromLegacy(frame.Config),
+		Players:     simPlayersFromLegacy(legacyPlayers),
+		NPCs:        simNPCsFromLegacy(legacyNPCs),
+		Obstacles:   simObstaclesFromLegacy(legacyObstacles),
+		GroundItems: simGroundItemsFromLegacy(legacyGroundItems),
+		Config:      simWorldConfigFromLegacy(legacyConfig),
 		RecordedAt:  frame.RecordedAt,
 	}
 }
@@ -595,22 +620,133 @@ func convertPatchPayloadToSim(payload any) any {
 	switch value := payload.(type) {
 	case PositionPayload:
 		return sim.PositionPayload{X: value.X, Y: value.Y}
+	case *PositionPayload:
+		if value == nil {
+			return nil
+		}
+		return sim.PositionPayload{X: value.X, Y: value.Y}
 	case FacingPayload:
-		return sim.FacingPayload{Facing: toSimFacing(value.Facing)}
+		return sim.FacingPayload{Facing: toSimFacingFromAny(value.Facing)}
+	case *FacingPayload:
+		if value == nil {
+			return nil
+		}
+		return sim.FacingPayload{Facing: toSimFacingFromAny(value.Facing)}
 	case PlayerIntentPayload:
+		return sim.PlayerIntentPayload{DX: value.DX, DY: value.DY}
+	case *PlayerIntentPayload:
+		if value == nil {
+			return nil
+		}
 		return sim.PlayerIntentPayload{DX: value.DX, DY: value.DY}
 	case HealthPayload:
 		return sim.HealthPayload{Health: value.Health, MaxHealth: value.MaxHealth}
+	case *HealthPayload:
+		if value == nil {
+			return nil
+		}
+		return sim.HealthPayload{Health: value.Health, MaxHealth: value.MaxHealth}
 	case InventoryPayload:
-		return sim.InventoryPayload{Slots: simInventorySlotsFromLegacy(value.Slots)}
+		return sim.InventoryPayload{Slots: simInventorySlotsFromAny(value.Slots)}
+	case *InventoryPayload:
+		if value == nil {
+			return nil
+		}
+		return sim.InventoryPayload{Slots: simInventorySlotsFromAny(value.Slots)}
 	case EquipmentPayload:
-		return sim.EquipmentPayload{Slots: simEquippedItemsFromLegacy(value.Slots)}
+		return sim.EquipmentPayload{Slots: simEquippedItemsFromAny(value.Slots)}
+	case *EquipmentPayload:
+		if value == nil {
+			return nil
+		}
+		return sim.EquipmentPayload{Slots: simEquippedItemsFromAny(value.Slots)}
 	case EffectParamsPayload:
+		return sim.EffectParamsPayload{Params: simutil.CloneFloatMap(value.Params)}
+	case *EffectParamsPayload:
+		if value == nil {
+			return nil
+		}
 		return sim.EffectParamsPayload{Params: simutil.CloneFloatMap(value.Params)}
 	case GroundItemQtyPayload:
 		return sim.GroundItemQtyPayload{Qty: value.Qty}
+	case *GroundItemQtyPayload:
+		if value == nil {
+			return nil
+		}
+		return sim.GroundItemQtyPayload{Qty: value.Qty}
 	default:
 		return value
+	}
+}
+
+func toSimFacingFromAny(value any) sim.FacingDirection {
+	switch facing := value.(type) {
+	case nil:
+		return ""
+	case sim.FacingDirection:
+		return facing
+	case FacingDirection:
+		return toSimFacing(facing)
+	case *FacingDirection:
+		if facing == nil {
+			return ""
+		}
+		return toSimFacing(*facing)
+	case string:
+		return toSimFacing(FacingDirection(facing))
+	case *string:
+		if facing == nil {
+			return ""
+		}
+		return toSimFacing(FacingDirection(*facing))
+	default:
+		return ""
+	}
+}
+
+func simInventorySlotsFromAny(value any) []sim.InventorySlot {
+	switch slots := value.(type) {
+	case nil:
+		return nil
+	case []sim.InventorySlot:
+		return simutil.CloneInventorySlots(slots)
+	case []InventorySlot:
+		return simInventorySlotsFromLegacy(slots)
+	case *[]sim.InventorySlot:
+		if slots == nil {
+			return nil
+		}
+		return simutil.CloneInventorySlots(*slots)
+	case *[]InventorySlot:
+		if slots == nil {
+			return nil
+		}
+		return simInventorySlotsFromLegacy(*slots)
+	default:
+		return nil
+	}
+}
+
+func simEquippedItemsFromAny(value any) []sim.EquippedItem {
+	switch slots := value.(type) {
+	case nil:
+		return nil
+	case []sim.EquippedItem:
+		return simutil.CloneEquippedItems(slots)
+	case []EquippedItem:
+		return simEquippedItemsFromLegacy(slots)
+	case *[]sim.EquippedItem:
+		if slots == nil {
+			return nil
+		}
+		return simutil.CloneEquippedItems(*slots)
+	case *[]EquippedItem:
+		if slots == nil {
+			return nil
+		}
+		return simEquippedItemsFromLegacy(*slots)
+	default:
+		return nil
 	}
 }
 
@@ -631,19 +767,19 @@ func legacyPatchesFromSim(patches []sim.Patch) []Patch {
 
 func simEffectEventBatchFromLegacy(batch EffectEventBatch) sim.EffectEventBatch {
 	return sim.EffectEventBatch{
-		Spawns:      cloneSpawnEvents(batch.Spawns),
-		Updates:     cloneUpdateEvents(batch.Updates),
-		Ends:        cloneEndEvents(batch.Ends),
-		LastSeqByID: copySeqMap(batch.LastSeqByID),
+		Spawns:      journal.CloneEffectSpawnEvents(batch.Spawns),
+		Updates:     journal.CloneEffectUpdateEvents(batch.Updates),
+		Ends:        journal.CloneEffectEndEvents(batch.Ends),
+		LastSeqByID: journal.CopySeqMap(batch.LastSeqByID),
 	}
 }
 
 func legacyEffectEventBatchFromSim(batch sim.EffectEventBatch) EffectEventBatch {
 	return EffectEventBatch{
-		Spawns:      cloneSpawnEvents(batch.Spawns),
-		Updates:     cloneUpdateEvents(batch.Updates),
-		Ends:        cloneEndEvents(batch.Ends),
-		LastSeqByID: copySeqMap(batch.LastSeqByID),
+		Spawns:      journal.CloneEffectSpawnEvents(batch.Spawns),
+		Updates:     journal.CloneEffectUpdateEvents(batch.Updates),
+		Ends:        journal.CloneEffectEndEvents(batch.Ends),
+		LastSeqByID: journal.CopySeqMap(batch.LastSeqByID),
 	}
 }
 

@@ -741,11 +741,12 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	runAdvance(hub, 1.0/float64(tickRate))
 
 	hub.mu.Lock()
-	if len(hub.world.journal.effects.spawns) != 1 {
+	batch := hub.world.journal.SnapshotEffectEvents()
+	if len(batch.Spawns) != 1 {
 		hub.mu.Unlock()
-		t.Fatalf("expected exactly one effect spawn after first attack, got %d", len(hub.world.journal.effects.spawns))
+		t.Fatalf("expected exactly one effect spawn after first attack, got %d", len(batch.Spawns))
 	}
-	firstSpawn := hub.world.journal.effects.spawns[0]
+	firstSpawn := batch.Spawns[0]
 	if firstSpawn.Instance.DefinitionID != effectTypeAttack {
 		hub.mu.Unlock()
 		t.Fatalf("expected spawn definition %q, got %q", effectTypeAttack, firstSpawn.Instance.DefinitionID)
@@ -760,9 +761,10 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	_, _, _ = hub.HandleAction(attackerID, effectTypeAttack)
 	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
-	if len(hub.world.journal.effects.spawns) != 1 {
+	batch = hub.world.journal.SnapshotEffectEvents()
+	if len(batch.Spawns) != 1 {
 		hub.mu.Unlock()
-		t.Fatalf("expected cooldown to prevent new spawn, have %d", len(hub.world.journal.effects.spawns))
+		t.Fatalf("expected cooldown to prevent new spawn, have %d", len(batch.Spawns))
 	}
 	hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
 	hub.mu.Unlock()
@@ -770,11 +772,12 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	_, _, _ = hub.HandleAction(attackerID, effectTypeAttack)
 	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
-	if len(hub.world.journal.effects.spawns) != 2 {
+	batch = hub.world.journal.SnapshotEffectEvents()
+	if len(batch.Spawns) != 2 {
 		hub.mu.Unlock()
-		t.Fatalf("expected second spawn after cooldown reset, have %d", len(hub.world.journal.effects.spawns))
+		t.Fatalf("expected second spawn after cooldown reset, have %d", len(batch.Spawns))
 	}
-	second := hub.world.journal.effects.spawns[1]
+	second := batch.Spawns[1]
 	hub.mu.Unlock()
 
 	if second.Instance.ID == firstSpawn.Instance.ID {

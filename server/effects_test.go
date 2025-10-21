@@ -59,13 +59,17 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected payload to be NPCInventoryPayload, got %T", patch.Payload)
 	}
-	if len(payload.Slots) != 1 {
-		t.Fatalf("expected payload to contain 1 slot, got %d", len(payload.Slots))
+	slots, ok := payload.Slots.([]InventorySlot)
+	if !ok {
+		t.Fatalf("expected payload slots to be []InventorySlot, got %T", payload.Slots)
 	}
-	if payload.Slots[0].Item.Type != ItemTypeGold {
-		t.Fatalf("expected slot item type %q, got %q", ItemTypeGold, payload.Slots[0].Item.Type)
+	if len(slots) != 1 {
+		t.Fatalf("expected payload to contain 1 slot, got %d", len(slots))
 	}
-	if payload.Slots[0].Item.Quantity != 1 {
-		t.Fatalf("expected slot quantity 1, got %d", payload.Slots[0].Item.Quantity)
+	if slots[0].Item.Type != ItemTypeGold {
+		t.Fatalf("expected slot item type %q, got %q", ItemTypeGold, slots[0].Item.Type)
+	}
+	if slots[0].Item.Quantity != 1 {
+		t.Fatalf("expected slot quantity 1, got %d", slots[0].Item.Quantity)
 	}
 }

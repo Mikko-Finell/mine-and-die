@@ -261,13 +261,21 @@ func TestSimKeyframeConversionRoundTripPreservesSequencing(t *testing.T) {
 	if simFrame.Sequence != legacy.Sequence {
 		t.Fatalf("expected sequence %d, got %d", legacy.Sequence, simFrame.Sequence)
 	}
-	if simFrame.Config.Seed != legacy.Config.Seed {
-		t.Fatalf("expected seed %q, got %q", legacy.Config.Seed, simFrame.Config.Seed)
+	legacyConfig, ok := legacy.Config.(worldConfig)
+	if !ok {
+		t.Fatalf("expected legacy config to be worldConfig, got %T", legacy.Config)
+	}
+	if simFrame.Config.Seed != legacyConfig.Seed {
+		t.Fatalf("expected seed %q, got %q", legacyConfig.Seed, simFrame.Config.Seed)
 	}
 
 	simFrame.Config.Seed = "mutated-seed"
-	if legacy.Config.Seed != "deterministic-seed" {
-		t.Fatalf("legacy seed mutated unexpectedly: %q", legacy.Config.Seed)
+	legacyConfig, ok = legacy.Config.(worldConfig)
+	if !ok {
+		t.Fatalf("expected legacy config to be worldConfig, got %T", legacy.Config)
+	}
+	if legacyConfig.Seed != "deterministic-seed" {
+		t.Fatalf("legacy seed mutated unexpectedly: %q", legacyConfig.Seed)
 	}
 
 	roundTrip := legacyKeyframeFromSim(simKeyframeFromLegacy(legacy))
@@ -443,14 +451,22 @@ func TestSimKeyframeConversionRoundTrip(t *testing.T) {
 		t.Fatalf("keyframe round trip mismatch\nlegacy: %#v\nround: %#v", legacyFrame, roundTrip)
 	}
 
+	legacyPlayers, ok := legacyFrame.Players.([]Player)
+	if !ok {
+		t.Fatalf("expected legacy players to be []Player, got %T", legacyFrame.Players)
+	}
 	simFrame.Players[0].Health = 10
-	if legacyFrame.Players[0].Health != 80 {
-		t.Fatalf("expected player conversion to deep copy actors, got %v", legacyFrame.Players[0].Health)
+	if legacyPlayers[0].Health != 80 {
+		t.Fatalf("expected player conversion to deep copy actors, got %v", legacyPlayers[0].Health)
 	}
 
+	legacyObstacles, ok := legacyFrame.Obstacles.([]Obstacle)
+	if !ok {
+		t.Fatalf("expected legacy obstacles to be []Obstacle, got %T", legacyFrame.Obstacles)
+	}
 	simFrame.Obstacles[0].Width = 99
-	if legacyFrame.Obstacles[0].Width != 3 {
-		t.Fatalf("expected obstacle conversion to deep copy values, got %v", legacyFrame.Obstacles[0].Width)
+	if legacyObstacles[0].Width != 3 {
+		t.Fatalf("expected obstacle conversion to deep copy values, got %v", legacyObstacles[0].Width)
 	}
 }
 
