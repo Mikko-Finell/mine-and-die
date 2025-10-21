@@ -1582,7 +1582,7 @@ func (h *Hub) scheduleResyncIfNeeded() (bool, resyncSignal) {
 	h.forceKeyframe()
 	h.resyncNext.Store(true)
 
-	summary := signal.summary()
+	summary := signal.Summary()
 	if summary == "" {
 		h.logf("[effects] scheduling resync (journal hint)")
 	} else {

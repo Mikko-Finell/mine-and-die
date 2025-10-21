@@ -1,35 +1,35 @@
-package server
+package journal
 
 import (
 	"fmt"
 )
 
-type resyncReason struct {
+type ResyncReason struct {
 	Kind     string
 	EffectID string
 }
 
-type resyncSignal struct {
+type ResyncSignal struct {
 	LostSpawns  uint64
 	TotalEvents uint64
-	Reasons     []resyncReason
+	Reasons     []ResyncReason
 }
 
-type resyncPolicy struct {
+type Policy struct {
 	totalEvents uint64
 	lostSpawns  uint64
 	pending     bool
-	reasons     []resyncReason
+	reasons     []ResyncReason
 }
 
 const lostSpawnThresholdPerTenThousand = 1
 const resyncReasonLimit = 8
 
-func newResyncPolicy() *resyncPolicy {
-	return &resyncPolicy{reasons: make([]resyncReason, 0, resyncReasonLimit)}
+func NewPolicy() *Policy {
+	return &Policy{reasons: make([]ResyncReason, 0, resyncReasonLimit)}
 }
 
-func (p *resyncPolicy) noteEvent() {
+func (p *Policy) NoteEvent() {
 	if p == nil {
 		return
 	}
@@ -40,18 +40,18 @@ func (p *resyncPolicy) noteEvent() {
 	p.totalEvents++
 }
 
-func (p *resyncPolicy) noteLostSpawn(kind, effectID string) {
+func (p *Policy) NoteLostSpawn(kind, effectID string) {
 	if p == nil {
 		return
 	}
 	p.lostSpawns++
 	if len(p.reasons) < resyncReasonLimit {
-		p.reasons = append(p.reasons, resyncReason{Kind: kind, EffectID: effectID})
+		p.reasons = append(p.reasons, ResyncReason{Kind: kind, EffectID: effectID})
 	}
 	p.evaluate()
 }
 
-func (p *resyncPolicy) evaluate() {
+func (p *Policy) evaluate() {
 	if p == nil || p.pending || p.lostSpawns == 0 {
 		return
 	}
@@ -64,14 +64,14 @@ func (p *resyncPolicy) evaluate() {
 	}
 }
 
-func (p *resyncPolicy) consume() (resyncSignal, bool) {
+func (p *Policy) Consume() (ResyncSignal, bool) {
 	if p == nil || !p.pending {
-		return resyncSignal{}, false
+		return ResyncSignal{}, false
 	}
-	signal := resyncSignal{
+	signal := ResyncSignal{
 		LostSpawns:  p.lostSpawns,
 		TotalEvents: p.totalEvents,
-		Reasons:     append([]resyncReason(nil), p.reasons...),
+		Reasons:     append([]ResyncReason(nil), p.reasons...),
 	}
 	p.pending = false
 	p.totalEvents = 0
@@ -82,7 +82,7 @@ func (p *resyncPolicy) consume() (resyncSignal, bool) {
 	return signal, true
 }
 
-func (s resyncSignal) summary() string {
+func (s ResyncSignal) Summary() string {
 	if s.LostSpawns == 0 && s.TotalEvents == 0 {
 		return ""
 	}

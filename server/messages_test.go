@@ -271,14 +271,6 @@ func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
 	hub.mu.Lock()
 	patches := hub.world.journal.SnapshotPatches()
 	effects := hub.world.journal.SnapshotEffectEvents()
-	_, seqExists := hub.world.journal.effectSeq[spawn.Instance.ID]
-	_, recentlyEnded := hub.world.journal.recentlyEnded[spawn.Instance.ID]
-	endedCount := 0
-	for _, id := range hub.world.journal.endedIDs {
-		if id == spawn.Instance.ID {
-			endedCount++
-		}
-	}
 	hub.mu.Unlock()
 
 	if len(patches) != 1 {
@@ -300,14 +292,18 @@ func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
 	if _, ok := effects.LastSeqByID[spawn.Instance.ID]; !ok {
 		t.Fatalf("expected effect sequence cursor for %s to be restored", spawn.Instance.ID)
 	}
-	if !seqExists {
-		t.Fatalf("expected journal effect sequence map to retain id after restore")
+	drained := hub.world.journal.DrainEffectEvents()
+	if len(drained.Spawns) != 1 {
+		t.Fatalf("expected drained spawn event to remain staged, got %d", len(drained.Spawns))
 	}
-	if endedCount != 1 {
-		t.Fatalf("expected journal endedIDs to contain restored id once, got %d", endedCount)
+	if len(drained.Ends) != 1 {
+		t.Fatalf("expected drained end event to remain staged, got %d", len(drained.Ends))
 	}
-	if !recentlyEnded {
-		t.Fatalf("expected journal recentlyEnded to restore tick for ended effect")
+	if len(drained.LastSeqByID) == 0 {
+		t.Fatalf("expected drained effect sequence cursors to remain staged")
+	}
+	if _, ok := drained.LastSeqByID[spawn.Instance.ID]; !ok {
+		t.Fatalf("expected drained effect sequence cursor for %s to be restored", spawn.Instance.ID)
 	}
 }
 

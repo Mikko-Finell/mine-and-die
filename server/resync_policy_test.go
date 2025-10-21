@@ -1,19 +1,23 @@
 package server
 
-import "testing"
+import (
+	"testing"
+
+	journal "mine-and-die/server/internal/journal"
+)
 
 func TestResyncPolicySchedulesOnLostSpawnRatio(t *testing.T) {
-	policy := newResyncPolicy()
+	policy := journal.NewPolicy()
 	for i := 0; i < 20000; i++ {
-		policy.noteEvent()
+		policy.NoteEvent()
 	}
-	policy.noteLostSpawn("unknown", "effect-1")
-	if signal, ok := policy.consume(); ok {
+	policy.NoteLostSpawn("unknown", "effect-1")
+	if signal, ok := policy.Consume(); ok {
 		t.Fatalf("unexpected pending signal before threshold, got %+v", signal)
 	}
 
-	policy.noteLostSpawn("unknown", "effect-1")
-	signal, ok := policy.consume()
+	policy.NoteLostSpawn("unknown", "effect-1")
+	signal, ok := policy.Consume()
 	if !ok {
 		t.Fatalf("expected resync hint after exceeding threshold")
 	}
@@ -26,19 +30,19 @@ func TestResyncPolicySchedulesOnLostSpawnRatio(t *testing.T) {
 }
 
 func TestResyncPolicyResetAfterConsume(t *testing.T) {
-	policy := newResyncPolicy()
-	policy.noteEvent()
-	policy.noteLostSpawn("unknown", "effect-2")
-	if _, ok := policy.consume(); !ok {
+	policy := journal.NewPolicy()
+	policy.NoteEvent()
+	policy.NoteLostSpawn("unknown", "effect-2")
+	if _, ok := policy.Consume(); !ok {
 		t.Fatalf("expected resync signal after lost spawn")
 	}
-	if signal, ok := policy.consume(); ok {
+	if signal, ok := policy.Consume(); ok {
 		t.Fatalf("expected no signal after reset, got %+v", signal)
 	}
-	policy.noteEvent()
-	policy.noteEvent()
-	policy.noteLostSpawn("unknown", "effect-3")
-	if _, ok := policy.consume(); !ok {
+	policy.NoteEvent()
+	policy.NoteEvent()
+	policy.NoteLostSpawn("unknown", "effect-3")
+	if _, ok := policy.Consume(); !ok {
 		t.Fatalf("expected policy to trigger again after reset")
 	}
 }

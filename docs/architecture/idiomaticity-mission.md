@@ -315,7 +315,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the gold pickup console flow (`pickup_gold` handling in `hub.go`) into `internal/world`, exposing thin wrappers on the hub/world so pickup validation and transfers sit with the centralized ground item utilities.
 - [x] Move the gold drop console flow (`drop_gold` handling in `hub.go`) into `internal/world`, exposing thin wrappers on the hub/world so inventory removal and ground placement rely on the centralized ground item utilities.
 
-- [ ] Start carving out the journal subsystem by moving the `Journal` struct and `newJournal` constructor from `server/patches.go` into a new `internal/journal` package, exposing legacy adapters so existing callers continue to compile.
+- [x] Start carving out the journal subsystem by moving the `Journal` struct and `newJournal` constructor from `server/patches.go` into a new `internal/journal` package, exposing legacy adapters so existing callers continue to compile.
+- [ ] Add focused tests for `internal/journal` that cover patch/effect cloning and resync policy signals so the new package's API stays locked.
 
 - [x] Keep the tick loop in `sim/engine`:
 

@@ -9,6 +9,15 @@ import (
 	stats "mine-and-die/server/stats"
 )
 
+func requireInventorySlots(t *testing.T, slots any) []InventorySlot {
+	t.Helper()
+	converted, ok := slots.([]InventorySlot)
+	if !ok {
+		t.Fatalf("expected inventory slots to be []InventorySlot, got %T", slots)
+	}
+	return converted
+}
+
 func TestSetPositionNoopDoesNotEmitPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-1", X: 10, Y: 20, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
@@ -369,10 +378,11 @@ func TestMutateInventoryRecordsPatch(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected payload to be PlayerInventoryPayload, got %T", patch.Payload)
 	}
-	if len(payload.Slots) != 1 {
-		t.Fatalf("expected payload to contain 1 slot, got %d", len(payload.Slots))
+	slots := requireInventorySlots(t, payload.Slots)
+	if len(slots) != 1 {
+		t.Fatalf("expected payload to contain 1 slot, got %d", len(slots))
 	}
-	slot := payload.Slots[0]
+	slot := slots[0]
 	if slot.Slot != 0 {
 		t.Fatalf("expected slot index 0, got %d", slot.Slot)
 	}
@@ -437,10 +447,11 @@ func TestMutateInventoryEmitsPatchWhenFungibilityChanges(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected payload to be PlayerInventoryPayload, got %T", patch.Payload)
 	}
-	if len(payload.Slots) != 1 {
-		t.Fatalf("expected payload to contain 1 slot, got %d", len(payload.Slots))
+	slots := requireInventorySlots(t, payload.Slots)
+	if len(slots) != 1 {
+		t.Fatalf("expected payload to contain 1 slot, got %d", len(slots))
 	}
-	slot := payload.Slots[0]
+	slot := slots[0]
 	if slot.Item.FungibilityKey != newKey {
 		t.Fatalf("expected payload fungibility key %q, got %q", newKey, slot.Item.FungibilityKey)
 	}
@@ -595,11 +606,12 @@ func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected payload to be NPCInventoryPayload, got %T", patch.Payload)
 	}
-	if len(payload.Slots) != 1 {
-		t.Fatalf("expected payload to contain 1 slot, got %d", len(payload.Slots))
+	slots := requireInventorySlots(t, payload.Slots)
+	if len(slots) != 1 {
+		t.Fatalf("expected payload to contain 1 slot, got %d", len(slots))
 	}
-	if payload.Slots[0].Item.Quantity != 2 {
-		t.Fatalf("expected slot quantity 2, got %d", payload.Slots[0].Item.Quantity)
+	if slots[0].Item.Quantity != 2 {
+		t.Fatalf("expected slot quantity 2, got %d", slots[0].Item.Quantity)
 	}
 }
 
