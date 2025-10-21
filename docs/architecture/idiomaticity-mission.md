@@ -306,7 +306,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the actor health mutation helper (`setActorHealth` in `world_mutators.go`) into `internal/world`, exposing a wrapper on the legacy world so health patch emission stays alongside the centralized stat helpers.
 - [x] Move the actor inventory mutation helper (`mutateActorInventory` in `world_mutators.go`) into `internal/world`, exposing wrappers on the legacy world so inventory patch emission lives alongside the centralized stat and health helpers.
 - [x] Move the actor equipment mutation helper (`mutateActorEquipment` in `world_mutators.go`) into `internal/world`, exposing wrappers on the legacy world so equipment patch emission sits alongside the centralized stat, health, and inventory helpers.
-- [ ] Move the effect mutation helpers (`SetEffectPosition` and `SetEffectParam` in `world_mutators.go`) into `internal/world`, exposing wrappers on the legacy world so effect patch emission shares the centralized mutation utilities.
+- [x] Move the effect mutation helpers (`SetEffectPosition` and `SetEffectParam` in `world_mutators.go`) into `internal/world`, exposing wrappers on the legacy world so effect patch emission shares the centralized mutation utilities.
+- [x] Move the ground item mutation helpers (`SetGroundItemPosition` and `SetGroundItemQuantity` in `world_mutators.go`) into `internal/world`, exposing wrappers on the legacy world so ground item patch emission shares the centralized mutation utilities.
+- [ ] Move the ground item lifecycle helpers (`scatterGroundItemPosition`, `upsertGroundItem`, and `removeGroundItem` in `ground_items.go`) into `internal/world`, exposing wrappers on the legacy world so item placement and cleanup share the centralized ground item utilities.
 
 - [x] Keep the tick loop in `sim/engine`:
 

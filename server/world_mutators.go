@@ -300,25 +300,31 @@ func (w *World) SetEffectPosition(eff *effectState, x, y float64) {
 		return
 	}
 
-	if worldpkg.PositionsEqual(eff.X, eff.Y, x, y) {
-		return
-	}
-
-	oldX := eff.X
-	oldY := eff.Y
-	eff.X = x
-	eff.Y = y
-	if w.effectsIndex != nil {
-		if !w.effectsIndex.Upsert(eff) {
+	changed := worldpkg.SetEffectPosition(
+		&eff.X,
+		&eff.Y,
+		x,
+		y,
+		func(oldX, oldY float64) bool {
+			if w.effectsIndex == nil {
+				return true
+			}
+			if w.effectsIndex.Upsert(eff) {
+				return true
+			}
 			eff.X = oldX
 			eff.Y = oldY
 			_ = w.effectsIndex.Upsert(eff)
-			return
-		}
+			return false
+		},
+	)
+	if !changed {
+		return
 	}
+
 	eff.version++
 
-	w.appendPatch(PatchEffectPos, eff.ID, EffectPosPayload{X: x, Y: y})
+	w.appendPatch(PatchEffectPos, eff.ID, EffectPosPayload{X: eff.X, Y: eff.Y})
 	w.recordEffectUpdate(eff, "position")
 }
 
@@ -328,15 +334,10 @@ func (w *World) SetEffectParam(eff *effectState, key string, value float64) {
 		return
 	}
 
-	if eff.Params == nil {
-		eff.Params = make(map[string]float64)
-	}
-	current, exists := eff.Params[key]
-	if exists && math.Abs(current-value) < intentEpsilon {
+	if !worldpkg.SetEffectParam(&eff.Params, key, value) {
 		return
 	}
 
-	eff.Params[key] = value
 	eff.version++
 
 	w.appendPatch(PatchEffectParams, eff.ID, EffectParamsPayload{Params: cloneEffectParams(eff.Params)})
@@ -349,15 +350,13 @@ func (w *World) SetGroundItemPosition(item *groundItemState, x, y float64) {
 		return
 	}
 
-	if worldpkg.PositionsEqual(item.X, item.Y, x, y) {
+	if !worldpkg.SetGroundItemPosition(&item.X, &item.Y, x, y) {
 		return
 	}
 
-	item.X = x
-	item.Y = y
 	item.version++
 
-	w.appendPatch(PatchGroundItemPos, item.ID, GroundItemPosPayload{X: x, Y: y})
+	w.appendPatch(PatchGroundItemPos, item.ID, GroundItemPosPayload{X: item.X, Y: item.Y})
 }
 
 // SetGroundItemQuantity updates a ground item's quantity, bumps the version, and records a patch.
@@ -366,18 +365,13 @@ func (w *World) SetGroundItemQuantity(item *groundItemState, qty int) {
 		return
 	}
 
-	if qty < 0 {
-		qty = 0
-	}
-
-	if item.Qty == qty {
+	if !worldpkg.SetGroundItemQuantity(&item.Qty, qty) {
 		return
 	}
 
-	item.Qty = qty
 	item.version++
 
-	w.appendPatch(PatchGroundItemQty, item.ID, GroundItemQtyPayload{Qty: qty})
+	w.appendPatch(PatchGroundItemQty, item.ID, GroundItemQtyPayload{Qty: item.Qty})
 }
 
 func cloneEffectParams(params map[string]float64) map[string]float64 {
