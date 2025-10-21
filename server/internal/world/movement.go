@@ -167,3 +167,69 @@ func ResolveObstaclePenetration(state *MovementActor, obstacles []Obstacle, widt
 		state.Y = Clamp(state.Y, PlayerHalf, height-PlayerHalf)
 	}
 }
+
+// ResolveActorCollisions separates overlapping actors while respecting
+// obstacles and world boundaries.
+func ResolveActorCollisions(actors []*MovementActor, obstacles []Obstacle, width, height float64) {
+	if len(actors) < 2 {
+		return
+	}
+
+	const iterations = 4
+	for iter := 0; iter < iterations; iter++ {
+		adjusted := false
+		for i := 0; i < len(actors); i++ {
+			p1 := actors[i]
+			if p1 == nil {
+				continue
+			}
+			for j := i + 1; j < len(actors); j++ {
+				p2 := actors[j]
+				if p2 == nil {
+					continue
+				}
+
+				dx := p2.X - p1.X
+				dy := p2.Y - p1.Y
+				distSq := dx*dx + dy*dy
+				minDist := PlayerHalf * 2
+
+				dist := 0.0
+				if distSq == 0 {
+					dx = 1
+					dy = 0
+					dist = 1
+				} else {
+					dist = math.Sqrt(distSq)
+				}
+
+				if dist >= minDist {
+					continue
+				}
+
+				overlap := (minDist - dist) / 2
+				nx := dx / dist
+				ny := dy / dist
+
+				p1.X -= nx * overlap
+				p1.Y -= ny * overlap
+				p2.X += nx * overlap
+				p2.Y += ny * overlap
+
+				p1.X = Clamp(p1.X, PlayerHalf, width-PlayerHalf)
+				p1.Y = Clamp(p1.Y, PlayerHalf, height-PlayerHalf)
+				p2.X = Clamp(p2.X, PlayerHalf, width-PlayerHalf)
+				p2.Y = Clamp(p2.Y, PlayerHalf, height-PlayerHalf)
+
+				ResolveObstaclePenetration(p1, obstacles, width, height)
+				ResolveObstaclePenetration(p2, obstacles, width, height)
+
+				adjusted = true
+			}
+		}
+
+		if !adjusted {
+			break
+		}
+	}
+}
