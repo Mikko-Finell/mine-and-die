@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"math"
 
 	worldpkg "mine-and-die/server/internal/world"
 	loggingeconomy "mine-and-die/server/logging/economy"
@@ -18,6 +17,17 @@ const (
 
 func toWorldItemStack(stack ItemStack) worldpkg.ItemStack {
 	return worldpkg.ItemStack{Type: string(stack.Type), FungibilityKey: stack.FungibilityKey, Quantity: stack.Quantity}
+}
+
+func toWorldStacks(stacks []ItemStack) []worldpkg.ItemStack {
+	if len(stacks) == 0 {
+		return nil
+	}
+	converted := make([]worldpkg.ItemStack, 0, len(stacks))
+	for _, stack := range stacks {
+		converted = append(converted, toWorldItemStack(stack))
+	}
+	return converted
 }
 
 func fromWorldItemStack(stack worldpkg.ItemStack) ItemStack {
@@ -37,6 +47,18 @@ func scatterConfig() worldpkg.ScatterConfig {
 		MinDistance: groundScatterMinDistance,
 		MaxDistance: groundScatterMaxDistance,
 		Padding:     groundScatterPadding,
+	}
+}
+
+func (w *World) ensureGroundItemStorage() {
+	if w == nil {
+		return
+	}
+	if w.groundItems == nil {
+		w.groundItems = make(map[string]*groundItemState)
+	}
+	if w.groundItemsByTile == nil {
+		w.groundItemsByTile = make(map[groundTileKey]map[string]*groundItemState)
 	}
 }
 
@@ -147,113 +169,276 @@ func (w *World) removeGroundItem(item *groundItemState) {
 }
 
 func (w *World) nearestGroundItem(actor *actorState, itemType ItemType) (*groundItemState, float64) {
-	if w == nil || actor == nil || itemType == "" || len(w.groundItems) == 0 {
+	if w == nil {
 		return nil, 0
 	}
-	var best *groundItemState
-	bestDist := math.MaxFloat64
-	for _, item := range w.groundItems {
-		if item == nil || item.Qty <= 0 || ItemType(item.Type) != itemType {
-			continue
-		}
-		dx := item.X - actor.X
-		dy := item.Y - actor.Y
-		dist := math.Hypot(dx, dy)
-		if dist < bestDist {
-			bestDist = dist
-			best = item
-		}
+	return worldpkg.NearestGroundItem(w.groundItems, toWorldActor(actor), string(itemType))
+}
+
+func (w *World) pickupNearestGold(actor *actorState) (*worldpkg.PickupResult, *worldpkg.PickupFailure) {
+	if w == nil || actor == nil {
+		return nil, &worldpkg.PickupFailure{Reason: worldpkg.PickupFailureReasonNotFound}
 	}
-	if best == nil {
-		return nil, 0
+
+	worldActor := toWorldActor(actor)
+	if worldActor == nil {
+		return nil, &worldpkg.PickupFailure{Reason: worldpkg.PickupFailureReasonNotFound}
 	}
-	return best, bestDist
+
+	return worldpkg.PickupNearestItem(
+		w.groundItems,
+		worldActor,
+		string(ItemTypeGold),
+		groundPickupRadius,
+		func(stack worldpkg.ItemStack) error {
+			return w.MutateInventory(actor.ID, func(inv *Inventory) error {
+				_, addErr := inv.AddStack(ItemStack{
+					Type:           ItemType(stack.Type),
+					FungibilityKey: stack.FungibilityKey,
+					Quantity:       stack.Quantity,
+				})
+				return addErr
+			})
+		},
+		func(item *worldpkg.GroundItemState) {
+			w.removeGroundItem(item)
+		},
+	)
+}
+
+type groundDropDelegates struct {
+	items       map[string]*groundItemState
+	itemsByTile map[groundTileKey]map[string]*groundItemState
+	nextID      *uint64
+	actor       *worldpkg.Actor
+	cfg         worldpkg.ScatterConfig
+	angleFn     func() float64
+	distanceFn  func(min, max float64) float64
+	ensureKey   func(*worldpkg.ItemStack) bool
+	setQuantity func(*worldpkg.GroundItemState, int)
+	setPosition func(*worldpkg.GroundItemState, float64, float64)
+	logDrop     func(*worldpkg.Actor, worldpkg.ItemStack, string, string)
+}
+
+func (w *World) invokeGroundDrop(actor *actorState, reason string, call func(groundDropDelegates) int) int {
+	if w == nil || actor == nil || call == nil {
+		return 0
+	}
+	delegates, ok := w.buildGroundDropDelegates(actor, reason)
+	if !ok {
+		return 0
+	}
+	return call(delegates)
+}
+
+func (w *World) buildGroundDropDelegates(actor *actorState, reason string) (groundDropDelegates, bool) {
+	if w == nil || actor == nil {
+		return groundDropDelegates{}, false
+	}
+
+	w.ensureGroundItemStorage()
+
+	cfg := scatterConfig()
+	worldActor := toWorldActor(actor)
+
+	var angleFn func() float64
+	var distanceFn func(min, max float64) float64
+	w.ensureRNG()
+	angleFn = func() float64 { return w.randomAngle() }
+	distanceFn = func(min, max float64) float64 { return w.randomDistance(min, max) }
+
+	delegates := groundDropDelegates{
+		items:       w.groundItems,
+		itemsByTile: w.groundItemsByTile,
+		nextID:      &w.nextGroundItemID,
+		actor:       worldActor,
+		cfg:         cfg,
+		angleFn:     angleFn,
+		distanceFn:  distanceFn,
+	}
+
+	delegates.ensureKey = func(s *worldpkg.ItemStack) bool {
+		if s == nil || s.Type == "" {
+			return false
+		}
+		if s.FungibilityKey != "" {
+			return true
+		}
+		if def, ok := ItemDefinitionFor(ItemType(s.Type)); ok {
+			s.FungibilityKey = def.FungibilityKey
+			return s.FungibilityKey != ""
+		}
+		return false
+	}
+
+	delegates.setQuantity = func(item *worldpkg.GroundItemState, qty int) {
+		w.SetGroundItemQuantity(item, qty)
+	}
+	delegates.setPosition = func(item *worldpkg.GroundItemState, x, y float64) {
+		w.SetGroundItemPosition(item, x, y)
+	}
+	delegates.logDrop = func(_ *worldpkg.Actor, stack worldpkg.ItemStack, dropReason, stackID string) {
+		w.logGoldDrop(actor, fromWorldItemStack(stack), dropReason, stackID)
+	}
+
+	return delegates, true
+}
+
+func (w *World) removeStacksFunc(actor *actorState) func(string) []worldpkg.ItemStack {
+	if w == nil || actor == nil {
+		return nil
+	}
+	return func(itemType string) []worldpkg.ItemStack {
+		if itemType == "" {
+			return nil
+		}
+		var removed []ItemStack
+		if _, ok := w.players[actor.ID]; ok {
+			_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
+				removed = inv.RemoveAllOf(ItemType(itemType))
+				return nil
+			})
+		} else if npc, ok := w.npcs[actor.ID]; ok {
+			_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
+				removed = inv.RemoveAllOf(ItemType(itemType))
+				return nil
+			})
+		} else {
+			removed = actor.Inventory.RemoveAllOf(ItemType(itemType))
+		}
+		return toWorldStacks(removed)
+	}
+}
+
+func (w *World) inventoryDrainFunc(actor *actorState) func() []worldpkg.ItemStack {
+	if w == nil || actor == nil {
+		return nil
+	}
+	return func() []worldpkg.ItemStack {
+		var stacks []ItemStack
+		if _, ok := w.players[actor.ID]; ok {
+			_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
+				stacks = inv.DrainAll()
+				return nil
+			})
+		} else if npc, ok := w.npcs[actor.ID]; ok {
+			_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
+				stacks = inv.DrainAll()
+				return nil
+			})
+		} else {
+			stacks = actor.Inventory.DrainAll()
+		}
+		return toWorldStacks(stacks)
+	}
+}
+
+func (w *World) equipmentDrainFunc(actor *actorState) func() []worldpkg.ItemStack {
+	if w == nil || actor == nil {
+		return nil
+	}
+	return func() []worldpkg.ItemStack {
+		var stacks []ItemStack
+		if player, ok := w.players[actor.ID]; ok {
+			stacks = w.drainEquipment(&player.actorState, &player.version, player.ID, PatchPlayerEquipment, PatchPlayerHealth, &player.stats)
+		} else if npc, ok := w.npcs[actor.ID]; ok {
+			stacks = w.drainEquipment(&npc.actorState, &npc.version, npc.ID, PatchNPCEquipment, PatchNPCHealth, &npc.stats)
+		} else {
+			drained := actor.Equipment.DrainAll()
+			if len(drained) > 0 {
+				stacks = make([]ItemStack, 0, len(drained))
+				for _, entry := range drained {
+					if entry.Item.Type == "" || entry.Item.Quantity <= 0 {
+						continue
+					}
+					stacks = append(stacks, entry.Item)
+				}
+			}
+		}
+		return toWorldStacks(stacks)
+	}
 }
 
 func (w *World) dropAllGold(actor *actorState, reason string) int {
-	return w.dropAllItemsOfType(actor, ItemTypeGold, reason)
+	remover := w.removeStacksFunc(actor)
+	if remover == nil {
+		return 0
+	}
+
+	return w.invokeGroundDrop(actor, reason, func(d groundDropDelegates) int {
+		return worldpkg.DropAllGold(
+			d.items,
+			d.itemsByTile,
+			d.nextID,
+			d.actor,
+			reason,
+			d.cfg,
+			d.angleFn,
+			d.distanceFn,
+			d.ensureKey,
+			d.setQuantity,
+			d.setPosition,
+			d.logDrop,
+			remover,
+		)
+	})
 }
 
 func (w *World) dropAllInventory(actor *actorState, reason string) int {
-	if w == nil || actor == nil {
+	inventoryDrain := w.inventoryDrainFunc(actor)
+	equipmentDrain := w.equipmentDrainFunc(actor)
+	if inventoryDrain == nil && equipmentDrain == nil {
 		return 0
 	}
-	var stacks []ItemStack
-	var equipmentStacks []ItemStack
-	if _, ok := w.players[actor.ID]; ok {
-		_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
-			stacks = inv.DrainAll()
-			return nil
-		})
-		if player, ok := w.players[actor.ID]; ok {
-			equipmentStacks = w.drainEquipment(&player.actorState, &player.version, player.ID, PatchPlayerEquipment, PatchPlayerHealth, &player.stats)
-		}
-	} else if npc, ok := w.npcs[actor.ID]; ok {
-		_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
-			stacks = inv.DrainAll()
-			return nil
-		})
-		equipmentStacks = w.drainEquipment(&npc.actorState, &npc.version, npc.ID, PatchNPCEquipment, PatchNPCHealth, &npc.stats)
-	} else {
-		stacks = actor.Inventory.DrainAll()
-		drained := actor.Equipment.DrainAll()
-		if len(drained) > 0 {
-			equipmentStacks = make([]ItemStack, 0, len(drained))
-			for _, entry := range drained {
-				if entry.Item.Type == "" || entry.Item.Quantity <= 0 {
-					continue
-				}
-				equipmentStacks = append(equipmentStacks, entry.Item)
-			}
-		}
-	}
-	if len(equipmentStacks) > 0 {
-		stacks = append(stacks, equipmentStacks...)
-	}
-	if len(stacks) == 0 {
-		return 0
-	}
-	total := 0
-	for _, stack := range stacks {
-		if stack.Type == "" || stack.Quantity <= 0 {
-			continue
-		}
-		w.upsertGroundItem(actor, stack, reason)
-		total += stack.Quantity
-	}
-	return total
+
+	return w.invokeGroundDrop(actor, reason, func(d groundDropDelegates) int {
+		return worldpkg.DropAllInventory(
+			d.items,
+			d.itemsByTile,
+			d.nextID,
+			d.actor,
+			reason,
+			d.cfg,
+			d.angleFn,
+			d.distanceFn,
+			d.ensureKey,
+			d.setQuantity,
+			d.setPosition,
+			d.logDrop,
+			inventoryDrain,
+			equipmentDrain,
+		)
+	})
 }
 
 func (w *World) dropAllItemsOfType(actor *actorState, itemType ItemType, reason string) int {
-	if w == nil || actor == nil || itemType == "" {
+	if itemType == "" {
 		return 0
 	}
-	var removed []ItemStack
-	if _, ok := w.players[actor.ID]; ok {
-		_ = w.MutateInventory(actor.ID, func(inv *Inventory) error {
-			removed = inv.RemoveAllOf(itemType)
-			return nil
-		})
-	} else if npc, ok := w.npcs[actor.ID]; ok {
-		_ = w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {
-			removed = inv.RemoveAllOf(itemType)
-			return nil
-		})
-	} else {
-		removed = actor.Inventory.RemoveAllOf(itemType)
-	}
-	if len(removed) == 0 {
+
+	remover := w.removeStacksFunc(actor)
+	if remover == nil {
 		return 0
 	}
-	total := 0
-	for _, stack := range removed {
-		if stack.Type == "" || stack.Quantity <= 0 {
-			continue
-		}
-		w.upsertGroundItem(actor, stack, reason)
-		total += stack.Quantity
-	}
-	return total
+
+	return w.invokeGroundDrop(actor, reason, func(d groundDropDelegates) int {
+		return worldpkg.DropAllItemsOfType(
+			d.items,
+			d.itemsByTile,
+			d.nextID,
+			d.actor,
+			string(itemType),
+			reason,
+			d.cfg,
+			d.angleFn,
+			d.distanceFn,
+			d.ensureKey,
+			d.setQuantity,
+			d.setPosition,
+			d.logDrop,
+			remover,
+		)
+	})
 }
 
 func (w *World) logGoldDrop(actor *actorState, stack ItemStack, reason, stackID string) {
