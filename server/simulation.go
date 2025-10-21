@@ -97,13 +97,42 @@ type World struct {
 func (w *World) LegacyWorldMarker() {}
 
 func (w *World) resolveStats(tick uint64) {
-	for _, player := range w.players {
-		player.stats.Resolve(tick)
-		w.syncMaxHealth(&player.actorState, &player.version, player.ID, PatchPlayerHealth, &player.stats)
+	if w == nil {
+		return
 	}
-	for _, npc := range w.npcs {
-		npc.stats.Resolve(tick)
-		w.syncMaxHealth(&npc.actorState, &npc.version, npc.ID, PatchNPCHealth, &npc.stats)
+
+	if len(w.players) > 0 {
+		actors := make([]worldpkg.StatsActor, 0, len(w.players))
+		for _, player := range w.players {
+			if player == nil {
+				continue
+			}
+			player := player
+			actors = append(actors, worldpkg.StatsActor{
+				Component: &player.stats,
+				SyncMaxHealth: func(max float64) {
+					w.setActorHealth(&player.actorState, &player.version, player.ID, PatchPlayerHealth, max, player.Health)
+				},
+			})
+		}
+		worldpkg.ResolveStats(tick, actors)
+	}
+
+	if len(w.npcs) > 0 {
+		actors := make([]worldpkg.StatsActor, 0, len(w.npcs))
+		for _, npc := range w.npcs {
+			if npc == nil {
+				continue
+			}
+			npc := npc
+			actors = append(actors, worldpkg.StatsActor{
+				Component: &npc.stats,
+				SyncMaxHealth: func(max float64) {
+					w.setActorHealth(&npc.actorState, &npc.version, npc.ID, PatchNPCHealth, max, npc.Health)
+				},
+			})
+		}
+		worldpkg.ResolveStats(tick, actors)
 	}
 }
 
@@ -112,12 +141,9 @@ func (w *World) syncMaxHealth(actor *actorState, version *uint64, entityID strin
 		return
 	}
 
-	maxHealth := comp.GetDerived(stats.DerivedMaxHealth)
-	if maxHealth <= 0 {
-		return
-	}
-
-	w.setActorHealth(actor, version, entityID, kind, maxHealth, actor.Health)
+	worldpkg.SyncMaxHealth(comp, func(max float64) {
+		w.setActorHealth(actor, version, entityID, kind, max, actor.Health)
+	})
 }
 
 // legacyConstructWorld constructs an empty world with generated obstacles and seeded NPCs.

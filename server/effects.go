@@ -7,6 +7,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingcombat "mine-and-die/server/logging/combat"
 	loggingeconomy "mine-and-die/server/logging/economy"
@@ -363,7 +364,7 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 				} else if next > max {
 					next = max
 				}
-				if math.Abs(next-player.Health) < healthEpsilon {
+				if math.Abs(next-player.Health) < worldpkg.HealthEpsilon {
 					return
 				}
 				actualDelta := next - player.Health
@@ -386,7 +387,7 @@ func healthDeltaBehavior(param string, fallback float64) effectBehavior {
 				} else if next > max {
 					next = max
 				}
-				if math.Abs(next-npc.Health) < healthEpsilon {
+				if math.Abs(next-npc.Health) < worldpkg.HealthEpsilon {
 					return
 				}
 				actualDelta := next - npc.Health
