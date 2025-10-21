@@ -659,12 +659,12 @@ func TestSetEffectParamRecordsPatch(t *testing.T) {
 
 func TestSetGroundItemQuantityRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	item := &groundItemState{GroundItem: GroundItem{ID: "ground-1", Qty: 1, X: 0, Y: 0}}
+	item := &groundItemState{GroundItem: toWorldGroundItem(GroundItem{ID: "ground-1", Qty: 1, X: 0, Y: 0})}
 
 	w.SetGroundItemQuantity(item, 5)
 
-	if item.version != 1 {
-		t.Fatalf("expected item version to increment, got %d", item.version)
+	if item.Version != 1 {
+		t.Fatalf("expected item version to increment, got %d", item.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()

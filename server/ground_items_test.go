@@ -18,15 +18,15 @@ func TestRemoveGroundItemRecordsQuantityPatch(t *testing.T) {
 
 	tile := groundTileKey{X: 1, Y: 2}
 	item := &groundItemState{
-		GroundItem: GroundItem{
+		GroundItem: toWorldGroundItem(GroundItem{
 			ID:             "ground-1",
 			Type:           ItemTypeGold,
 			FungibilityKey: def.FungibilityKey,
 			X:              4.5,
 			Y:              9.25,
 			Qty:            7,
-		},
-		tile: tile,
+		}),
+		Tile: tile,
 	}
 
 	w.groundItems[item.ID] = item
@@ -70,15 +70,15 @@ func TestMarshalStateKeepsGroundItemRemovalPatch(t *testing.T) {
 
 	tile := groundTileKey{X: 0, Y: 0}
 	item := &groundItemState{
-		GroundItem: GroundItem{
+		GroundItem: toWorldGroundItem(GroundItem{
 			ID:             "ground-42",
 			Type:           ItemTypeGold,
 			FungibilityKey: def.FungibilityKey,
 			Qty:            3,
 			X:              5.75,
 			Y:              1.5,
-		},
-		tile: tile,
+		}),
+		Tile: tile,
 	}
 
 	hub.world.groundItems[item.ID] = item
@@ -135,15 +135,15 @@ func TestMarshalStateOmitsGroundItemsFromDiffFrames(t *testing.T) {
 
 	tile := groundTileKey{X: 3, Y: 1}
 	item := &groundItemState{
-		GroundItem: GroundItem{
+		GroundItem: toWorldGroundItem(GroundItem{
 			ID:             "ground-99",
 			Type:           ItemTypeGold,
 			FungibilityKey: def.FungibilityKey,
 			Qty:            5,
 			X:              2.5,
 			Y:              6.25,
-		},
-		tile: tile,
+		}),
+		Tile: tile,
 	}
 
 	hub.world.groundItems[item.ID] = item

@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"sort"
 
+	worldpkg "mine-and-die/server/internal/world"
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
@@ -19,17 +19,6 @@ type GroundItem struct {
 	Qty            int      `json:"qty"`
 }
 
-type groundTileKey struct {
-	X int
-	Y int
-}
-
-type groundItemState struct {
-	GroundItem
-	tile    groundTileKey
-	version uint64
-}
-
 const groundPickupRadius = tileSize
 
 const (
@@ -37,6 +26,52 @@ const (
 	groundScatterMaxDistance = tileSize * 0.35
 	groundScatterPadding     = tileSize * 0.1
 )
+
+func fromWorldGroundItem(item worldpkg.GroundItem) GroundItem {
+	return GroundItem{
+		ID:             item.ID,
+		Type:           ItemType(item.Type),
+		FungibilityKey: item.FungibilityKey,
+		X:              item.X,
+		Y:              item.Y,
+		Qty:            item.Qty,
+	}
+}
+
+func toWorldGroundItem(item GroundItem) worldpkg.GroundItem {
+	return worldpkg.GroundItem{
+		ID:             item.ID,
+		Type:           string(item.Type),
+		FungibilityKey: item.FungibilityKey,
+		X:              item.X,
+		Y:              item.Y,
+		Qty:            item.Qty,
+	}
+}
+
+func toWorldItemStack(stack ItemStack) worldpkg.ItemStack {
+	return worldpkg.ItemStack{Type: string(stack.Type), FungibilityKey: stack.FungibilityKey, Quantity: stack.Quantity}
+}
+
+func fromWorldItemStack(stack worldpkg.ItemStack) ItemStack {
+	return ItemStack{Type: ItemType(stack.Type), FungibilityKey: stack.FungibilityKey, Quantity: stack.Quantity}
+}
+
+func toWorldActor(actor *actorState) *worldpkg.Actor {
+	if actor == nil {
+		return nil
+	}
+	return &worldpkg.Actor{ID: actor.ID, X: actor.X, Y: actor.Y}
+}
+
+func scatterConfig() worldpkg.ScatterConfig {
+	return worldpkg.ScatterConfig{
+		TileSize:    tileSize,
+		MinDistance: groundScatterMinDistance,
+		MaxDistance: groundScatterMaxDistance,
+		Padding:     groundScatterPadding,
+	}
+}
 
 func (w *World) groundItemsSnapshot() []GroundItem {
 	if w == nil || len(w.groundItems) == 0 {
@@ -47,7 +82,7 @@ func (w *World) groundItemsSnapshot() []GroundItem {
 		if item == nil {
 			continue
 		}
-		items = append(items, item.GroundItem)
+		items = append(items, fromWorldGroundItem(item.GroundItem))
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].ID < items[j].ID
@@ -61,110 +96,101 @@ func (w *World) GroundItemsSnapshot() []GroundItem {
 }
 
 func tileForPosition(x, y float64) groundTileKey {
-	return groundTileKey{X: int(math.Floor(x / tileSize)), Y: int(math.Floor(y / tileSize))}
+	return worldpkg.TileForPosition(x, y, tileSize)
 }
 
 func tileCenter(key groundTileKey) (float64, float64) {
-	return float64(key.X)*tileSize + tileSize/2, float64(key.Y)*tileSize + tileSize/2
+	return worldpkg.TileCenter(key, tileSize)
 }
 
 func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason string) *groundItemState {
 	if w == nil || actor == nil || stack.Quantity <= 0 || stack.Type == "" {
 		return nil
 	}
-	tile := tileForPosition(actor.X, actor.Y)
-	x, y := w.scatterGroundItemPosition(actor, tile)
+
+	if w.groundItems == nil {
+		w.groundItems = make(map[string]*groundItemState)
+	}
 	if w.groundItemsByTile == nil {
 		w.groundItemsByTile = make(map[groundTileKey]map[string]*groundItemState)
 	}
-	itemsByType := w.groundItemsByTile[tile]
-	if itemsByType == nil {
-		itemsByType = make(map[string]*groundItemState)
-		w.groundItemsByTile[tile] = itemsByType
+
+	cfg := scatterConfig()
+	worldActor := toWorldActor(actor)
+
+	var angleFn func() float64
+	var distanceFn func(min, max float64) float64
+	if w != nil {
+		w.ensureRNG()
+		angleFn = func() float64 { return w.randomAngle() }
+		distanceFn = func(min, max float64) float64 { return w.randomDistance(min, max) }
 	}
-	key := stack.FungibilityKey
-	if key == "" {
-		if def, ok := ItemDefinitionFor(stack.Type); ok {
-			stack.FungibilityKey = def.FungibilityKey
-			key = stack.FungibilityKey
-		}
-	}
-	if key == "" {
-		return nil
-	}
-	if existing := itemsByType[key]; existing != nil {
-		w.SetGroundItemQuantity(existing, existing.Qty+stack.Quantity)
-		existing.tile = tile
-		w.SetGroundItemPosition(existing, x, y)
-		w.logGoldDrop(actor, stack, reason, existing.ID)
-		return existing
-	}
-	w.nextGroundItemID++
-	id := fmt.Sprintf("ground-%d", w.nextGroundItemID)
-	item := &groundItemState{
-		GroundItem: GroundItem{ID: id, Type: stack.Type, FungibilityKey: stack.FungibilityKey, X: x, Y: y, Qty: stack.Quantity},
-		tile:       tile,
-	}
-	w.groundItems[id] = item
-	itemsByType[key] = item
-	w.logGoldDrop(actor, stack, reason, id)
-	return item
+
+	worldStack := toWorldItemStack(stack)
+
+	return worldpkg.UpsertGroundItem(
+		w.groundItems,
+		w.groundItemsByTile,
+		&w.nextGroundItemID,
+		worldActor,
+		worldStack,
+		reason,
+		cfg,
+		angleFn,
+		distanceFn,
+		func(s *worldpkg.ItemStack) bool {
+			if s == nil || s.Type == "" {
+				return false
+			}
+			if s.FungibilityKey != "" {
+				return true
+			}
+			if def, ok := ItemDefinitionFor(ItemType(s.Type)); ok {
+				s.FungibilityKey = def.FungibilityKey
+				return s.FungibilityKey != ""
+			}
+			return false
+		},
+		func(item *groundItemState, qty int) {
+			w.SetGroundItemQuantity(item, qty)
+		},
+		func(item *groundItemState, x, y float64) {
+			w.SetGroundItemPosition(item, x, y)
+		},
+		func(_ *worldpkg.Actor, stack worldpkg.ItemStack, reason, stackID string) {
+			w.logGoldDrop(actor, fromWorldItemStack(stack), reason, stackID)
+		},
+	)
 }
 
 func (w *World) scatterGroundItemPosition(actor *actorState, tile groundTileKey) (float64, float64) {
-	if actor == nil {
-		return tileCenter(tile)
+	cfg := scatterConfig()
+	worldActor := toWorldActor(actor)
+
+	var angleFn func() float64
+	var distanceFn func(min, max float64) float64
+	if w != nil {
+		w.ensureRNG()
+		angleFn = func() float64 { return w.randomAngle() }
+		distanceFn = func(min, max float64) float64 { return w.randomDistance(min, max) }
 	}
 
-	angle := w.randomAngle()
-	distance := w.randomDistance(groundScatterMinDistance, groundScatterMaxDistance)
-	baseX := actor.X
-	baseY := actor.Y
-	x := baseX + math.Cos(angle)*distance
-	y := baseY + math.Sin(angle)*distance
-
-	left := float64(tile.X) * tileSize
-	top := float64(tile.Y) * tileSize
-	right := left + tileSize
-	bottom := top + tileSize
-
-	padding := groundScatterPadding
-	if padding*2 >= tileSize {
-		padding = 0
-	}
-
-	minX := left + padding
-	maxX := right - padding
-	minY := top + padding
-	maxY := bottom - padding
-
-	return clampFloat(x, minX, maxX), clampFloat(y, minY, maxY)
-}
-
-func clampFloat(value, min, max float64) float64 {
-	if value < min {
-		return min
-	}
-	if value > max {
-		return max
-	}
-	return value
+	return worldpkg.ScatterGroundItemPosition(worldActor, tile, cfg, angleFn, distanceFn)
 }
 
 func (w *World) removeGroundItem(item *groundItemState) {
 	if w == nil || item == nil {
 		return
 	}
-	if item.Qty > 0 {
-		w.SetGroundItemQuantity(item, 0)
-	}
-	delete(w.groundItems, item.ID)
-	if itemsByType, ok := w.groundItemsByTile[item.tile]; ok {
-		delete(itemsByType, item.FungibilityKey)
-		if len(itemsByType) == 0 {
-			delete(w.groundItemsByTile, item.tile)
-		}
-	}
+
+	worldpkg.RemoveGroundItem(
+		w.groundItems,
+		w.groundItemsByTile,
+		item,
+		func(target *groundItemState, qty int) {
+			w.SetGroundItemQuantity(target, qty)
+		},
+	)
 }
 
 func (w *World) nearestGroundItem(actor *actorState, itemType ItemType) (*groundItemState, float64) {
@@ -174,7 +200,7 @@ func (w *World) nearestGroundItem(actor *actorState, itemType ItemType) (*ground
 	var best *groundItemState
 	bestDist := math.MaxFloat64
 	for _, item := range w.groundItems {
-		if item == nil || item.Qty <= 0 || item.Type != itemType {
+		if item == nil || item.Qty <= 0 || ItemType(item.Type) != itemType {
 			continue
 		}
 		dx := item.X - actor.X
