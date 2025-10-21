@@ -216,6 +216,70 @@ func TestContractLifecycleSequencesByDeliveryKind(t *testing.T) {
 	}
 }
 
+func TestContractBurningVisualUpdatesAttachedEffectLifetime(t *testing.T) {
+	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+	if world.effectManager == nil {
+		t.Fatal("expected effect manager to be initialized")
+	}
+
+	target := newTestPlayerState("contract-burning-lifetime")
+	target.X = 200
+	target.Y = 200
+	world.AddPlayer(target)
+
+	actor := &world.players[target.ID].actorState
+	now := time.Unix(123, 0)
+
+	if applied := world.applyStatusEffect(actor, StatusEffectBurning, "lava-source", now); !applied {
+		t.Fatalf("expected burning status effect to apply")
+	}
+
+	world.effectManager.RunTick(effectcontract.Tick(1), now, nil)
+
+	inst := actor.statusEffects[StatusEffectBurning]
+	if inst == nil {
+		t.Fatalf("expected burning status effect instance to persist")
+	}
+	effect := inst.attachedEffect
+	if effect == nil {
+		t.Fatalf("expected burning visual to attach to status effect")
+	}
+
+	inst.ExpiresAt = inst.ExpiresAt.Add(2 * burningTickInterval)
+
+	later := now.Add(50 * time.Millisecond)
+	world.effectManager.RunTick(effectcontract.Tick(2), later, nil)
+
+	if !effect.ExpiresAt.Equal(inst.ExpiresAt) {
+		t.Fatalf("expected effect expiry %v to match status instance %v", effect.ExpiresAt, inst.ExpiresAt)
+	}
+
+	expectedDuration := inst.ExpiresAt.Sub(time.UnixMilli(effect.Start))
+	if expectedDuration < 0 {
+		expectedDuration = 0
+	}
+	if effect.Duration != expectedDuration.Milliseconds() {
+		t.Fatalf("expected effect duration %d, got %d", expectedDuration.Milliseconds(), effect.Duration)
+	}
+
+	delete(actor.statusEffects, StatusEffectBurning)
+
+	expireNow := later.Add(75 * time.Millisecond)
+	world.effectManager.RunTick(effectcontract.Tick(3), expireNow, nil)
+
+	if !effect.ExpiresAt.Equal(expireNow) {
+		t.Fatalf("expected effect expiry to clamp to %v, got %v", expireNow, effect.ExpiresAt)
+	}
+
+	expectedDuration = expireNow.Sub(time.UnixMilli(effect.Start))
+	if expectedDuration < 0 {
+		expectedDuration = 0
+	}
+	if effect.Duration != expectedDuration.Milliseconds() {
+		t.Fatalf("expected clamped duration %d, got %d", expectedDuration.Milliseconds(), effect.Duration)
+	}
+}
+
 func TestEffectManagerRespectsTickCadence(t *testing.T) {
 	manager := newEffectManager(nil)
 	if manager == nil {

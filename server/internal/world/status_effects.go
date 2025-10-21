@@ -1,5 +1,7 @@
 package world
 
+import "time"
+
 // StatusEffectInstance exposes the minimal API required to associate a
 // contract-managed visual effect with a status effect instance.
 type StatusEffectInstance interface {
@@ -59,4 +61,63 @@ func AttachStatusEffectVisual(cfg AttachStatusEffectVisualConfig) {
 	}
 
 	cfg.Effect.SetStatusEffect(typ)
+}
+
+// StatusEffectLifetimeFields captures the pieces of state required to update an
+// attached status visual's expiry metadata without exposing the legacy effect
+// struct directly.
+type StatusEffectLifetimeFields struct {
+	ExpiresAt      *time.Time
+	StartMillis    int64
+	DurationMillis *int64
+}
+
+// ExtendStatusEffectLifetime updates the expiration timestamp and duration
+// metadata for an attached status visual when the new expiry is not earlier
+// than the current value. Duration is derived from the effect's start time and
+// clamped to zero to mirror the legacy world helper.
+func ExtendStatusEffectLifetime(fields StatusEffectLifetimeFields, expiresAt time.Time) {
+	if fields.ExpiresAt == nil || fields.DurationMillis == nil {
+		return
+	}
+	if expiresAt.Before(*fields.ExpiresAt) {
+		return
+	}
+
+	*fields.ExpiresAt = expiresAt
+	start := time.UnixMilli(fields.StartMillis)
+	if fields.StartMillis == 0 {
+		start = expiresAt
+	}
+
+	duration := expiresAt.Sub(start)
+	if duration < 0 {
+		duration = 0
+	}
+	*fields.DurationMillis = duration.Milliseconds()
+}
+
+// ExpireStatusEffectLifetime finalizes an attached status visual's expiration
+// timestamp and duration when the instance ends. The expiry is clamped to the
+// provided time and the duration derived from the effect's start, mirroring the
+// legacy world bookkeeping.
+func ExpireStatusEffectLifetime(fields StatusEffectLifetimeFields, now time.Time) {
+	if fields.ExpiresAt == nil || fields.DurationMillis == nil {
+		return
+	}
+
+	if now.Before(*fields.ExpiresAt) {
+		*fields.ExpiresAt = now
+	}
+
+	start := time.UnixMilli(fields.StartMillis)
+	if fields.StartMillis == 0 {
+		start = now
+	}
+
+	duration := now.Sub(start)
+	if duration < 0 {
+		duration = 0
+	}
+	*fields.DurationMillis = duration.Milliseconds()
 }

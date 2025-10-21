@@ -332,7 +332,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the contract status visual sync helper into `internal/effects` so the manager updates burning visuals without depending on the legacy world wrapper.
 - [x] Move the contract status visual spawn helper into `internal/effects` so the manager can instantiate burning visuals without relying on the legacy world wrapper.
 - [x] Move the status visual attachment helper (`attachVisualToStatusEffect`) into `internal/world` so the effect manager can link burning visuals to actor status state without mutating legacy structs directly.
-- [ ] Move the status visual lifetime helpers (`extendAttachedEffect` and `expireAttachedEffect`) into `internal/world` so contract-managed visuals share centralized duration bookkeeping.
+- [x] Move the status visual lifetime helpers (`extendAttachedEffect` and `expireAttachedEffect`) into `internal/world` so contract-managed visuals share centralized duration bookkeeping.
+- [x] Teach the contract burning visual hook in `effects_manager.go` to call the new `internal/world` lifetime helpers when extending or ending the attached effect so contract-managed visuals reuse the centralized bookkeeping.
+- [x] Extract the contract burning visual hook into `internal/effects`, introducing a configuration struct so the server wrapper only wires actor lookup and lifetime helper adapters.
+- [ ] Move the contract burning damage hook into `internal/effects`, reusing the shared actor lookup seam so lava damage continues to read status metadata without touching legacy world state.
 
 - [x] Keep the tick loop in `sim/engine`:
 
