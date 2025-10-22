@@ -356,7 +356,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Populate the melee and projectile ability owner references with combat intent owners so the staging helpers can drop legacy `*actorState` assertions and rely on sanitized adapters.
 - [x] Teach the combat staging helpers to consume typed ability owner references directly so trigger configs can drop the `ExtractOwner` closures and rely on sanitized owners end-to-end.
 - [x] Move the actor-to-intent owner conversion helpers (`meleeIntentOwner` and `newProjectileIntentOwner`) into `internal/combat` so the world ability gates pull sanitized owners straight from the combat package.
-- [ ] Thread `combat.AbilityActor` through `World.abilityOwner` so ability gates and trigger staging stop exposing legacy `*actorState` references.
+- [x] Thread `combat.AbilityActor` through `World.abilityOwner` so ability gates and trigger staging stop exposing legacy `*actorState` references.
+- [ ] Update the `server/effect_intents.go` helpers (`newMeleeIntent`, `NewProjectileIntent`) to accept `combat.AbilityActor` owners so intent staging can drop direct `*actorState` conversions.
 
 - [x] Keep the tick loop in `sim/engine`:
 
