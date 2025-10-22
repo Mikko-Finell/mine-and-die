@@ -31,6 +31,85 @@ func (s *statusEffectVisualStub) EffectState() any {
 	return s.state
 }
 
+type applyInstanceStub struct {
+	definition any
+	source     string
+	appliedAt  time.Time
+	expiresAt  time.Time
+	nextTick   time.Time
+	lastTick   time.Time
+}
+
+type applyAttachmentStub struct {
+	status   string
+	extended []time.Time
+}
+
+func newApplyInstanceHandle(inst *applyInstanceStub, attachment *applyAttachmentStub) StatusEffectInstanceHandle {
+	return StatusEffectInstanceHandle{
+		Instance: inst,
+		HasDefinition: func() bool {
+			return inst != nil && inst.definition != nil
+		},
+		SetDefinition: func(value any) {
+			if inst == nil {
+				return
+			}
+			inst.definition = value
+		},
+		SetSourceID: func(value string) {
+			if inst == nil {
+				return
+			}
+			inst.source = value
+		},
+		SetAppliedAt: func(at time.Time) {
+			if inst == nil {
+				return
+			}
+			inst.appliedAt = at
+		},
+		SetExpiresAt: func(at time.Time) {
+			if inst == nil {
+				return
+			}
+			inst.expiresAt = at
+		},
+		SetNextTick: func(at time.Time) {
+			if inst == nil {
+				return
+			}
+			inst.nextTick = at
+		},
+		NextTick: func() time.Time {
+			if inst == nil {
+				return time.Time{}
+			}
+			return inst.nextTick
+		},
+		SetLastTick: func(at time.Time) {
+			if inst == nil {
+				return
+			}
+			inst.lastTick = at
+		},
+		Attachment: StatusEffectInstanceAttachment{
+			SetStatus: func(effectType string) {
+				if attachment == nil {
+					return
+				}
+				attachment.status = effectType
+			},
+			Extend: func(expiresAt time.Time) {
+				if attachment == nil {
+					return
+				}
+				attachment.extended = append(attachment.extended, expiresAt)
+			},
+		},
+	}
+}
+
 func TestAttachStatusEffectVisualUsesInstanceType(t *testing.T) {
 	instance := &statusEffectInstanceStub{typ: "poison"}
 	state := struct{}{}
@@ -95,6 +174,223 @@ func TestAttachStatusEffectVisualNoopWhenInstanceMissing(t *testing.T) {
 
 	if visual.status != "" {
 		t.Fatalf("expected visual status to remain empty when instance missing")
+	}
+}
+
+func TestApplyStatusEffectCreatesInstance(t *testing.T) {
+	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	duration := 3 * time.Second
+	interval := 200 * time.Millisecond
+	defState := struct{}{}
+
+	attachment := &applyAttachmentStub{}
+	var (
+		created           *applyInstanceStub
+		storedHandle      StatusEffectInstanceHandle
+		recordDuration    time.Duration
+		onApplyCalled     bool
+		onInitialTickCall bool
+	)
+
+	applied := ApplyStatusEffect(ApplyStatusEffectConfig{
+		Now:      now,
+		Type:     "burning",
+		SourceID: "lava-1",
+		LookupDefinition: func() (ApplyStatusEffectDefinition, bool) {
+			return ApplyStatusEffectDefinition{
+				Duration:     duration,
+				TickInterval: interval,
+				InitialTick:  true,
+				State:        &defState,
+				OnApply: func(handle StatusEffectInstanceHandle, at time.Time) {
+					onApplyCalled = true
+					if handle.Instance == nil {
+						t.Fatalf("expected handle to expose instance during OnApply")
+					}
+				},
+				OnTick: func(handle StatusEffectInstanceHandle, at time.Time) {
+					onInitialTickCall = true
+					if handle.Instance == nil {
+						t.Fatalf("expected handle to expose instance during OnTick")
+					}
+				},
+			}, true
+		},
+		FindInstance: func() (StatusEffectInstanceHandle, bool) {
+			return StatusEffectInstanceHandle{}, false
+		},
+		NewInstance: func() StatusEffectInstanceHandle {
+			created = &applyInstanceStub{}
+			return newApplyInstanceHandle(created, attachment)
+		},
+		StoreInstance: func(handle StatusEffectInstanceHandle) {
+			storedHandle = handle
+		},
+		RecordApplied: func(value time.Duration) {
+			recordDuration = value
+		},
+	})
+
+	if !applied {
+		t.Fatalf("expected ApplyStatusEffect to report a new application")
+	}
+	if created == nil {
+		t.Fatalf("expected NewInstance to allocate a stub instance")
+	}
+	if storedHandle.Instance != created {
+		t.Fatalf("expected StoreInstance to receive the created instance")
+	}
+	if created.definition != &defState {
+		t.Fatalf("expected definition pointer to be stored on instance")
+	}
+	if created.source != "lava-1" {
+		t.Fatalf("expected source to propagate, got %q", created.source)
+	}
+	if !created.appliedAt.Equal(now) {
+		t.Fatalf("expected appliedAt %v, got %v", now, created.appliedAt)
+	}
+	expectedExpires := now.Add(duration)
+	if !created.expiresAt.Equal(expectedExpires) {
+		t.Fatalf("expected expiresAt %v, got %v", expectedExpires, created.expiresAt)
+	}
+	expectedNext := now.Add(interval)
+	if !created.nextTick.Equal(expectedNext) {
+		t.Fatalf("expected next tick %v, got %v", expectedNext, created.nextTick)
+	}
+	if !created.lastTick.Equal(now) {
+		t.Fatalf("expected last tick updated to %v, got %v", now, created.lastTick)
+	}
+	if attachment.status != "burning" {
+		t.Fatalf("expected attachment status 'burning', got %q", attachment.status)
+	}
+	if len(attachment.extended) != 0 {
+		t.Fatalf("expected no extension for new instance, got %d", len(attachment.extended))
+	}
+	if recordDuration != duration {
+		t.Fatalf("expected telemetry duration %v, got %v", duration, recordDuration)
+	}
+	if !onApplyCalled {
+		t.Fatalf("expected OnApply closure to execute")
+	}
+	if !onInitialTickCall {
+		t.Fatalf("expected InitialTick OnTick closure to execute")
+	}
+}
+
+func TestApplyStatusEffectRefreshesExistingInstance(t *testing.T) {
+	now := time.Date(2024, 2, 2, 3, 4, 5, 0, time.UTC)
+	duration := 2 * time.Second
+	interval := 150 * time.Millisecond
+	defState := struct{}{}
+
+	instance := &applyInstanceStub{}
+	attachment := &applyAttachmentStub{}
+	var recorded bool
+
+	applied := ApplyStatusEffect(ApplyStatusEffectConfig{
+		Now:      now,
+		Type:     "burning",
+		SourceID: "fireball",
+		LookupDefinition: func() (ApplyStatusEffectDefinition, bool) {
+			return ApplyStatusEffectDefinition{
+				Duration:     duration,
+				TickInterval: interval,
+				State:        &defState,
+			}, true
+		},
+		FindInstance: func() (StatusEffectInstanceHandle, bool) {
+			return newApplyInstanceHandle(instance, attachment), true
+		},
+		NewInstance: func() StatusEffectInstanceHandle {
+			t.Fatalf("unexpected NewInstance call when instance already present")
+			return StatusEffectInstanceHandle{}
+		},
+		StoreInstance: func(StatusEffectInstanceHandle) {
+			t.Fatalf("unexpected StoreInstance call when refreshing")
+		},
+		RecordApplied: func(time.Duration) {
+			recorded = true
+		},
+	})
+
+	if applied {
+		t.Fatalf("expected refresh to report false")
+	}
+	if instance.source != "fireball" {
+		t.Fatalf("expected source to refresh to 'fireball', got %q", instance.source)
+	}
+	expectedExpires := now.Add(duration)
+	if !instance.expiresAt.Equal(expectedExpires) {
+		t.Fatalf("expected expiresAt %v, got %v", expectedExpires, instance.expiresAt)
+	}
+	if instance.definition != &defState {
+		t.Fatalf("expected definition pointer refreshed on instance")
+	}
+	expectedNext := now.Add(interval)
+	if !instance.nextTick.Equal(expectedNext) {
+		t.Fatalf("expected next tick %v, got %v", expectedNext, instance.nextTick)
+	}
+	if len(attachment.extended) != 1 || !attachment.extended[0].Equal(expectedExpires) {
+		t.Fatalf("expected attachment extension to %v, got %+v", expectedExpires, attachment.extended)
+	}
+	if recorded {
+		t.Fatalf("expected telemetry callback to skip when refreshing")
+	}
+}
+
+func TestApplyStatusEffectSkipsWhenDefinitionMissing(t *testing.T) {
+	called := false
+	applied := ApplyStatusEffect(ApplyStatusEffectConfig{
+		Now:      time.Unix(0, 0),
+		Type:     "burning",
+		SourceID: "lava",
+		LookupDefinition: func() (ApplyStatusEffectDefinition, bool) {
+			return ApplyStatusEffectDefinition{}, false
+		},
+		FindInstance: func() (StatusEffectInstanceHandle, bool) {
+			called = true
+			return StatusEffectInstanceHandle{}, false
+		},
+		NewInstance: func() StatusEffectInstanceHandle {
+			t.Fatalf("expected NewInstance to be skipped when definition missing")
+			return StatusEffectInstanceHandle{}
+		},
+		StoreInstance: func(StatusEffectInstanceHandle) {
+			t.Fatalf("expected StoreInstance to be skipped when definition missing")
+		},
+	})
+
+	if applied {
+		t.Fatalf("expected missing definition to return false")
+	}
+	if called {
+		t.Fatalf("expected FindInstance to be skipped when definition missing")
+	}
+}
+
+func TestApplyStatusEffectSkipsZeroDuration(t *testing.T) {
+	applied := ApplyStatusEffect(ApplyStatusEffectConfig{
+		Now:      time.Unix(0, 0),
+		Type:     "burning",
+		SourceID: "lava",
+		LookupDefinition: func() (ApplyStatusEffectDefinition, bool) {
+			return ApplyStatusEffectDefinition{Duration: 0}, true
+		},
+		FindInstance: func() (StatusEffectInstanceHandle, bool) {
+			t.Fatalf("expected FindInstance not to run when duration invalid")
+			return StatusEffectInstanceHandle{}, false
+		},
+		NewInstance: func() StatusEffectInstanceHandle {
+			t.Fatalf("expected NewInstance not to run when duration invalid")
+			return StatusEffectInstanceHandle{}
+		},
+		StoreInstance: func(StatusEffectInstanceHandle) {
+			t.Fatalf("expected StoreInstance not to run when duration invalid")
+		},
+	})
+
+	if applied {
+		t.Fatalf("expected zero-duration definition to be rejected")
 	}
 }
 
