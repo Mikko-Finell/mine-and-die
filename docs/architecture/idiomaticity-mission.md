@@ -369,7 +369,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the combat damage and defeat telemetry logging into `internal/combat`, exposing adapters that accept the publisher and entity lookup so the world configuration no longer constructs logging payloads directly.
 - [x] Move the combat attack-overlap telemetry into `internal/combat`, exposing an adapter that accepts the publisher, entity lookup, and projectile metadata so multi-target hits reuse the shared logging helper.
 - [x] Extract the projectile overlap resolution in `server/effects.go` into `internal/combat`, returning a helper that accepts the projectile state, target iterators, hit callbacks, and telemetry recorder so the world step delegates multi-target scanning.
-- [ ] Extract the remaining projectile advance logic in `server/effects.go` into `internal/combat`, returning a helper that applies travel, range, and obstacle gating before delegating to the shared overlap resolver so the world wrapper only wires effect state and callbacks.
+- [x] Extract the remaining projectile advance logic in `server/effects.go` into `internal/combat`, returning a helper that applies travel, range, and obstacle gating before delegating to the shared overlap resolver so the world wrapper only wires effect state and callbacks.
+- [ ] Extract the projectile stop helper in `server/effects.go` into `internal/combat`, exposing a callback-driven adapter so the world wrapper only supplies telemetry and explosion hooks.
 
 - [x] Keep the tick loop in `sim/engine`:
 
