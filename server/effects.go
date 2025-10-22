@@ -265,36 +265,36 @@ func (w *World) advanceEffects(now time.Time, dt float64) {
 	if len(w.effects) == 0 {
 		return
 	}
-	w.advanceProjectiles(now, dt)
+	worldpkg.AdvanceLegacyProjectiles(worldpkg.LegacyProjectileAdvanceConfig{
+		Now:   now,
+		Delta: dt,
+		ForEachEffect: func(visitor func(effect any)) {
+			for _, eff := range w.effects {
+				visitor(eff)
+			}
+		},
+		Inspect: func(effect any) worldpkg.LegacyProjectileState {
+			eff, _ := effect.(*effectState)
+			if eff == nil {
+				return worldpkg.LegacyProjectileState{}
+			}
+			return worldpkg.LegacyProjectileState{
+				ContractManaged: eff.ContractManaged,
+				HasProjectile:   eff.Projectile != nil,
+				ExpiresAt:       eff.ExpiresAt,
+			}
+		},
+		Advance: func(effect any, now time.Time, delta float64) {
+			eff, _ := effect.(*effectState)
+			if eff == nil {
+				return
+			}
+			w.advanceProjectile(eff, now, delta)
+		},
+		StopAdapter:    w.projectileStopAdapter,
+		StopProjectile: w.stopLegacyProjectile,
+	})
 	w.advanceNonProjectiles(now, dt)
-}
-
-// LEGACY: advanceProjectiles exists solely for the legacy projectile runtime.
-// Contract-managed instances bypass most of this code today and will replace it
-// entirely after the effectsgen rollout.
-func (w *World) advanceProjectiles(now time.Time, dt float64) {
-	if len(w.effects) == 0 {
-		return
-	}
-	for _, eff := range w.effects {
-		if eff == nil {
-			continue
-		}
-		if eff.ContractManaged {
-			continue
-		}
-		p := eff.Projectile
-		if p == nil {
-			continue
-		}
-		if !now.Before(eff.ExpiresAt) {
-			stopCfg := w.projectileStopConfig(eff, now)
-			stopCfg.Options = combat.ProjectileStopOptions{TriggerExpiry: true}
-			combat.StopProjectile(stopCfg)
-			continue
-		}
-		w.advanceProjectile(eff, now, dt)
-	}
 }
 
 func (w *World) projectileStopConfig(eff *effectState, now time.Time) combat.ProjectileStopConfig {
@@ -303,32 +303,65 @@ func (w *World) projectileStopConfig(eff *effectState, now time.Time) combat.Pro
 	}
 
 	bindings := w.projectileStopAdapter.StopConfig(eff, now)
-
-	stopCfg := combat.ProjectileStopConfig{
-		Effect: eff,
-		Now:    now,
+	if bindings.Effect == nil {
+		bindings.Effect = eff
 	}
+	if bindings.Now.IsZero() {
+		bindings.Now = now
+	}
+	return w.bindProjectileStopConfig(bindings, eff, now)
+}
+
+func (w *World) stopLegacyProjectile(bindings worldpkg.ProjectileStopConfig, opts worldpkg.ProjectileStopOptions) {
+	if w == nil {
+		return
+	}
+
+	effect, _ := bindings.Effect.(*effectState)
+	combatCfg := w.bindProjectileStopConfig(bindings, effect, bindings.Now)
+	combatCfg.Options = combat.ProjectileStopOptions{
+		TriggerImpact: opts.TriggerImpact,
+		TriggerExpiry: opts.TriggerExpiry,
+	}
+	combat.StopProjectile(combatCfg)
+}
+
+func (w *World) bindProjectileStopConfig(bindings worldpkg.ProjectileStopConfig, fallbackEffect *effectState, fallbackNow time.Time) combat.ProjectileStopConfig {
+	stopCfg := combat.ProjectileStopConfig{
+		Effect: fallbackEffect,
+		Now:    fallbackNow,
+	}
+
 	if effectValue := bindings.Effect; effectValue != nil {
 		if bound, ok := effectValue.(*effectState); ok && bound != nil {
 			stopCfg.Effect = bound
 		}
 	}
+	if stopCfg.Effect == nil {
+		stopCfg.Effect = fallbackEffect
+	}
+
 	if !bindings.Now.IsZero() {
 		stopCfg.Now = bindings.Now
+	} else if stopCfg.Now.IsZero() {
+		stopCfg.Now = fallbackNow
 	}
+
+	effectRef := stopCfg.Effect
 
 	if bindings.SetRemainingRange != nil {
 		stopCfg.SetRemainingRange = bindings.SetRemainingRange
-	} else {
+	} else if effectRef != nil {
 		stopCfg.SetRemainingRange = func(remaining float64) {
-			w.SetEffectParam(eff, "remainingRange", remaining)
+			w.SetEffectParam(effectRef, "remainingRange", remaining)
 		}
 	}
+
 	if bindings.RecordEffectEnd != nil {
 		stopCfg.RecordEffectEnd = bindings.RecordEffectEnd
 	} else {
 		stopCfg.RecordEffectEnd = func(reason string) {
-			w.recordEffectEnd(eff, reason)
+			w.recordEffectEnd(effectRef, reason)
 		}
 	}
 
@@ -345,13 +378,21 @@ func (w *World) projectileStopConfig(eff *effectState, now time.Time) combat.Pro
 		}
 	}
 	if spawnCfg.Source == nil {
-		spawnCfg.Source = eff
+		spawnCfg.Source = effectRef
 	}
 	if spawnCfg.Now.IsZero() {
-		spawnCfg.Now = now
+		if !stopCfg.Now.IsZero() {
+			spawnCfg.Now = stopCfg.Now
+		} else {
+			spawnCfg.Now = fallbackNow
+		}
 	}
 	if spawnCfg.CurrentTick == 0 {
-		spawnCfg.CurrentTick = effectcontract.Tick(int64(w.currentTick))
+		if areaBindings.CurrentTick != 0 {
+			spawnCfg.CurrentTick = areaBindings.CurrentTick
+		} else {
+			spawnCfg.CurrentTick = effectcontract.Tick(int64(w.currentTick))
+		}
 	}
 	if spawnCfg.AllocateID == nil {
 		spawnCfg.AllocateID = func() string {
@@ -381,103 +422,209 @@ func (w *World) projectileStopConfig(eff *effectState, now time.Time) combat.Pro
 // hooks call it for parity, but it will be removed once the effectsgen engine
 // owns projectile motion.
 func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) bool {
-	if eff == nil || eff.Projectile == nil {
+	if eff == nil {
 		return false
 	}
 
-	worldW, worldH := w.dimensions()
-	tpl := eff.Projectile.Template
-
-	var overlapMetadata map[string]any
-	if w.recordAttackOverlap != nil {
-		overlapMetadata = map[string]any{"projectile": eff.Type}
-	}
-
-	impactRules := combat.ProjectileImpactRules{}
-	if tpl != nil {
-		impactRules.StopOnHit = tpl.ImpactRules.StopOnHit
-		impactRules.MaxTargets = tpl.ImpactRules.MaxTargets
-		impactRules.AffectsOwner = tpl.ImpactRules.AffectsOwner
-	}
-
-	stopCfg := w.projectileStopConfig(eff, now)
-	setRemainingRange := stopCfg.SetRemainingRange
-	if setRemainingRange == nil {
-		setRemainingRange = func(remaining float64) {
-			w.SetEffectParam(eff, "remainingRange", remaining)
-		}
-	}
-
-	result := combat.AdvanceProjectile(combat.ProjectileAdvanceConfig{
-		Effect:      eff,
-		Delta:       dt,
-		WorldWidth:  worldW,
-		WorldHeight: worldH,
-		ComputeArea: func() worldpkg.Obstacle {
-			return effectAABB(eff)
+	result := worldpkg.AdvanceLegacyProjectile(worldpkg.LegacyProjectileStepConfig{
+		Effect: eff,
+		Now:    now,
+		Delta:  dt,
+		HasProjectile: func(effect any) bool {
+			state, _ := effect.(*effectState)
+			return state != nil && state.Projectile != nil
 		},
-		AnyObstacleOverlap: func(area worldpkg.Obstacle) bool {
-			return w.anyObstacleOverlap(area)
+		Dimensions: w.dimensions,
+		ComputeArea: func(effect any) worldpkg.Obstacle {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				return worldpkg.Obstacle{}
+			}
+			return effectAABB(state)
 		},
-		SetPosition: func(x, y float64) {
-			w.SetEffectPosition(eff, x, y)
+		AnyObstacleOverlap: func(obstacle worldpkg.Obstacle) bool {
+			return w.anyObstacleOverlap(obstacle)
 		},
-		SetRemainingRange: setRemainingRange,
-		Stop:              stopCfg,
-		AreaEffectSpawn:   stopCfg.AreaEffectSpawn,
-		OverlapConfig: combat.ProjectileOverlapResolutionConfig{
-			Impact:              impactRules,
-			OwnerID:             eff.Owner,
-			Ability:             eff.Type,
-			Tick:                w.currentTick,
-			Metadata:            overlapMetadata,
-			RecordAttackOverlap: w.recordAttackOverlap,
-			VisitPlayers: func(visitor combat.ProjectileOverlapVisitor) {
-				for id, player := range w.players {
-					if player == nil {
-						continue
-					}
-					if !visitor(combat.ProjectileOverlapTarget{
-						ID:     id,
-						X:      player.X,
-						Y:      player.Y,
-						Radius: playerHalf,
-						Raw:    player,
-					}) {
-						break
-					}
+		SetPosition: func(effect any, x, y float64) {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				return
+			}
+			w.SetEffectPosition(state, x, y)
+		},
+		StopAdapter: w.projectileStopAdapter,
+		BindStopConfig: func(bindings worldpkg.ProjectileStopConfig, effect any, at time.Time) any {
+			state, _ := effect.(*effectState)
+			return w.bindProjectileStopConfig(bindings, state, at)
+		},
+		RecordAttackOverlap: w.recordAttackOverlap,
+		CurrentTick: func() uint64 {
+			return w.currentTick
+		},
+		VisitPlayers: func(visitor worldpkg.LegacyProjectileOverlapVisitor) {
+			for id, player := range w.players {
+				if player == nil {
+					continue
 				}
-			},
-			VisitNPCs: func(visitor combat.ProjectileOverlapVisitor) {
-				for id, npc := range w.npcs {
-					if npc == nil {
-						continue
+				if !visitor(worldpkg.LegacyProjectileOverlapTarget{
+					ID:     id,
+					X:      player.X,
+					Y:      player.Y,
+					Radius: playerHalf,
+					Raw:    player,
+				}) {
+					break
+				}
+			}
+		},
+		VisitNPCs: func(visitor worldpkg.LegacyProjectileOverlapVisitor) {
+			for id, npc := range w.npcs {
+				if npc == nil {
+					continue
+				}
+				if !visitor(worldpkg.LegacyProjectileOverlapTarget{
+					ID:     id,
+					X:      npc.X,
+					Y:      npc.Y,
+					Radius: playerHalf,
+					Raw:    npc,
+				}) {
+					break
+				}
+			}
+		},
+		OnPlayerHit: func(target worldpkg.LegacyProjectileOverlapTarget) {
+			state, _ := target.Raw.(*playerState)
+			if state == nil {
+				return
+			}
+			w.invokePlayerHitCallback(eff, state, now)
+		},
+		OnNPCHit: func(target worldpkg.LegacyProjectileOverlapTarget) {
+			state, _ := target.Raw.(*npcState)
+			if state == nil {
+				return
+			}
+			w.invokeNPCHitCallback(eff, state, now)
+		},
+		Advance: func(stepCfg worldpkg.LegacyProjectileStepAdvanceConfig) worldpkg.LegacyProjectileStepAdvanceResult {
+			state, _ := stepCfg.Effect.(*effectState)
+			if state == nil || state.Projectile == nil {
+				return worldpkg.LegacyProjectileStepAdvanceResult{}
+			}
+
+			combatStop := combat.ProjectileStopConfig{}
+			if stepCfg.BindStopConfig != nil {
+				if bound, ok := stepCfg.BindStopConfig(stepCfg.StopBindings, state, stepCfg.Now).(combat.ProjectileStopConfig); ok {
+					combatStop = bound
+				}
+			}
+
+			setRemainingRange := combatStop.SetRemainingRange
+			if setRemainingRange == nil {
+				setRemainingRange = func(remaining float64) {
+					w.SetEffectParam(state, "remainingRange", remaining)
+				}
+			}
+
+			tpl := state.Projectile.Template
+			impactRules := combat.ProjectileImpactRules{}
+			if tpl != nil {
+				impactRules.StopOnHit = tpl.ImpactRules.StopOnHit
+				impactRules.MaxTargets = tpl.ImpactRules.MaxTargets
+				impactRules.AffectsOwner = tpl.ImpactRules.AffectsOwner
+			}
+
+			var overlapMetadata map[string]any
+			if stepCfg.RecordAttackOverlap != nil {
+				overlapMetadata = map[string]any{"projectile": state.Type}
+			}
+
+			combatCfg := combat.ProjectileAdvanceConfig{
+				Effect:      state,
+				Delta:       stepCfg.Delta,
+				WorldWidth:  stepCfg.WorldWidth,
+				WorldHeight: stepCfg.WorldHeight,
+				ComputeArea: func() worldpkg.Obstacle {
+					if stepCfg.ComputeArea == nil {
+						return worldpkg.Obstacle{}
 					}
-					if !visitor(combat.ProjectileOverlapTarget{
-						ID:     id,
-						X:      npc.X,
-						Y:      npc.Y,
-						Radius: playerHalf,
-						Raw:    npc,
-					}) {
-						break
+					return stepCfg.ComputeArea()
+				},
+				AnyObstacleOverlap: func(obstacle worldpkg.Obstacle) bool {
+					if stepCfg.AnyObstacleOverlap == nil {
+						return false
 					}
-				}
-			},
-			OnPlayerHit: func(target combat.ProjectileOverlapTarget) {
-				state, _ := target.Raw.(*playerState)
-				if state == nil {
-					return
-				}
-				w.invokePlayerHitCallback(eff, state, now)
-			},
-			OnNPCHit: func(target combat.ProjectileOverlapTarget) {
-				state, _ := target.Raw.(*npcState)
-				if state == nil {
-					return
-				}
-				w.invokeNPCHitCallback(eff, state, now)
-			},
+					return stepCfg.AnyObstacleOverlap(obstacle)
+				},
+				SetPosition:       stepCfg.SetPosition,
+				SetRemainingRange: setRemainingRange,
+				Stop:              combatStop,
+				AreaEffectSpawn:   combatStop.AreaEffectSpawn,
+				OverlapConfig: combat.ProjectileOverlapResolutionConfig{
+					Impact:              impactRules,
+					OwnerID:             state.Owner,
+					Ability:             state.Type,
+					Tick:                stepCfg.CurrentTick,
+					Metadata:            overlapMetadata,
+					RecordAttackOverlap: stepCfg.RecordAttackOverlap,
+					VisitPlayers: func(visitor combat.ProjectileOverlapVisitor) {
+						if stepCfg.VisitPlayers == nil {
+							return
+						}
+						stepCfg.VisitPlayers(func(target worldpkg.LegacyProjectileOverlapTarget) bool {
+							return visitor(combat.ProjectileOverlapTarget{
+								ID:     target.ID,
+								X:      target.X,
+								Y:      target.Y,
+								Radius: target.Radius,
+								Raw:    target.Raw,
+							})
+						})
+					},
+					VisitNPCs: func(visitor combat.ProjectileOverlapVisitor) {
+						if stepCfg.VisitNPCs == nil {
+							return
+						}
+						stepCfg.VisitNPCs(func(target worldpkg.LegacyProjectileOverlapTarget) bool {
+							return visitor(combat.ProjectileOverlapTarget{
+								ID:     target.ID,
+								X:      target.X,
+								Y:      target.Y,
+								Radius: target.Radius,
+								Raw:    target.Raw,
+							})
+						})
+					},
+					OnPlayerHit: func(target combat.ProjectileOverlapTarget) {
+						if stepCfg.OnPlayerHit == nil {
+							return
+						}
+						stepCfg.OnPlayerHit(worldpkg.LegacyProjectileOverlapTarget{
+							ID:     target.ID,
+							X:      target.X,
+							Y:      target.Y,
+							Radius: target.Radius,
+							Raw:    target.Raw,
+						})
+					},
+					OnNPCHit: func(target combat.ProjectileOverlapTarget) {
+						if stepCfg.OnNPCHit == nil {
+							return
+						}
+						stepCfg.OnNPCHit(worldpkg.LegacyProjectileOverlapTarget{
+							ID:     target.ID,
+							X:      target.X,
+							Y:      target.Y,
+							Radius: target.Radius,
+							Raw:    target.Raw,
+						})
+					},
+				},
+			}
+
+			advanceResult := combat.AdvanceProjectile(combatCfg)
+			return worldpkg.LegacyProjectileStepAdvanceResult{Stopped: advanceResult.Stopped, Raw: advanceResult}
 		},
 	})
 
@@ -574,7 +721,7 @@ func (w *World) pruneEffects(now time.Time) {
 			continue
 		}
 		if eff.Projectile != nil && !eff.Projectile.ExpiryResolved {
-			w.maybeExplodeOnExpiry(eff, now)
+			worldpkg.StopLegacyProjectileOnExpiry(w.projectileStopAdapter, eff, now, w.stopLegacyProjectile)
 		}
 		w.recordEffectEnd(eff, "expired")
 		w.purgeEntityPatches(eff.ID)

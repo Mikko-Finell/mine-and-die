@@ -377,7 +377,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Replace the `Stop` callback on `combat.ProjectileAdvanceConfig` with a nested `ProjectileStopConfig` so `AdvanceProjectile` applies stop semantics directly while the world wrapper only supplies telemetry adapters.
 - [x] Extract a shared world helper that builds the `combat.ProjectileStopConfig` (and reusable area-effect spawn settings) so `advanceProjectiles`, `maybeExplodeOnExpiry`, and the combat helper all delegate through the same wiring before retiring the bespoke stop wrapper.
 - [x] Move the shared projectile stop wiring (`projectileStopConfig`/`areaEffectSpawnConfig`) into `internal/world`, exposing an adapter so the server wrapper only forwards the effect state and current time when stopping or advancing projectiles.
-- [ ] Move the legacy projectile advancement loop (`advanceProjectiles` and `maybeExplodeOnExpiry`) into `internal/world`, exposing a helper that walks non-contract projectiles and applies stop semantics through the shared adapter.
+- [x] Move the legacy projectile advancement loop (`advanceProjectiles` and `maybeExplodeOnExpiry`) into `internal/world`, exposing a helper that walks non-contract projectiles and applies stop semantics through the shared adapter.
+- [x] Move the legacy projectile step (`advanceProjectile`) into `internal/world`, exposing a helper that wires world geometry, overlap checks, and hit callbacks while delegating to `combat.AdvanceProjectile`.
+
+- [ ] Move the follow-effect helpers (`advanceNonProjectiles` and `updateFollowEffect`) into `internal/world`, exposing thin wrappers on the legacy world so attachment tracking lives alongside the centralized effect helpers.
 
 - [x] Keep the tick loop in `sim/engine`:
 
