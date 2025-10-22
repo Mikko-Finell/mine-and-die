@@ -6,7 +6,6 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	internaleffects "mine-and-die/server/internal/effects"
 	logging "mine-and-die/server/logging"
 )
 
@@ -30,7 +29,7 @@ func TestDurationToTicks(t *testing.T) {
 func TestNewMeleeIntent(t *testing.T) {
 	owner := &actorState{Actor: Actor{ID: "player-1", X: 200, Y: 180, Facing: FacingDown}}
 
-	intent, ok := NewMeleeIntent(owner)
+	intent, ok := newMeleeIntent(owner)
 	if !ok {
 		t.Fatal("expected melee intent to be constructed")
 	}
@@ -97,7 +96,7 @@ func TestNewProjectileIntent(t *testing.T) {
 		t.Fatalf("expected SourceActorID %q, got %q", owner.ID, intent.SourceActorID)
 	}
 
-	expectedRadius := quantizeWorldCoord(internaleffects.SanitizedSpawnRadius(tpl.SpawnRadius))
+	expectedRadius := quantizeWorldCoord(math.Max(tpl.SpawnRadius, 1))
 	if intent.Geometry.Radius != expectedRadius {
 		t.Fatalf("expected radius %d, got %d", expectedRadius, intent.Geometry.Radius)
 	}

@@ -347,7 +347,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move `resolveMeleeImpact` into `internal/world`, exposing an adapter that accepts the hook's owner reference and impact footprint so `internal/effects` delegates melee collision and telemetry through the centralized world helper.
 - [x] Move `applyEffectHitPlayer`/`applyEffectHitNPC` into `internal/world`, returning callbacks so melee resolution and other hooks apply contract damage through the centralized helpers.
 - [x] Move the shared actor hit dispatcher (`applyEffectHitActor` and the effect behavior lookup) into a new `internal/combat` package, returning adapters so world callbacks can resolve hits without depending on the legacy `World` type.
-- [ ] Move melee ability cooldown and action gating into `internal/combat`, exposing helpers so world melee execution reuses centralized combat adapters.
+- [x] Move melee ability cooldown and action gating into `internal/combat`, exposing helpers so world melee execution reuses centralized combat adapters.
+- [x] Move melee intent construction (`NewMeleeIntent` and `meleeAttackRectangle`) into `internal/combat`, exposing geometry helpers so effect staging relies on the centralized combat package.
+- [x] Move projectile intent construction (`NewProjectileIntent` and its spawn geometry helpers) into `internal/combat`, injecting quantization and owner adapters so ability staging lives alongside other combat helpers.
+- [x] Extract projectile ability gating (`triggerFireball` owner lookup and cooldown checks) into `internal/combat`, returning the staged owner reference alongside the trigger result so world callers reuse the centralized combat adapter.
+- [ ] Extract the fireball trigger staging into `internal/combat`, introducing a helper that consumes the projectile gate and template to return a ready contract intent so the world only enqueues the resulting effect.
 
 - [x] Keep the tick loop in `sim/engine`:
 
@@ -357,7 +361,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
   - [x] Carve out `world/` for tiles, spatial index, RNG/time, and map helpers.
   - [x] Carve out `journal/` for write-barriers and diff recording.
-  - [ ] Carve out `effects/` for authoritative visual events.
+  - [x] Carve out `effects/` for authoritative visual events.
   - [ ] Carve out `combat/` for hit and damage rules.
   - [ ] Carve out `stats/` for actor stats.
   - [ ] Carve out `items/` for items and equipment.

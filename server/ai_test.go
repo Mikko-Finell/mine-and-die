@@ -17,6 +17,8 @@ func newStaticAIWorld() (*World, *npcState) {
 		aiLibrary: globalAILibrary,
 	}
 	w.configureEffectHitAdapter()
+	w.configureMeleeAbilityGate()
+	w.configureProjectileAbilityGate()
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-static"
 	cfg = cfg.Normalized()
@@ -99,6 +101,8 @@ func newRatTestWorld() (*World, *npcState) {
 		aiLibrary: globalAILibrary,
 	}
 	w.configureEffectHitAdapter()
+	w.configureMeleeAbilityGate()
+	w.configureProjectileAbilityGate()
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-rat"
 	cfg = cfg.Normalized()

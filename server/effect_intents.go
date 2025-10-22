@@ -5,7 +5,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	internaleffects "mine-and-die/server/internal/effects"
+	combat "mine-and-die/server/internal/combat"
 )
 
 // durationToTicks converts a wall-clock duration into the number of simulation
@@ -22,6 +22,32 @@ func durationToTicks(duration time.Duration) int {
 	return ticks
 }
 
+var meleeIntentConfig = combat.MeleeIntentConfig{
+	Geometry: combat.MeleeAttackGeometryConfig{
+		PlayerHalf:    playerHalf,
+		Reach:         combat.MeleeAttackReach,
+		Width:         combat.MeleeAttackWidth,
+		DefaultFacing: string(defaultFacing),
+	},
+	TileSize:        tileSize,
+	Damage:          combat.MeleeAttackDamage,
+	Duration:        combat.MeleeAttackDuration,
+	QuantizeCoord:   QuantizeCoord,
+	DurationToTicks: durationToTicks,
+}
+
+var projectileIntentConfig = combat.ProjectileIntentConfig{
+	TileSize:      tileSize,
+	DefaultFacing: string(defaultFacing),
+	QuantizeCoord: QuantizeCoord,
+	FacingVector: func(facing string) (float64, float64) {
+		return facingToVector(FacingDirection(facing))
+	},
+	OwnerHalfExtent: func(combat.ProjectileIntentOwner) float64 {
+		return playerHalf
+	},
+}
+
 // quantizeWorldCoord translates a world-space measurement (expressed in the
 // same units as actor positions) into the fixed-point coordinate system used by
 // the unified effect contract. World units are normalised to tile units so the
@@ -30,141 +56,49 @@ func quantizeWorldCoord(value float64) int {
 	return QuantizeCoord(value / tileSize)
 }
 
-// copyFloatParams rounds a float64 map into the integer Params representation
-// expected by the contract helpers. Values are rounded to the nearest integer
-// because legacy gameplay data is stored in world units that already align to a
-// whole-number grid.
-func copyFloatParams(source map[string]float64) map[string]int {
-	if len(source) == 0 {
-		return nil
-	}
-	params := make(map[string]int, len(source))
-	for key, value := range source {
-		if key == "" {
-			continue
-		}
-		params[key] = int(math.Round(value))
-	}
-	return params
-}
-
-// NewMeleeIntent bridges the legacy melee trigger into a contract EffectIntent
-// so the EffectManager observes the same swing geometry and payload metadata.
-func NewMeleeIntent(owner *actorState) (effectcontract.EffectIntent, bool) {
-	if owner == nil || owner.ID == "" {
+func newMeleeIntent(owner *actorState) (effectcontract.EffectIntent, bool) {
+	if owner == nil {
 		return effectcontract.EffectIntent{}, false
 	}
 
-	facing := owner.Facing
-	if facing == "" {
-		facing = defaultFacing
-	}
-
-	rectX, rectY, rectW, rectH := meleeAttackRectangle(owner.X, owner.Y, facing)
-	centerX := rectX + rectW/2
-	centerY := rectY + rectH/2
-
-	geometry := effectcontract.EffectGeometry{
-		Shape:   effectcontract.GeometryShapeRect,
-		Width:   quantizeWorldCoord(rectW),
-		Height:  quantizeWorldCoord(rectH),
-		OffsetX: quantizeWorldCoord(centerX - owner.X),
-		OffsetY: quantizeWorldCoord(centerY - owner.Y),
-	}
-
-	params := map[string]int{
-		"healthDelta": int(math.Round(-meleeAttackDamage)),
-		"reach":       int(math.Round(meleeAttackReach)),
-		"width":       int(math.Round(meleeAttackWidth)),
-	}
-
-	intent := effectcontract.EffectIntent{
-		EntryID:       effectTypeAttack,
-		TypeID:        effectTypeAttack,
-		Delivery:      effectcontract.DeliveryKindArea,
-		SourceActorID: owner.ID,
-		Geometry:      geometry,
-		DurationTicks: durationToTicks(meleeAttackDuration),
-		Params:        params,
-	}
-
-	return intent, true
+	return combat.NewMeleeIntent(meleeIntentConfig, combat.MeleeIntentOwner{
+		ID:     owner.ID,
+		X:      owner.X,
+		Y:      owner.Y,
+		Facing: string(owner.Facing),
+	})
 }
 
 // NewProjectileIntent converts a projectile template and owner into an
 // EffectIntent that mirrors the spawn metadata used by the legacy projectile
 // systems.
 func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (effectcontract.EffectIntent, bool) {
-	if owner == nil || owner.ID == "" || tpl == nil || tpl.Type == "" {
+	if owner == nil || tpl == nil {
 		return effectcontract.EffectIntent{}, false
 	}
 
-	facing := owner.Facing
-	if facing == "" {
-		facing = defaultFacing
-	}
-	dirX, dirY := facingToVector(facing)
-	if dirX == 0 && dirY == 0 {
-		dirX, dirY = 0, 1
-	}
-
-	spawnRadius := internaleffects.SanitizedSpawnRadius(tpl.SpawnRadius)
-	spawnOffset := tpl.SpawnOffset
-	if spawnOffset == 0 {
-		spawnOffset = ownerHalfExtent(owner) + spawnRadius
-	}
-
-	centerX := owner.X + dirX*spawnOffset
-	centerY := owner.Y + dirY*spawnOffset
-
-	width, height := internaleffects.SpawnSizeFromShape(tpl)
-
-	geometry := effectcontract.EffectGeometry{
-		Shape:   effectcontract.GeometryShapeCircle,
-		OffsetX: quantizeWorldCoord(centerX - owner.X),
-		OffsetY: quantizeWorldCoord(centerY - owner.Y),
-	}
-
-	if tpl.CollisionShape.UseRect {
-		geometry.Shape = effectcontract.GeometryShapeRect
-		geometry.Width = quantizeWorldCoord(width)
-		geometry.Height = quantizeWorldCoord(height)
-	} else {
-		geometry.Radius = quantizeWorldCoord(spawnRadius)
-		if width > 0 {
-			geometry.Width = quantizeWorldCoord(width)
-		}
-		if height > 0 {
-			geometry.Height = quantizeWorldCoord(height)
-		}
-	}
-
-	params := copyFloatParams(tpl.Params)
-	if params == nil {
-		params = make(map[string]int)
-	}
-	params["dx"] = int(math.Round(dirX))
-	params["dy"] = int(math.Round(dirY))
-	if _, ok := params["radius"]; !ok {
-		params["radius"] = int(math.Round(spawnRadius))
-	}
-	if _, ok := params["speed"]; !ok {
-		params["speed"] = int(math.Round(tpl.Speed))
-	}
-	if _, ok := params["range"]; !ok {
-		params["range"] = int(math.Round(tpl.MaxDistance))
-	}
-
-	intent := effectcontract.EffectIntent{
-		EntryID:       tpl.Type,
-		TypeID:        tpl.Type,
-		Delivery:      effectcontract.DeliveryKindArea,
-		SourceActorID: owner.ID,
-		Geometry:      geometry,
-		Params:        params,
-	}
-
-	return intent, true
+	return combat.NewProjectileIntent(
+		projectileIntentConfig,
+		combat.ProjectileIntentOwner{
+			ID:     owner.ID,
+			X:      owner.X,
+			Y:      owner.Y,
+			Facing: string(owner.Facing),
+		},
+		combat.ProjectileIntentTemplate{
+			Type:        tpl.Type,
+			Speed:       tpl.Speed,
+			MaxDistance: tpl.MaxDistance,
+			SpawnRadius: tpl.SpawnRadius,
+			SpawnOffset: tpl.SpawnOffset,
+			CollisionShape: combat.ProjectileIntentCollisionShape{
+				UseRect: tpl.CollisionShape.UseRect,
+				Width:   tpl.CollisionShape.RectWidth,
+				Height:  tpl.CollisionShape.RectHeight,
+			},
+			Params: tpl.Params,
+		},
+	)
 }
 
 // NewStatusVisualIntent converts a status-effect attachment into an

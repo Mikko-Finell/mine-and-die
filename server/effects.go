@@ -45,11 +45,11 @@ type projectileStopOptions struct {
 }
 
 const (
-	meleeAttackCooldown = 400 * time.Millisecond
-	meleeAttackDuration = 150 * time.Millisecond
-	meleeAttackReach    = 56.0
-	meleeAttackWidth    = 40.0
-	meleeAttackDamage   = 10.0
+	meleeAttackCooldown = combat.MeleeAttackCooldown
+	meleeAttackDuration = combat.MeleeAttackDuration
+	meleeAttackReach    = combat.MeleeAttackReach
+	meleeAttackWidth    = combat.MeleeAttackWidth
+	meleeAttackDamage   = combat.MeleeAttackDamage
 
 	effectTypeAttack        = combat.EffectTypeAttack
 	effectTypeFireball      = combat.EffectTypeFireball
@@ -235,36 +235,27 @@ func (w *World) entityRef(actorID string) logging.EntityRef {
 	return logging.EntityRef{ID: actorID, Kind: logging.EntityKind("unknown")}
 }
 
-func (w *World) cooldownReady(cooldowns *map[string]time.Time, ability string, cooldown time.Duration, now time.Time) bool {
-	if cooldowns == nil {
-		return false
-	}
-	if *cooldowns == nil {
-		*cooldowns = make(map[string]time.Time)
-	}
-	if cooldown > 0 {
-		if last, ok := (*cooldowns)[ability]; ok {
-			if now.Sub(last) < cooldown {
-				return false
-			}
-		}
-	}
-	(*cooldowns)[ability] = now
-	return true
-}
-
 // triggerMeleeAttack spawns a short-lived melee hitbox if the cooldown allows it.
-func (w *World) triggerMeleeAttack(actorID string, tick uint64, now time.Time) bool {
-	state, cooldowns := w.abilityOwner(actorID)
-	if state == nil || cooldowns == nil {
-		return false
+func (w *World) triggerMeleeAttack(actorID string, now time.Time) (*actorState, bool) {
+	if w == nil || w.meleeAbilityGate == nil {
+		return nil, false
 	}
 
-	if !w.cooldownReady(cooldowns, effectTypeAttack, meleeAttackCooldown, now) {
-		return false
+	owner, ok := w.meleeAbilityGate(actorID, now)
+	if !ok {
+		return nil, false
 	}
 
-	return w.effectManager != nil
+	actor, _ := owner.Reference.(*actorState)
+	if actor == nil {
+		return nil, false
+	}
+
+	if w.effectManager == nil {
+		return nil, false
+	}
+
+	return actor, true
 }
 
 func contractSpawnProducer(definitionID string) string {
@@ -277,29 +268,30 @@ func contractSpawnProducer(definitionID string) string {
 }
 
 // triggerFireball launches a projectile effect when the player is ready.
-func (w *World) triggerFireball(actorID string, now time.Time) bool {
-	tpl := w.projectileTemplates[effectTypeFireball]
-	if tpl == nil {
-		return false
+func (w *World) triggerFireball(actorID string, now time.Time) (*actorState, bool) {
+	if w == nil {
+		return nil, false
 	}
 
-	owner, cooldowns := w.abilityOwner(actorID)
-	if owner == nil || cooldowns == nil {
-		return false
+	if w.projectileTemplates[effectTypeFireball] == nil {
+		return nil, false
 	}
 
-	if !w.cooldownReady(cooldowns, tpl.Type, tpl.Cooldown, now) {
-		return false
+	if w.projectileAbilityGate == nil {
+		return nil, false
 	}
 
-	return w.effectManager != nil
-}
-
-func ownerHalfExtent(owner *actorState) float64 {
-	if owner == nil {
-		return playerHalf
+	owner, ok := w.projectileAbilityGate(actorID, now)
+	if !ok {
+		return nil, false
 	}
-	return playerHalf
+
+	actor, _ := owner.Reference.(*actorState)
+	if actor == nil {
+		return nil, false
+	}
+
+	return actor, w.effectManager != nil
 }
 
 func (w *World) registerEffect(effect *effectState) bool {
@@ -314,25 +306,6 @@ func (w *World) unregisterEffect(effect *effectState) {
 		return
 	}
 	internaleffects.UnregisterEffect(w.effectRegistry(), effect)
-}
-
-// meleeAttackRectangle builds the hitbox in front of a player for a melee swing.
-func meleeAttackRectangle(x, y float64, facing FacingDirection) (float64, float64, float64, float64) {
-	reach := meleeAttackReach
-	thickness := meleeAttackWidth
-
-	switch facing {
-	case FacingUp:
-		return x - thickness/2, y - playerHalf - reach, thickness, reach
-	case FacingDown:
-		return x - thickness/2, y + playerHalf, thickness, reach
-	case FacingLeft:
-		return x - playerHalf - reach, y - thickness/2, reach, thickness
-	case FacingRight:
-		return x + playerHalf, y - thickness/2, reach, thickness
-	default:
-		return x - thickness/2, y + playerHalf, thickness, reach
-	}
 }
 
 // advanceEffects moves active projectiles and expires ones that collide or run out of range.
@@ -771,6 +744,56 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 			w.effectManager.EnqueueIntent(intent)
 		}
 	}
+}
+
+func (w *World) configureMeleeAbilityGate() {
+	if w == nil {
+		return
+	}
+
+	w.meleeAbilityGate = combat.NewMeleeAbilityGate(combat.MeleeAbilityGateConfig{
+		AbilityID: effectTypeAttack,
+		Cooldown:  meleeAttackCooldown,
+		LookupOwner: func(actorID string) (combat.AbilityOwnerRef, bool) {
+			state, cooldowns := w.abilityOwner(actorID)
+			if state == nil || cooldowns == nil {
+				return combat.AbilityOwnerRef{}, false
+			}
+			return combat.AbilityOwnerRef{
+				ActorID:   state.ID,
+				Cooldowns: cooldowns,
+				Reference: state,
+			}, true
+		},
+	})
+}
+
+func (w *World) configureProjectileAbilityGate() {
+	if w == nil {
+		return
+	}
+
+	tpl := w.projectileTemplates[effectTypeFireball]
+	if tpl == nil {
+		w.projectileAbilityGate = nil
+		return
+	}
+
+	w.projectileAbilityGate = combat.NewProjectileAbilityGate(combat.ProjectileAbilityGateConfig{
+		AbilityID: tpl.Type,
+		Cooldown:  tpl.Cooldown,
+		LookupOwner: func(actorID string) (combat.AbilityOwnerRef, bool) {
+			state, cooldowns := w.abilityOwner(actorID)
+			if state == nil || cooldowns == nil {
+				return combat.AbilityOwnerRef{}, false
+			}
+			return combat.AbilityOwnerRef{
+				ActorID:   state.ID,
+				Cooldowns: cooldowns,
+				Reference: state,
+			}, true
+		},
+	})
 }
 
 func (w *World) configureEffectHitAdapter() {
