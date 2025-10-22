@@ -338,7 +338,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the contract burning damage hook into `internal/effects`, reusing the shared actor lookup seam so lava damage continues to read status metadata without touching legacy world state.
 - [x] Move the legacy burning damage helper (`applyBurningDamage` and its wrapper) into `internal/world`, exposing a thin adapter on `World` so the new effects hook applies lava damage through the centralized world package.
 - [x] Move `NewBurningTickIntent` into `internal/effects`, returning a contract intent helper that reuses the new world burning damage API so lava damage queues share the centralized implementation.
-- [ ] Move `NewBloodSplatterIntent` into `internal/effects`, exposing an intent helper that reuses the shared quantization utilities so world callers stop depending on server-level geometry helpers when queuing blood decals.
+- [x] Move `NewBloodSplatterIntent` into `internal/effects`, exposing an intent helper that reuses the shared quantization utilities so world callers stop depending on server-level geometry helpers when queuing blood decals.
+- [x] Move the blood splatter configuration helpers (`newBloodSplatterParams` and `bloodSplatterColors`) into `internal/effects`, providing adapters so world callers reuse the centralized defaults when instantiating contract-managed decals.
+- [x] Move the blood decal instance wiring (`ensureBloodDecalInstance`) into `internal/effects`, exposing a config-driven helper so the server wrapper only supplies runtime lookups and registries.
+- [x] Move the runtime effect state helpers (`registerWorldEffect`, `unregisterWorldEffect`, `storeWorldEffect`, `loadWorldEffect`) into `internal/effects`, exposing runtime-driven adapters so the legacy world wrapper delegates to the shared package.
+- [ ] Extract the contract projectile lifecycle hook into `internal/effects`, introducing a configuration struct so the server wrapper only wires world lookups, registry adapters, and telemetry callbacks.
 
 - [x] Keep the tick loop in `sim/engine`:
 

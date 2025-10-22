@@ -156,45 +156,6 @@ func TestNewStatusVisualIntent(t *testing.T) {
 	}
 }
 
-func TestNewBloodSplatterIntent(t *testing.T) {
-	target := &actorState{Actor: Actor{ID: "npc-5", X: 200, Y: 260}}
-
-	intent, ok := NewBloodSplatterIntent("player-8", target)
-	if !ok {
-		t.Fatal("expected blood splatter intent to be constructed")
-	}
-
-	if intent.EntryID != effectTypeBloodSplatter {
-		t.Fatalf("expected EntryID %q, got %q", effectTypeBloodSplatter, intent.EntryID)
-	}
-	if intent.TypeID != effectTypeBloodSplatter {
-		t.Fatalf("expected TypeID %q, got %q", effectTypeBloodSplatter, intent.TypeID)
-	}
-	if intent.SourceActorID != "player-8" {
-		t.Fatalf("expected SourceActorID 'player-8', got %q", intent.SourceActorID)
-	}
-	if intent.Delivery != effectcontract.DeliveryKindVisual {
-		t.Fatalf("expected DeliveryKindVisual, got %q", intent.Delivery)
-	}
-
-	expectedDuration := durationToTicks(bloodSplatterDuration)
-	if intent.DurationTicks != expectedDuration {
-		t.Fatalf("expected DurationTicks %d, got %d", expectedDuration, intent.DurationTicks)
-	}
-
-	expectedFootprint := quantizeWorldCoord(playerHalf * 2)
-	if intent.Geometry.Width != expectedFootprint || intent.Geometry.Height != expectedFootprint {
-		t.Fatalf("expected footprint %d, got width=%d height=%d", expectedFootprint, intent.Geometry.Width, intent.Geometry.Height)
-	}
-
-	if intent.Params["centerX"] != quantizeWorldCoord(target.X) {
-		t.Fatalf("expected centerX %d, got %d", quantizeWorldCoord(target.X), intent.Params["centerX"])
-	}
-	if intent.Params["centerY"] != quantizeWorldCoord(target.Y) {
-		t.Fatalf("expected centerY %d, got %d", quantizeWorldCoord(target.Y), intent.Params["centerY"])
-	}
-}
-
 func TestApplyStatusEffectQueuesIntent(t *testing.T) {
 	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	if world.effectManager == nil {
