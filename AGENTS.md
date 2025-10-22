@@ -34,4 +34,4 @@ All coordination happens there — phases, order, progress markers, and next tas
 ---
 
 **That’s it.** The file drives the work.
-You read the plan, do the next task, update the plan, commit. No external coordination.
+You read the plan, do the next task, update the plan, commit.
