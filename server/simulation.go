@@ -186,25 +186,11 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 	w.configureEffectHitAdapter()
 	w.configureMeleeAbilityGate()
 	w.configureProjectileAbilityGate()
-	w.playerHitCallback = worldpkg.EffectHitPlayerCallback(worldpkg.EffectHitPlayerConfig{
-		ApplyActorHit: func(effect any, target any, now time.Time) {
-			eff, _ := effect.(*effectState)
-			player, _ := target.(*playerState)
-			if eff == nil || player == nil {
-				return
-			}
-			w.applyEffectHitActor(eff, &player.actorState, now)
-		},
+	w.playerHitCallback = combat.NewWorldPlayerEffectHitCallback(combat.WorldPlayerEffectHitCallbackConfig{
+		Dispatcher: w.effectHitAdapter,
 	})
-	w.npcHitCallback = worldpkg.EffectHitNPCCallback(worldpkg.EffectHitNPCConfig{
-		ApplyActorHit: func(effect any, target any, now time.Time) {
-			eff, _ := effect.(*effectState)
-			npc, _ := target.(*npcState)
-			if eff == nil || npc == nil {
-				return
-			}
-			w.applyEffectHitActor(eff, &npc.actorState, now)
-		},
+	w.npcHitCallback = combat.NewWorldNPCEffectHitCallback(combat.WorldNPCEffectHitCallbackConfig{
+		Dispatcher: w.effectHitAdapter,
 		SpawnBlood: func(effect any, target any, now time.Time) {
 			eff, _ := effect.(*effectState)
 			npc, _ := target.(*npcState)

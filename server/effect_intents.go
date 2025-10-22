@@ -68,8 +68,8 @@ func abilityActorSnapshot(actor *actorState) *combat.AbilityActor {
 	}
 }
 
-func newMeleeIntent(owner *actorState) (effectcontract.EffectIntent, bool) {
-	ownerRef, ok := combat.NewMeleeIntentOwnerFromActor(abilityActorSnapshot(owner))
+func newMeleeIntent(owner *combat.AbilityActor) (effectcontract.EffectIntent, bool) {
+	ownerRef, ok := combat.NewMeleeIntentOwnerFromActor(owner)
 	if !ok {
 		return effectcontract.EffectIntent{}, false
 	}
@@ -99,8 +99,8 @@ func projectileIntentTemplateFromConfig(tpl *ProjectileTemplate) (combat.Project
 // NewProjectileIntent converts a projectile template and owner into an
 // EffectIntent that mirrors the spawn metadata used by the legacy projectile
 // systems.
-func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (effectcontract.EffectIntent, bool) {
-	ownerRef, ok := combat.NewProjectileIntentOwnerFromActor(abilityActorSnapshot(owner))
+func NewProjectileIntent(owner *combat.AbilityActor, tpl *ProjectileTemplate) (effectcontract.EffectIntent, bool) {
+	ownerRef, ok := combat.NewProjectileIntentOwnerFromActor(owner)
 	if !ok {
 		return effectcontract.EffectIntent{}, false
 	}
