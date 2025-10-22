@@ -384,7 +384,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the status-effect lifetime helpers (`extendAttachedEffect` and `expireAttachedEffect`) into `internal/world` so attachment expiration shares the centralized effect utilities.
 - [x] Move the status-effect advancement loop (`advanceStatusEffects` and `advanceActorStatusEffects`) into `internal/world`, exposing thin wrappers on the legacy world so tick progression lives alongside the centralized status helpers.
 - [x] Move the status-effect application helper (`applyStatusEffect`) into `internal/world`, returning adapter-friendly configuration so the legacy world only wires logging, telemetry, and effect manager dependencies.
-- [ ] Move the status-effect definition registry (`newStatusEffectDefinitions`) into `internal/world`, exposing builders that return `world.ApplyStatusEffectDefinition` values so the server wrapper only supplies effect manager and telemetry adapters.
+- [x] Move the status-effect definition registry (`newStatusEffectDefinitions`) into `internal/world`, exposing builders that return `world.ApplyStatusEffectDefinition` values so the server wrapper only supplies effect manager and telemetry adapters.
+- [x] Extend the status-effect definition builder to accept a fallback visual attachment adapter so `World.attachStatusEffectVisual` can delegate through `internal/world` when the effect manager is unavailable.
+- [x] Thread the status-effect instance handle through the fallback attachment path so `World.attachStatusEffectVisual` can stop reaching into `actor.statusEffects` when the effect manager is unavailable.
+- [x] Update `World.attachStatusEffectVisual` to drive status tagging and lifetime extension through the handle's attachment accessors so the fallback path stops mutating `*statusEffectInstance` fields directly.
+- [x] Update `World.statusEffectsAdvanceConfig` to construct status-effect attachment callbacks via `newStatusEffectInstanceHandle` so extend/expire/clear flows reuse the handle's attachment accessors instead of touching `inst.attachedEffect` directly.
+- [ ] Extend `world.StatusEffectInstanceAttachment` with an expire callback so `World.statusEffectsAdvanceConfig` can delegate lifetime updates and effect clearing entirely through the handle without calling `statusEffectAttachmentFields` directly.
 
 - [x] Keep the tick loop in `sim/engine`:
 
