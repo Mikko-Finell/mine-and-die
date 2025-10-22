@@ -563,20 +563,35 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	for _, action := range stagedActions {
 		switch action.command.Name {
 		case effectTypeAttack:
-			owner, triggered := w.triggerMeleeAttack(action.actorID, now)
-			if triggered && owner != nil && w.effectManager != nil {
-				if intent, ok := newMeleeIntent(owner); ok {
-					w.effectManager.EnqueueIntent(intent)
-				}
+			if w.effectManager == nil {
+				continue
+			}
+
+			intent, ok := combat.StageMeleeIntent(combat.MeleeAbilityTriggerConfig{
+				AbilityGate:  w.meleeAbilityGate,
+				IntentConfig: meleeIntentConfig,
+			}, action.actorID, now)
+			if ok {
+				w.effectManager.EnqueueIntent(intent)
 			}
 		case effectTypeFireball:
-			owner, triggered := w.triggerFireball(action.actorID, now)
-			if triggered && owner != nil && w.effectManager != nil {
-				if tpl := w.projectileTemplates[effectTypeFireball]; tpl != nil {
-					if intent, ok := NewProjectileIntent(owner, tpl); ok {
-						w.effectManager.EnqueueIntent(intent)
-					}
-				}
+			if w.effectManager == nil {
+				continue
+			}
+
+			tpl := w.projectileTemplates[effectTypeFireball]
+			combatTpl, ok := projectileIntentTemplateFromConfig(tpl)
+			if !ok {
+				continue
+			}
+
+			intent, ok := combat.StageProjectileIntent(combat.ProjectileAbilityTriggerConfig{
+				AbilityGate:  w.projectileAbilityGate,
+				IntentConfig: projectileIntentConfig,
+				Template:     combatTpl,
+			}, action.actorID, now)
+			if ok {
+				w.effectManager.EnqueueIntent(intent)
 			}
 		}
 	}

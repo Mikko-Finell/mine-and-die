@@ -351,7 +351,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move melee intent construction (`NewMeleeIntent` and `meleeAttackRectangle`) into `internal/combat`, exposing geometry helpers so effect staging relies on the centralized combat package.
 - [x] Move projectile intent construction (`NewProjectileIntent` and its spawn geometry helpers) into `internal/combat`, injecting quantization and owner adapters so ability staging lives alongside other combat helpers.
 - [x] Extract projectile ability gating (`triggerFireball` owner lookup and cooldown checks) into `internal/combat`, returning the staged owner reference alongside the trigger result so world callers reuse the centralized combat adapter.
-- [ ] Extract the fireball trigger staging into `internal/combat`, introducing a helper that consumes the projectile gate and template to return a ready contract intent so the world only enqueues the resulting effect.
+- [x] Extract the fireball trigger staging into `internal/combat`, introducing a helper that consumes the projectile gate and template to return a ready contract intent so the world only enqueues the resulting effect.
+- [x] Extract the melee trigger staging into `internal/combat`, introducing a helper that consumes the melee gate and intent helpers to return a ready contract intent so the world only enqueues the resulting effect.
+- [x] Populate the melee and projectile ability owner references with combat intent owners so the staging helpers can drop legacy `*actorState` assertions and rely on sanitized adapters.
+- [x] Teach the combat staging helpers to consume typed ability owner references directly so trigger configs can drop the `ExtractOwner` closures and rely on sanitized owners end-to-end.
+- [x] Move the actor-to-intent owner conversion helpers (`meleeIntentOwner` and `newProjectileIntentOwner`) into `internal/combat` so the world ability gates pull sanitized owners straight from the combat package.
+- [ ] Thread `combat.AbilityActor` through `World.abilityOwner` so ability gates and trigger staging stop exposing legacy `*actorState` references.
 
 - [x] Keep the tick loop in `sim/engine`:
 

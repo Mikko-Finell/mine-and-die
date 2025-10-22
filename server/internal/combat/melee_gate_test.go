@@ -44,13 +44,10 @@ func TestNewMeleeAbilityGateUsesLookupAndCooldown(t *testing.T) {
 	gate := NewMeleeAbilityGate(MeleeAbilityGateConfig{
 		AbilityID: "melee",
 		Cooldown:  time.Second,
-		LookupOwner: func(actorID string) (AbilityOwnerRef, bool) {
+		LookupOwner: func(actorID string) (MeleeIntentOwner, *map[string]time.Time, bool) {
 			recordedOwner = actorID
-			return AbilityOwnerRef{
-				ActorID:   actorID,
-				Cooldowns: &cooldowns,
-				Reference: actorID,
-			}, true
+			owner := MeleeIntentOwner{ID: actorID}
+			return owner, &cooldowns, true
 		},
 	})
 	if gate == nil {
@@ -61,8 +58,8 @@ func TestNewMeleeAbilityGateUsesLookupAndCooldown(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected gate to allow first trigger")
 	}
-	if owner.ActorID != "hero" {
-		t.Fatalf("expected owner id 'hero', got %q", owner.ActorID)
+	if owner.ID != "hero" {
+		t.Fatalf("expected owner id 'hero', got %q", owner.ID)
 	}
 	if recordedOwner != "hero" {
 		t.Fatalf("expected lookup to be invoked with actor id, got %q", recordedOwner)
@@ -87,13 +84,10 @@ func TestNewProjectileAbilityGateUsesLookupAndCooldown(t *testing.T) {
 	gate := NewProjectileAbilityGate(ProjectileAbilityGateConfig{
 		AbilityID: "projectile",
 		Cooldown:  500 * time.Millisecond,
-		LookupOwner: func(actorID string) (AbilityOwnerRef, bool) {
+		LookupOwner: func(actorID string) (ProjectileIntentOwner, *map[string]time.Time, bool) {
 			recordedOwner = actorID
-			return AbilityOwnerRef{
-				ActorID:   actorID,
-				Cooldowns: &cooldowns,
-				Reference: actorID,
-			}, true
+			owner := ProjectileIntentOwner{ID: actorID}
+			return owner, &cooldowns, true
 		},
 	})
 	if gate == nil {
@@ -104,8 +98,8 @@ func TestNewProjectileAbilityGateUsesLookupAndCooldown(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected gate to allow first trigger")
 	}
-	if owner.ActorID != "wizard" {
-		t.Fatalf("expected owner id 'wizard', got %q", owner.ActorID)
+	if owner.ID != "wizard" {
+		t.Fatalf("expected owner id 'wizard', got %q", owner.ID)
 	}
 	if recordedOwner != "wizard" {
 		t.Fatalf("expected lookup to be invoked with actor id, got %q", recordedOwner)

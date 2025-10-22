@@ -56,48 +56,64 @@ func quantizeWorldCoord(value float64) int {
 	return QuantizeCoord(value / tileSize)
 }
 
+func abilityActorSnapshot(actor *actorState) *combat.AbilityActor {
+	if actor == nil {
+		return nil
+	}
+	return &combat.AbilityActor{
+		ID:     actor.ID,
+		X:      actor.X,
+		Y:      actor.Y,
+		Facing: string(actor.Facing),
+	}
+}
+
 func newMeleeIntent(owner *actorState) (effectcontract.EffectIntent, bool) {
-	if owner == nil {
+	ownerRef, ok := combat.NewMeleeIntentOwnerFromActor(abilityActorSnapshot(owner))
+	if !ok {
 		return effectcontract.EffectIntent{}, false
 	}
 
-	return combat.NewMeleeIntent(meleeIntentConfig, combat.MeleeIntentOwner{
-		ID:     owner.ID,
-		X:      owner.X,
-		Y:      owner.Y,
-		Facing: string(owner.Facing),
-	})
+	return combat.NewMeleeIntent(meleeIntentConfig, ownerRef)
+}
+
+func projectileIntentTemplateFromConfig(tpl *ProjectileTemplate) (combat.ProjectileIntentTemplate, bool) {
+	if tpl == nil || tpl.Type == "" {
+		return combat.ProjectileIntentTemplate{}, false
+	}
+	return combat.ProjectileIntentTemplate{
+		Type:        tpl.Type,
+		Speed:       tpl.Speed,
+		MaxDistance: tpl.MaxDistance,
+		SpawnRadius: tpl.SpawnRadius,
+		SpawnOffset: tpl.SpawnOffset,
+		CollisionShape: combat.ProjectileIntentCollisionShape{
+			UseRect: tpl.CollisionShape.UseRect,
+			Width:   tpl.CollisionShape.RectWidth,
+			Height:  tpl.CollisionShape.RectHeight,
+		},
+		Params: tpl.Params,
+	}, true
 }
 
 // NewProjectileIntent converts a projectile template and owner into an
 // EffectIntent that mirrors the spawn metadata used by the legacy projectile
 // systems.
 func NewProjectileIntent(owner *actorState, tpl *ProjectileTemplate) (effectcontract.EffectIntent, bool) {
-	if owner == nil || tpl == nil {
+	ownerRef, ok := combat.NewProjectileIntentOwnerFromActor(abilityActorSnapshot(owner))
+	if !ok {
+		return effectcontract.EffectIntent{}, false
+	}
+
+	template, ok := projectileIntentTemplateFromConfig(tpl)
+	if !ok {
 		return effectcontract.EffectIntent{}, false
 	}
 
 	return combat.NewProjectileIntent(
 		projectileIntentConfig,
-		combat.ProjectileIntentOwner{
-			ID:     owner.ID,
-			X:      owner.X,
-			Y:      owner.Y,
-			Facing: string(owner.Facing),
-		},
-		combat.ProjectileIntentTemplate{
-			Type:        tpl.Type,
-			Speed:       tpl.Speed,
-			MaxDistance: tpl.MaxDistance,
-			SpawnRadius: tpl.SpawnRadius,
-			SpawnOffset: tpl.SpawnOffset,
-			CollisionShape: combat.ProjectileIntentCollisionShape{
-				UseRect: tpl.CollisionShape.UseRect,
-				Width:   tpl.CollisionShape.RectWidth,
-				Height:  tpl.CollisionShape.RectHeight,
-			},
-			Params: tpl.Params,
-		},
+		ownerRef,
+		template,
 	)
 }
 
