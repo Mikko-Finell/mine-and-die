@@ -90,9 +90,7 @@ func (w *World) handleBurningStatusApply(rt worldpkg.StatusEffectApplyRuntime) {
 	}
 
 	handle := rt.Handle
-	if handle.Attachment.Clear != nil {
-		handle.Attachment.Clear()
-	}
+	handle.Attachment.Clear()
 
 	lifetime := burningTickInterval
 	expiresAt := rt.Now.Add(lifetime)
@@ -113,10 +111,7 @@ func (w *World) handleBurningStatusApply(rt worldpkg.StatusEffectApplyRuntime) {
 		sourceID = handle.SourceID()
 	}
 
-	var actor *actorState
-	if handle.Actor != nil {
-		actor, _ = handle.Actor().(*actorState)
-	}
+	actor, _ := handle.Actor().(*actorState)
 
 	if w.effectManager == nil {
 		if actor == nil {
@@ -191,9 +186,7 @@ func (w *World) applyStatusEffect(target *actorState, cond StatusEffectType, sou
 			if handle.SetSourceID != nil {
 				handle.SetSourceID(source)
 			}
-			if handle.SetActor != nil {
-				handle.SetActor(target)
-			}
+			handle.SetActor(target)
 			return handle, true
 		},
 		NewInstance: func() worldpkg.StatusEffectInstanceHandle {
@@ -202,9 +195,7 @@ func (w *World) applyStatusEffect(target *actorState, cond StatusEffectType, sou
 			if handle.SetSourceID != nil {
 				handle.SetSourceID(source)
 			}
-			if handle.SetActor != nil {
-				handle.SetActor(target)
-			}
+			handle.SetActor(target)
 			return handle
 		},
 		StoreInstance: func(handle worldpkg.StatusEffectInstanceHandle) {
@@ -335,25 +326,19 @@ func (w *World) statusEffectsAdvanceConfig(actor *actorState) worldpkg.AdvanceAc
 				}
 			}
 
-			if inst.attachedEffect != nil {
-				cfg.Attachment = &worldpkg.StatusEffectAttachmentConfig{
-					Extend: func(expiresAt time.Time) {
-						if inst.attachedEffect == nil {
-							return
-						}
-						worldpkg.ExtendStatusEffectAttachment(statusEffectAttachmentFields(inst.attachedEffect), expiresAt)
-					},
-					Expire: func(at time.Time) (any, bool) {
-						if inst.attachedEffect == nil {
-							return nil, false
-						}
-						shouldRecord := worldpkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(inst.attachedEffect), at)
-						return inst.attachedEffect, shouldRecord
-					},
-					Clear: func() {
-						inst.attachedEffect = nil
-					},
-				}
+			cfg.Attachment = &worldpkg.StatusEffectAttachmentConfig{
+				Extend: func(expiresAt time.Time) {
+					handle := newStatusEffectInstanceHandle(inst, actor)
+					handle.Attachment.Extend(expiresAt)
+				},
+				Expire: func(at time.Time) (any, bool) {
+					handle := newStatusEffectInstanceHandle(inst, actor)
+					return handle.Attachment.Expire(at)
+				},
+				Clear: func() {
+					handle := newStatusEffectInstanceHandle(inst, actor)
+					handle.Attachment.Clear()
+				},
 			}
 
 			return cfg, true
@@ -479,9 +464,7 @@ func (w *World) attachStatusEffectVisual(handle worldpkg.StatusEffectInstanceHan
 		return nil
 	}
 
-	if handle.SetActor != nil {
-		handle.SetActor(actor)
-	}
+	handle.SetActor(actor)
 
 	if lifetime <= 0 {
 		lifetime = 100 * time.Millisecond
@@ -536,11 +519,9 @@ func (w *World) attachStatusEffectVisual(handle worldpkg.StatusEffectInstanceHan
 		DefaultType: string(statusType),
 	})
 
-	if handle.Attachment.SetStatus != nil {
-		handle.Attachment.SetStatus(string(statusType))
-	}
+	handle.Attachment.SetStatus(string(statusType))
 
-	if !expiresAt.IsZero() && handle.Attachment.Extend != nil {
+	if !expiresAt.IsZero() {
 		handle.Attachment.Extend(expiresAt)
 	}
 
@@ -637,6 +618,13 @@ func newStatusEffectInstanceHandle(inst *statusEffectInstance, actor *actorState
 					return
 				}
 				worldpkg.ExtendStatusEffectAttachment(statusEffectAttachmentFields(inst.attachedEffect), expiresAt)
+			},
+			Expire: func(at time.Time) (any, bool) {
+				if inst == nil || inst.attachedEffect == nil {
+					return nil, false
+				}
+				shouldRecord := worldpkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(inst.attachedEffect), at)
+				return inst.attachedEffect, shouldRecord
 			},
 			Clear: func() {
 				if inst == nil {

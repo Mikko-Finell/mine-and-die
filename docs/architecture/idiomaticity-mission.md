@@ -388,7 +388,14 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Extend the status-effect definition builder to accept a fallback visual attachment adapter so `World.attachStatusEffectVisual` can delegate through `internal/world` when the effect manager is unavailable.
 - [x] Thread the status-effect instance handle through the fallback attachment path so `World.attachStatusEffectVisual` can stop reaching into `actor.statusEffects` when the effect manager is unavailable.
 - [x] Update `World.attachStatusEffectVisual` to drive status tagging and lifetime extension through the handle's attachment accessors so the fallback path stops mutating `*statusEffectInstance` fields directly.
-- [ ] Update `World.statusEffectsAdvanceConfig` to construct status-effect attachment callbacks via `newStatusEffectInstanceHandle` so extend/expire/clear flows reuse the handle's attachment accessors instead of touching `inst.attachedEffect` directly.
+- [x] Update `World.statusEffectsAdvanceConfig` to construct status-effect attachment callbacks via `newStatusEffectInstanceHandle` so extend/expire/clear flows reuse the handle's attachment accessors instead of touching `inst.attachedEffect` directly.
+- [x] Drop the `inst.attachedEffect` guard in `World.statusEffectsAdvanceConfig` and rely on the handle's attachment helpers to no-op when no visual is attached, eliminating direct reads of the legacy field.
+- [x] Remove the attachment closure nil checks in `World.statusEffectsAdvanceConfig` so the extend/expire/clear wrappers call the handle helpers directly and let them absorb missing visuals.
+- [x] Drop the attachment helper guards in `World.handleBurningStatusApply` so the fallback path calls `Clear`/`Extend` directly and lets the handle no-op when no visual is present.
+- [x] Drop the `handle.SetActor` guard in `World.attachStatusEffectVisual` so fallback attachments update the handle actor reference directly through the accessor.
+- [x] Drop the `handle.SetActor` guard in `World.applyStatusEffect` so reused and newly created handles update the actor reference directly through the accessor.
+- [x] Drop the `handle.Actor` guard in `World.handleBurningStatusApply` so the fallback path relies on the handle-provided actor reference when attaching visuals.
+- [ ] Drop the `handle.Actor` guard in `World.attachStatusEffectVisual` so the helper always resolves fallback actors through the handle accessor.
 
 - [x] Keep the tick loop in `sim/engine`:
 

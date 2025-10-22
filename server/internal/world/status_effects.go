@@ -22,6 +22,7 @@ type ApplyStatusEffectDefinition struct {
 type StatusEffectInstanceAttachment struct {
 	SetStatus func(string)
 	Extend    func(time.Time)
+	Expire    func(time.Time) (any, bool)
 	Clear     func()
 }
 
