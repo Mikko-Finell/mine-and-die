@@ -2,6 +2,7 @@ package combat
 
 import (
 	"testing"
+	"time"
 
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
@@ -27,6 +28,14 @@ func TestAdvanceProjectileMovesAndResolvesOverlaps(t *testing.T) {
 					StopOnHit:    false,
 					MaxTargets:   0,
 					AffectsOwner: false,
+					ExplodeOnImpact: &internaleffects.ExplosionSpec{
+						EffectType: "impact-explosion",
+						Radius:     3,
+						Duration:   750 * time.Millisecond,
+						Params: map[string]float64{
+							"damage": 12,
+						},
+					},
 				},
 			},
 		},
@@ -35,10 +44,35 @@ func TestAdvanceProjectileMovesAndResolvesOverlaps(t *testing.T) {
 	var recordedPositions [][2]float64
 	var remainingValues []float64
 	telemetryStops := 0
-	stopImpact := false
-	stopExpiry := false
 	overlapCount := 0
 	var recordedArea worldpkg.Obstacle
+	spawnCount := 0
+	spawnTelemetry := 0
+	var registeredExplosion *internaleffects.State
+	now := time.Unix(0, 123*int64(time.Millisecond))
+
+	spawnCfg := internaleffects.AreaEffectSpawnConfig{
+		Now: now,
+		AllocateID: func() string {
+			spawnCount++
+			return "explosion-id"
+		},
+		Register: func(effect *internaleffects.State) bool {
+			registeredExplosion = effect
+			return true
+		},
+		RecordSpawn: func(effectType, category string) {
+			spawnTelemetry++
+			if effectType != "impact-explosion" || category != "explosion" {
+				t.Fatalf("unexpected spawn telemetry payload type=%s category=%s", effectType, category)
+			}
+		},
+	}
+
+	var stopReasons []string
+	setRemainingRange := func(remaining float64) {
+		remainingValues = append(remainingValues, remaining)
+	}
 
 	cfg := ProjectileAdvanceConfig{
 		Effect:      effect,
@@ -61,14 +95,18 @@ func TestAdvanceProjectileMovesAndResolvesOverlaps(t *testing.T) {
 			effect.Y = y
 			recordedPositions = append(recordedPositions, [2]float64{x, y})
 		},
-		SetRemainingRange: func(remaining float64) {
-			remainingValues = append(remainingValues, remaining)
+		SetRemainingRange: setRemainingRange,
+		Stop: ProjectileStopConfig{
+			Effect:            effect,
+			Now:               now,
+			SetRemainingRange: setRemainingRange,
+			AreaEffectSpawn:   &spawnCfg,
+			RecordEffectEnd: func(reason string) {
+				telemetryStops++
+				stopReasons = append(stopReasons, reason)
+			},
 		},
-		Stop: func(triggerImpact, triggerExpiry bool) {
-			telemetryStops++
-			stopImpact = triggerImpact
-			stopExpiry = triggerExpiry
-		},
+		AreaEffectSpawn: &spawnCfg,
 		OverlapConfig: ProjectileOverlapResolutionConfig{
 			Impact: ProjectileImpactRules{
 				StopOnHit:    false,
@@ -118,8 +156,8 @@ func TestAdvanceProjectileMovesAndResolvesOverlaps(t *testing.T) {
 	if telemetryStops != 0 {
 		t.Fatalf("expected projectile to continue, but Stop called %d times", telemetryStops)
 	}
-	if stopImpact || stopExpiry {
-		t.Fatalf("expected no stop flags, got impact=%t expiry=%t", stopImpact, stopExpiry)
+	if len(stopReasons) != 0 {
+		t.Fatalf("expected no stop reasons recorded, got %v", stopReasons)
 	}
 	if overlapCount != 1 {
 		t.Fatalf("expected telemetry overlap recorded once, got %d", overlapCount)
@@ -129,6 +167,39 @@ func TestAdvanceProjectileMovesAndResolvesOverlaps(t *testing.T) {
 	}
 	if result.OverlapResult.HitsApplied != 1 {
 		t.Fatalf("expected exactly one hit applied, got %d", result.OverlapResult.HitsApplied)
+	}
+	if spawnCount != 1 {
+		t.Fatalf("expected explosion to spawn once, got %d", spawnCount)
+	}
+	if spawnTelemetry != 1 {
+		t.Fatalf("expected spawn telemetry once, got %d", spawnTelemetry)
+	}
+	if registeredExplosion == nil {
+		t.Fatalf("expected explosion to register")
+	}
+	if registeredExplosion.ID != "explosion-id" {
+		t.Fatalf("expected explosion ID to propagate, got %s", registeredExplosion.ID)
+	}
+	if registeredExplosion.Type != "impact-explosion" {
+		t.Fatalf("expected explosion type to propagate, got %s", registeredExplosion.Type)
+	}
+	if registeredExplosion.Owner != effect.Owner {
+		t.Fatalf("expected explosion owner %s, got %s", effect.Owner, registeredExplosion.Owner)
+	}
+	if registeredExplosion.Width != 6 || registeredExplosion.Height != 6 {
+		t.Fatalf("expected explosion dimensions 6x6, got %.1fx%.1f", registeredExplosion.Width, registeredExplosion.Height)
+	}
+	if registeredExplosion.X != 3 || registeredExplosion.Y != -2 {
+		t.Fatalf("expected explosion positioned at (3,-2), got (%.1f, %.1f)", registeredExplosion.X, registeredExplosion.Y)
+	}
+	if registeredExplosion.Duration != (750 * time.Millisecond).Milliseconds() {
+		t.Fatalf("expected explosion duration 750ms, got %d", registeredExplosion.Duration)
+	}
+	if radius, ok := registeredExplosion.Params["radius"]; !ok || radius != 3 {
+		t.Fatalf("expected explosion radius param 3, got %v", registeredExplosion.Params)
+	}
+	if damage, ok := registeredExplosion.Params["damage"]; !ok || damage != 12 {
+		t.Fatalf("expected explosion to include damage param 12, got %v", registeredExplosion.Params)
 	}
 }
 
@@ -150,9 +221,13 @@ func TestAdvanceProjectileStopsOnExpiry(t *testing.T) {
 		},
 	}
 
+	now := time.Unix(0, 200*int64(time.Millisecond))
 	stops := 0
-	lastImpact := false
-	lastExpiry := false
+	var recordedReasons []string
+	var remainingValues []float64
+	setRemainingRange := func(remaining float64) {
+		remainingValues = append(remainingValues, remaining)
+	}
 	cfg := ProjectileAdvanceConfig{
 		Effect:      effect,
 		Delta:       0.5,
@@ -163,11 +238,15 @@ func TestAdvanceProjectileStopsOnExpiry(t *testing.T) {
 			effect.X = x
 			effect.Y = y
 		},
-		SetRemainingRange: func(remaining float64) {},
-		Stop: func(triggerImpact, triggerExpiry bool) {
-			stops++
-			lastImpact = triggerImpact
-			lastExpiry = triggerExpiry
+		SetRemainingRange: setRemainingRange,
+		Stop: ProjectileStopConfig{
+			Effect:            effect,
+			Now:               now,
+			SetRemainingRange: setRemainingRange,
+			RecordEffectEnd: func(reason string) {
+				stops++
+				recordedReasons = append(recordedReasons, reason)
+			},
 		},
 		OverlapConfig: ProjectileOverlapResolutionConfig{},
 	}
@@ -175,10 +254,19 @@ func TestAdvanceProjectileStopsOnExpiry(t *testing.T) {
 	result := AdvanceProjectile(cfg)
 
 	if stops != 1 {
-		t.Fatalf("expected stop callback to fire once, got %d", stops)
+		t.Fatalf("expected stop telemetry once, got %d", stops)
 	}
-	if !lastExpiry || lastImpact {
-		t.Fatalf("expected expiry stop, got impact=%t expiry=%t", lastImpact, lastExpiry)
+	if len(recordedReasons) != 1 || recordedReasons[0] != "expiry" {
+		t.Fatalf("expected expiry reason, got %v", recordedReasons)
+	}
+	if len(remainingValues) != 1 || remainingValues[0] != 0 {
+		t.Fatalf("expected range update to record 0, got %v", remainingValues)
+	}
+	if !effect.Projectile.ExpiryResolved {
+		t.Fatalf("expected projectile expiry resolved")
+	}
+	if !effect.ExpiresAt.Equal(now) {
+		t.Fatalf("expected expiry timestamp to clamp to now, got %v", effect.ExpiresAt)
 	}
 	if !result.Stopped || !result.StoppedForExpiry {
 		t.Fatalf("expected stopped-for-expiry result, got %+v", result)
@@ -206,9 +294,13 @@ func TestAdvanceProjectileStopsOnObstacle(t *testing.T) {
 		},
 	}
 
+	now := time.Unix(0, 300*int64(time.Millisecond))
 	stops := 0
-	lastImpact := false
-	lastExpiry := false
+	var recordedReasons []string
+	var remainingValues []float64
+	setRemainingRange := func(remaining float64) {
+		remainingValues = append(remainingValues, remaining)
+	}
 	cfg := ProjectileAdvanceConfig{
 		Effect:      effect,
 		Delta:       0.1,
@@ -222,11 +314,15 @@ func TestAdvanceProjectileStopsOnObstacle(t *testing.T) {
 			effect.X = x
 			effect.Y = y
 		},
-		SetRemainingRange: func(float64) {},
-		Stop: func(triggerImpact, triggerExpiry bool) {
-			stops++
-			lastImpact = triggerImpact
-			lastExpiry = triggerExpiry
+		SetRemainingRange: setRemainingRange,
+		Stop: ProjectileStopConfig{
+			Effect:            effect,
+			Now:               now,
+			SetRemainingRange: setRemainingRange,
+			RecordEffectEnd: func(reason string) {
+				stops++
+				recordedReasons = append(recordedReasons, reason)
+			},
 		},
 		OverlapConfig: ProjectileOverlapResolutionConfig{},
 	}
@@ -234,10 +330,19 @@ func TestAdvanceProjectileStopsOnObstacle(t *testing.T) {
 	result := AdvanceProjectile(cfg)
 
 	if stops != 1 {
-		t.Fatalf("expected stop callback once, got %d", stops)
+		t.Fatalf("expected stop telemetry once, got %d", stops)
 	}
-	if !lastImpact || lastExpiry {
-		t.Fatalf("expected impact stop, got impact=%t expiry=%t", lastImpact, lastExpiry)
+	if len(recordedReasons) != 1 || recordedReasons[0] != "impact" {
+		t.Fatalf("expected impact reason, got %v", recordedReasons)
+	}
+	if len(remainingValues) != 2 || remainingValues[0] != 9 || remainingValues[1] != 0 {
+		t.Fatalf("expected range updates [9 0], got %v", remainingValues)
+	}
+	if !effect.Projectile.ExpiryResolved {
+		t.Fatalf("expected projectile expiry resolved")
+	}
+	if !effect.ExpiresAt.Equal(now) {
+		t.Fatalf("expected expiry timestamp to clamp to now, got %v", effect.ExpiresAt)
 	}
 	if !result.Stopped || !result.StoppedForImpact {
 		t.Fatalf("expected stopped-for-impact result, got %+v", result)
@@ -252,15 +357,19 @@ func TestAdvanceProjectileStopsWhenTemplateMissing(t *testing.T) {
 		Projectile: &internaleffects.ProjectileState{},
 	}
 
+	now := time.Unix(0, 400*int64(time.Millisecond))
 	stops := 0
+	var recordedReasons []string
 	cfg := ProjectileAdvanceConfig{
 		Effect: effect,
 		Delta:  0.5,
-		Stop: func(triggerImpact, triggerExpiry bool) {
-			stops++
-			if triggerImpact || triggerExpiry {
-				t.Fatalf("expected generic stop, got impact=%t expiry=%t", triggerImpact, triggerExpiry)
-			}
+		Stop: ProjectileStopConfig{
+			Effect: effect,
+			Now:    now,
+			RecordEffectEnd: func(reason string) {
+				stops++
+				recordedReasons = append(recordedReasons, reason)
+			},
 		},
 	}
 
@@ -268,6 +377,15 @@ func TestAdvanceProjectileStopsWhenTemplateMissing(t *testing.T) {
 
 	if stops != 1 {
 		t.Fatalf("expected stop callback once, got %d", stops)
+	}
+	if len(recordedReasons) != 1 || recordedReasons[0] != "stopped" {
+		t.Fatalf("expected generic stop reason, got %v", recordedReasons)
+	}
+	if !effect.Projectile.ExpiryResolved {
+		t.Fatalf("expected projectile expiry resolved")
+	}
+	if !effect.ExpiresAt.Equal(now) {
+		t.Fatalf("expected expiry timestamp to clamp to now, got %v", effect.ExpiresAt)
 	}
 	if !result.Stopped || result.StoppedForImpact || result.StoppedForExpiry {
 		t.Fatalf("expected generic stop result, got %+v", result)
