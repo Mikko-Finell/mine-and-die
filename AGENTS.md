@@ -30,6 +30,7 @@ All coordination happens there — phases, order, progress markers, and next tas
 * Do not normalize / reshape server state to make the code “convenient”.
 * No globals, no hidden concurrency in simulation.
 * Behavior parity is absolute — golden determinism must not change.
+* Don't add line number citations to commit messages.
 
 ---
 
