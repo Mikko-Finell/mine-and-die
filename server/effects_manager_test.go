@@ -68,6 +68,8 @@ func TestEffectManagerWorldEffectLoadsFromRegistry(t *testing.T) {
 		effectsByID: make(map[string]*effectState),
 	}
 	world.configureEffectHitAdapter()
+	world.configureMeleeAbilityGate()
+	world.configureProjectileAbilityGate()
 	world.effectsRegistry = internaleffects.Registry{
 		Effects: &world.effects,
 		ByID:    &world.effectsByID,
@@ -97,6 +99,8 @@ func TestEffectManagerProjectileLifecycleUpdatesRegistry(t *testing.T) {
 		projectileTemplates: newProjectileTemplates(),
 	}
 	world.configureEffectHitAdapter()
+	world.configureMeleeAbilityGate()
+	world.configureProjectileAbilityGate()
 	world.effectsIndex = internaleffects.NewSpatialIndex(0, 0)
 	world.effectsRegistry = internaleffects.Registry{
 		Effects: &world.effects,

@@ -71,26 +71,28 @@ type World struct {
 	npcs    map[string]*npcState
 	// effects/effectTriggers/nextEffectID track contract-managed runtime state
 	// and author the telemetry snapshots consumed by gameplay and analytics.
-	effects             []*effectState
-	effectsByID         map[string]*effectState
-	effectsIndex        *effectSpatialIndex
-	effectsRegistry     internaleffects.Registry
-	effectTriggers      []EffectTrigger
-	effectManager       *EffectManager
-	obstacles           []Obstacle
-	effectHitAdapter    combat.EffectHitCallback
-	projectileTemplates map[string]*ProjectileTemplate
-	statusEffectDefs    map[StatusEffectType]*StatusEffectDefinition
-	nextEffectID        uint64
-	nextNPCID           uint64
-	nextGroundItemID    uint64
-	aiLibrary           *aiLibrary
-	config              worldConfig
-	rng                 *rand.Rand
-	seed                string
-	publisher           logging.Publisher
-	currentTick         uint64
-	telemetry           *telemetryCounters
+	effects               []*effectState
+	effectsByID           map[string]*effectState
+	effectsIndex          *effectSpatialIndex
+	effectsRegistry       internaleffects.Registry
+	effectTriggers        []EffectTrigger
+	effectManager         *EffectManager
+	obstacles             []Obstacle
+	effectHitAdapter      combat.EffectHitCallback
+	meleeAbilityGate      combat.MeleeAbilityGate
+	projectileAbilityGate combat.ProjectileAbilityGate
+	projectileTemplates   map[string]*ProjectileTemplate
+	statusEffectDefs      map[StatusEffectType]*StatusEffectDefinition
+	nextEffectID          uint64
+	nextNPCID             uint64
+	nextGroundItemID      uint64
+	aiLibrary             *aiLibrary
+	config                worldConfig
+	rng                   *rand.Rand
+	seed                  string
+	publisher             logging.Publisher
+	currentTick           uint64
+	telemetry             *telemetryCounters
 
 	playerHitCallback worldpkg.EffectHitCallback
 	npcHitCallback    worldpkg.EffectHitCallback
@@ -182,6 +184,8 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		journal:             newJournal(capacity, maxAge),
 	}
 	w.configureEffectHitAdapter()
+	w.configureMeleeAbilityGate()
+	w.configureProjectileAbilityGate()
 	w.playerHitCallback = worldpkg.EffectHitPlayerCallback(worldpkg.EffectHitPlayerConfig{
 		ApplyActorHit: func(effect any, target any, now time.Time) {
 			eff, _ := effect.(*effectState)
@@ -559,22 +563,18 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	for _, action := range stagedActions {
 		switch action.command.Name {
 		case effectTypeAttack:
-			triggered := w.triggerMeleeAttack(action.actorID, tick, now)
-			if triggered && w.effectManager != nil {
-				if owner, _ := w.abilityOwner(action.actorID); owner != nil {
-					if intent, ok := NewMeleeIntent(owner); ok {
-						w.effectManager.EnqueueIntent(intent)
-					}
+			owner, triggered := w.triggerMeleeAttack(action.actorID, now)
+			if triggered && owner != nil && w.effectManager != nil {
+				if intent, ok := newMeleeIntent(owner); ok {
+					w.effectManager.EnqueueIntent(intent)
 				}
 			}
 		case effectTypeFireball:
-			triggered := w.triggerFireball(action.actorID, now)
-			if triggered && w.effectManager != nil {
-				if owner, _ := w.abilityOwner(action.actorID); owner != nil {
-					if tpl := w.projectileTemplates[effectTypeFireball]; tpl != nil {
-						if intent, ok := NewProjectileIntent(owner, tpl); ok {
-							w.effectManager.EnqueueIntent(intent)
-						}
+			owner, triggered := w.triggerFireball(action.actorID, now)
+			if triggered && owner != nil && w.effectManager != nil {
+				if tpl := w.projectileTemplates[effectTypeFireball]; tpl != nil {
+					if intent, ok := NewProjectileIntent(owner, tpl); ok {
+						w.effectManager.EnqueueIntent(intent)
 					}
 				}
 			}
