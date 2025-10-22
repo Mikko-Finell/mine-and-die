@@ -33,7 +33,7 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 
 	internaleffects.SyncContractProjectileInstance(internaleffects.ContractProjectileSyncConfig{
 		Instance: instance,
-		Owner:    projectileOwnerAdapter{state: owner},
+		Owner:    projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: string(owner.Facing)},
 		Effect:   effect,
 		TileSize: tileSize,
 		TickRate: tickRate,
@@ -62,7 +62,7 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 
 	spawned := internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
 		Instance: instance,
-		Owner:    projectileOwnerAdapter{state: owner},
+		Owner:    projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: string(owner.Facing)},
 		Template: tpl,
 		Now:      time.Unix(0, 0),
 		TileSize: tileSize,
@@ -119,7 +119,7 @@ func TestSpawnContractProjectileFromInstancePreservesLifetime(t *testing.T) {
 
 	spawned := internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
 		Instance: instance,
-		Owner:    projectileOwnerAdapter{state: owner},
+		Owner:    projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: string(owner.Facing)},
 		Template: tpl,
 		Now:      now,
 		TileSize: tileSize,

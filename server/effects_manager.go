@@ -153,14 +153,16 @@ func (m *EffectManager) RunTick(tick effectcontract.Tick, now time.Time, emit fu
 }
 
 type projectileOwnerAdapter struct {
-	state *actorState
+	x      float64
+	y      float64
+	facing string
 }
 
 func (a projectileOwnerAdapter) Facing() string {
-	if a.state == nil || a.state.Facing == "" {
+	if a.facing == "" {
 		return string(defaultFacing)
 	}
-	return string(a.state.Facing)
+	return a.facing
 }
 
 func (a projectileOwnerAdapter) FacingVector() (float64, float64) {
@@ -168,10 +170,7 @@ func (a projectileOwnerAdapter) FacingVector() (float64, float64) {
 }
 
 func (a projectileOwnerAdapter) Position() (float64, float64) {
-	if a.state == nil {
-		return 0, 0
-	}
-	return a.state.X, a.state.Y
+	return a.x, a.y
 }
 
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
@@ -190,10 +189,15 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			if owner == nil {
 				return nil
 			}
+			state, _ := world.abilityOwnerState(actorID)
+			var reference any
+			if state != nil {
+				reference = state
+			}
 			return &internaleffects.MeleeOwner{
 				X:         owner.X,
 				Y:         owner.Y,
-				Reference: owner,
+				Reference: reference,
 			}
 		},
 		ResolveImpact: func(effect *internaleffects.State, owner *internaleffects.MeleeOwner, actorID string, tick effectcontract.Tick, now time.Time, area internaleffects.MeleeImpactArea) {
@@ -344,7 +348,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			if owner == nil {
 				return nil
 			}
-			return projectileOwnerAdapter{state: owner}
+			return projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: owner.Facing}
 		},
 		PruneExpired: func(at time.Time) {
 			if world == nil {

@@ -212,7 +212,15 @@ func (w *World) QueueEffectTrigger(trigger EffectTrigger, now time.Time) EffectT
 	return trigger
 }
 
-func (w *World) abilityOwner(actorID string) (*actorState, *map[string]time.Time) {
+func (w *World) abilityOwner(actorID string) (*combat.AbilityActor, *map[string]time.Time) {
+	state, cooldowns := w.abilityOwnerState(actorID)
+	if state == nil || cooldowns == nil {
+		return nil, nil
+	}
+	return abilityActorSnapshot(state), cooldowns
+}
+
+func (w *World) abilityOwnerState(actorID string) (*actorState, *map[string]time.Time) {
 	if player, ok := w.players[actorID]; ok {
 		return &player.actorState, &player.cooldowns
 	}
@@ -705,12 +713,12 @@ func (w *World) configureMeleeAbilityGate() {
 		AbilityID: effectTypeAttack,
 		Cooldown:  meleeAttackCooldown,
 		LookupOwner: func(actorID string) (combat.MeleeIntentOwner, *map[string]time.Time, bool) {
-			state, cooldowns := w.abilityOwner(actorID)
-			if state == nil || cooldowns == nil {
+			owner, cooldowns := w.abilityOwner(actorID)
+			if owner == nil || cooldowns == nil {
 				return combat.MeleeIntentOwner{}, nil, false
 			}
 
-			intentOwner, ok := combat.NewMeleeIntentOwnerFromActor(abilityActorSnapshot(state))
+			intentOwner, ok := combat.NewMeleeIntentOwnerFromActor(owner)
 			if !ok {
 				return combat.MeleeIntentOwner{}, nil, false
 			}
@@ -735,12 +743,12 @@ func (w *World) configureProjectileAbilityGate() {
 		AbilityID: tpl.Type,
 		Cooldown:  tpl.Cooldown,
 		LookupOwner: func(actorID string) (combat.ProjectileIntentOwner, *map[string]time.Time, bool) {
-			state, cooldowns := w.abilityOwner(actorID)
-			if state == nil || cooldowns == nil {
+			owner, cooldowns := w.abilityOwner(actorID)
+			if owner == nil || cooldowns == nil {
 				return combat.ProjectileIntentOwner{}, nil, false
 			}
 
-			intentOwner, ok := combat.NewProjectileIntentOwnerFromActor(abilityActorSnapshot(state))
+			intentOwner, ok := combat.NewProjectileIntentOwnerFromActor(owner)
 			if !ok {
 				return combat.ProjectileIntentOwner{}, nil, false
 			}
