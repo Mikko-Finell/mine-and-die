@@ -59,6 +59,16 @@ type ProjectileStopConfig struct {
 	RecordEffectEnd   func(string)
 }
 
+// ProjectileStopOptions capture the stop triggers requested by the caller.
+type ProjectileStopOptions struct {
+	TriggerImpact bool
+	TriggerExpiry bool
+}
+
+// ProjectileStopper applies the provided stop configuration with the supplied
+// options.
+type ProjectileStopper func(ProjectileStopConfig, ProjectileStopOptions)
+
 // NewProjectileStopAdapter constructs a projectile stop adapter using the
 // provided configuration.
 func NewProjectileStopAdapter(cfg ProjectileStopAdapterConfig) ProjectileStopAdapter {
