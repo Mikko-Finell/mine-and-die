@@ -357,7 +357,14 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Teach the combat staging helpers to consume typed ability owner references directly so trigger configs can drop the `ExtractOwner` closures and rely on sanitized owners end-to-end.
 - [x] Move the actor-to-intent owner conversion helpers (`meleeIntentOwner` and `newProjectileIntentOwner`) into `internal/combat` so the world ability gates pull sanitized owners straight from the combat package.
 - [x] Thread `combat.AbilityActor` through `World.abilityOwner` so ability gates and trigger staging stop exposing legacy `*actorState` references.
-- [ ] Update the `server/effect_intents.go` helpers (`newMeleeIntent`, `NewProjectileIntent`) to accept `combat.AbilityActor` owners so intent staging can drop direct `*actorState` conversions.
+- [x] Update the `server/effect_intents.go` helpers (`newMeleeIntent`, `NewProjectileIntent`) to accept `combat.AbilityActor` owners so intent staging can drop direct `*actorState` conversions.
+- [x] Update `combat.MeleeAbilityGateConfig` and `combat.ProjectileAbilityGateConfig` to accept `combat.AbilityActor` lookups so the world gate wiring can stop converting owner snapshots into intent owners directly.
+- [x] Expand the combat ability gate tests to assert ability actor position and facing metadata survive the conversion so the new lookup seam stays lossless.
+- [x] Move the world effect hit wrapper (`World.applyEffectHitActor` and its adapter wiring) into `internal/combat`, exposing a dispatcher helper so hit resolution logic lives alongside the other combat helpers while the world keeps its telemetry callbacks.
+- [x] Move the world player and NPC effect hit callback wiring (`worldpkg.EffectHitPlayerCallback`/`EffectHitNPCCallback` usage in `server/simulation.go`) into `internal/combat`, exposing constructor helpers so the world initialization only supplies telemetry, blood spawn, and defeat adapters while the combat package owns hit staging.
+
+- [x] Route the burning status effect damage application in `server/status_effects.go` through a combat helper that wraps the world dispatcher so status ticks drop their direct `combat.ApplyEffectHit` calls.
+- [ ] Add a `server/status_effects_test.go` regression that exercises `World.applyBurningDamage` with a stub dispatcher to ensure it delegates through the combat burning damage callback and flushes telemetry after each hit.
 
 - [x] Keep the tick loop in `sim/engine`:
 

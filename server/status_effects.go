@@ -7,6 +7,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
@@ -289,16 +290,12 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		return
 	}
 
-	worldpkg.ApplyBurningDamage(worldpkg.ApplyBurningDamageConfig{
-		EffectType:   effectTypeBurningTick,
-		OwnerID:      owner,
-		ActorID:      actor.ID,
-		StatusEffect: string(status),
-		Delta:        delta,
-		Now:          now,
-		CurrentTick:  w.currentTick,
-		Apply: func(effect worldpkg.BurningDamageEffect) {
-			eff := &effectState{
+	callback := combat.NewWorldBurningDamageCallback(combat.WorldBurningDamageCallbackConfig{
+		Dispatcher: w.effectHitAdapter,
+		Target:     actor,
+		Now:        now,
+		BuildEffect: func(effect worldpkg.BurningDamageEffect) any {
+			return &effectState{
 				Type:   effect.EffectType,
 				Owner:  effect.OwnerID,
 				Start:  effect.StartMillis,
@@ -311,9 +308,28 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 				StatusEffect:       StatusEffectType(effect.StatusEffect),
 				TelemetrySpawnTick: effect.SpawnTick,
 			}
-			w.applyEffectHitActor(eff, actor, now)
+		},
+		AfterApply: func(value any) {
+			eff, _ := value.(*effectState)
+			if eff == nil {
+				return
+			}
 			w.flushEffectTelemetry(eff)
 		},
+	})
+	if callback == nil {
+		return
+	}
+
+	worldpkg.ApplyBurningDamage(worldpkg.ApplyBurningDamageConfig{
+		EffectType:   effectTypeBurningTick,
+		OwnerID:      owner,
+		ActorID:      actor.ID,
+		StatusEffect: string(status),
+		Delta:        delta,
+		Now:          now,
+		CurrentTick:  w.currentTick,
+		Apply:        callback,
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	combat "mine-and-die/server/internal/combat"
 	logging "mine-and-die/server/logging"
 )
 
@@ -27,7 +28,7 @@ func TestDurationToTicks(t *testing.T) {
 }
 
 func TestNewMeleeIntent(t *testing.T) {
-	owner := &actorState{Actor: Actor{ID: "player-1", X: 200, Y: 180, Facing: FacingDown}}
+	owner := &combat.AbilityActor{ID: "player-1", X: 200, Y: 180, Facing: string(FacingDown)}
 
 	intent, ok := newMeleeIntent(owner)
 	if !ok {
@@ -77,7 +78,7 @@ func TestNewMeleeIntent(t *testing.T) {
 }
 
 func TestNewProjectileIntent(t *testing.T) {
-	owner := &actorState{Actor: Actor{ID: "player-2", X: 160, Y: 160, Facing: FacingRight}}
+	owner := &combat.AbilityActor{ID: "player-2", X: 160, Y: 160, Facing: string(FacingRight)}
 	tpl := newProjectileTemplates()[effectTypeFireball]
 
 	intent, ok := NewProjectileIntent(owner, tpl)

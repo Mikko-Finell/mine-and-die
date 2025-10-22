@@ -17,7 +17,7 @@ type ProjectileAbilityGate func(actorID string, now time.Time) (ProjectileIntent
 type MeleeAbilityGateConfig struct {
 	AbilityID   string
 	Cooldown    time.Duration
-	LookupOwner func(actorID string) (MeleeIntentOwner, *map[string]time.Time, bool)
+	LookupOwner func(actorID string) (*AbilityActor, *map[string]time.Time, bool)
 }
 
 // ProjectileAbilityGateConfig carries the dependencies required to reproduce
@@ -25,14 +25,14 @@ type MeleeAbilityGateConfig struct {
 type ProjectileAbilityGateConfig struct {
 	AbilityID   string
 	Cooldown    time.Duration
-	LookupOwner func(actorID string) (ProjectileIntentOwner, *map[string]time.Time, bool)
+	LookupOwner func(actorID string) (*AbilityActor, *map[string]time.Time, bool)
 }
 
 type abilityGateConfig[T any] struct {
-	AbilityID     string
-	Cooldown      time.Duration
-	LookupOwner   func(actorID string) (T, *map[string]time.Time, bool)
-	ValidateOwner func(T) bool
+	AbilityID    string
+	Cooldown     time.Duration
+	LookupOwner  func(actorID string) (*AbilityActor, *map[string]time.Time, bool)
+	ConvertOwner func(*AbilityActor) (T, bool)
 }
 
 // ReadyCooldown mirrors the legacy cooldown bookkeeping: it lazily allocates
@@ -58,15 +58,19 @@ func ReadyCooldown(cooldowns *map[string]time.Time, ability string, cooldown tim
 
 func newAbilityGate[T any](cfg abilityGateConfig[T]) func(actorID string, now time.Time) (T, bool) {
 	var zero T
-	if cfg.LookupOwner == nil || cfg.ValidateOwner == nil || cfg.AbilityID == "" {
+	if cfg.LookupOwner == nil || cfg.ConvertOwner == nil || cfg.AbilityID == "" {
 		return nil
 	}
 	return func(actorID string, now time.Time) (T, bool) {
 		if actorID == "" {
 			return zero, false
 		}
-		owner, cooldowns, ok := cfg.LookupOwner(actorID)
-		if !ok || cooldowns == nil || !cfg.ValidateOwner(owner) {
+		actor, cooldowns, ok := cfg.LookupOwner(actorID)
+		if !ok || cooldowns == nil {
+			return zero, false
+		}
+		owner, ok := cfg.ConvertOwner(actor)
+		if !ok {
 			return zero, false
 		}
 		if !ReadyCooldown(cooldowns, cfg.AbilityID, cfg.Cooldown, now) {
@@ -80,12 +84,10 @@ func newAbilityGate[T any](cfg abilityGateConfig[T]) func(actorID string, now ti
 // ability gating semantics using the provided configuration.
 func NewMeleeAbilityGate(cfg MeleeAbilityGateConfig) MeleeAbilityGate {
 	gate := newAbilityGate[MeleeIntentOwner](abilityGateConfig[MeleeIntentOwner]{
-		AbilityID:   cfg.AbilityID,
-		Cooldown:    cfg.Cooldown,
-		LookupOwner: cfg.LookupOwner,
-		ValidateOwner: func(owner MeleeIntentOwner) bool {
-			return owner.ID != ""
-		},
+		AbilityID:    cfg.AbilityID,
+		Cooldown:     cfg.Cooldown,
+		LookupOwner:  cfg.LookupOwner,
+		ConvertOwner: NewMeleeIntentOwnerFromActor,
 	})
 	if gate == nil {
 		return nil
@@ -97,12 +99,10 @@ func NewMeleeAbilityGate(cfg MeleeAbilityGateConfig) MeleeAbilityGate {
 // projectile ability gating semantics using the provided configuration.
 func NewProjectileAbilityGate(cfg ProjectileAbilityGateConfig) ProjectileAbilityGate {
 	gate := newAbilityGate[ProjectileIntentOwner](abilityGateConfig[ProjectileIntentOwner]{
-		AbilityID:   cfg.AbilityID,
-		Cooldown:    cfg.Cooldown,
-		LookupOwner: cfg.LookupOwner,
-		ValidateOwner: func(owner ProjectileIntentOwner) bool {
-			return owner.ID != ""
-		},
+		AbilityID:    cfg.AbilityID,
+		Cooldown:     cfg.Cooldown,
+		LookupOwner:  cfg.LookupOwner,
+		ConvertOwner: NewProjectileIntentOwnerFromActor,
 	})
 	if gate == nil {
 		return nil

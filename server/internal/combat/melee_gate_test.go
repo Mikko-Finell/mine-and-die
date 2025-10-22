@@ -44,9 +44,9 @@ func TestNewMeleeAbilityGateUsesLookupAndCooldown(t *testing.T) {
 	gate := NewMeleeAbilityGate(MeleeAbilityGateConfig{
 		AbilityID: "melee",
 		Cooldown:  time.Second,
-		LookupOwner: func(actorID string) (MeleeIntentOwner, *map[string]time.Time, bool) {
+		LookupOwner: func(actorID string) (*AbilityActor, *map[string]time.Time, bool) {
 			recordedOwner = actorID
-			owner := MeleeIntentOwner{ID: actorID}
+			owner := &AbilityActor{ID: actorID, X: 12.5, Y: 28.75, Facing: "left"}
 			return owner, &cooldowns, true
 		},
 	})
@@ -60,6 +60,15 @@ func TestNewMeleeAbilityGateUsesLookupAndCooldown(t *testing.T) {
 	}
 	if owner.ID != "hero" {
 		t.Fatalf("expected owner id 'hero', got %q", owner.ID)
+	}
+	if owner.X != 12.5 {
+		t.Fatalf("expected owner X 12.5, got %v", owner.X)
+	}
+	if owner.Y != 28.75 {
+		t.Fatalf("expected owner Y 28.75, got %v", owner.Y)
+	}
+	if owner.Facing != "left" {
+		t.Fatalf("expected owner facing 'left', got %q", owner.Facing)
 	}
 	if recordedOwner != "hero" {
 		t.Fatalf("expected lookup to be invoked with actor id, got %q", recordedOwner)
@@ -84,9 +93,9 @@ func TestNewProjectileAbilityGateUsesLookupAndCooldown(t *testing.T) {
 	gate := NewProjectileAbilityGate(ProjectileAbilityGateConfig{
 		AbilityID: "projectile",
 		Cooldown:  500 * time.Millisecond,
-		LookupOwner: func(actorID string) (ProjectileIntentOwner, *map[string]time.Time, bool) {
+		LookupOwner: func(actorID string) (*AbilityActor, *map[string]time.Time, bool) {
 			recordedOwner = actorID
-			owner := ProjectileIntentOwner{ID: actorID}
+			owner := &AbilityActor{ID: actorID, X: -3.25, Y: 96.5, Facing: "up"}
 			return owner, &cooldowns, true
 		},
 	})
@@ -100,6 +109,15 @@ func TestNewProjectileAbilityGateUsesLookupAndCooldown(t *testing.T) {
 	}
 	if owner.ID != "wizard" {
 		t.Fatalf("expected owner id 'wizard', got %q", owner.ID)
+	}
+	if owner.X != -3.25 {
+		t.Fatalf("expected owner X -3.25, got %v", owner.X)
+	}
+	if owner.Y != 96.5 {
+		t.Fatalf("expected owner Y 96.5, got %v", owner.Y)
+	}
+	if owner.Facing != "up" {
+		t.Fatalf("expected owner facing 'up', got %q", owner.Facing)
 	}
 	if recordedOwner != "wizard" {
 		t.Fatalf("expected lookup to be invoked with actor id, got %q", recordedOwner)

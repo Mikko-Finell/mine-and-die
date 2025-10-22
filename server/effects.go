@@ -712,18 +712,13 @@ func (w *World) configureMeleeAbilityGate() {
 	w.meleeAbilityGate = combat.NewMeleeAbilityGate(combat.MeleeAbilityGateConfig{
 		AbilityID: effectTypeAttack,
 		Cooldown:  meleeAttackCooldown,
-		LookupOwner: func(actorID string) (combat.MeleeIntentOwner, *map[string]time.Time, bool) {
+		LookupOwner: func(actorID string) (*combat.AbilityActor, *map[string]time.Time, bool) {
 			owner, cooldowns := w.abilityOwner(actorID)
 			if owner == nil || cooldowns == nil {
-				return combat.MeleeIntentOwner{}, nil, false
+				return nil, nil, false
 			}
 
-			intentOwner, ok := combat.NewMeleeIntentOwnerFromActor(owner)
-			if !ok {
-				return combat.MeleeIntentOwner{}, nil, false
-			}
-
-			return intentOwner, cooldowns, true
+			return owner, cooldowns, true
 		},
 	})
 }
@@ -742,18 +737,13 @@ func (w *World) configureProjectileAbilityGate() {
 	w.projectileAbilityGate = combat.NewProjectileAbilityGate(combat.ProjectileAbilityGateConfig{
 		AbilityID: tpl.Type,
 		Cooldown:  tpl.Cooldown,
-		LookupOwner: func(actorID string) (combat.ProjectileIntentOwner, *map[string]time.Time, bool) {
+		LookupOwner: func(actorID string) (*combat.AbilityActor, *map[string]time.Time, bool) {
 			owner, cooldowns := w.abilityOwner(actorID)
 			if owner == nil || cooldowns == nil {
-				return combat.ProjectileIntentOwner{}, nil, false
+				return nil, nil, false
 			}
 
-			intentOwner, ok := combat.NewProjectileIntentOwnerFromActor(owner)
-			if !ok {
-				return combat.ProjectileIntentOwner{}, nil, false
-			}
-
-			return intentOwner, cooldowns, true
+			return owner, cooldowns, true
 		},
 	})
 }
@@ -763,7 +753,7 @@ func (w *World) configureEffectHitAdapter() {
 		return
 	}
 
-	w.effectHitAdapter = combat.NewEffectHitDispatcher(combat.EffectHitDispatcherConfig{
+	w.effectHitAdapter = combat.NewWorldEffectHitDispatcher(combat.WorldEffectHitDispatcherConfig{
 		ExtractEffect: func(effect any) (combat.EffectRef, bool) {
 			eff, _ := effect.(*effectState)
 			if eff == nil {
@@ -784,16 +774,44 @@ func (w *World) configureEffectHitAdapter() {
 			}, true
 		},
 		ExtractActor: func(target any) (combat.ActorRef, bool) {
-			actor, _ := target.(*actorState)
+			if target == nil {
+				return combat.ActorRef{}, false
+			}
+
+			var actor *actorState
+			kind := combat.ActorKindGeneric
+
+			switch typed := target.(type) {
+			case *actorState:
+				actor = typed
+			case *playerState:
+				if typed == nil {
+					return combat.ActorRef{}, false
+				}
+				actor = &typed.actorState
+				kind = combat.ActorKindPlayer
+			case *npcState:
+				if typed == nil {
+					return combat.ActorRef{}, false
+				}
+				actor = &typed.actorState
+				kind = combat.ActorKindNPC
+			default:
+				return combat.ActorRef{}, false
+			}
+
 			if actor == nil {
 				return combat.ActorRef{}, false
 			}
-			kind := combat.ActorKindGeneric
-			if _, ok := w.players[actor.ID]; ok {
-				kind = combat.ActorKindPlayer
-			} else if _, ok := w.npcs[actor.ID]; ok {
-				kind = combat.ActorKindNPC
+
+			if kind == combat.ActorKindGeneric && actor.ID != "" {
+				if _, ok := w.players[actor.ID]; ok {
+					kind = combat.ActorKindPlayer
+				} else if _, ok := w.npcs[actor.ID]; ok {
+					kind = combat.ActorKindNPC
+				}
 			}
+
 			return combat.ActorRef{
 				Actor: combat.Actor{
 					ID:        actor.ID,
@@ -903,13 +921,6 @@ func (w *World) configureEffectHitAdapter() {
 			w.applyStatusEffect(actor, StatusEffectType(statusEffect), effect.Effect.OwnerID, now)
 		},
 	})
-}
-
-func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now time.Time) {
-	if w == nil || w.effectHitAdapter == nil || eff == nil || target == nil {
-		return
-	}
-	w.effectHitAdapter(eff, target, now)
 }
 
 // applyEnvironmentalStatusEffects applies persistent effects triggered by hazards.
