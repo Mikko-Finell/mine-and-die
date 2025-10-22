@@ -235,29 +235,6 @@ func (w *World) entityRef(actorID string) logging.EntityRef {
 	return logging.EntityRef{ID: actorID, Kind: logging.EntityKind("unknown")}
 }
 
-// triggerMeleeAttack spawns a short-lived melee hitbox if the cooldown allows it.
-func (w *World) triggerMeleeAttack(actorID string, now time.Time) (*actorState, bool) {
-	if w == nil || w.meleeAbilityGate == nil {
-		return nil, false
-	}
-
-	owner, ok := w.meleeAbilityGate(actorID, now)
-	if !ok {
-		return nil, false
-	}
-
-	actor, _ := owner.Reference.(*actorState)
-	if actor == nil {
-		return nil, false
-	}
-
-	if w.effectManager == nil {
-		return nil, false
-	}
-
-	return actor, true
-}
-
 func contractSpawnProducer(definitionID string) string {
 	switch definitionID {
 	case effectTypeAttack:
@@ -265,33 +242,6 @@ func contractSpawnProducer(definitionID string) string {
 	default:
 		return ""
 	}
-}
-
-// triggerFireball launches a projectile effect when the player is ready.
-func (w *World) triggerFireball(actorID string, now time.Time) (*actorState, bool) {
-	if w == nil {
-		return nil, false
-	}
-
-	if w.projectileTemplates[effectTypeFireball] == nil {
-		return nil, false
-	}
-
-	if w.projectileAbilityGate == nil {
-		return nil, false
-	}
-
-	owner, ok := w.projectileAbilityGate(actorID, now)
-	if !ok {
-		return nil, false
-	}
-
-	actor, _ := owner.Reference.(*actorState)
-	if actor == nil {
-		return nil, false
-	}
-
-	return actor, w.effectManager != nil
 }
 
 func (w *World) registerEffect(effect *effectState) bool {
@@ -754,16 +704,18 @@ func (w *World) configureMeleeAbilityGate() {
 	w.meleeAbilityGate = combat.NewMeleeAbilityGate(combat.MeleeAbilityGateConfig{
 		AbilityID: effectTypeAttack,
 		Cooldown:  meleeAttackCooldown,
-		LookupOwner: func(actorID string) (combat.AbilityOwnerRef, bool) {
+		LookupOwner: func(actorID string) (combat.MeleeIntentOwner, *map[string]time.Time, bool) {
 			state, cooldowns := w.abilityOwner(actorID)
 			if state == nil || cooldowns == nil {
-				return combat.AbilityOwnerRef{}, false
+				return combat.MeleeIntentOwner{}, nil, false
 			}
-			return combat.AbilityOwnerRef{
-				ActorID:   state.ID,
-				Cooldowns: cooldowns,
-				Reference: state,
-			}, true
+
+			intentOwner, ok := combat.NewMeleeIntentOwnerFromActor(abilityActorSnapshot(state))
+			if !ok {
+				return combat.MeleeIntentOwner{}, nil, false
+			}
+
+			return intentOwner, cooldowns, true
 		},
 	})
 }
@@ -782,16 +734,18 @@ func (w *World) configureProjectileAbilityGate() {
 	w.projectileAbilityGate = combat.NewProjectileAbilityGate(combat.ProjectileAbilityGateConfig{
 		AbilityID: tpl.Type,
 		Cooldown:  tpl.Cooldown,
-		LookupOwner: func(actorID string) (combat.AbilityOwnerRef, bool) {
+		LookupOwner: func(actorID string) (combat.ProjectileIntentOwner, *map[string]time.Time, bool) {
 			state, cooldowns := w.abilityOwner(actorID)
 			if state == nil || cooldowns == nil {
-				return combat.AbilityOwnerRef{}, false
+				return combat.ProjectileIntentOwner{}, nil, false
 			}
-			return combat.AbilityOwnerRef{
-				ActorID:   state.ID,
-				Cooldowns: cooldowns,
-				Reference: state,
-			}, true
+
+			intentOwner, ok := combat.NewProjectileIntentOwnerFromActor(abilityActorSnapshot(state))
+			if !ok {
+				return combat.ProjectileIntentOwner{}, nil, false
+			}
+
+			return intentOwner, cooldowns, true
 		},
 	})
 }
