@@ -2,6 +2,166 @@ package world
 
 import "time"
 
+// ApplyStatusEffectDefinition describes the runtime behavior for a single
+// status effect when applying it to an actor. The legacy world wrapper provides
+// closures that already capture its dependencies so the shared helper can
+// invoke them without importing server types.
+type ApplyStatusEffectDefinition struct {
+	Duration     time.Duration
+	TickInterval time.Duration
+	InitialTick  bool
+
+	State any
+
+	OnApply func(StatusEffectInstanceHandle, time.Time)
+	OnTick  func(StatusEffectInstanceHandle, time.Time)
+}
+
+// StatusEffectInstanceAttachment exposes the operations required to keep a
+// status effect's attached visual in sync with the instance state.
+type StatusEffectInstanceAttachment struct {
+	SetStatus func(string)
+	Extend    func(time.Time)
+}
+
+// StatusEffectInstanceHandle bundles field mutators for a single status effect
+// instance. The legacy world constructs handles around its concrete instance
+// type so the shared helper can mutate state without a direct dependency.
+type StatusEffectInstanceHandle struct {
+	Instance any
+
+	HasDefinition func() bool
+	SetDefinition func(any)
+
+	SetSourceID  func(string)
+	SetAppliedAt func(time.Time)
+	SetExpiresAt func(time.Time)
+
+	SetNextTick func(time.Time)
+	NextTick    func() time.Time
+	SetLastTick func(time.Time)
+
+	Attachment StatusEffectInstanceAttachment
+}
+
+// ApplyStatusEffectConfig carries the dependencies required to apply or refresh
+// a status effect instance for an actor while keeping the legacy world wrapper
+// thin.
+type ApplyStatusEffectConfig struct {
+	Now      time.Time
+	Type     string
+	SourceID string
+
+	LookupDefinition func() (ApplyStatusEffectDefinition, bool)
+	FindInstance     func() (StatusEffectInstanceHandle, bool)
+	NewInstance      func() StatusEffectInstanceHandle
+	StoreInstance    func(StatusEffectInstanceHandle)
+
+	RecordApplied func(time.Duration)
+}
+
+// ApplyStatusEffect applies or refreshes the requested status effect using the
+// provided adapters. The helper mirrors the legacy behavior by performing
+// initial tick handling, attachment bookkeeping, and telemetry logging when the
+// effect is newly applied.
+func ApplyStatusEffect(cfg ApplyStatusEffectConfig) bool {
+	if cfg.Type == "" || cfg.LookupDefinition == nil {
+		return false
+	}
+
+	def, ok := cfg.LookupDefinition()
+	if !ok {
+		return false
+	}
+	if def.Duration <= 0 {
+		return false
+	}
+
+	if cfg.FindInstance == nil || cfg.NewInstance == nil || cfg.StoreInstance == nil {
+		return false
+	}
+
+	if inst, exists := cfg.FindInstance(); exists {
+		if inst.SetSourceID != nil {
+			inst.SetSourceID(cfg.SourceID)
+		}
+
+		expiresAt := cfg.Now.Add(def.Duration)
+		if inst.SetExpiresAt != nil {
+			inst.SetExpiresAt(expiresAt)
+		}
+
+		if inst.SetDefinition != nil {
+			if inst.HasDefinition == nil || !inst.HasDefinition() {
+				inst.SetDefinition(def.State)
+			}
+		}
+
+		if def.TickInterval > 0 && inst.SetNextTick != nil && inst.NextTick != nil {
+			if inst.NextTick().IsZero() {
+				inst.SetNextTick(cfg.Now.Add(def.TickInterval))
+			}
+		}
+
+		if inst.Attachment.Extend != nil {
+			inst.Attachment.Extend(expiresAt)
+		}
+
+		return false
+	}
+
+	inst := cfg.NewInstance()
+	if inst.SetSourceID != nil {
+		inst.SetSourceID(cfg.SourceID)
+	}
+	if inst.SetAppliedAt != nil {
+		inst.SetAppliedAt(cfg.Now)
+	}
+
+	expiresAt := cfg.Now.Add(def.Duration)
+	if inst.SetExpiresAt != nil {
+		inst.SetExpiresAt(expiresAt)
+	}
+
+	if inst.SetDefinition != nil {
+		inst.SetDefinition(def.State)
+	}
+
+	if def.TickInterval > 0 && inst.SetNextTick != nil {
+		nextTick := cfg.Now.Add(def.TickInterval)
+		if def.InitialTick {
+			nextTick = cfg.Now
+		}
+		inst.SetNextTick(nextTick)
+	}
+
+	cfg.StoreInstance(inst)
+
+	if def.OnApply != nil {
+		def.OnApply(inst, cfg.Now)
+	}
+
+	if def.InitialTick && def.OnTick != nil {
+		def.OnTick(inst, cfg.Now)
+		if inst.SetLastTick != nil {
+			inst.SetLastTick(cfg.Now)
+		}
+		if def.TickInterval > 0 && inst.SetNextTick != nil {
+			inst.SetNextTick(cfg.Now.Add(def.TickInterval))
+		}
+	}
+
+	if inst.Attachment.SetStatus != nil {
+		inst.Attachment.SetStatus(cfg.Type)
+	}
+
+	if cfg.RecordApplied != nil {
+		cfg.RecordApplied(def.Duration)
+	}
+
+	return true
+}
+
 // StatusEffectDefinitionCallbacks exposes the tick interval and lifecycle
 // handlers required to advance a status effect instance without importing the
 // legacy world types.
