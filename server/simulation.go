@@ -8,6 +8,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
@@ -77,7 +78,7 @@ type World struct {
 	effectTriggers      []EffectTrigger
 	effectManager       *EffectManager
 	obstacles           []Obstacle
-	effectBehaviors     map[string]effectBehavior
+	effectHitAdapter    combat.EffectHitCallback
 	projectileTemplates map[string]*ProjectileTemplate
 	statusEffectDefs    map[StatusEffectType]*StatusEffectDefinition
 	nextEffectID        uint64
@@ -90,6 +91,9 @@ type World struct {
 	publisher           logging.Publisher
 	currentTick         uint64
 	telemetry           *telemetryCounters
+
+	playerHitCallback worldpkg.EffectHitCallback
+	npcHitCallback    worldpkg.EffectHitCallback
 
 	groundItems       map[string]*groundItemState
 	groundItemsByTile map[groundTileKey]map[string]*groundItemState
@@ -165,7 +169,6 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		effectsByID:         make(map[string]*effectState),
 		effectsIndex:        newEffectSpatialIndex(effectSpatialCellSize, effectSpatialMaxPerCell),
 		effectTriggers:      make([]EffectTrigger, 0),
-		effectBehaviors:     newEffectBehaviors(),
 		projectileTemplates: newProjectileTemplates(),
 		statusEffectDefs:    newStatusEffectDefinitions(),
 		aiLibrary:           globalAILibrary,
@@ -178,6 +181,49 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		groundItemsByTile:   make(map[groundTileKey]map[string]*groundItemState),
 		journal:             newJournal(capacity, maxAge),
 	}
+	w.configureEffectHitAdapter()
+	w.playerHitCallback = worldpkg.EffectHitPlayerCallback(worldpkg.EffectHitPlayerConfig{
+		ApplyActorHit: func(effect any, target any, now time.Time) {
+			eff, _ := effect.(*effectState)
+			player, _ := target.(*playerState)
+			if eff == nil || player == nil {
+				return
+			}
+			w.applyEffectHitActor(eff, &player.actorState, now)
+		},
+	})
+	w.npcHitCallback = worldpkg.EffectHitNPCCallback(worldpkg.EffectHitNPCConfig{
+		ApplyActorHit: func(effect any, target any, now time.Time) {
+			eff, _ := effect.(*effectState)
+			npc, _ := target.(*npcState)
+			if eff == nil || npc == nil {
+				return
+			}
+			w.applyEffectHitActor(eff, &npc.actorState, now)
+		},
+		SpawnBlood: func(effect any, target any, now time.Time) {
+			eff, _ := effect.(*effectState)
+			npc, _ := target.(*npcState)
+			if eff == nil || npc == nil {
+				return
+			}
+			w.maybeSpawnBloodSplatter(eff, npc, now)
+		},
+		IsAlive: func(target any) bool {
+			npc, _ := target.(*npcState)
+			if npc == nil {
+				return false
+			}
+			return npc.Health > 0
+		},
+		HandleDefeat: func(target any) {
+			npc, _ := target.(*npcState)
+			if npc == nil {
+				return
+			}
+			w.handleNPCDefeat(npc)
+		},
+	})
 	w.effectsRegistry = internaleffects.Registry{
 		Effects: &w.effects,
 		ByID:    &w.effectsByID,

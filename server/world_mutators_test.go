@@ -288,7 +288,7 @@ func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
 	}
 }
 
-func TestApplyEffectHitPlayerEmitsHealthPatch(t *testing.T) {
+func TestPlayerHitCallbackEmitsHealthPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-7", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
@@ -299,7 +299,7 @@ func TestApplyEffectHitPlayerEmitsHealthPatch(t *testing.T) {
 		Params: map[string]float64{"healthDelta": -15},
 	}
 
-	w.applyEffectHitPlayer(eff, player, time.Now())
+	w.invokePlayerHitCallback(eff, player, time.Now())
 
 	expected := baselinePlayerMaxHealth - 15
 	if math.Abs(player.Health-expected) > 1e-6 {

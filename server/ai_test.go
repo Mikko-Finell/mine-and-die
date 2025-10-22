@@ -10,13 +10,13 @@ import (
 
 func newStaticAIWorld() (*World, *npcState) {
 	w := &World{
-		players:         make(map[string]*playerState),
-		npcs:            make(map[string]*npcState),
-		effects:         make([]*effectState, 0),
-		effectBehaviors: newEffectBehaviors(),
-		obstacles:       nil,
-		aiLibrary:       globalAILibrary,
+		players:   make(map[string]*playerState),
+		npcs:      make(map[string]*npcState),
+		effects:   make([]*effectState, 0),
+		obstacles: nil,
+		aiLibrary: globalAILibrary,
 	}
+	w.configureEffectHitAdapter()
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-static"
 	cfg = cfg.Normalized()
@@ -92,13 +92,13 @@ func goblinStateID(t *testing.T, w *World, name string) uint8 {
 
 func newRatTestWorld() (*World, *npcState) {
 	w := &World{
-		players:         make(map[string]*playerState),
-		npcs:            make(map[string]*npcState),
-		effects:         make([]*effectState, 0),
-		effectBehaviors: newEffectBehaviors(),
-		obstacles:       nil,
-		aiLibrary:       globalAILibrary,
+		players:   make(map[string]*playerState),
+		npcs:      make(map[string]*npcState),
+		effects:   make([]*effectState, 0),
+		obstacles: nil,
+		aiLibrary: globalAILibrary,
 	}
+	w.configureEffectHitAdapter()
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-rat"
 	cfg = cfg.Normalized()

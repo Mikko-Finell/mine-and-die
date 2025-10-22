@@ -7,6 +7,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
@@ -43,16 +44,6 @@ type projectileStopOptions struct {
 	triggerExpiry bool
 }
 
-type effectBehavior interface {
-	OnHit(w *World, eff *effectState, target *actorState, now time.Time)
-}
-
-type effectBehaviorFunc func(w *World, eff *effectState, target *actorState, now time.Time)
-
-func (f effectBehaviorFunc) OnHit(w *World, eff *effectState, target *actorState, now time.Time) {
-	f(w, eff, target, now)
-}
-
 const (
 	meleeAttackCooldown = 400 * time.Millisecond
 	meleeAttackDuration = 150 * time.Millisecond
@@ -60,11 +51,11 @@ const (
 	meleeAttackWidth    = 40.0
 	meleeAttackDamage   = 10.0
 
-	effectTypeAttack        = effectcontract.EffectIDAttack
-	effectTypeFireball      = effectcontract.EffectIDFireball
-	effectTypeBloodSplatter = effectcontract.EffectIDBloodSplatter
-	effectTypeBurningTick   = effectcontract.EffectIDBurningTick
-	effectTypeBurningVisual = effectcontract.EffectIDBurningVisual
+	effectTypeAttack        = combat.EffectTypeAttack
+	effectTypeFireball      = combat.EffectTypeFireball
+	effectTypeBloodSplatter = combat.EffectTypeBloodSplatter
+	effectTypeBurningTick   = combat.EffectTypeBurningTick
+	effectTypeBurningVisual = combat.EffectTypeBurningVisual
 
 	bloodSplatterDuration = 1200 * time.Millisecond
 
@@ -115,154 +106,6 @@ func newProjectileTemplates() map[string]*ProjectileTemplate {
 			Cooldown: fireballCooldown,
 		},
 	}
-}
-
-func newEffectBehaviors() map[string]effectBehavior {
-	return map[string]effectBehavior{
-		effectTypeAttack:      healthDeltaBehavior("healthDelta", 0),
-		effectTypeFireball:    damageAndStatusEffectBehavior("healthDelta", 0, StatusEffectBurning),
-		effectTypeBurningTick: healthDeltaBehavior("healthDelta", 0),
-	}
-}
-
-func healthDeltaBehavior(param string, fallback float64) effectBehavior {
-	return effectBehaviorFunc(func(w *World, eff *effectState, target *actorState, now time.Time) {
-		delta := fallback
-		if eff != nil && eff.Params != nil {
-			if value, ok := eff.Params[param]; ok {
-				delta = value
-			}
-		}
-		if delta == 0 || target == nil {
-			return
-		}
-
-		var changed bool
-		if w != nil {
-			if player, ok := w.players[target.ID]; ok && player != nil {
-				max := player.MaxHealth
-				if max <= 0 {
-					max = baselinePlayerMaxHealth
-				}
-				next := player.Health + delta
-				if math.IsNaN(next) || math.IsInf(next, 0) {
-					return
-				}
-				if next < 0 {
-					next = 0
-				} else if next > max {
-					next = max
-				}
-				if math.Abs(next-player.Health) < worldpkg.HealthEpsilon {
-					return
-				}
-				actualDelta := next - player.Health
-				w.SetHealth(player.ID, next)
-				if actualDelta != 0 {
-					w.recordEffectHitTelemetry(eff, player.ID, actualDelta)
-				}
-				changed = true
-			} else if npc, ok := w.npcs[target.ID]; ok && npc != nil {
-				max := npc.MaxHealth
-				if max <= 0 {
-					max = baselinePlayerMaxHealth
-				}
-				next := npc.Health + delta
-				if math.IsNaN(next) || math.IsInf(next, 0) {
-					return
-				}
-				if next < 0 {
-					next = 0
-				} else if next > max {
-					next = max
-				}
-				if math.Abs(next-npc.Health) < worldpkg.HealthEpsilon {
-					return
-				}
-				actualDelta := next - npc.Health
-				w.SetNPCHealth(npc.ID, next)
-				if actualDelta != 0 {
-					w.recordEffectHitTelemetry(eff, npc.ID, actualDelta)
-				}
-				changed = true
-			} else {
-				before := target.Health
-				changed = target.applyHealthDelta(delta)
-				if changed {
-					w.recordEffectHitTelemetry(eff, target.ID, target.Health-before)
-				}
-			}
-		} else {
-			before := target.Health
-			changed = target.applyHealthDelta(delta)
-			if changed {
-				w.recordEffectHitTelemetry(eff, target.ID, target.Health-before)
-			}
-		}
-
-		if !changed {
-			return
-		}
-		if w != nil && delta < 0 {
-			ability := ""
-			actorRef := logging.EntityRef{}
-			conditionName := ""
-			if eff != nil {
-				ability = eff.Type
-				actorRef = w.entityRef(eff.Owner)
-				if eff.StatusEffect != "" {
-					conditionName = string(eff.StatusEffect)
-				}
-			}
-			targetRef := logging.EntityRef{}
-			if target != nil {
-				targetRef = w.entityRef(target.ID)
-			}
-			loggingcombat.Damage(
-				context.Background(),
-				w.publisher,
-				w.currentTick,
-				actorRef,
-				targetRef,
-				loggingcombat.DamagePayload{
-					Ability:      ability,
-					Amount:       -delta,
-					TargetHealth: target.Health,
-					StatusEffect: conditionName,
-				},
-				nil,
-			)
-			if target.Health <= 0 {
-				loggingcombat.Defeat(
-					context.Background(),
-					w.publisher,
-					w.currentTick,
-					actorRef,
-					targetRef,
-					loggingcombat.DefeatPayload{Ability: ability, StatusEffect: conditionName},
-					nil,
-				)
-				w.dropAllInventory(target, "death")
-			}
-		}
-	})
-}
-
-func damageAndStatusEffectBehavior(param string, fallback float64, statusEffect StatusEffectType) effectBehavior {
-	base := healthDeltaBehavior(param, fallback)
-	return effectBehaviorFunc(func(w *World, eff *effectState, target *actorState, now time.Time) {
-		if base != nil {
-			base.OnHit(w, eff, target, now)
-		}
-		if w == nil || target == nil || statusEffect == "" {
-			return
-		}
-		source := ""
-		if eff != nil {
-			source = eff.Owner
-		}
-		w.applyStatusEffect(target, statusEffect, source, now)
-	})
 }
 
 func (w *World) recordEffectSpawn(effectType, producer string) {
@@ -602,7 +445,7 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 			continue
 		}
 		hitPlayers = append(hitPlayers, id)
-		w.applyEffectHitPlayer(eff, target, now)
+		w.invokePlayerHitCallback(eff, target, now)
 		if tpl.ImpactRules.StopOnHit || (maxTargets > 0 && p.HitCount >= maxTargets) {
 			shouldStop = true
 		}
@@ -626,7 +469,7 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 				continue
 			}
 			hitNPCs = append(hitNPCs, id)
-			w.applyEffectHitNPC(eff, target, now)
+			w.invokeNPCHitCallback(eff, target, now)
 			if tpl.ImpactRules.StopOnHit || (maxTargets > 0 && p.HitCount >= maxTargets) {
 				shouldStop = true
 			}
@@ -884,23 +727,18 @@ func (w *World) pruneEffects(now time.Time) {
 	}
 }
 
-func (w *World) applyEffectHitPlayer(eff *effectState, target *playerState, now time.Time) {
-	if target == nil {
+func (w *World) invokePlayerHitCallback(eff *effectState, target *playerState, now time.Time) {
+	if w == nil || w.playerHitCallback == nil {
 		return
 	}
-	w.applyEffectHitActor(eff, &target.actorState, now)
+	w.playerHitCallback(eff, target, now)
 }
 
-func (w *World) applyEffectHitNPC(eff *effectState, target *npcState, now time.Time) {
-	if target == nil {
+func (w *World) invokeNPCHitCallback(eff *effectState, target *npcState, now time.Time) {
+	if w == nil || w.npcHitCallback == nil {
 		return
 	}
-	w.maybeSpawnBloodSplatter(eff, target, now)
-	wasAlive := target.Health > 0
-	w.applyEffectHitActor(eff, &target.actorState, now)
-	if wasAlive && target.Health <= 0 {
-		w.handleNPCDefeat(target)
-	}
+	w.npcHitCallback(eff, target, now)
 }
 
 func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now time.Time) {
@@ -935,15 +773,158 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 	}
 }
 
+func (w *World) configureEffectHitAdapter() {
+	if w == nil {
+		return
+	}
+
+	w.effectHitAdapter = combat.NewEffectHitDispatcher(combat.EffectHitDispatcherConfig{
+		ExtractEffect: func(effect any) (combat.EffectRef, bool) {
+			eff, _ := effect.(*effectState)
+			if eff == nil {
+				return combat.EffectRef{}, false
+			}
+			status := ""
+			if eff.StatusEffect != "" {
+				status = string(eff.StatusEffect)
+			}
+			return combat.EffectRef{
+				Effect: combat.Effect{
+					Type:         eff.Type,
+					OwnerID:      eff.Owner,
+					Params:       eff.Params,
+					StatusEffect: status,
+				},
+				Raw: eff,
+			}, true
+		},
+		ExtractActor: func(target any) (combat.ActorRef, bool) {
+			actor, _ := target.(*actorState)
+			if actor == nil {
+				return combat.ActorRef{}, false
+			}
+			kind := combat.ActorKindGeneric
+			if _, ok := w.players[actor.ID]; ok {
+				kind = combat.ActorKindPlayer
+			} else if _, ok := w.npcs[actor.ID]; ok {
+				kind = combat.ActorKindNPC
+			}
+			return combat.ActorRef{
+				Actor: combat.Actor{
+					ID:        actor.ID,
+					Health:    actor.Health,
+					MaxHealth: actor.MaxHealth,
+					Kind:      kind,
+				},
+				Raw: actor,
+			}, true
+		},
+		HealthEpsilon:           worldpkg.HealthEpsilon,
+		BaselinePlayerMaxHealth: baselinePlayerMaxHealth,
+		SetPlayerHealth: func(target combat.ActorRef, next float64) {
+			if target.Actor.ID == "" {
+				return
+			}
+			w.SetHealth(target.Actor.ID, next)
+		},
+		SetNPCHealth: func(target combat.ActorRef, next float64) {
+			if target.Actor.ID == "" {
+				return
+			}
+			w.SetNPCHealth(target.Actor.ID, next)
+		},
+		ApplyGenericHealthDelta: func(target combat.ActorRef, delta float64) (bool, float64, float64) {
+			actor, _ := target.Raw.(*actorState)
+			if actor == nil {
+				return false, 0, target.Actor.Health
+			}
+			before := actor.Health
+			if !actor.applyHealthDelta(delta) {
+				return false, 0, before
+			}
+			return true, actor.Health - before, actor.Health
+		},
+		RecordEffectHitTelemetry: func(effect combat.EffectRef, target combat.ActorRef, actualDelta float64) {
+			eff, _ := effect.Raw.(*effectState)
+			if eff == nil || target.Actor.ID == "" {
+				return
+			}
+			w.recordEffectHitTelemetry(eff, target.Actor.ID, actualDelta)
+		},
+		RecordDamageTelemetry: func(effect combat.EffectRef, target combat.ActorRef, damage float64, targetHealth float64, statusEffect string) {
+			if w == nil || damage <= 0 {
+				return
+			}
+			actorRef := logging.EntityRef{}
+			targetRef := logging.EntityRef{}
+			if effect.Effect.OwnerID != "" {
+				actorRef = w.entityRef(effect.Effect.OwnerID)
+			}
+			if target.Actor.ID != "" {
+				targetRef = w.entityRef(target.Actor.ID)
+			}
+			loggingcombat.Damage(
+				context.Background(),
+				w.publisher,
+				w.currentTick,
+				actorRef,
+				targetRef,
+				loggingcombat.DamagePayload{
+					Ability:      effect.Effect.Type,
+					Amount:       damage,
+					TargetHealth: targetHealth,
+					StatusEffect: statusEffect,
+				},
+				nil,
+			)
+		},
+		RecordDefeatTelemetry: func(effect combat.EffectRef, target combat.ActorRef, statusEffect string) {
+			if w == nil {
+				return
+			}
+			actorRef := logging.EntityRef{}
+			targetRef := logging.EntityRef{}
+			if effect.Effect.OwnerID != "" {
+				actorRef = w.entityRef(effect.Effect.OwnerID)
+			}
+			if target.Actor.ID != "" {
+				targetRef = w.entityRef(target.Actor.ID)
+			}
+			loggingcombat.Defeat(
+				context.Background(),
+				w.publisher,
+				w.currentTick,
+				actorRef,
+				targetRef,
+				loggingcombat.DefeatPayload{Ability: effect.Effect.Type, StatusEffect: statusEffect},
+				nil,
+			)
+		},
+		DropAllInventory: func(target combat.ActorRef, reason string) {
+			actor, _ := target.Raw.(*actorState)
+			if actor == nil {
+				return
+			}
+			w.dropAllInventory(actor, reason)
+		},
+		ApplyStatusEffect: func(effect combat.EffectRef, target combat.ActorRef, statusEffect string, now time.Time) {
+			if statusEffect == "" {
+				return
+			}
+			actor, _ := target.Raw.(*actorState)
+			if actor == nil {
+				return
+			}
+			w.applyStatusEffect(actor, StatusEffectType(statusEffect), effect.Effect.OwnerID, now)
+		},
+	})
+}
+
 func (w *World) applyEffectHitActor(eff *effectState, target *actorState, now time.Time) {
-	if eff == nil || target == nil {
+	if w == nil || w.effectHitAdapter == nil || eff == nil || target == nil {
 		return
 	}
-	behavior, ok := w.effectBehaviors[eff.Type]
-	if !ok || behavior == nil {
-		return
-	}
-	behavior.OnHit(w, eff, target, now)
+	w.effectHitAdapter(eff, target, now)
 }
 
 // applyEnvironmentalStatusEffects applies persistent effects triggered by hazards.

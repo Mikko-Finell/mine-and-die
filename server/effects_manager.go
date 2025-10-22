@@ -273,20 +273,16 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 					return err
 				},
 				ApplyPlayerHit: func(effectRef any, target any, now time.Time) {
-					eff, _ := effectRef.(*internaleffects.State)
-					player, _ := target.(*playerState)
-					if eff == nil || player == nil {
+					if world == nil || world.playerHitCallback == nil {
 						return
 					}
-					world.applyEffectHitPlayer(eff, player, now)
+					world.playerHitCallback(effectRef, target, now)
 				},
 				ApplyNPCHit: func(effectRef any, target any, now time.Time) {
-					eff, _ := effectRef.(*internaleffects.State)
-					npc, _ := target.(*npcState)
-					if eff == nil || npc == nil {
+					if world == nil || world.npcHitCallback == nil {
 						return
 					}
-					world.applyEffectHitNPC(eff, npc, now)
+					world.npcHitCallback(effectRef, target, now)
 				},
 				RecordGoldGrantFailure: func(actorID string, obstacleID string, err error) {
 					if err == nil {
