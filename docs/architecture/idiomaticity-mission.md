@@ -380,7 +380,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the legacy projectile advancement loop (`advanceProjectiles` and `maybeExplodeOnExpiry`) into `internal/world`, exposing a helper that walks non-contract projectiles and applies stop semantics through the shared adapter.
 - [x] Move the legacy projectile step (`advanceProjectile`) into `internal/world`, exposing a helper that wires world geometry, overlap checks, and hit callbacks while delegating to `combat.AdvanceProjectile`.
 
-- [ ] Move the follow-effect helpers (`advanceNonProjectiles` and `updateFollowEffect`) into `internal/world`, exposing thin wrappers on the legacy world so attachment tracking lives alongside the centralized effect helpers.
+- [x] Move the follow-effect helpers (`advanceNonProjectiles` and `updateFollowEffect`) into `internal/world`, exposing thin wrappers on the legacy world so attachment tracking lives alongside the centralized effect helpers.
+- [x] Move the status-effect lifetime helpers (`extendAttachedEffect` and `expireAttachedEffect`) into `internal/world` so attachment expiration shares the centralized effect utilities.
+- [x] Move the status-effect advancement loop (`advanceStatusEffects` and `advanceActorStatusEffects`) into `internal/world`, exposing thin wrappers on the legacy world so tick progression lives alongside the centralized status helpers.
+- [ ] Move the status-effect application helper (`applyStatusEffect`) into `internal/world`, returning adapter-friendly configuration so the legacy world only wires logging, telemetry, and effect manager dependencies.
 
 - [x] Keep the tick loop in `sim/engine`:
 

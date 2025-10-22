@@ -294,7 +294,55 @@ func (w *World) advanceEffects(now time.Time, dt float64) {
 		StopAdapter:    w.projectileStopAdapter,
 		StopProjectile: w.stopLegacyProjectile,
 	})
-	w.advanceNonProjectiles(now, dt)
+	worldpkg.AdvanceLegacyFollowEffects(worldpkg.LegacyFollowEffectAdvanceConfig{
+		Now: now,
+		ForEachEffect: func(visitor func(effect any)) {
+			for _, eff := range w.effects {
+				visitor(eff)
+			}
+		},
+		Inspect: func(effect any) worldpkg.LegacyFollowEffect {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				return worldpkg.LegacyFollowEffect{}
+			}
+			return worldpkg.LegacyFollowEffect{
+				FollowActorID: state.FollowActorID,
+				Width:         state.Width,
+				Height:        state.Height,
+			}
+		},
+		ActorByID: func(id string) *worldpkg.Actor {
+			actor := w.actorByID(id)
+			if actor == nil {
+				return nil
+			}
+			return &worldpkg.Actor{ID: id, X: actor.X, Y: actor.Y}
+		},
+		Expire: func(effect any, at time.Time) {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				return
+			}
+			if worldpkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(state), at) {
+				w.recordEffectEnd(state, "status-effect-expire")
+			}
+		},
+		ClearFollow: func(effect any) {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				return
+			}
+			state.FollowActorID = ""
+		},
+		SetPosition: func(effect any, x, y float64) {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				return
+			}
+			w.SetEffectPosition(state, x, y)
+		},
+	})
 }
 
 func (w *World) projectileStopConfig(eff *effectState, now time.Time) combat.ProjectileStopConfig {
@@ -629,40 +677,6 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 	})
 
 	return result.Stopped
-}
-
-func (w *World) advanceNonProjectiles(now time.Time, dt float64) {
-	_ = dt
-	if len(w.effects) == 0 {
-		return
-	}
-	for _, eff := range w.effects {
-		w.updateFollowEffect(eff, now)
-	}
-}
-
-func (w *World) updateFollowEffect(eff *effectState, now time.Time) {
-	if eff == nil {
-		return
-	}
-	if eff.FollowActorID == "" {
-		return
-	}
-	actor := w.actorByID(eff.FollowActorID)
-	if actor == nil {
-		w.expireAttachedEffect(eff, now)
-		eff.FollowActorID = ""
-		return
-	}
-	width := eff.Width
-	height := eff.Height
-	if width <= 0 {
-		width = playerHalf * 2
-	}
-	if height <= 0 {
-		height = playerHalf * 2
-	}
-	w.SetEffectPosition(eff, actor.X-width/2, actor.Y-height/2)
 }
 
 func (w *World) actorByID(id string) *actorState {
