@@ -93,6 +93,7 @@ type World struct {
 	publisher             logging.Publisher
 	currentTick           uint64
 	telemetry             *telemetryCounters
+	recordAttackOverlap   func(ownerID string, tick uint64, ability string, playerHits []string, npcHits []string, metadata map[string]any)
 
 	playerHitCallback worldpkg.EffectHitCallback
 	npcHitCallback    worldpkg.EffectHitCallback

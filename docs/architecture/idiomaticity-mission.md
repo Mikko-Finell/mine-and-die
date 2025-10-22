@@ -364,7 +364,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the world player and NPC effect hit callback wiring (`worldpkg.EffectHitPlayerCallback`/`EffectHitNPCCallback` usage in `server/simulation.go`) into `internal/combat`, exposing constructor helpers so the world initialization only supplies telemetry, blood spawn, and defeat adapters while the combat package owns hit staging.
 
 - [x] Route the burning status effect damage application in `server/status_effects.go` through a combat helper that wraps the world dispatcher so status ticks drop their direct `combat.ApplyEffectHit` calls.
-- [ ] Add a `server/status_effects_test.go` regression that exercises `World.applyBurningDamage` with a stub dispatcher to ensure it delegates through the combat burning damage callback and flushes telemetry after each hit.
+- [x] Add a `server/status_effects_test.go` regression that exercises `World.applyBurningDamage` with a stub dispatcher to ensure it delegates through the combat burning damage callback and flushes telemetry after each hit.
+- [x] Move the world effect-hit dispatcher wiring (`World.configureEffectHitAdapter` and friends) into `internal/combat`, exposing a constructor the world calls so telemetry and mutation adapters stay centralized while the server keeps only thin wrappers.
+- [x] Move the combat damage and defeat telemetry logging into `internal/combat`, exposing adapters that accept the publisher and entity lookup so the world configuration no longer constructs logging payloads directly.
+- [x] Move the combat attack-overlap telemetry into `internal/combat`, exposing an adapter that accepts the publisher, entity lookup, and projectile metadata so multi-target hits reuse the shared logging helper.
+- [x] Extract the projectile overlap resolution in `server/effects.go` into `internal/combat`, returning a helper that accepts the projectile state, target iterators, hit callbacks, and telemetry recorder so the world step delegates multi-target scanning.
+- [ ] Extract the remaining projectile advance logic in `server/effects.go` into `internal/combat`, returning a helper that applies travel, range, and obstacle gating before delegating to the shared overlap resolver so the world wrapper only wires effect state and callbacks.
 
 - [x] Keep the tick loop in `sim/engine`:
 
