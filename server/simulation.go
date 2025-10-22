@@ -83,7 +83,7 @@ type World struct {
 	projectileAbilityGate combat.ProjectileAbilityGate
 	projectileStopAdapter worldpkg.ProjectileStopAdapter
 	projectileTemplates   map[string]*ProjectileTemplate
-	statusEffectDefs      map[StatusEffectType]*StatusEffectDefinition
+	statusEffectDefs      map[StatusEffectType]worldpkg.ApplyStatusEffectDefinition
 	nextEffectID          uint64
 	nextNPCID             uint64
 	nextGroundItemID      uint64
@@ -174,7 +174,6 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		effectsIndex:        newEffectSpatialIndex(effectSpatialCellSize, effectSpatialMaxPerCell),
 		effectTriggers:      make([]EffectTrigger, 0),
 		projectileTemplates: newProjectileTemplates(),
-		statusEffectDefs:    newStatusEffectDefinitions(),
 		aiLibrary:           globalAILibrary,
 		config:              normalized,
 		rng:                 newDeterministicRNG(normalized.Seed, "world"),
@@ -185,6 +184,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		groundItemsByTile:   make(map[groundTileKey]map[string]*groundItemState),
 		journal:             newJournal(capacity, maxAge),
 	}
+	w.statusEffectDefs = newStatusEffectDefinitions(w)
 	w.configureEffectHitAdapter()
 	w.configureMeleeAbilityGate()
 	w.configureProjectileAbilityGate()

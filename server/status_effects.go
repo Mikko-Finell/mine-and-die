@@ -16,26 +16,15 @@ import (
 
 type StatusEffectType = internaleffects.StatusEffectType
 
-type statusEffectHandler func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time)
-
-type StatusEffectDefinition struct {
-	Type         StatusEffectType
-	Duration     time.Duration
-	TickInterval time.Duration
-	InitialTick  bool
-	OnApply      statusEffectHandler
-	OnTick       statusEffectHandler
-	OnExpire     statusEffectHandler
-}
-
 type statusEffectInstance struct {
-	Definition     *StatusEffectDefinition
+	Definition     *worldpkg.StatusEffectDefinition
 	SourceID       string
 	AppliedAt      time.Time
 	ExpiresAt      time.Time
 	NextTick       time.Time
 	LastTick       time.Time
 	attachedEffect *effectState
+	actor          *actorState
 }
 
 func (inst *statusEffectInstance) AttachEffect(value any) {
@@ -53,7 +42,7 @@ func (inst *statusEffectInstance) DefinitionType() string {
 	if inst == nil || inst.Definition == nil {
 		return ""
 	}
-	return string(inst.Definition.Type)
+	return inst.Definition.Type
 }
 
 var _ worldpkg.StatusEffectInstance = (*statusEffectInstance)(nil)
@@ -67,52 +56,108 @@ const (
 	burningTickInterval         = 200 * time.Millisecond
 )
 
-func newStatusEffectDefinitions() map[StatusEffectType]*StatusEffectDefinition {
-	return map[StatusEffectType]*StatusEffectDefinition{
-		StatusEffectBurning: {
-			Type:         StatusEffectBurning,
-			Duration:     burningStatusEffectDuration,
-			TickInterval: burningTickInterval,
-			InitialTick:  true,
-			OnApply: func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time) {
-				if w == nil || actor == nil || inst == nil {
-					return
-				}
-				lifetime := inst.ExpiresAt.Sub(now)
-				if lifetime <= 0 {
-					lifetime = burningTickInterval
-				}
-				inst.attachedEffect = nil
-				if w.effectManager != nil {
-					if intent, ok := NewStatusVisualIntent(actor, inst.SourceID, effectTypeBurningVisual, lifetime); ok {
-						w.effectManager.EnqueueIntent(intent)
-					}
-				}
+func newStatusEffectDefinitions(w *World) map[StatusEffectType]worldpkg.ApplyStatusEffectDefinition {
+	if w == nil {
+		return nil
+	}
+
+	defs := worldpkg.NewStatusEffectDefinitions(worldpkg.StatusEffectDefinitionsConfig{
+		Burning: worldpkg.BurningStatusEffectDefinitionConfig{
+			Type:               string(StatusEffectBurning),
+			Duration:           burningStatusEffectDuration,
+			TickInterval:       burningTickInterval,
+			InitialTick:        true,
+			FallbackAttachment: worldpkg.AttachStatusEffectVisual,
+			OnApply: func(rt worldpkg.StatusEffectApplyRuntime) {
+				w.handleBurningStatusApply(rt)
 			},
-			OnTick: func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time) {
-				if w == nil || actor == nil || inst == nil {
-					return
-				}
-				interval := inst.Definition.TickInterval
-				if interval <= 0 {
-					interval = burningTickInterval
-				}
-				damage := lavaDamagePerSecond * interval.Seconds()
-				w.applyStatusEffectDamage(actor, inst, now, damage)
-			},
-			OnExpire: func(w *World, actor *actorState, inst *statusEffectInstance, now time.Time) {
-				if w == nil || inst == nil {
-					return
-				}
-				if inst.attachedEffect != nil {
-					if worldpkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(inst.attachedEffect), now) {
-						w.recordEffectEnd(inst.attachedEffect, "status-effect-expire")
-					}
-					inst.attachedEffect = nil
-				}
+			OnTick: func(rt worldpkg.StatusEffectTickRuntime) {
+				w.handleBurningStatusTick(rt)
 			},
 		},
+	})
+
+	result := make(map[StatusEffectType]worldpkg.ApplyStatusEffectDefinition, len(defs))
+	for key, def := range defs {
+		result[StatusEffectType(key)] = def
 	}
+	return result
+}
+
+func (w *World) handleBurningStatusApply(rt worldpkg.StatusEffectApplyRuntime) {
+	if w == nil {
+		return
+	}
+
+	handle := rt.Handle
+	if handle.Attachment.Clear != nil {
+		handle.Attachment.Clear()
+	}
+
+	lifetime := burningTickInterval
+	expiresAt := rt.Now.Add(lifetime)
+	if handle.ExpiresAt != nil {
+		expires := handle.ExpiresAt()
+		if !expires.IsZero() {
+			expiresAt = expires
+			lifetime = expires.Sub(rt.Now)
+			if lifetime <= 0 {
+				lifetime = burningTickInterval
+				expiresAt = rt.Now.Add(lifetime)
+			}
+		}
+	}
+
+	var sourceID string
+	if handle.SourceID != nil {
+		sourceID = handle.SourceID()
+	}
+
+	var actor *actorState
+	if handle.Actor != nil {
+		actor, _ = handle.Actor().(*actorState)
+	}
+
+	if w.effectManager == nil {
+		if actor == nil {
+			return
+		}
+		w.attachStatusEffectVisual(handle, actor, StatusEffectBurning, sourceID, effectTypeBurningVisual, lifetime, expiresAt, rt.Now)
+		return
+	}
+
+	if actor == nil {
+		return
+	}
+
+	if intent, ok := NewStatusVisualIntent(actor, sourceID, effectTypeBurningVisual, lifetime); ok {
+		w.effectManager.EnqueueIntent(intent)
+	}
+}
+
+func (w *World) handleBurningStatusTick(rt worldpkg.StatusEffectTickRuntime) {
+	if w == nil {
+		return
+	}
+
+	handle := rt.Handle
+	inst, _ := handle.Instance.(*statusEffectInstance)
+	if inst == nil {
+		return
+	}
+
+	actor, _ := handle.Actor().(*actorState)
+	if actor == nil {
+		return
+	}
+
+	interval := burningTickInterval
+	if inst.Definition != nil && inst.Definition.TickInterval > 0 {
+		interval = inst.Definition.TickInterval
+	}
+
+	damage := lavaDamagePerSecond * interval.Seconds()
+	w.applyStatusEffectDamage(actor, inst, rt.Now, damage)
 }
 
 func (w *World) applyStatusEffect(target *actorState, cond StatusEffectType, source string, now time.Time) bool {
@@ -129,34 +174,10 @@ func (w *World) applyStatusEffect(target *actorState, cond StatusEffectType, sou
 				return worldpkg.ApplyStatusEffectDefinition{}, false
 			}
 			def, ok := w.statusEffectDefs[cond]
-			if !ok || def == nil {
+			if !ok {
 				return worldpkg.ApplyStatusEffectDefinition{}, false
 			}
-			cfg := worldpkg.ApplyStatusEffectDefinition{
-				Duration:     def.Duration,
-				TickInterval: def.TickInterval,
-				InitialTick:  def.InitialTick,
-				State:        def,
-			}
-			if def.OnApply != nil {
-				cfg.OnApply = func(handle worldpkg.StatusEffectInstanceHandle, at time.Time) {
-					inst, _ := handle.Instance.(*statusEffectInstance)
-					if inst == nil {
-						return
-					}
-					def.OnApply(w, target, inst, at)
-				}
-			}
-			if def.OnTick != nil {
-				cfg.OnTick = func(handle worldpkg.StatusEffectInstanceHandle, at time.Time) {
-					inst, _ := handle.Instance.(*statusEffectInstance)
-					if inst == nil {
-						return
-					}
-					def.OnTick(w, target, inst, at)
-				}
-			}
-			return cfg, true
+			return def, true
 		},
 		FindInstance: func() (worldpkg.StatusEffectInstanceHandle, bool) {
 			if target.statusEffects == nil {
@@ -166,11 +187,25 @@ func (w *World) applyStatusEffect(target *actorState, cond StatusEffectType, sou
 			if !ok || inst == nil {
 				return worldpkg.StatusEffectInstanceHandle{}, false
 			}
-			return newStatusEffectInstanceHandle(inst), true
+			handle := newStatusEffectInstanceHandle(inst, target)
+			if handle.SetSourceID != nil {
+				handle.SetSourceID(source)
+			}
+			if handle.SetActor != nil {
+				handle.SetActor(target)
+			}
+			return handle, true
 		},
 		NewInstance: func() worldpkg.StatusEffectInstanceHandle {
 			inst := &statusEffectInstance{}
-			return newStatusEffectInstanceHandle(inst)
+			handle := newStatusEffectInstanceHandle(inst, target)
+			if handle.SetSourceID != nil {
+				handle.SetSourceID(source)
+			}
+			if handle.SetActor != nil {
+				handle.SetActor(target)
+			}
+			return handle
 		},
 		StoreInstance: func(handle worldpkg.StatusEffectInstanceHandle) {
 			inst, _ := handle.Instance.(*statusEffectInstance)
@@ -289,12 +324,14 @@ func (w *World) statusEffectsAdvanceConfig(actor *actorState) worldpkg.AdvanceAc
 
 			if def.OnTick != nil {
 				cfg.Definition.OnTick = func(tickAt time.Time) {
-					def.OnTick(w, actor, inst, tickAt)
+					handle := newStatusEffectInstanceHandle(inst, actor)
+					def.OnTick(worldpkg.StatusEffectTickRuntime{Handle: handle, Now: tickAt})
 				}
 			}
 			if def.OnExpire != nil {
 				cfg.Definition.OnExpire = func(expireAt time.Time) {
-					def.OnExpire(w, actor, inst, expireAt)
+					handle := newStatusEffectInstanceHandle(inst, actor)
+					def.OnExpire(worldpkg.StatusEffectExpireRuntime{Handle: handle, Now: expireAt})
 				}
 			}
 
@@ -353,7 +390,7 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 	}
 	statusType := StatusEffectBurning
 	if inst != nil && inst.Definition != nil {
-		statusType = inst.Definition.Type
+		statusType = StatusEffectType(inst.Definition.Type)
 	}
 	delta := -amount
 	if w.effectManager != nil {
@@ -423,12 +460,34 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 	})
 }
 
-func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, lifetime time.Duration, now time.Time) *effectState {
-	if w == nil || actor == nil || effectType == "" {
+func (w *World) attachStatusEffectVisual(handle worldpkg.StatusEffectInstanceHandle, actor *actorState, statusType StatusEffectType, sourceID, effectType string, lifetime time.Duration, expiresAt, now time.Time) *effectState {
+	if w == nil || statusType == "" || effectType == "" {
 		return nil
 	}
+	inst, _ := handle.Instance.(*statusEffectInstance)
+	if inst == nil {
+		return nil
+	}
+
+	if actor == nil {
+		if handle.Actor != nil {
+			cast, _ := handle.Actor().(*actorState)
+			actor = cast
+		}
+	}
+	if actor == nil {
+		return nil
+	}
+
+	if handle.SetActor != nil {
+		handle.SetActor(actor)
+	}
+
 	if lifetime <= 0 {
 		lifetime = 100 * time.Millisecond
+	}
+	if expiresAt.IsZero() {
+		expiresAt = now.Add(lifetime)
 	}
 	w.pruneEffects(now)
 	w.nextEffectID++
@@ -436,25 +495,63 @@ func (w *World) attachStatusEffectVisual(actor *actorState, effectType string, l
 	height := playerHalf * 2
 	start := now.UnixMilli()
 	instanceID := fmt.Sprintf("effect-%d", w.nextEffectID)
+	owner := sourceID
+	if owner == "" {
+		owner = actor.ID
+	}
+	duration := expiresAt.Sub(now)
+	if duration <= 0 {
+		duration = lifetime
+		expiresAt = now.Add(duration)
+	}
 	eff := &effectState{
 		ID:                 instanceID,
 		Type:               effectType,
-		Owner:              actor.ID,
+		Owner:              owner,
 		Start:              start,
-		Duration:           lifetime.Milliseconds(),
+		Duration:           duration.Milliseconds(),
 		X:                  actor.X - width/2,
 		Y:                  actor.Y - height/2,
 		Width:              width,
 		Height:             height,
 		Instance:           effectcontract.EffectInstance{ID: instanceID, DefinitionID: effectType, OwnerActorID: actor.ID, StartTick: effectcontract.Tick(int64(w.currentTick))},
-		ExpiresAt:          now.Add(lifetime),
+		ExpiresAt:          expiresAt,
 		FollowActorID:      actor.ID,
 		TelemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
 	}
+
+	var attach func(worldpkg.AttachStatusEffectVisualConfig)
+	if def, ok := w.statusEffectDefs[statusType]; ok {
+		if state, _ := def.State.(*worldpkg.StatusEffectDefinition); state != nil && state.AttachVisual != nil {
+			attach = state.AttachVisual
+		}
+	}
+	if attach == nil {
+		attach = worldpkg.AttachStatusEffectVisual
+	}
+
+	attach(worldpkg.AttachStatusEffectVisualConfig{
+		Instance:    inst,
+		Effect:      statusEffectVisualStateAdapter{state: eff, setStatus: handle.Attachment.SetStatus},
+		DefaultType: string(statusType),
+	})
+
+	if handle.Attachment.SetStatus != nil {
+		handle.Attachment.SetStatus(string(statusType))
+	}
+
+	if !expiresAt.IsZero() && handle.Attachment.Extend != nil {
+		handle.Attachment.Extend(expiresAt)
+	}
+
 	return eff
 }
 
-func newStatusEffectInstanceHandle(inst *statusEffectInstance) worldpkg.StatusEffectInstanceHandle {
+func newStatusEffectInstanceHandle(inst *statusEffectInstance, actor *actorState) worldpkg.StatusEffectInstanceHandle {
+	if inst != nil {
+		inst.actor = actor
+	}
+
 	return worldpkg.StatusEffectInstanceHandle{
 		Instance: inst,
 		HasDefinition: func() bool {
@@ -464,14 +561,33 @@ func newStatusEffectInstanceHandle(inst *statusEffectInstance) worldpkg.StatusEf
 			if inst == nil {
 				return
 			}
-			def, _ := value.(*StatusEffectDefinition)
+			def, _ := value.(*worldpkg.StatusEffectDefinition)
 			inst.Definition = def
+		},
+		SetActor: func(value any) {
+			if inst == nil {
+				return
+			}
+			cast, _ := value.(*actorState)
+			inst.actor = cast
+		},
+		Actor: func() any {
+			if inst == nil {
+				return nil
+			}
+			return inst.actor
 		},
 		SetSourceID: func(value string) {
 			if inst == nil {
 				return
 			}
 			inst.SourceID = value
+		},
+		SourceID: func() string {
+			if inst == nil {
+				return ""
+			}
+			return inst.SourceID
 		},
 		SetAppliedAt: func(at time.Time) {
 			if inst == nil {
@@ -484,6 +600,12 @@ func newStatusEffectInstanceHandle(inst *statusEffectInstance) worldpkg.StatusEf
 				return
 			}
 			inst.ExpiresAt = at
+		},
+		ExpiresAt: func() time.Time {
+			if inst == nil {
+				return time.Time{}
+			}
+			return inst.ExpiresAt
 		},
 		SetNextTick: func(at time.Time) {
 			if inst == nil {
@@ -516,8 +638,40 @@ func newStatusEffectInstanceHandle(inst *statusEffectInstance) worldpkg.StatusEf
 				}
 				worldpkg.ExtendStatusEffectAttachment(statusEffectAttachmentFields(inst.attachedEffect), expiresAt)
 			},
+			Clear: func() {
+				if inst == nil {
+					return
+				}
+				inst.attachedEffect = nil
+			},
 		},
 	}
+}
+
+type statusEffectVisualStateAdapter struct {
+	state     *effectState
+	setStatus func(string)
+}
+
+func (a statusEffectVisualStateAdapter) SetStatusEffect(value string) {
+	if value == "" {
+		return
+	}
+	if a.setStatus != nil {
+		a.setStatus(value)
+		return
+	}
+	if a.state == nil {
+		return
+	}
+	a.state.StatusEffect = StatusEffectType(value)
+}
+
+func (a statusEffectVisualStateAdapter) EffectState() any {
+	if a.state == nil {
+		return nil
+	}
+	return a.state
 }
 
 func statusEffectAttachmentFields(eff *effectState) worldpkg.StatusEffectAttachmentFields {
