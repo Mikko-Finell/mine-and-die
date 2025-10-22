@@ -8,8 +8,6 @@ import (
 	effectcontract "mine-and-die/server/effects/contract"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
-	"mine-and-die/server/logging"
-	loggingcombat "mine-and-die/server/logging/combat"
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
@@ -302,29 +300,10 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 					)
 				},
 				RecordAttackOverlap: func(actorID string, tick uint64, effectType string, hitPlayers []string, hitNPCs []string) {
-					targets := make([]logging.EntityRef, 0, len(hitPlayers)+len(hitNPCs))
-					for _, id := range hitPlayers {
-						targets = append(targets, world.entityRef(id))
+					if world == nil || world.recordAttackOverlap == nil {
+						return
 					}
-					for _, id := range hitNPCs {
-						targets = append(targets, world.entityRef(id))
-					}
-					payload := loggingcombat.AttackOverlapPayload{Ability: effectType}
-					if len(hitPlayers) > 0 {
-						payload.PlayerHits = append(payload.PlayerHits, hitPlayers...)
-					}
-					if len(hitNPCs) > 0 {
-						payload.NPCHits = append(payload.NPCHits, hitNPCs...)
-					}
-					loggingcombat.AttackOverlap(
-						context.Background(),
-						world.publisher,
-						tick,
-						world.entityRef(actorID),
-						targets,
-						payload,
-						nil,
-					)
+					world.recordAttackOverlap(actorID, tick, effectType, hitPlayers, hitNPCs, nil)
 				},
 			}
 

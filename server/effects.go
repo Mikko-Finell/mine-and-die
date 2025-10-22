@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"time"
@@ -11,7 +10,6 @@ import (
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
-	loggingcombat "mine-and-die/server/logging/combat"
 )
 
 // EffectTrigger represents a one-shot visual instruction that the client may
@@ -356,93 +354,79 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 		return true
 	}
 
-	hitPlayers := make([]string, 0)
-	hitNPCs := make([]string, 0)
-	maxTargets := tpl.ImpactRules.MaxTargets
-	shouldStop := false
-	hitCountAtStart := p.HitCount
-
-	for id, target := range w.players {
-		if target == nil {
-			continue
-		}
-		if id == eff.Owner && !tpl.ImpactRules.AffectsOwner {
-			continue
-		}
-		if !circleRectOverlap(target.X, target.Y, playerHalf, area) {
-			continue
-		}
-		if !p.MarkHit(id) {
-			continue
-		}
-		hitPlayers = append(hitPlayers, id)
-		w.invokePlayerHitCallback(eff, target, now)
-		if tpl.ImpactRules.StopOnHit || (maxTargets > 0 && p.HitCount >= maxTargets) {
-			shouldStop = true
-		}
-		if shouldStop {
-			break
-		}
+	var overlapMetadata map[string]any
+	if w.recordAttackOverlap != nil {
+		overlapMetadata = map[string]any{"projectile": eff.Type}
 	}
 
-	if !shouldStop {
-		for id, target := range w.npcs {
-			if target == nil {
-				continue
+	result := combat.ResolveProjectileOverlaps(combat.ProjectileOverlapResolutionConfig{
+		Projectile: p,
+		Impact: combat.ProjectileImpactRules{
+			StopOnHit:    tpl.ImpactRules.StopOnHit,
+			MaxTargets:   tpl.ImpactRules.MaxTargets,
+			AffectsOwner: tpl.ImpactRules.AffectsOwner,
+		},
+		OwnerID:             eff.Owner,
+		Ability:             eff.Type,
+		Tick:                w.currentTick,
+		Metadata:            overlapMetadata,
+		Area:                area,
+		RecordAttackOverlap: w.recordAttackOverlap,
+		VisitPlayers: func(visitor combat.ProjectileOverlapVisitor) {
+			for id, player := range w.players {
+				if player == nil {
+					continue
+				}
+				if !visitor(combat.ProjectileOverlapTarget{
+					ID:     id,
+					X:      player.X,
+					Y:      player.Y,
+					Radius: playerHalf,
+					Raw:    player,
+				}) {
+					break
+				}
 			}
-			if id == eff.Owner && !tpl.ImpactRules.AffectsOwner {
-				continue
+		},
+		VisitNPCs: func(visitor combat.ProjectileOverlapVisitor) {
+			for id, npc := range w.npcs {
+				if npc == nil {
+					continue
+				}
+				if !visitor(combat.ProjectileOverlapTarget{
+					ID:     id,
+					X:      npc.X,
+					Y:      npc.Y,
+					Radius: playerHalf,
+					Raw:    npc,
+				}) {
+					break
+				}
 			}
-			if !circleRectOverlap(target.X, target.Y, playerHalf, area) {
-				continue
+		},
+		OnPlayerHit: func(target combat.ProjectileOverlapTarget) {
+			state, _ := target.Raw.(*playerState)
+			if state == nil {
+				return
 			}
-			if !p.MarkHit(id) {
-				continue
+			w.invokePlayerHitCallback(eff, state, now)
+		},
+		OnNPCHit: func(target combat.ProjectileOverlapTarget) {
+			state, _ := target.Raw.(*npcState)
+			if state == nil {
+				return
 			}
-			hitNPCs = append(hitNPCs, id)
-			w.invokeNPCHitCallback(eff, target, now)
-			if tpl.ImpactRules.StopOnHit || (maxTargets > 0 && p.HitCount >= maxTargets) {
-				shouldStop = true
-			}
-			if shouldStop {
-				break
-			}
-		}
-	}
+			w.invokeNPCHitCallback(eff, state, now)
+		},
+	})
 
-	hitsApplied := p.HitCount - hitCountAtStart
-	if hitsApplied > 0 {
+	if result.HitsApplied > 0 {
 		if tpl.ImpactRules.ExplodeOnImpact != nil {
 			w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
 		}
-		if len(hitPlayers) > 0 || len(hitNPCs) > 0 {
-			targets := make([]logging.EntityRef, 0, len(hitPlayers)+len(hitNPCs))
-			for _, id := range hitPlayers {
-				targets = append(targets, w.entityRef(id))
-			}
-			for _, id := range hitNPCs {
-				targets = append(targets, w.entityRef(id))
-			}
-			payload := loggingcombat.AttackOverlapPayload{Ability: eff.Type}
-			if len(hitPlayers) > 0 {
-				payload.PlayerHits = append(payload.PlayerHits, hitPlayers...)
-			}
-			if len(hitNPCs) > 0 {
-				payload.NPCHits = append(payload.NPCHits, hitNPCs...)
-			}
-			loggingcombat.AttackOverlap(
-				context.Background(),
-				w.publisher,
-				w.currentTick,
-				w.entityRef(eff.Owner),
-				targets,
-				payload,
-				map[string]any{"projectile": eff.Type},
-			)
-		}
 	}
 
-	if shouldStop {
+	if result.ShouldStop {
 		w.stopProjectile(eff, now, projectileStopOptions{})
 		return true
 	}
@@ -753,29 +737,26 @@ func (w *World) configureEffectHitAdapter() {
 		return
 	}
 
-	w.effectHitAdapter = combat.NewWorldEffectHitDispatcher(combat.WorldEffectHitDispatcherConfig{
-		ExtractEffect: func(effect any) (combat.EffectRef, bool) {
+	w.recordAttackOverlap = combat.NewAttackOverlapTelemetryRecorder(combat.AttackOverlapTelemetryRecorderConfig{
+		Publisher: w.publisher,
+		LookupEntity: func(id string) logging.EntityRef {
+			return w.entityRef(id)
+		},
+	})
+
+	w.effectHitAdapter = combat.NewLegacyWorldEffectHitAdapter(combat.LegacyWorldEffectHitAdapterConfig{
+		HealthEpsilon:           worldpkg.HealthEpsilon,
+		BaselinePlayerMaxHealth: baselinePlayerMaxHealth,
+		ExtractEffect: func(effect any) (*internaleffects.State, bool) {
 			eff, _ := effect.(*effectState)
 			if eff == nil {
-				return combat.EffectRef{}, false
+				return nil, false
 			}
-			status := ""
-			if eff.StatusEffect != "" {
-				status = string(eff.StatusEffect)
-			}
-			return combat.EffectRef{
-				Effect: combat.Effect{
-					Type:         eff.Type,
-					OwnerID:      eff.Owner,
-					Params:       eff.Params,
-					StatusEffect: status,
-				},
-				Raw: eff,
-			}, true
+			return eff, true
 		},
-		ExtractActor: func(target any) (combat.ActorRef, bool) {
+		ExtractActor: func(target any) (combat.WorldActorAdapter, bool) {
 			if target == nil {
-				return combat.ActorRef{}, false
+				return combat.WorldActorAdapter{}, false
 			}
 
 			var actor *actorState
@@ -786,139 +767,107 @@ func (w *World) configureEffectHitAdapter() {
 				actor = typed
 			case *playerState:
 				if typed == nil {
-					return combat.ActorRef{}, false
+					return combat.WorldActorAdapter{}, false
 				}
 				actor = &typed.actorState
 				kind = combat.ActorKindPlayer
 			case *npcState:
 				if typed == nil {
-					return combat.ActorRef{}, false
+					return combat.WorldActorAdapter{}, false
 				}
 				actor = &typed.actorState
 				kind = combat.ActorKindNPC
 			default:
-				return combat.ActorRef{}, false
+				return combat.WorldActorAdapter{}, false
 			}
 
 			if actor == nil {
-				return combat.ActorRef{}, false
+				return combat.WorldActorAdapter{}, false
 			}
 
-			if kind == combat.ActorKindGeneric && actor.ID != "" {
-				if _, ok := w.players[actor.ID]; ok {
-					kind = combat.ActorKindPlayer
-				} else if _, ok := w.npcs[actor.ID]; ok {
-					kind = combat.ActorKindNPC
-				}
-			}
-
-			return combat.ActorRef{
-				Actor: combat.Actor{
-					ID:        actor.ID,
-					Health:    actor.Health,
-					MaxHealth: actor.MaxHealth,
-					Kind:      kind,
-				},
-				Raw: actor,
+			return combat.WorldActorAdapter{
+				ID:        actor.ID,
+				Health:    actor.Health,
+				MaxHealth: actor.MaxHealth,
+				KindHint:  kind,
+				Raw:       actor,
 			}, true
 		},
-		HealthEpsilon:           worldpkg.HealthEpsilon,
-		BaselinePlayerMaxHealth: baselinePlayerMaxHealth,
-		SetPlayerHealth: func(target combat.ActorRef, next float64) {
-			if target.Actor.ID == "" {
+		IsPlayer: func(id string) bool {
+			_, ok := w.players[id]
+			return ok
+		},
+		IsNPC: func(id string) bool {
+			_, ok := w.npcs[id]
+			return ok
+		},
+		SetPlayerHealth: func(id string, next float64) {
+			if id == "" {
 				return
 			}
-			w.SetHealth(target.Actor.ID, next)
+			w.SetHealth(id, next)
 		},
-		SetNPCHealth: func(target combat.ActorRef, next float64) {
-			if target.Actor.ID == "" {
+		SetNPCHealth: func(id string, next float64) {
+			if id == "" {
 				return
 			}
-			w.SetNPCHealth(target.Actor.ID, next)
+			w.SetNPCHealth(id, next)
 		},
-		ApplyGenericHealthDelta: func(target combat.ActorRef, delta float64) (bool, float64, float64) {
-			actor, _ := target.Raw.(*actorState)
-			if actor == nil {
-				return false, 0, target.Actor.Health
+		ApplyGenericHealthDelta: func(actor combat.WorldActorAdapter, delta float64) (bool, float64, float64) {
+			state, _ := actor.Raw.(*actorState)
+			if state == nil {
+				return false, 0, actor.Health
 			}
-			before := actor.Health
-			if !actor.applyHealthDelta(delta) {
+			before := state.Health
+			if !state.applyHealthDelta(delta) {
 				return false, 0, before
 			}
-			return true, actor.Health - before, actor.Health
+			return true, state.Health - before, state.Health
 		},
-		RecordEffectHitTelemetry: func(effect combat.EffectRef, target combat.ActorRef, actualDelta float64) {
-			eff, _ := effect.Raw.(*effectState)
-			if eff == nil || target.Actor.ID == "" {
+		RecordEffectHitTelemetry: func(effect *internaleffects.State, targetID string, actualDelta float64) {
+			if effect == nil || targetID == "" {
 				return
 			}
-			w.recordEffectHitTelemetry(eff, target.Actor.ID, actualDelta)
+			w.recordEffectHitTelemetry(effect, targetID, actualDelta)
 		},
-		RecordDamageTelemetry: func(effect combat.EffectRef, target combat.ActorRef, damage float64, targetHealth float64, statusEffect string) {
-			if w == nil || damage <= 0 {
+		RecordDamageTelemetry: combat.NewDamageTelemetryRecorder(combat.DamageTelemetryRecorderConfig{
+			Publisher: w.publisher,
+			LookupEntity: func(id string) logging.EntityRef {
+				return w.entityRef(id)
+			},
+			CurrentTick: func() uint64 {
+				return w.currentTick
+			},
+		}),
+		RecordDefeatTelemetry: combat.NewDefeatTelemetryRecorder(combat.DefeatTelemetryRecorderConfig{
+			Publisher: w.publisher,
+			LookupEntity: func(id string) logging.EntityRef {
+				return w.entityRef(id)
+			},
+			CurrentTick: func() uint64 {
+				return w.currentTick
+			},
+		}),
+		DropAllInventory: func(actor combat.WorldActorAdapter, reason string) {
+			state, _ := actor.Raw.(*actorState)
+			if state == nil {
 				return
 			}
-			actorRef := logging.EntityRef{}
-			targetRef := logging.EntityRef{}
-			if effect.Effect.OwnerID != "" {
-				actorRef = w.entityRef(effect.Effect.OwnerID)
-			}
-			if target.Actor.ID != "" {
-				targetRef = w.entityRef(target.Actor.ID)
-			}
-			loggingcombat.Damage(
-				context.Background(),
-				w.publisher,
-				w.currentTick,
-				actorRef,
-				targetRef,
-				loggingcombat.DamagePayload{
-					Ability:      effect.Effect.Type,
-					Amount:       damage,
-					TargetHealth: targetHealth,
-					StatusEffect: statusEffect,
-				},
-				nil,
-			)
+			w.dropAllInventory(state, reason)
 		},
-		RecordDefeatTelemetry: func(effect combat.EffectRef, target combat.ActorRef, statusEffect string) {
-			if w == nil {
-				return
-			}
-			actorRef := logging.EntityRef{}
-			targetRef := logging.EntityRef{}
-			if effect.Effect.OwnerID != "" {
-				actorRef = w.entityRef(effect.Effect.OwnerID)
-			}
-			if target.Actor.ID != "" {
-				targetRef = w.entityRef(target.Actor.ID)
-			}
-			loggingcombat.Defeat(
-				context.Background(),
-				w.publisher,
-				w.currentTick,
-				actorRef,
-				targetRef,
-				loggingcombat.DefeatPayload{Ability: effect.Effect.Type, StatusEffect: statusEffect},
-				nil,
-			)
-		},
-		DropAllInventory: func(target combat.ActorRef, reason string) {
-			actor, _ := target.Raw.(*actorState)
-			if actor == nil {
-				return
-			}
-			w.dropAllInventory(actor, reason)
-		},
-		ApplyStatusEffect: func(effect combat.EffectRef, target combat.ActorRef, statusEffect string, now time.Time) {
+		ApplyStatusEffect: func(effect *internaleffects.State, actor combat.WorldActorAdapter, statusEffect string, now time.Time) {
 			if statusEffect == "" {
 				return
 			}
-			actor, _ := target.Raw.(*actorState)
-			if actor == nil {
+			state, _ := actor.Raw.(*actorState)
+			if state == nil {
 				return
 			}
-			w.applyStatusEffect(actor, StatusEffectType(statusEffect), effect.Effect.OwnerID, now)
+			ownerID := ""
+			if effect != nil {
+				ownerID = effect.Owner
+			}
+			w.applyStatusEffect(state, StatusEffectType(statusEffect), ownerID, now)
 		},
 	})
 }
