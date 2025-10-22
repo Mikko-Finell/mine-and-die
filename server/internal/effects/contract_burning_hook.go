@@ -54,7 +54,7 @@ func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) HookSet {
 			}
 
 			actor := lookupContractStatusActor(cfg.LookupActor, instance)
-			effect := loadContractStatusVisual(rt, instance.ID)
+			effect := LoadRuntimeEffect(rt, instance.ID)
 
 			if effect == nil && actor != nil {
 				lifetime := TicksToDuration(instance.BehaviorState.TicksRemaining, cfg.TickRate)
@@ -74,12 +74,12 @@ func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) HookSet {
 				})
 				if effect != nil {
 					attachAndExtendStatusVisual(cfg, actor.StatusInstance, effect)
-					if !registerContractStatusVisual(rt, effect) {
+					if !RegisterRuntimeEffect(rt, effect) {
 						instance.BehaviorState.TicksRemaining = 0
 						effect = nil
 					} else {
 						recordContractStatusVisualSpawn(cfg, effect.Type)
-						storeContractStatusVisual(rt, instance.ID, effect)
+						StoreRuntimeEffect(rt, instance.ID, effect)
 					}
 				}
 			}
@@ -92,7 +92,7 @@ func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) HookSet {
 			}
 
 			actor := lookupContractStatusActor(cfg.LookupActor, instance)
-			effect := loadContractStatusVisual(rt, instance.ID)
+			effect := LoadRuntimeEffect(rt, instance.ID)
 
 			if effect == nil && actor != nil {
 				lifetime := TicksToDuration(instance.BehaviorState.TicksRemaining, cfg.TickRate)
@@ -111,12 +111,12 @@ func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) HookSet {
 				})
 				if effect != nil {
 					attachAndExtendStatusVisual(cfg, actor.StatusInstance, effect)
-					if !registerContractStatusVisual(rt, effect) {
+					if !RegisterRuntimeEffect(rt, effect) {
 						instance.BehaviorState.TicksRemaining = 0
 						effect = nil
 					} else {
 						recordContractStatusVisualSpawn(cfg, effect.Type)
-						storeContractStatusVisual(rt, instance.ID, effect)
+						StoreRuntimeEffect(rt, instance.ID, effect)
 					}
 				}
 			}
@@ -228,49 +228,6 @@ func recordContractStatusVisualSpawn(cfg ContractBurningVisualHookConfig, effect
 		return
 	}
 	cfg.RecordEffectSpawn(effectType, "status-effect")
-}
-
-func registerContractStatusVisual(rt Runtime, effect *State) bool {
-	if effect == nil {
-		return false
-	}
-	return RegisterEffect(runtimeRegistry(rt), effect)
-}
-
-func storeContractStatusVisual(rt Runtime, id string, effect *State) {
-	if rt == nil || id == "" {
-		return
-	}
-	if effect == nil {
-		rt.ClearInstanceState(id)
-		return
-	}
-	rt.SetInstanceState(id, effect)
-}
-
-func loadContractStatusVisual(rt Runtime, id string) *State {
-	if id == "" {
-		return nil
-	}
-	if rt != nil {
-		if value := rt.InstanceState(id); value != nil {
-			if effect, ok := value.(*State); ok {
-				return effect
-			}
-		}
-	}
-	effect := FindByID(runtimeRegistry(rt), id)
-	if effect != nil && rt != nil {
-		rt.SetInstanceState(id, effect)
-	}
-	return effect
-}
-
-func runtimeRegistry(rt Runtime) Registry {
-	if rt == nil {
-		return Registry{}
-	}
-	return rt.Registry()
 }
 
 func durationToTicks(duration time.Duration, tickRate int) int {

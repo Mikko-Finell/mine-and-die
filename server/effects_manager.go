@@ -118,7 +118,7 @@ func (m *EffectManager) WorldEffect(id string) *effectState {
 	if m == nil || m.core == nil {
 		return nil
 	}
-	return loadWorldEffect(m.core, id)
+	return internaleffects.LoadRuntimeEffect(m.core, id)
 }
 
 func (m *EffectManager) PendingIntents() []effectcontract.EffectIntent {
@@ -194,7 +194,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			if instance == nil || world == nil {
 				return
 			}
-			if existing := loadWorldEffect(rt, instance.ID); existing != nil {
+			if existing := internaleffects.LoadRuntimeEffect(rt, instance.ID); existing != nil {
 				owner, _ := world.abilityOwner(instance.OwnerActorID)
 				syncProjectileInstance(instance, owner, existing)
 				return
@@ -219,19 +219,19 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			if effect == nil {
 				return
 			}
-			if !registerWorldEffect(rt, effect) {
+			if !internaleffects.RegisterRuntimeEffect(rt, effect) {
 				instance.BehaviorState.TicksRemaining = 0
 				return
 			}
 			world.recordEffectSpawn(tpl.Type, "projectile")
-			storeWorldEffect(rt, instance.ID, effect)
+			internaleffects.StoreRuntimeEffect(rt, instance.ID, effect)
 			syncProjectileInstance(instance, owner, effect)
 		},
 		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
 			if instance == nil || world == nil {
 				return
 			}
-			effect := loadWorldEffect(rt, instance.ID)
+			effect := internaleffects.LoadRuntimeEffect(rt, instance.ID)
 			tpl := world.projectileTemplates[instance.DefinitionID]
 			owner, _ := world.abilityOwner(instance.OwnerActorID)
 			if effect == nil {
@@ -250,20 +250,20 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 				if effect == nil {
 					return
 				}
-				if !registerWorldEffect(rt, effect) {
+				if !internaleffects.RegisterRuntimeEffect(rt, effect) {
 					instance.BehaviorState.TicksRemaining = 0
 					return
 				}
 				world.recordEffectSpawn(tpl.Type, "projectile")
-				storeWorldEffect(rt, instance.ID, effect)
+				internaleffects.StoreRuntimeEffect(rt, instance.ID, effect)
 			}
 			dt := 1.0 / float64(tickRate)
 			ended := world.advanceProjectile(effect, now, dt)
 			syncProjectileInstance(instance, owner, effect)
 			if ended {
 				instance.BehaviorState.TicksRemaining = 0
-				unregisterWorldEffect(rt, effect)
-				storeWorldEffect(rt, instance.ID, nil)
+				internaleffects.UnregisterRuntimeEffect(rt, effect)
+				internaleffects.StoreRuntimeEffect(rt, instance.ID, nil)
 			}
 		},
 	}
@@ -320,13 +320,34 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		TickInterval:    burningTickInterval,
 		LookupActor:     lookupContractActor,
 	})
+	ensureBloodDecal := func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, _ effectcontract.Tick, now time.Time) {
+		internaleffects.EnsureBloodDecalInstance(internaleffects.BloodDecalInstanceConfig{
+			Runtime:         rt,
+			Instance:        instance,
+			Now:             now,
+			TileSize:        tileSize,
+			TickRate:        tickRate,
+			DefaultSize:     playerHalf * 2,
+			DefaultDuration: bloodSplatterDuration,
+			Params:          newBloodSplatterParams(),
+			Colors:          bloodSplatterColors(),
+			PruneExpired: func(at time.Time) {
+				if world == nil {
+					return
+				}
+				world.pruneEffects(at)
+			},
+			RecordSpawn: func(effectType, producer string) {
+				if world == nil {
+					return
+				}
+				world.recordEffectSpawn(effectType, producer)
+			},
+		})
+	}
 	hooks[effectcontract.HookVisualBloodSplatter] = internaleffects.HookSet{
-		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			ensureBloodDecalInstance(rt, world, instance, now)
-		},
-		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			ensureBloodDecalInstance(rt, world, instance, now)
-		},
+		OnSpawn: ensureBloodDecal,
+		OnTick:  ensureBloodDecal,
 	}
 	return hooks
 }
@@ -438,92 +459,4 @@ func syncProjectileInstance(instance *effectcontract.EffectInstance, owner *acto
 	}
 	instance.DeliveryState.Motion = motion
 	instance.DeliveryState.Geometry = geometry
-}
-
-func ensureBloodDecalInstance(rt internaleffects.Runtime, world *World, instance *effectcontract.EffectInstance, now time.Time) *effectState {
-	if instance == nil || world == nil {
-		return nil
-	}
-	effect := loadWorldEffect(rt, instance.ID)
-	if effect == nil {
-		world.pruneEffects(now)
-		effect = internaleffects.SpawnContractBloodDecalFromInstance(internaleffects.BloodDecalSpawnConfig{
-			Instance:        instance,
-			Now:             now,
-			TileSize:        tileSize,
-			TickRate:        tickRate,
-			DefaultSize:     playerHalf * 2,
-			DefaultDuration: bloodSplatterDuration,
-			Params:          newBloodSplatterParams(),
-			Colors:          bloodSplatterColors(),
-		})
-		if effect == nil {
-			return nil
-		}
-		if registerWorldEffect(rt, effect) {
-			world.recordEffectSpawn(effect.Type, "blood-decal")
-		} else {
-			instance.BehaviorState.TicksRemaining = 0
-			return nil
-		}
-		storeWorldEffect(rt, instance.ID, effect)
-	}
-	internaleffects.SyncContractBloodDecalInstance(internaleffects.BloodDecalSyncConfig{
-		Instance:    instance,
-		Effect:      effect,
-		TileSize:    tileSize,
-		DefaultSize: playerHalf * 2,
-		Colors:      bloodSplatterColors(),
-	})
-	return effect
-}
-
-func runtimeRegistry(rt internaleffects.Runtime) internaleffects.Registry {
-	if rt == nil {
-		return internaleffects.Registry{}
-	}
-	return rt.Registry()
-}
-
-func registerWorldEffect(rt internaleffects.Runtime, effect *effectState) bool {
-	if effect == nil {
-		return false
-	}
-	return internaleffects.RegisterEffect(runtimeRegistry(rt), effect)
-}
-
-func unregisterWorldEffect(rt internaleffects.Runtime, effect *effectState) {
-	if effect == nil {
-		return
-	}
-	internaleffects.UnregisterEffect(runtimeRegistry(rt), effect)
-}
-
-func storeWorldEffect(rt internaleffects.Runtime, id string, effect *effectState) {
-	if rt == nil || id == "" {
-		return
-	}
-	if effect == nil {
-		rt.ClearInstanceState(id)
-		return
-	}
-	rt.SetInstanceState(id, effect)
-}
-
-func loadWorldEffect(rt internaleffects.Runtime, id string) *effectState {
-	if id == "" {
-		return nil
-	}
-	if rt != nil {
-		if value := rt.InstanceState(id); value != nil {
-			if effect, ok := value.(*effectState); ok {
-				return effect
-			}
-		}
-	}
-	effect := internaleffects.FindByID(runtimeRegistry(rt), id)
-	if effect != nil && rt != nil {
-		rt.SetInstanceState(id, effect)
-	}
-	return effect
 }

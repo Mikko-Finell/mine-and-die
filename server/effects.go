@@ -175,25 +175,12 @@ const (
 
 var fireballLifetime = time.Duration(fireballRange / fireballSpeed * float64(time.Second))
 
-var bloodSplatterColorPalette = []string{"#7a0e12", "#4a090b"}
-
 func newBloodSplatterParams() map[string]float64 {
-	return map[string]float64{
-		"drag":           0.92,
-		"dropletRadius":  3,
-		"maxBursts":      0,
-		"maxDroplets":    33,
-		"maxStainRadius": 6,
-		"maxStains":      140,
-		"minDroplets":    4,
-		"minStainRadius": 4,
-		"spawnInterval":  1.1,
-		"speed":          3,
-	}
+	return internaleffects.NewBloodSplatterParams()
 }
 
 func bloodSplatterColors() []string {
-	return append([]string(nil), bloodSplatterColorPalette...)
+	return internaleffects.BloodSplatterColors()
 }
 
 func newProjectileTemplates() map[string]*ProjectileTemplate {
@@ -1027,7 +1014,19 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 	w.pruneEffects(now)
 
 	if w.effectManager != nil {
-		if intent, ok := NewBloodSplatterIntent(eff.Owner, &target.actorState); ok {
+		intent, ok := internaleffects.NewBloodSplatterIntent(internaleffects.BloodSplatterIntentConfig{
+			SourceActorID: eff.Owner,
+			TargetActorID: target.ID,
+			Target: &internaleffects.ActorPosition{
+				X: target.X,
+				Y: target.Y,
+			},
+			TileSize:  tileSize,
+			Footprint: playerHalf * 2,
+			Duration:  bloodSplatterDuration,
+			TickRate:  tickRate,
+		})
+		if ok {
 			w.effectManager.EnqueueIntent(intent)
 		}
 	}
