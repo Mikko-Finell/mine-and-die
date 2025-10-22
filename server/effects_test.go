@@ -106,20 +106,16 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 			return err
 		},
 		ApplyPlayerHit: func(effectRef any, target any, when time.Time) {
-			eff, _ := effectRef.(*effectState)
-			player, _ := target.(*playerState)
-			if eff == nil || player == nil {
+			if w.playerHitCallback == nil {
 				return
 			}
-			w.applyEffectHitPlayer(eff, player, when)
+			w.playerHitCallback(effectRef, target, when)
 		},
 		ApplyNPCHit: func(effectRef any, target any, when time.Time) {
-			eff, _ := effectRef.(*effectState)
-			npcTarget, _ := target.(*npcState)
-			if eff == nil || npcTarget == nil {
+			if w.npcHitCallback == nil {
 				return
 			}
-			w.applyEffectHitNPC(eff, npcTarget, when)
+			w.npcHitCallback(effectRef, target, when)
 		},
 		RecordGoldGrantFailure: func(actorID string, obstacleID string, err error) {
 			if err != nil {

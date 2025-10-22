@@ -345,7 +345,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Extract the contract projectile lifecycle hook into `internal/effects`, introducing a configuration struct so the server wrapper only wires world lookups, registry adapters, and telemetry callbacks.
 - [x] Extract the melee spawn hook into `internal/effects`, introducing a configuration seam so the server wiring only supplies actor lookups and impact resolution callbacks.
 - [x] Move `resolveMeleeImpact` into `internal/world`, exposing an adapter that accepts the hook's owner reference and impact footprint so `internal/effects` delegates melee collision and telemetry through the centralized world helper.
-- [ ] Move `applyEffectHitPlayer`/`applyEffectHitNPC` into `internal/world`, returning callbacks so melee resolution and other hooks apply contract damage through the centralized helpers.
+- [x] Move `applyEffectHitPlayer`/`applyEffectHitNPC` into `internal/world`, returning callbacks so melee resolution and other hooks apply contract damage through the centralized helpers.
+- [x] Move the shared actor hit dispatcher (`applyEffectHitActor` and the effect behavior lookup) into a new `internal/combat` package, returning adapters so world callbacks can resolve hits without depending on the legacy `World` type.
+- [ ] Move melee ability cooldown and action gating into `internal/combat`, exposing helpers so world melee execution reuses centralized combat adapters.
 
 - [x] Keep the tick loop in `sim/engine`:
 

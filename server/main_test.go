@@ -1573,7 +1573,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	}
 
 	now := time.Unix(0, 0)
-	world.applyEffectHitNPC(eff, npc, now)
+	world.invokeNPCHitCallback(eff, npc, now)
 
 	if world.effectManager.PendingIntentCount() == 0 {
 		t.Fatalf("expected blood splatter to enqueue contract intent")
@@ -2224,7 +2224,7 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 
 	heal := &effectState{Type: effectTypeAttack, Owner: "healer", Params: map[string]float64{"healthDelta": 50}}
 
-	hub.world.applyEffectHitPlayer(heal, state, time.Now())
+	hub.world.invokePlayerHitCallback(heal, state, time.Now())
 
 	if math.Abs(state.Health-baselinePlayerMaxHealth) > 1e-6 {
 		t.Fatalf("expected healing to clamp to max %.1f, got %.1f", baselinePlayerMaxHealth, state.Health)
@@ -2243,7 +2243,7 @@ func TestHealthDamageClampsToZero(t *testing.T) {
 
 	blast := &effectState{Type: effectTypeAttack, Owner: "boom", Params: map[string]float64{"healthDelta": -50}}
 
-	hub.world.applyEffectHitPlayer(blast, state, time.Now())
+	hub.world.invokePlayerHitCallback(blast, state, time.Now())
 
 	if state.Health != 0 {
 		t.Fatalf("expected damage to clamp to zero health, got %.1f", state.Health)
@@ -2571,7 +2571,7 @@ func TestDeathDropsPlayerInventory(t *testing.T) {
 	now := time.Now()
 	damage := victim.Health + 5
 	eff := &effectState{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -damage}}
-	hub.world.applyEffectHitPlayer(eff, victim, now)
+	hub.world.invokePlayerHitCallback(eff, victim, now)
 
 	if victim.Health > 0 {
 		t.Fatalf("expected victim health to reach zero, got %.2f", victim.Health)
@@ -2676,7 +2676,7 @@ func TestDeathDropsNPCInventory(t *testing.T) {
 
 	now := time.Now()
 	eff := &effectState{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -(npc.Health + 5)}}
-	hub.world.applyEffectHitNPC(eff, npc, now)
+	hub.world.invokeNPCHitCallback(eff, npc, now)
 
 	if _, exists := hub.world.npcs[npc.ID]; exists {
 		t.Fatalf("expected npc to be removed after death")
@@ -2719,7 +2719,7 @@ func TestRatDropsTailOnDeath(t *testing.T) {
 
 	now := time.Now()
 	eff := &effectState{Type: effectTypeAttack, Owner: attacker.ID, Params: map[string]float64{"healthDelta": -(rat.Health + 5)}}
-	hub.world.applyEffectHitNPC(eff, rat, now)
+	hub.world.invokeNPCHitCallback(eff, rat, now)
 
 	if _, exists := hub.world.npcs[rat.ID]; exists {
 		t.Fatalf("expected rat to be removed after death")
