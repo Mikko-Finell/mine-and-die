@@ -342,7 +342,10 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the blood splatter configuration helpers (`newBloodSplatterParams` and `bloodSplatterColors`) into `internal/effects`, providing adapters so world callers reuse the centralized defaults when instantiating contract-managed decals.
 - [x] Move the blood decal instance wiring (`ensureBloodDecalInstance`) into `internal/effects`, exposing a config-driven helper so the server wrapper only supplies runtime lookups and registries.
 - [x] Move the runtime effect state helpers (`registerWorldEffect`, `unregisterWorldEffect`, `storeWorldEffect`, `loadWorldEffect`) into `internal/effects`, exposing runtime-driven adapters so the legacy world wrapper delegates to the shared package.
-- [ ] Extract the contract projectile lifecycle hook into `internal/effects`, introducing a configuration struct so the server wrapper only wires world lookups, registry adapters, and telemetry callbacks.
+- [x] Extract the contract projectile lifecycle hook into `internal/effects`, introducing a configuration struct so the server wrapper only wires world lookups, registry adapters, and telemetry callbacks.
+- [x] Extract the melee spawn hook into `internal/effects`, introducing a configuration seam so the server wiring only supplies actor lookups and impact resolution callbacks.
+- [x] Move `resolveMeleeImpact` into `internal/world`, exposing an adapter that accepts the hook's owner reference and impact footprint so `internal/effects` delegates melee collision and telemetry through the centralized world helper.
+- [ ] Move `applyEffectHitPlayer`/`applyEffectHitNPC` into `internal/world`, returning callbacks so melee resolution and other hooks apply contract damage through the centralized helpers.
 
 - [x] Keep the tick loop in `sim/engine`:
 

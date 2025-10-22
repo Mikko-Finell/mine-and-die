@@ -1,13 +1,16 @@
 package server
 
 import (
-	"math"
+	"context"
 	"time"
 
 	effectcatalog "mine-and-die/server/effects/catalog"
 	effectcontract "mine-and-die/server/effects/contract"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
+	"mine-and-die/server/logging"
+	loggingcombat "mine-and-die/server/logging/combat"
+	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
 type EffectManager struct {
@@ -173,100 +176,199 @@ func (a projectileOwnerAdapter) Position() (float64, float64) {
 
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
 	hooks := make(map[string]internaleffects.HookSet)
-	hooks[effectcontract.HookMeleeSpawn] = internaleffects.HookSet{
-		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if instance == nil || world == nil {
-				return
+	hooks[effectcontract.HookMeleeSpawn] = internaleffects.MeleeSpawnHook(internaleffects.MeleeSpawnHookConfig{
+		TileSize:        tileSize,
+		DefaultWidth:    meleeAttackWidth,
+		DefaultReach:    meleeAttackReach,
+		DefaultDamage:   meleeAttackDamage,
+		DefaultDuration: meleeAttackDuration,
+		LookupOwner: func(actorID string) *internaleffects.MeleeOwner {
+			if world == nil || actorID == "" {
+				return nil
 			}
-			owner, _ := world.abilityOwner(instance.OwnerActorID)
+			owner, _ := world.abilityOwner(actorID)
 			if owner == nil {
-				return
+				return nil
 			}
-			effect, area := meleeEffectForInstance(instance, owner, now)
-			if effect == nil {
-				return
+			return &internaleffects.MeleeOwner{
+				X:         owner.X,
+				Y:         owner.Y,
+				Reference: owner,
 			}
-			world.resolveMeleeImpact(effect, owner, instance.OwnerActorID, uint64(tick), now, area)
 		},
-	}
-	hooks[effectcontract.HookProjectileLifecycle] = internaleffects.HookSet{
-		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if instance == nil || world == nil {
+		ResolveImpact: func(effect *internaleffects.State, owner *internaleffects.MeleeOwner, actorID string, tick effectcontract.Tick, now time.Time, area internaleffects.MeleeImpactArea) {
+			if world == nil || effect == nil {
 				return
 			}
-			if existing := internaleffects.LoadRuntimeEffect(rt, instance.ID); existing != nil {
-				owner, _ := world.abilityOwner(instance.OwnerActorID)
-				syncProjectileInstance(instance, owner, existing)
-				return
+
+			var ownerRef any
+			if owner != nil {
+				ownerRef = owner.Reference
 			}
-			tpl := world.projectileTemplates[instance.DefinitionID]
-			if tpl == nil {
-				return
+
+			tick64 := uint64(tick)
+
+			cfg := worldpkg.ResolveMeleeImpactConfig{
+				EffectType: effect.Type,
+				Effect:     effect,
+				Owner:      ownerRef,
+				ActorID:    actorID,
+				Tick:       tick64,
+				Now:        now,
+				Area: worldpkg.Obstacle{
+					X:      area.X,
+					Y:      area.Y,
+					Width:  area.Width,
+					Height: area.Height,
+				},
+				Obstacles: world.obstacles,
+				ForEachPlayer: func(visit func(id string, x, y float64, reference any)) {
+					for id, player := range world.players {
+						if player == nil {
+							continue
+						}
+						visit(id, player.X, player.Y, player)
+					}
+				},
+				ForEachNPC: func(visit func(id string, x, y float64, reference any)) {
+					for id, npc := range world.npcs {
+						if npc == nil {
+							continue
+						}
+						visit(id, npc.X, npc.Y, npc)
+					}
+				},
+				GivePlayerGold: func(id string) (bool, error) {
+					if _, ok := world.players[id]; !ok {
+						return false, nil
+					}
+					err := world.MutateInventory(id, func(inv *Inventory) error {
+						if inv == nil {
+							return nil
+						}
+						_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+						return addErr
+					})
+					return true, err
+				},
+				GiveNPCGold: func(id string) (bool, error) {
+					if _, ok := world.npcs[id]; !ok {
+						return false, nil
+					}
+					err := world.MutateNPCInventory(id, func(inv *Inventory) error {
+						if inv == nil {
+							return nil
+						}
+						_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+						return addErr
+					})
+					return true, err
+				},
+				GiveOwnerGold: func(ref any) error {
+					actor, ok := ref.(*actorState)
+					if !ok || actor == nil {
+						return nil
+					}
+					_, err := actor.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+					return err
+				},
+				ApplyPlayerHit: func(effectRef any, target any, now time.Time) {
+					eff, _ := effectRef.(*internaleffects.State)
+					player, _ := target.(*playerState)
+					if eff == nil || player == nil {
+						return
+					}
+					world.applyEffectHitPlayer(eff, player, now)
+				},
+				ApplyNPCHit: func(effectRef any, target any, now time.Time) {
+					eff, _ := effectRef.(*internaleffects.State)
+					npc, _ := target.(*npcState)
+					if eff == nil || npc == nil {
+						return
+					}
+					world.applyEffectHitNPC(eff, npc, now)
+				},
+				RecordGoldGrantFailure: func(actorID string, obstacleID string, err error) {
+					if err == nil {
+						return
+					}
+					loggingeconomy.ItemGrantFailed(
+						context.Background(),
+						world.publisher,
+						tick64,
+						world.entityRef(actorID),
+						loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 1, Reason: "mine_gold"},
+						map[string]any{"error": err.Error(), "obstacle": obstacleID},
+					)
+				},
+				RecordAttackOverlap: func(actorID string, tick uint64, effectType string, hitPlayers []string, hitNPCs []string) {
+					targets := make([]logging.EntityRef, 0, len(hitPlayers)+len(hitNPCs))
+					for _, id := range hitPlayers {
+						targets = append(targets, world.entityRef(id))
+					}
+					for _, id := range hitNPCs {
+						targets = append(targets, world.entityRef(id))
+					}
+					payload := loggingcombat.AttackOverlapPayload{Ability: effectType}
+					if len(hitPlayers) > 0 {
+						payload.PlayerHits = append(payload.PlayerHits, hitPlayers...)
+					}
+					if len(hitNPCs) > 0 {
+						payload.NPCHits = append(payload.NPCHits, hitNPCs...)
+					}
+					loggingcombat.AttackOverlap(
+						context.Background(),
+						world.publisher,
+						tick,
+						world.entityRef(actorID),
+						targets,
+						payload,
+						nil,
+					)
+				},
 			}
-			owner, _ := world.abilityOwner(instance.OwnerActorID)
+
+			worldpkg.ResolveMeleeImpact(cfg)
+		},
+	})
+	hooks[effectcontract.HookProjectileLifecycle] = internaleffects.ContractProjectileLifecycleHook(internaleffects.ContractProjectileLifecycleHookConfig{
+		TileSize: tileSize,
+		TickRate: tickRate,
+		LookupTemplate: func(definitionID string) *internaleffects.ProjectileTemplate {
+			if world == nil {
+				return nil
+			}
+			return world.projectileTemplates[definitionID]
+		},
+		LookupOwner: func(actorID string) internaleffects.ProjectileOwner {
+			if world == nil || actorID == "" {
+				return nil
+			}
+			owner, _ := world.abilityOwner(actorID)
 			if owner == nil {
-				return
+				return nil
 			}
-			world.pruneEffects(now)
-			effect := internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
-				Instance: instance,
-				Owner:    projectileOwnerAdapter{state: owner},
-				Template: tpl,
-				Now:      now,
-				TileSize: tileSize,
-				TickRate: tickRate,
-			})
-			if effect == nil {
-				return
-			}
-			if !internaleffects.RegisterRuntimeEffect(rt, effect) {
-				instance.BehaviorState.TicksRemaining = 0
-				return
-			}
-			world.recordEffectSpawn(tpl.Type, "projectile")
-			internaleffects.StoreRuntimeEffect(rt, instance.ID, effect)
-			syncProjectileInstance(instance, owner, effect)
+			return projectileOwnerAdapter{state: owner}
 		},
-		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, tick effectcontract.Tick, now time.Time) {
-			if instance == nil || world == nil {
+		PruneExpired: func(at time.Time) {
+			if world == nil {
 				return
 			}
-			effect := internaleffects.LoadRuntimeEffect(rt, instance.ID)
-			tpl := world.projectileTemplates[instance.DefinitionID]
-			owner, _ := world.abilityOwner(instance.OwnerActorID)
-			if effect == nil {
-				if tpl == nil || owner == nil {
-					return
-				}
-				world.pruneEffects(now)
-				effect = internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
-					Instance: instance,
-					Owner:    projectileOwnerAdapter{state: owner},
-					Template: tpl,
-					Now:      now,
-					TileSize: tileSize,
-					TickRate: tickRate,
-				})
-				if effect == nil {
-					return
-				}
-				if !internaleffects.RegisterRuntimeEffect(rt, effect) {
-					instance.BehaviorState.TicksRemaining = 0
-					return
-				}
-				world.recordEffectSpawn(tpl.Type, "projectile")
-				internaleffects.StoreRuntimeEffect(rt, instance.ID, effect)
-			}
-			dt := 1.0 / float64(tickRate)
-			ended := world.advanceProjectile(effect, now, dt)
-			syncProjectileInstance(instance, owner, effect)
-			if ended {
-				instance.BehaviorState.TicksRemaining = 0
-				internaleffects.UnregisterRuntimeEffect(rt, effect)
-				internaleffects.StoreRuntimeEffect(rt, instance.ID, nil)
-			}
+			world.pruneEffects(at)
 		},
-	}
+		RecordEffectSpawn: func(effectType, category string) {
+			if world == nil {
+				return
+			}
+			world.recordEffectSpawn(effectType, category)
+		},
+		AdvanceProjectile: func(effect *internaleffects.State, now time.Time, dt float64) bool {
+			if world == nil {
+				return false
+			}
+			return world.advanceProjectile(effect, now, dt)
+		},
+	})
 	lookupContractActor := func(actorID string) *internaleffects.ContractStatusActor {
 		if world == nil || actorID == "" {
 			return nil
@@ -350,113 +452,4 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		OnTick:  ensureBloodDecal,
 	}
 	return hooks
-}
-
-func meleeEffectForInstance(instance *effectcontract.EffectInstance, owner *actorState, now time.Time) (*effectState, Obstacle) {
-	if instance == nil || owner == nil {
-		return nil, Obstacle{}
-	}
-	geom := instance.DeliveryState.Geometry
-	width := internaleffects.DequantizeWorldCoord(geom.Width, tileSize)
-	height := internaleffects.DequantizeWorldCoord(geom.Height, tileSize)
-	if width <= 0 {
-		width = meleeAttackWidth
-	}
-	if height <= 0 {
-		height = meleeAttackReach
-	}
-	offsetX := internaleffects.DequantizeWorldCoord(geom.OffsetX, tileSize)
-	offsetY := internaleffects.DequantizeWorldCoord(geom.OffsetY, tileSize)
-	centerX := owner.X + offsetX
-	centerY := owner.Y + offsetY
-	rectX := centerX - width/2
-	rectY := centerY - height/2
-	motion := instance.DeliveryState.Motion
-	motion.PositionX = quantizeWorldCoord(centerX)
-	motion.PositionY = quantizeWorldCoord(centerY)
-	motion.VelocityX = 0
-	motion.VelocityY = 0
-	instance.DeliveryState.Motion = motion
-	params := internaleffects.IntMapToFloat64(instance.BehaviorState.Extra)
-	if params == nil {
-		params = make(map[string]float64)
-	}
-	if _, ok := params["healthDelta"]; !ok {
-		params["healthDelta"] = -meleeAttackDamage
-	}
-	if _, ok := params["reach"]; !ok {
-		params["reach"] = meleeAttackReach
-	}
-	if _, ok := params["width"]; !ok {
-		params["width"] = meleeAttackWidth
-	}
-	effect := &effectState{
-		ID:                 instance.ID,
-		Type:               instance.DefinitionID,
-		Owner:              instance.OwnerActorID,
-		Start:              now.UnixMilli(),
-		Duration:           meleeAttackDuration.Milliseconds(),
-		X:                  rectX,
-		Y:                  rectY,
-		Width:              width,
-		Height:             height,
-		Params:             params,
-		Instance:           *instance,
-		TelemetrySpawnTick: instance.StartTick,
-	}
-	area := Obstacle{X: rectX, Y: rectY, Width: width, Height: height}
-	return effect, area
-}
-
-func syncProjectileInstance(instance *effectcontract.EffectInstance, owner *actorState, effect *effectState) {
-	if instance == nil || effect == nil {
-		return
-	}
-	if instance.BehaviorState.Extra == nil {
-		instance.BehaviorState.Extra = make(map[string]int)
-	}
-	if instance.Params == nil {
-		instance.Params = make(map[string]int)
-	}
-	if effect.Projectile != nil {
-		instance.BehaviorState.Extra["remainingRange"] = int(math.Round(effect.Projectile.RemainingRange))
-		instance.Params["remainingRange"] = instance.BehaviorState.Extra["remainingRange"]
-		instance.BehaviorState.Extra["dx"] = QuantizeCoord(effect.Projectile.VelocityUnitX)
-		instance.Params["dx"] = instance.BehaviorState.Extra["dx"]
-		instance.BehaviorState.Extra["dy"] = QuantizeCoord(effect.Projectile.VelocityUnitY)
-		instance.Params["dy"] = instance.BehaviorState.Extra["dy"]
-		if tpl := effect.Projectile.Template; tpl != nil && tpl.MaxDistance > 0 {
-			instance.BehaviorState.Extra["range"] = int(math.Round(tpl.MaxDistance))
-			instance.Params["range"] = instance.BehaviorState.Extra["range"]
-		}
-	}
-	geometry := instance.DeliveryState.Geometry
-	if effect.Width > 0 {
-		geometry.Width = quantizeWorldCoord(effect.Width)
-	}
-	if effect.Height > 0 {
-		geometry.Height = quantizeWorldCoord(effect.Height)
-	}
-	radius := effect.Params["radius"]
-	if radius <= 0 {
-		radius = effect.Width / 2
-	}
-	geometry.Radius = quantizeWorldCoord(radius)
-	if owner != nil {
-		geometry.OffsetX = quantizeWorldCoord(centerX(effect) - owner.X)
-		geometry.OffsetY = quantizeWorldCoord(centerY(effect) - owner.Y)
-	}
-	motion := instance.DeliveryState.Motion
-	motion.PositionX = quantizeWorldCoord(centerX(effect))
-	motion.PositionY = quantizeWorldCoord(centerY(effect))
-	if effect.Projectile != nil {
-		speed := 0.0
-		if tpl := effect.Projectile.Template; tpl != nil {
-			speed = tpl.Speed
-		}
-		motion.VelocityX = QuantizeVelocity(effect.Projectile.VelocityUnitX * speed)
-		motion.VelocityY = QuantizeVelocity(effect.Projectile.VelocityUnitY * speed)
-	}
-	instance.DeliveryState.Motion = motion
-	instance.DeliveryState.Geometry = geometry
 }

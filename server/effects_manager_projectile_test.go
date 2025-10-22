@@ -31,7 +31,13 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 		},
 	}
 
-	syncProjectileInstance(instance, owner, effect)
+	internaleffects.SyncContractProjectileInstance(internaleffects.ContractProjectileSyncConfig{
+		Instance: instance,
+		Owner:    projectileOwnerAdapter{state: owner},
+		Effect:   effect,
+		TileSize: tileSize,
+		TickRate: tickRate,
+	})
 
 	rawDX, ok := instance.BehaviorState.Extra["dx"]
 	if !ok {
