@@ -22,6 +22,7 @@ type ApplyStatusEffectDefinition struct {
 type StatusEffectInstanceAttachment struct {
 	SetStatus func(string)
 	Extend    func(time.Time)
+	Clear     func()
 }
 
 // StatusEffectInstanceHandle bundles field mutators for a single status effect
@@ -33,15 +34,126 @@ type StatusEffectInstanceHandle struct {
 	HasDefinition func() bool
 	SetDefinition func(any)
 
+	SetActor func(any)
+	Actor    func() any
+
 	SetSourceID  func(string)
+	SourceID     func() string
 	SetAppliedAt func(time.Time)
 	SetExpiresAt func(time.Time)
+	ExpiresAt    func() time.Time
 
 	SetNextTick func(time.Time)
 	NextTick    func() time.Time
 	SetLastTick func(time.Time)
 
 	Attachment StatusEffectInstanceAttachment
+}
+
+// StatusEffectApplyRuntime bundles the context supplied to apply callbacks when a
+// status effect instance is first created.
+type StatusEffectApplyRuntime struct {
+	Handle StatusEffectInstanceHandle
+	Now    time.Time
+}
+
+// StatusEffectTickRuntime bundles the runtime context for status effect tick
+// callbacks.
+type StatusEffectTickRuntime struct {
+	Handle StatusEffectInstanceHandle
+	Now    time.Time
+}
+
+// StatusEffectExpireRuntime bundles the runtime context for status effect
+// expiry callbacks.
+type StatusEffectExpireRuntime struct {
+	Handle StatusEffectInstanceHandle
+	Now    time.Time
+}
+
+// StatusEffectDefinition captures the runtime callbacks required to advance a
+// status effect instance while hiding the legacy world types behind adapters.
+// AttachVisual delegates fallback visual attachments when the contract effect
+// manager is unavailable.
+type StatusEffectDefinition struct {
+	Type         string
+	TickInterval time.Duration
+
+	OnTick       func(StatusEffectTickRuntime)
+	OnExpire     func(StatusEffectExpireRuntime)
+	AttachVisual func(AttachStatusEffectVisualConfig)
+}
+
+// StatusEffectDefinitionsConfig enumerates the status effects that should be
+// registered along with the callbacks required to drive their runtime
+// behaviour.
+type StatusEffectDefinitionsConfig struct {
+	Burning BurningStatusEffectDefinitionConfig
+}
+
+// BurningStatusEffectDefinitionConfig carries the configuration required to
+// construct the burning status effect definition while keeping the legacy world
+// dependencies behind adapters.
+type BurningStatusEffectDefinitionConfig struct {
+	Type         string
+	Duration     time.Duration
+	TickInterval time.Duration
+	InitialTick  bool
+
+	OnApply  func(StatusEffectApplyRuntime)
+	OnTick   func(StatusEffectTickRuntime)
+	OnExpire func(StatusEffectExpireRuntime)
+
+	FallbackAttachment func(AttachStatusEffectVisualConfig)
+}
+
+// NewStatusEffectDefinitions constructs the registered status effect
+// definitions using the provided configuration.
+func NewStatusEffectDefinitions(cfg StatusEffectDefinitionsConfig) map[string]ApplyStatusEffectDefinition {
+	defs := make(map[string]ApplyStatusEffectDefinition)
+
+	if cfg.Burning.Type != "" {
+		defs[cfg.Burning.Type] = newBurningStatusEffectDefinition(cfg.Burning)
+	}
+
+	return defs
+}
+
+func newBurningStatusEffectDefinition(cfg BurningStatusEffectDefinitionConfig) ApplyStatusEffectDefinition {
+	state := &StatusEffectDefinition{
+		Type:         cfg.Type,
+		TickInterval: cfg.TickInterval,
+	}
+
+	if cfg.OnTick != nil {
+		state.OnTick = cfg.OnTick
+	}
+	if cfg.OnExpire != nil {
+		state.OnExpire = cfg.OnExpire
+	}
+	if cfg.FallbackAttachment != nil {
+		state.AttachVisual = cfg.FallbackAttachment
+	}
+
+	def := ApplyStatusEffectDefinition{
+		Duration:     cfg.Duration,
+		TickInterval: cfg.TickInterval,
+		InitialTick:  cfg.InitialTick,
+		State:        state,
+	}
+
+	if cfg.OnApply != nil {
+		def.OnApply = func(handle StatusEffectInstanceHandle, at time.Time) {
+			cfg.OnApply(StatusEffectApplyRuntime{Handle: handle, Now: at})
+		}
+	}
+	if cfg.OnTick != nil {
+		def.OnTick = func(handle StatusEffectInstanceHandle, at time.Time) {
+			cfg.OnTick(StatusEffectTickRuntime{Handle: handle, Now: at})
+		}
+	}
+
+	return def
 }
 
 // ApplyStatusEffectConfig carries the dependencies required to apply or refresh

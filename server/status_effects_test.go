@@ -3,6 +3,8 @@ package server
 import (
 	"testing"
 	"time"
+
+	"mine-and-die/server/logging"
 )
 
 func TestWorldApplyBurningDamageDelegatesAndFlushesTelemetry(t *testing.T) {
@@ -98,5 +100,47 @@ func TestWorldApplyBurningDamageDelegatesAndFlushesTelemetry(t *testing.T) {
 	victims := entry.VictimBuckets["1"]
 	if victims != 2 {
 		t.Fatalf("expected victim bucket count 2, got %d", victims)
+	}
+}
+
+func TestApplyStatusEffectAttachesFallbackVisualWhenManagerMissing(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000)
+
+	world := &World{
+		publisher:   logging.NopPublisher{},
+		telemetry:   &telemetryCounters{},
+		currentTick: 12,
+	}
+	world.statusEffectDefs = newStatusEffectDefinitions(world)
+
+	actor := &actorState{Actor: Actor{ID: "target-1"}}
+
+	applied := world.applyStatusEffect(actor, StatusEffectBurning, "caster-1", now)
+	if !applied {
+		t.Fatalf("expected status effect to be applied")
+	}
+
+	inst, ok := actor.statusEffects[StatusEffectBurning]
+	if !ok || inst == nil {
+		t.Fatalf("expected status effect instance to be stored")
+	}
+
+	effect := inst.attachedEffect
+	if effect == nil {
+		t.Fatalf("expected fallback visual effect to be attached")
+	}
+	if effect.Type != effectTypeBurningVisual {
+		t.Fatalf("expected visual type %q, got %q", effectTypeBurningVisual, effect.Type)
+	}
+	if effect.Owner != "caster-1" {
+		t.Fatalf("expected effect owner %q, got %q", "caster-1", effect.Owner)
+	}
+	if effect.StatusEffect != StatusEffectBurning {
+		t.Fatalf("expected effect status %q, got %q", StatusEffectBurning, effect.StatusEffect)
+	}
+	if effect.ExpiresAt.Before(now) {
+		t.Fatalf("expected effect expiration after apply time, got %v", effect.ExpiresAt)
 	}
 }
