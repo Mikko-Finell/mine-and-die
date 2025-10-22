@@ -36,11 +36,6 @@ type (
 	ProjectileState      = internaleffects.ProjectileState
 )
 
-type projectileStopOptions struct {
-	triggerImpact bool
-	triggerExpiry bool
-}
-
 const (
 	meleeAttackCooldown = combat.MeleeAttackCooldown
 	meleeAttackDuration = combat.MeleeAttackDuration
@@ -293,11 +288,93 @@ func (w *World) advanceProjectiles(now time.Time, dt float64) {
 			continue
 		}
 		if !now.Before(eff.ExpiresAt) {
-			w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
+			stopCfg := w.projectileStopConfig(eff, now)
+			stopCfg.Options = combat.ProjectileStopOptions{TriggerExpiry: true}
+			combat.StopProjectile(stopCfg)
 			continue
 		}
 		w.advanceProjectile(eff, now, dt)
 	}
+}
+
+func (w *World) projectileStopConfig(eff *effectState, now time.Time) combat.ProjectileStopConfig {
+	if w == nil {
+		return combat.ProjectileStopConfig{}
+	}
+
+	bindings := w.projectileStopAdapter.StopConfig(eff, now)
+
+	stopCfg := combat.ProjectileStopConfig{
+		Effect: eff,
+		Now:    now,
+	}
+	if effectValue := bindings.Effect; effectValue != nil {
+		if bound, ok := effectValue.(*effectState); ok && bound != nil {
+			stopCfg.Effect = bound
+		}
+	}
+	if !bindings.Now.IsZero() {
+		stopCfg.Now = bindings.Now
+	}
+
+	if bindings.SetRemainingRange != nil {
+		stopCfg.SetRemainingRange = bindings.SetRemainingRange
+	} else {
+		stopCfg.SetRemainingRange = func(remaining float64) {
+			w.SetEffectParam(eff, "remainingRange", remaining)
+		}
+	}
+	if bindings.RecordEffectEnd != nil {
+		stopCfg.RecordEffectEnd = bindings.RecordEffectEnd
+	} else {
+		stopCfg.RecordEffectEnd = func(reason string) {
+			w.recordEffectEnd(eff, reason)
+		}
+	}
+
+	areaBindings := bindings.AreaEffectSpawn
+	spawnCfg := internaleffects.AreaEffectSpawnConfig{
+		Now:         areaBindings.Now,
+		CurrentTick: areaBindings.CurrentTick,
+		AllocateID:  areaBindings.AllocateID,
+		RecordSpawn: areaBindings.RecordSpawn,
+	}
+	if sourceValue := areaBindings.Source; sourceValue != nil {
+		if source, ok := sourceValue.(*effectState); ok && source != nil {
+			spawnCfg.Source = source
+		}
+	}
+	if spawnCfg.Source == nil {
+		spawnCfg.Source = eff
+	}
+	if spawnCfg.Now.IsZero() {
+		spawnCfg.Now = now
+	}
+	if spawnCfg.CurrentTick == 0 {
+		spawnCfg.CurrentTick = effectcontract.Tick(int64(w.currentTick))
+	}
+	if spawnCfg.AllocateID == nil {
+		spawnCfg.AllocateID = func() string {
+			w.nextEffectID++
+			return fmt.Sprintf("effect-%d", w.nextEffectID)
+		}
+	}
+	if areaBindings.Register != nil {
+		spawnCfg.Register = func(effect *internaleffects.State) bool {
+			return areaBindings.Register(effect)
+		}
+	}
+	if spawnCfg.Register == nil {
+		spawnCfg.Register = func(effect *internaleffects.State) bool {
+			return w.registerEffect(effect)
+		}
+	}
+	if spawnCfg.RecordSpawn == nil {
+		spawnCfg.RecordSpawn = w.recordEffectSpawn
+	}
+
+	stopCfg.AreaEffectSpawn = &spawnCfg
+	return stopCfg
 }
 
 // LEGACY: advanceProjectile is the legacy physics step. Contract lifecycle
@@ -323,6 +400,14 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 		impactRules.AffectsOwner = tpl.ImpactRules.AffectsOwner
 	}
 
+	stopCfg := w.projectileStopConfig(eff, now)
+	setRemainingRange := stopCfg.SetRemainingRange
+	if setRemainingRange == nil {
+		setRemainingRange = func(remaining float64) {
+			w.SetEffectParam(eff, "remainingRange", remaining)
+		}
+	}
+
 	result := combat.AdvanceProjectile(combat.ProjectileAdvanceConfig{
 		Effect:      eff,
 		Delta:       dt,
@@ -337,15 +422,9 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 		SetPosition: func(x, y float64) {
 			w.SetEffectPosition(eff, x, y)
 		},
-		SetRemainingRange: func(remaining float64) {
-			w.SetEffectParam(eff, "remainingRange", remaining)
-		},
-		Stop: func(triggerImpact, triggerExpiry bool) {
-			w.stopProjectile(eff, now, projectileStopOptions{
-				triggerImpact: triggerImpact,
-				triggerExpiry: triggerExpiry,
-			})
-		},
+		SetRemainingRange: setRemainingRange,
+		Stop:              stopCfg,
+		AreaEffectSpawn:   stopCfg.AreaEffectSpawn,
 		OverlapConfig: combat.ProjectileOverlapResolutionConfig{
 			Impact:              impactRules,
 			OwnerID:             eff.Owner,
@@ -402,12 +481,6 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 		},
 	})
 
-	if tpl != nil && result.OverlapResult.HitsApplied > 0 {
-		if tpl.ImpactRules.ExplodeOnImpact != nil {
-			w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
-		}
-	}
-
 	return result.Stopped
 }
 
@@ -458,114 +531,10 @@ func (w *World) actorByID(id string) *actorState {
 	return nil
 }
 
-func (w *World) stopProjectile(eff *effectState, now time.Time, opts projectileStopOptions) {
-	if eff == nil || eff.Projectile == nil {
-		return
-	}
-
-	p := eff.Projectile
-	if p.RemainingRange != 0 {
-		p.RemainingRange = 0
-		w.SetEffectParam(eff, "remainingRange", 0)
-	}
-
-	if p.ExpiryResolved {
-		if eff.ExpiresAt.After(now) {
-			eff.ExpiresAt = now
-		}
-		return
-	}
-
-	tpl := p.Template
-	if opts.triggerImpact && tpl != nil && tpl.ImpactRules.ExplodeOnImpact != nil {
-		w.spawnAreaEffectAt(eff, now, tpl.ImpactRules.ExplodeOnImpact)
-	}
-	if opts.triggerExpiry {
-		w.triggerExpiryExplosion(eff, now)
-	}
-
-	reason := "stopped"
-	if opts.triggerImpact {
-		reason = "impact"
-	} else if opts.triggerExpiry {
-		reason = "expiry"
-	}
-
-	p.ExpiryResolved = true
-	eff.ExpiresAt = now
-	w.recordEffectEnd(eff, reason)
-}
-
-func (w *World) triggerExpiryExplosion(eff *effectState, now time.Time) {
-	if eff == nil || eff.Projectile == nil {
-		return
-	}
-	tpl := eff.Projectile.Template
-	if tpl == nil {
-		return
-	}
-	spec := tpl.ImpactRules.ExplodeOnExpiry
-	if spec == nil {
-		return
-	}
-	if tpl.ImpactRules.ExpiryOnlyIfNoHits && eff.Projectile.HitCount > 0 {
-		return
-	}
-	w.spawnAreaEffectAt(eff, now, spec)
-}
-
-func (w *World) spawnAreaEffectAt(eff *effectState, now time.Time, spec *ExplosionSpec) {
-	if eff == nil || spec == nil {
-		return
-	}
-	radius := spec.Radius
-	size := radius * 2
-	if size <= 0 {
-		size = eff.Width
-		if size <= 0 {
-			size = 1
-		}
-	}
-	params := internaleffects.MergeParams(spec.Params, map[string]float64{
-		"radius": radius,
-	})
-	if spec.Duration > 0 {
-		if params == nil {
-			params = make(map[string]float64)
-		}
-		params["duration_ms"] = float64(spec.Duration.Milliseconds())
-	}
-
-	w.nextEffectID++
-	instanceID := fmt.Sprintf("effect-%d", w.nextEffectID)
-	area := &effectState{
-		ID:       instanceID,
-		Type:     spec.EffectType,
-		Owner:    eff.Owner,
-		Start:    now.UnixMilli(),
-		Duration: spec.Duration.Milliseconds(),
-		X:        centerX(eff) - size/2,
-		Y:        centerY(eff) - size/2,
-		Width:    size,
-		Height:   size,
-		Params:   params,
-		Instance: effectcontract.EffectInstance{
-			ID:           instanceID,
-			DefinitionID: spec.EffectType,
-			OwnerActorID: eff.Owner,
-			StartTick:    effectcontract.Tick(int64(w.currentTick)),
-		},
-		ExpiresAt:          now.Add(spec.Duration),
-		TelemetrySpawnTick: effectcontract.Tick(int64(w.currentTick)),
-	}
-	if !w.registerEffect(area) {
-		return
-	}
-	w.recordEffectSpawn(spec.EffectType, "explosion")
-}
-
 func (w *World) maybeExplodeOnExpiry(eff *effectState, now time.Time) {
-	w.stopProjectile(eff, now, projectileStopOptions{triggerExpiry: true})
+	stopCfg := w.projectileStopConfig(eff, now)
+	stopCfg.Options = combat.ProjectileStopOptions{TriggerExpiry: true}
+	combat.StopProjectile(stopCfg)
 }
 
 func effectAABB(eff *effectState) Obstacle {
@@ -592,14 +561,6 @@ func (w *World) anyObstacleOverlap(area Obstacle) bool {
 		}
 	}
 	return false
-}
-
-func centerX(eff *effectState) float64 {
-	return eff.X + eff.Width/2
-}
-
-func centerY(eff *effectState) float64 {
-	return eff.Y + eff.Height/2
 }
 
 // pruneEffects drops expired effects from the in-memory list.

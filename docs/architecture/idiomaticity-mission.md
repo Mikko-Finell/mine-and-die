@@ -370,7 +370,14 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the combat attack-overlap telemetry into `internal/combat`, exposing an adapter that accepts the publisher, entity lookup, and projectile metadata so multi-target hits reuse the shared logging helper.
 - [x] Extract the projectile overlap resolution in `server/effects.go` into `internal/combat`, returning a helper that accepts the projectile state, target iterators, hit callbacks, and telemetry recorder so the world step delegates multi-target scanning.
 - [x] Extract the remaining projectile advance logic in `server/effects.go` into `internal/combat`, returning a helper that applies travel, range, and obstacle gating before delegating to the shared overlap resolver so the world wrapper only wires effect state and callbacks.
-- [ ] Extract the projectile stop helper in `server/effects.go` into `internal/combat`, exposing a callback-driven adapter so the world wrapper only supplies telemetry and explosion hooks.
+- [x] Extract the projectile stop helper in `server/effects.go` into `internal/combat`, exposing a callback-driven adapter so the world wrapper only supplies telemetry and explosion hooks.
+- [x] Move the area-effect explosion spawn helper (`spawnAreaEffectAt`) into `internal/effects`, introducing a configuration seam so the world wrapper only wires ID allocation, registry adapters, and telemetry callbacks.
+- [x] Thread `effects.AreaEffectSpawnConfig` through `combat.StopProjectile` so the combat helper spawns explosions directly and the world wrapper can drop its dedicated shim.
+- [x] Thread `effects.AreaEffectSpawnConfig` through `combat.AdvanceProjectile` so impact explosions from hit resolution spawn via the shared helper and `World.advanceProjectile` can drop its direct call.
+- [x] Replace the `Stop` callback on `combat.ProjectileAdvanceConfig` with a nested `ProjectileStopConfig` so `AdvanceProjectile` applies stop semantics directly while the world wrapper only supplies telemetry adapters.
+- [x] Extract a shared world helper that builds the `combat.ProjectileStopConfig` (and reusable area-effect spawn settings) so `advanceProjectiles`, `maybeExplodeOnExpiry`, and the combat helper all delegate through the same wiring before retiring the bespoke stop wrapper.
+- [x] Move the shared projectile stop wiring (`projectileStopConfig`/`areaEffectSpawnConfig`) into `internal/world`, exposing an adapter so the server wrapper only forwards the effect state and current time when stopping or advancing projectiles.
+- [ ] Move the legacy projectile advancement loop (`advanceProjectiles` and `maybeExplodeOnExpiry`) into `internal/world`, exposing a helper that walks non-contract projectiles and applies stop semantics through the shared adapter.
 
 - [x] Keep the tick loop in `sim/engine`:
 

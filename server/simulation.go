@@ -81,6 +81,7 @@ type World struct {
 	effectHitAdapter      combat.EffectHitCallback
 	meleeAbilityGate      combat.MeleeAbilityGate
 	projectileAbilityGate combat.ProjectileAbilityGate
+	projectileStopAdapter worldpkg.ProjectileStopAdapter
 	projectileTemplates   map[string]*ProjectileTemplate
 	statusEffectDefs      map[StatusEffectType]*StatusEffectDefinition
 	nextEffectID          uint64
@@ -187,6 +188,47 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 	w.configureEffectHitAdapter()
 	w.configureMeleeAbilityGate()
 	w.configureProjectileAbilityGate()
+	w.projectileStopAdapter = worldpkg.NewProjectileStopAdapter(worldpkg.ProjectileStopAdapterConfig{
+		AllocateID: func() string {
+			w.nextEffectID++
+			return fmt.Sprintf("effect-%d", w.nextEffectID)
+		},
+		RegisterEffect: func(effect any) bool {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				if cast, ok := effect.(*internaleffects.State); ok {
+					state = (*effectState)(cast)
+				}
+			}
+			return w.registerEffect(state)
+		},
+		RecordEffectSpawn: w.recordEffectSpawn,
+		CurrentTick: func() effectcontract.Tick {
+			return effectcontract.Tick(int64(w.currentTick))
+		},
+		SetRemainingRange: func(effect any, remaining float64) {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				if cast, ok := effect.(*internaleffects.State); ok {
+					state = (*effectState)(cast)
+				}
+			}
+			if state != nil {
+				w.SetEffectParam(state, "remainingRange", remaining)
+			}
+		},
+		RecordEffectEnd: func(effect any, reason string) {
+			state, _ := effect.(*effectState)
+			if state == nil {
+				if cast, ok := effect.(*internaleffects.State); ok {
+					state = (*effectState)(cast)
+				}
+			}
+			if state != nil {
+				w.recordEffectEnd(state, reason)
+			}
+		},
+	})
 	w.playerHitCallback = combat.NewWorldPlayerEffectHitCallback(combat.WorldPlayerEffectHitCallbackConfig{
 		Dispatcher: w.effectHitAdapter,
 	})
