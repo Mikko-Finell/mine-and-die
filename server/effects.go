@@ -11,7 +11,6 @@ import (
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingcombat "mine-and-die/server/logging/combat"
-	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
 // EffectTrigger represents a one-shot visual instruction that the client may
@@ -42,102 +41,6 @@ type (
 type projectileStopOptions struct {
 	triggerImpact bool
 	triggerExpiry bool
-}
-
-func (w *World) resolveMeleeImpact(effect *effectState, owner *actorState, actorID string, tick uint64, now time.Time, area Obstacle) {
-	if w == nil || effect == nil {
-		return
-	}
-
-	for _, obs := range w.obstacles {
-		if obs.Type != obstacleTypeGoldOre {
-			continue
-		}
-		if !obstaclesOverlap(area, obs, 0) {
-			continue
-		}
-		var addErr error
-		if _, ok := w.players[actorID]; ok {
-			addErr = w.MutateInventory(actorID, func(inv *Inventory) error {
-				if inv == nil {
-					return nil
-				}
-				_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
-				return err
-			})
-		} else if _, ok := w.npcs[actorID]; ok {
-			addErr = w.MutateNPCInventory(actorID, func(inv *Inventory) error {
-				if inv == nil {
-					return nil
-				}
-				_, err := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
-				return err
-			})
-		} else if owner != nil {
-			_, addErr = owner.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
-		}
-		if addErr != nil {
-			loggingeconomy.ItemGrantFailed(
-				context.Background(),
-				w.publisher,
-				tick,
-				w.entityRef(actorID),
-				loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 1, Reason: "mine_gold"},
-				map[string]any{"error": addErr.Error(), "obstacle": obs.ID},
-			)
-		}
-		break
-	}
-
-	hitPlayerIDs := make([]string, 0)
-	for id, target := range w.players {
-		if id == actorID {
-			continue
-		}
-		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
-			hitPlayerIDs = append(hitPlayerIDs, id)
-			w.applyEffectHitPlayer(effect, target, now)
-		}
-	}
-
-	hitNPCIDs := make([]string, 0)
-	for id, target := range w.npcs {
-		if id == actorID {
-			continue
-		}
-		if circleRectOverlap(target.X, target.Y, playerHalf, area) {
-			hitNPCIDs = append(hitNPCIDs, id)
-			w.applyEffectHitNPC(effect, target, now)
-		}
-	}
-
-	if len(hitPlayerIDs) == 0 && len(hitNPCIDs) == 0 {
-		return
-	}
-
-	targets := make([]logging.EntityRef, 0, len(hitPlayerIDs)+len(hitNPCIDs))
-	for _, id := range hitPlayerIDs {
-		targets = append(targets, w.entityRef(id))
-	}
-	for _, id := range hitNPCIDs {
-		targets = append(targets, w.entityRef(id))
-	}
-	payload := loggingcombat.AttackOverlapPayload{Ability: effect.Type}
-	if len(hitPlayerIDs) > 0 {
-		payload.PlayerHits = append(payload.PlayerHits, hitPlayerIDs...)
-	}
-	if len(hitNPCIDs) > 0 {
-		payload.NPCHits = append(payload.NPCHits, hitNPCIDs...)
-	}
-	loggingcombat.AttackOverlap(
-		context.Background(),
-		w.publisher,
-		tick,
-		w.entityRef(actorID),
-		targets,
-		payload,
-		nil,
-	)
 }
 
 type effectBehavior interface {

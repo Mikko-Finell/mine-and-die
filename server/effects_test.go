@@ -40,7 +40,99 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 	effect := &effectState{Type: effectTypeAttack}
 	area := Obstacle{X: 0, Y: 0, Width: 64, Height: 64}
 
-	w.resolveMeleeImpact(effect, &npc.actorState, npc.ID, 1, time.Now(), area)
+	now := time.Now()
+	worldpkg.ResolveMeleeImpact(worldpkg.ResolveMeleeImpactConfig{
+		EffectType: effect.Type,
+		Effect:     effect,
+		Owner:      &npc.actorState,
+		ActorID:    npc.ID,
+		Tick:       1,
+		Now:        now,
+		Area: worldpkg.Obstacle{
+			X:      area.X,
+			Y:      area.Y,
+			Width:  area.Width,
+			Height: area.Height,
+		},
+		Obstacles: w.obstacles,
+		ForEachPlayer: func(visit func(id string, x, y float64, reference any)) {
+			for id, player := range w.players {
+				if player == nil {
+					continue
+				}
+				visit(id, player.X, player.Y, player)
+			}
+		},
+		ForEachNPC: func(visit func(id string, x, y float64, reference any)) {
+			for id, state := range w.npcs {
+				if state == nil {
+					continue
+				}
+				visit(id, state.X, state.Y, state)
+			}
+		},
+		GivePlayerGold: func(id string) (bool, error) {
+			if _, ok := w.players[id]; !ok {
+				return false, nil
+			}
+			err := w.MutateInventory(id, func(inv *Inventory) error {
+				if inv == nil {
+					return nil
+				}
+				_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+				return addErr
+			})
+			return true, err
+		},
+		GiveNPCGold: func(id string) (bool, error) {
+			if _, ok := w.npcs[id]; !ok {
+				return false, nil
+			}
+			err := w.MutateNPCInventory(id, func(inv *Inventory) error {
+				if inv == nil {
+					return nil
+				}
+				_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+				return addErr
+			})
+			return true, err
+		},
+		GiveOwnerGold: func(ref any) error {
+			actor, ok := ref.(*actorState)
+			if !ok || actor == nil {
+				return nil
+			}
+			_, err := actor.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+			return err
+		},
+		ApplyPlayerHit: func(effectRef any, target any, when time.Time) {
+			eff, _ := effectRef.(*effectState)
+			player, _ := target.(*playerState)
+			if eff == nil || player == nil {
+				return
+			}
+			w.applyEffectHitPlayer(eff, player, when)
+		},
+		ApplyNPCHit: func(effectRef any, target any, when time.Time) {
+			eff, _ := effectRef.(*effectState)
+			npcTarget, _ := target.(*npcState)
+			if eff == nil || npcTarget == nil {
+				return
+			}
+			w.applyEffectHitNPC(eff, npcTarget, when)
+		},
+		RecordGoldGrantFailure: func(actorID string, obstacleID string, err error) {
+			if err != nil {
+				t.Fatalf("unexpected gold grant failure: %v", err)
+			}
+		},
+		RecordAttackOverlap: func(actorID string, tick uint64, effectType string, playerHits []string, npcHits []string) {
+			// The mining scenario only awards ore and should not record hits.
+			if len(playerHits) > 0 || len(npcHits) > 0 {
+				t.Fatalf("expected no attack overlap telemetry, got players=%v npcs=%v", playerHits, npcHits)
+			}
+		},
+	})
 
 	if qty := npc.Inventory.QuantityOf(ItemTypeGold); qty != 1 {
 		t.Fatalf("expected npc to receive 1 gold, got %d", qty)
