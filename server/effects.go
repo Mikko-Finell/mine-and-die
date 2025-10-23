@@ -183,6 +183,43 @@ func (w *World) flushEffectTelemetry(eff *effectState) {
 	eff.TelemetryFirstHitTick = 0
 }
 
+func (w *World) configureAbilityOwnerAdapters() {
+	if w == nil {
+		return
+	}
+
+	stateLookup := worldpkg.NewAbilityOwnerStateLookup(worldpkg.AbilityOwnerStateLookupConfig[*actorState]{
+		FindPlayer: func(actorID string) (*actorState, *map[string]time.Time, bool) {
+			if w == nil || actorID == "" {
+				return nil, nil, false
+			}
+			player, ok := w.players[actorID]
+			if !ok || player == nil {
+				return nil, nil, false
+			}
+			return &player.actorState, &player.cooldowns, true
+		},
+		FindNPC: func(actorID string) (*actorState, *map[string]time.Time, bool) {
+			if w == nil || actorID == "" {
+				return nil, nil, false
+			}
+			npc, ok := w.npcs[actorID]
+			if !ok || npc == nil {
+				return nil, nil, false
+			}
+			return &npc.actorState, &npc.cooldowns, true
+		},
+	})
+
+	w.abilityOwnerStateLookup = stateLookup
+	w.abilityOwnerLookup = worldpkg.NewAbilityOwnerLookup(worldpkg.AbilityOwnerLookupConfig[*actorState, combat.AbilityActor]{
+		LookupState: stateLookup,
+		Snapshot: func(state *actorState) *combat.AbilityActor {
+			return abilityActorSnapshot(state)
+		},
+	})
+}
+
 // QueueEffectTrigger appends a fire-and-forget trigger for clients. The caller
 // must hold the world mutex.
 func (w *World) QueueEffectTrigger(trigger EffectTrigger, now time.Time) EffectTrigger {
@@ -202,24 +239,6 @@ func (w *World) QueueEffectTrigger(trigger EffectTrigger, now time.Time) EffectT
 	w.effectTriggers = append(w.effectTriggers, trigger)
 	w.recordEffectTrigger(trigger.Type)
 	return trigger
-}
-
-func (w *World) abilityOwner(actorID string) (*combat.AbilityActor, *map[string]time.Time) {
-	state, cooldowns := w.abilityOwnerState(actorID)
-	if state == nil || cooldowns == nil {
-		return nil, nil
-	}
-	return abilityActorSnapshot(state), cooldowns
-}
-
-func (w *World) abilityOwnerState(actorID string) (*actorState, *map[string]time.Time) {
-	if player, ok := w.players[actorID]; ok {
-		return &player.actorState, &player.cooldowns
-	}
-	if npc, ok := w.npcs[actorID]; ok {
-		return &npc.actorState, &npc.cooldowns
-	}
-	return nil, nil
 }
 
 func (w *World) entityRef(actorID string) logging.EntityRef {
@@ -793,23 +812,43 @@ func (w *World) configureMeleeAbilityGate() {
 		return
 	}
 
-	w.meleeAbilityGate = combat.NewMeleeAbilityGate(combat.MeleeAbilityGateConfig{
-		AbilityID: effectTypeAttack,
-		Cooldown:  meleeAttackCooldown,
-		LookupOwner: func(actorID string) (*combat.AbilityActor, *map[string]time.Time, bool) {
-			owner, cooldowns := w.abilityOwner(actorID)
-			if owner == nil || cooldowns == nil {
-				return nil, nil, false
-			}
+	if w.abilityOwnerLookup == nil {
+		w.configureAbilityOwnerAdapters()
+	}
 
-			return owner, cooldowns, true
+	gate, ok := worldpkg.BindMeleeAbilityGate(worldpkg.AbilityGateBindingOptions[*actorState, combat.AbilityActor, combat.MeleeAbilityGate]{
+		AbilityGateOptions: worldpkg.AbilityGateOptions[*actorState, combat.AbilityActor]{
+			AbilityID: effectTypeAttack,
+			Cooldown:  meleeAttackCooldown,
+			Lookup:    w.abilityOwnerLookup,
+		},
+		Factory: func(cfg worldpkg.AbilityGateConfig[combat.AbilityActor]) (combat.MeleeAbilityGate, bool) {
+			constructed := combat.NewMeleeAbilityGate(combat.MeleeAbilityGateConfig{
+				AbilityID:   cfg.AbilityID,
+				Cooldown:    cfg.Cooldown,
+				LookupOwner: cfg.LookupOwner,
+			})
+			if constructed == nil {
+				return nil, false
+			}
+			return constructed, true
 		},
 	})
+	if !ok {
+		w.meleeAbilityGate = nil
+		return
+	}
+
+	w.meleeAbilityGate = gate
 }
 
 func (w *World) configureProjectileAbilityGate() {
 	if w == nil {
 		return
+	}
+
+	if w.abilityOwnerLookup == nil {
+		w.configureAbilityOwnerAdapters()
 	}
 
 	tpl := w.projectileTemplates[effectTypeFireball]
@@ -818,18 +857,30 @@ func (w *World) configureProjectileAbilityGate() {
 		return
 	}
 
-	w.projectileAbilityGate = combat.NewProjectileAbilityGate(combat.ProjectileAbilityGateConfig{
-		AbilityID: tpl.Type,
-		Cooldown:  tpl.Cooldown,
-		LookupOwner: func(actorID string) (*combat.AbilityActor, *map[string]time.Time, bool) {
-			owner, cooldowns := w.abilityOwner(actorID)
-			if owner == nil || cooldowns == nil {
-				return nil, nil, false
+	gate, ok := worldpkg.BindProjectileAbilityGate(worldpkg.AbilityGateBindingOptions[*actorState, combat.AbilityActor, combat.ProjectileAbilityGate]{
+		AbilityGateOptions: worldpkg.AbilityGateOptions[*actorState, combat.AbilityActor]{
+			AbilityID: tpl.Type,
+			Cooldown:  tpl.Cooldown,
+			Lookup:    w.abilityOwnerLookup,
+		},
+		Factory: func(cfg worldpkg.AbilityGateConfig[combat.AbilityActor]) (combat.ProjectileAbilityGate, bool) {
+			constructed := combat.NewProjectileAbilityGate(combat.ProjectileAbilityGateConfig{
+				AbilityID:   cfg.AbilityID,
+				Cooldown:    cfg.Cooldown,
+				LookupOwner: cfg.LookupOwner,
+			})
+			if constructed == nil {
+				return nil, false
 			}
-
-			return owner, cooldowns, true
+			return constructed, true
 		},
 	})
+	if !ok {
+		w.projectileAbilityGate = nil
+		return
+	}
+
+	w.projectileAbilityGate = gate
 }
 
 func (w *World) configureEffectHitAdapter() {

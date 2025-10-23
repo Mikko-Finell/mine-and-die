@@ -4,6 +4,7 @@ import (
 	"math"
 
 	internaleffects "mine-and-die/server/internal/effects"
+	items "mine-and-die/server/internal/items"
 	worldpkg "mine-and-die/server/internal/world"
 	stats "mine-and-die/server/stats"
 )
@@ -104,7 +105,7 @@ func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityI
 		return nil
 	}
 
-	return worldpkg.MutateActorInventory(
+	return items.MutateActorInventory(
 		&actor.Inventory,
 		version,
 		mutate,
@@ -121,7 +122,7 @@ func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityI
 		return nil
 	}
 
-	return worldpkg.MutateActorEquipment(
+	return items.MutateActorEquipment(
 		&actor.Equipment,
 		version,
 		mutate,

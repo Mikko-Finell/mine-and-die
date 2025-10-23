@@ -10,6 +10,7 @@ import (
 	effectcontract "mine-and-die/server/effects/contract"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
+	internalstats "mine-and-die/server/internal/stats"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
@@ -71,30 +72,32 @@ type World struct {
 	npcs    map[string]*npcState
 	// effects/effectTriggers/nextEffectID track contract-managed runtime state
 	// and author the telemetry snapshots consumed by gameplay and analytics.
-	effects               []*effectState
-	effectsByID           map[string]*effectState
-	effectsIndex          *effectSpatialIndex
-	effectsRegistry       internaleffects.Registry
-	effectTriggers        []EffectTrigger
-	effectManager         *EffectManager
-	obstacles             []Obstacle
-	effectHitAdapter      combat.EffectHitCallback
-	meleeAbilityGate      combat.MeleeAbilityGate
-	projectileAbilityGate combat.ProjectileAbilityGate
-	projectileStopAdapter worldpkg.ProjectileStopAdapter
-	projectileTemplates   map[string]*ProjectileTemplate
-	statusEffectDefs      map[StatusEffectType]worldpkg.ApplyStatusEffectDefinition
-	nextEffectID          uint64
-	nextNPCID             uint64
-	nextGroundItemID      uint64
-	aiLibrary             *aiLibrary
-	config                worldConfig
-	rng                   *rand.Rand
-	seed                  string
-	publisher             logging.Publisher
-	currentTick           uint64
-	telemetry             *telemetryCounters
-	recordAttackOverlap   func(ownerID string, tick uint64, ability string, playerHits []string, npcHits []string, metadata map[string]any)
+	effects                 []*effectState
+	effectsByID             map[string]*effectState
+	effectsIndex            *effectSpatialIndex
+	effectsRegistry         internaleffects.Registry
+	effectTriggers          []EffectTrigger
+	effectManager           *EffectManager
+	obstacles               []Obstacle
+	effectHitAdapter        combat.EffectHitCallback
+	meleeAbilityGate        combat.MeleeAbilityGate
+	projectileAbilityGate   combat.ProjectileAbilityGate
+	abilityOwnerLookup      worldpkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
+	abilityOwnerStateLookup worldpkg.AbilityOwnerStateLookup[*actorState]
+	projectileStopAdapter   worldpkg.ProjectileStopAdapter
+	projectileTemplates     map[string]*ProjectileTemplate
+	statusEffectDefs        map[StatusEffectType]worldpkg.ApplyStatusEffectDefinition
+	nextEffectID            uint64
+	nextNPCID               uint64
+	nextGroundItemID        uint64
+	aiLibrary               *aiLibrary
+	config                  worldConfig
+	rng                     *rand.Rand
+	seed                    string
+	publisher               logging.Publisher
+	currentTick             uint64
+	telemetry               *telemetryCounters
+	recordAttackOverlap     func(ownerID string, tick uint64, ability string, playerHits []string, npcHits []string, metadata map[string]any)
 
 	playerHitCallback worldpkg.EffectHitCallback
 	npcHitCallback    worldpkg.EffectHitCallback
@@ -112,37 +115,37 @@ func (w *World) resolveStats(tick uint64) {
 	}
 
 	if len(w.players) > 0 {
-		actors := make([]worldpkg.StatsActor, 0, len(w.players))
+		actors := make([]internalstats.Actor, 0, len(w.players))
 		for _, player := range w.players {
 			if player == nil {
 				continue
 			}
 			player := player
-			actors = append(actors, worldpkg.StatsActor{
+			actors = append(actors, internalstats.Actor{
 				Component: &player.stats,
 				SyncMaxHealth: func(max float64) {
 					w.setActorHealth(&player.actorState, &player.version, player.ID, PatchPlayerHealth, max, player.Health)
 				},
 			})
 		}
-		worldpkg.ResolveStats(tick, actors)
+		internalstats.Resolve(tick, actors)
 	}
 
 	if len(w.npcs) > 0 {
-		actors := make([]worldpkg.StatsActor, 0, len(w.npcs))
+		actors := make([]internalstats.Actor, 0, len(w.npcs))
 		for _, npc := range w.npcs {
 			if npc == nil {
 				continue
 			}
 			npc := npc
-			actors = append(actors, worldpkg.StatsActor{
+			actors = append(actors, internalstats.Actor{
 				Component: &npc.stats,
 				SyncMaxHealth: func(max float64) {
 					w.setActorHealth(&npc.actorState, &npc.version, npc.ID, PatchNPCHealth, max, npc.Health)
 				},
 			})
 		}
-		worldpkg.ResolveStats(tick, actors)
+		internalstats.Resolve(tick, actors)
 	}
 }
 
@@ -151,7 +154,7 @@ func (w *World) syncMaxHealth(actor *actorState, version *uint64, entityID strin
 		return
 	}
 
-	worldpkg.SyncMaxHealth(comp, func(max float64) {
+	internalstats.SyncMaxHealth(comp, func(max float64) {
 		w.setActorHealth(actor, version, entityID, kind, max, actor.Health)
 	})
 }
@@ -185,6 +188,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		journal:             newJournal(capacity, maxAge),
 	}
 	w.statusEffectDefs = newStatusEffectDefinitions(w)
+	w.configureAbilityOwnerAdapters()
 	w.configureEffectHitAdapter()
 	w.configureMeleeAbilityGate()
 	w.configureProjectileAbilityGate()

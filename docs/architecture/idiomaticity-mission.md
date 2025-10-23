@@ -397,7 +397,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Drop the `handle.Actor` guard in `World.handleBurningStatusApply` so the fallback path relies on the handle-provided actor reference when attaching visuals.
 - [x] Drop the `handle.Actor` guard in `World.attachStatusEffectVisual` so the helper always resolves fallback actors through the handle accessor.
 - [x] Add regression coverage proving the fallback attachment path resolves the actor through the handle when callers pass a nil actor pointer.
-- [ ] Move `World.abilityOwner` and `World.abilityOwnerState` into `internal/world`, returning adapters that expose `combat.AbilityActor` snapshots so combat ability gating lives behind the world package seams.
+- [x] Move `World.abilityOwner` and `World.abilityOwnerState` into `internal/world`, returning adapters that expose `combat.AbilityActor` snapshots so combat ability gating lives behind the world package seams.
+- [x] Expose ability gate constructors in `internal/world` that build the melee and projectile gate configs from ability owner lookups so the legacy world wrapper only wires telemetry, cooldowns, and templates.
+- [x] Move the melee and projectile gate wiring into `internal/world` helpers that accept `combat` gate factories so the legacy world wrapper drops direct `combat.New*AbilityGate` calls.
 
 - [x] Keep the tick loop in `sim/engine`:
 
@@ -408,10 +410,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Carve out `world/` for tiles, spatial index, RNG/time, and map helpers.
   - [x] Carve out `journal/` for write-barriers and diff recording.
   - [x] Carve out `effects/` for authoritative visual events.
-  - [ ] Carve out `combat/` for hit and damage rules.
-  - [ ] Carve out `stats/` for actor stats.
-  - [ ] Carve out `items/` for items and equipment.
+  - [x] Carve out `combat/` for hit and damage rules.
+  - [x] Carve out `stats/` for actor stats.
+  - [x] Carve out `items/` for items and equipment.
   - [ ] Carve out `ai/` for NPC logic and behaviors.
+  - [x] Move the actor inventory state and mutation helpers (`inventory.go`, `equipment.go`) into a new `internal/items` package so the legacy world wrapper delegates item bookkeeping to the shared adapters.
+  - [ ] Move the ground item mutation and lifecycle helpers (`ground_items.go`) into `internal/items` so drop/pickup flows reuse the shared item adapters.
 - [ ] Route mutations only through `journal` APIs to record diffs.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
