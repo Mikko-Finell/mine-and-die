@@ -679,17 +679,31 @@ func simActorFromLegacy(actor Actor) sim.Actor {
 		Facing:    toSimFacing(actor.Facing),
 		Health:    actor.Health,
 		MaxHealth: actor.MaxHealth,
-		Inventory: simInventoryFromLegacy(actor.Inventory),
-		Equipment: simEquipmentFromLegacy(actor.Equipment),
+		Inventory: itemspkg.AssembleInventory(actor.Inventory.Slots, func(slot InventorySlot) sim.InventorySlot {
+			return sim.InventorySlot{
+				Slot: slot.Slot,
+				Item: sim.ItemStack{
+					Type:           toSimItemType(slot.Item.Type),
+					FungibilityKey: slot.Item.FungibilityKey,
+					Quantity:       slot.Item.Quantity,
+				},
+			}
+		}, func(slots []sim.InventorySlot) sim.Inventory {
+			return sim.Inventory{Slots: slots}
+		}),
+		Equipment: itemspkg.AssembleEquipment(actor.Equipment.Slots, func(slot EquippedItem) sim.EquippedItem {
+			return sim.EquippedItem{
+				Slot: toSimEquipSlot(slot.Slot),
+				Item: sim.ItemStack{
+					Type:           toSimItemType(slot.Item.Type),
+					FungibilityKey: slot.Item.FungibilityKey,
+					Quantity:       slot.Item.Quantity,
+				},
+			}
+		}, func(slots []sim.EquippedItem) sim.Equipment {
+			return sim.Equipment{Slots: slots}
+		}),
 	}
-}
-
-func simInventoryFromLegacy(inv Inventory) sim.Inventory {
-	return sim.Inventory{Slots: itemssim.SimInventorySlotsFromAny(inv.Slots)}
-}
-
-func simEquipmentFromLegacy(eq Equipment) sim.Equipment {
-	return sim.Equipment{Slots: itemssim.SimEquippedItemsFromAny(eq.Slots)}
 }
 
 func legacyActorFromSim(actor sim.Actor) Actor {
@@ -706,31 +720,33 @@ func legacyActorFromSim(actor sim.Actor) Actor {
 }
 
 func legacyInventoryFromSim(inv sim.Inventory) Inventory {
-	if len(inv.Slots) == 0 {
-		return Inventory{}
-	}
-	converted := make([]InventorySlot, len(inv.Slots))
-	for i, slot := range inv.Slots {
-		converted[i] = InventorySlot{
+	slots := itemspkg.AssembleInventory(inv.Slots, func(slot sim.InventorySlot) InventorySlot {
+		return InventorySlot{
 			Slot: slot.Slot,
 			Item: legacyItemStackFromSim(slot.Item),
 		}
+	}, func(slots []InventorySlot) []InventorySlot {
+		return slots
+	})
+	if len(slots) == 0 {
+		return Inventory{}
 	}
-	return Inventory{Slots: converted}
+	return Inventory{Slots: slots}
 }
 
 func legacyEquipmentFromSim(eq sim.Equipment) Equipment {
-	if len(eq.Slots) == 0 {
-		return Equipment{}
-	}
-	converted := make([]EquippedItem, len(eq.Slots))
-	for i, slot := range eq.Slots {
-		converted[i] = EquippedItem{
+	slots := itemspkg.AssembleEquipment(eq.Slots, func(slot sim.EquippedItem) EquippedItem {
+		return EquippedItem{
 			Slot: legacyEquipSlotFromSim(slot.Slot),
 			Item: legacyItemStackFromSim(slot.Item),
 		}
+	}, func(slots []EquippedItem) []EquippedItem {
+		return slots
+	})
+	if len(slots) == 0 {
+		return Equipment{}
 	}
-	return Equipment{Slots: converted}
+	return Equipment{Slots: slots}
 }
 
 func legacyItemStackFromSim(stack sim.ItemStack) ItemStack {

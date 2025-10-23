@@ -445,7 +445,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the effect event batch and resync signal conversions out of `sim_engine_adapter.go` into `internal/effects` so the adapter and hub rely on the shared helpers when cloning journal batches.
 - [x] Route alive effect ID cloning through `internal/effects` so the adapter, hub, and tests stop depending on the server-local helper and `simutil` can drop its dedicated clone function.
 - [x] Move the inventory and equipment patch payload conversions into `internal/items` so the adapter reuses the shared item helpers when cloning patch payloads.
-- [ ] Move the actor inventory and equipment snapshot conversions into `internal/items` so adapter and world callers share the same helpers when translating actors.
+- [x] Move the actor inventory and equipment snapshot conversions into `internal/items` so adapter and world callers share the same helpers when translating actors.
+- [x] Add `internal/items` helpers that wrap the slot mappers to build full `sim.Inventory` and `sim.Equipment` snapshots (and the reverse) so the adapter and tests can drop their struct-assembly loops.
+- [ ] Update `internal/sim/patches` player replay helpers to use the shared inventory/equipment snapshot builders so clone/apply flows drop their bespoke slice copy logic.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**
