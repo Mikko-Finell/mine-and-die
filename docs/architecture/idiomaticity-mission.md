@@ -451,7 +451,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Update `internal/simutil` clone helpers to use the shared inventory/equipment snapshot builders so the utilities drop their `items/simpayloads` slice copy dependency.
 - [x] Update `internal/items/simpayloads` inventory and equipment payload cloning to reuse the shared snapshot builders so patch conversions drop their bespoke slice copy logic.
 - [x] Add dedicated `internal/items/simsnapshots` helpers that assemble `sim.Inventory` and `sim.Equipment` snapshots from `[]sim` slots and update the `sim/patches`, `simutil`, and `items/simpayloads` callers to use them so identity mapper closures disappear.
+- [x] Promote the slot→snapshot helpers to `internal/items` and update the existing call sites so snapshot assembly lives alongside the shared item clones without changing schemas.
 - [ ] Expose slot clone helpers from `internal/items` (for example `CloneInventorySlots` and `CloneEquippedItems`) and update `simutil` and `items/simpayloads` to call them directly so the struct assemblers no longer reach into `.Slots` for cloning.
+- [ ] Route the `sim_engine_adapter` inventory and equipment conversions through the promoted helpers so adapter cloning reuses the shared snapshot assembly.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**

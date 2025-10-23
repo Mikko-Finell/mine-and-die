@@ -3,7 +3,7 @@ package patches
 import (
 	"fmt"
 
-	"mine-and-die/server/internal/items/simsnapshots"
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 )
 
@@ -29,11 +29,11 @@ func clonePlayer(player sim.Player) sim.Player {
 }
 
 func cloneInventory(inv sim.Inventory) sim.Inventory {
-	return simsnapshots.InventoryFromSlots(inv.Slots)
+	return itemspkg.InventoryFromSimSlots(inv.Slots)
 }
 
 func cloneEquipment(eq sim.Equipment) sim.Equipment {
-	return simsnapshots.EquipmentFromSlots(eq.Slots)
+	return itemspkg.EquipmentFromSimSlots(eq.Slots)
 }
 
 // ApplyPlayers applies player-related patches to the provided snapshot view.
@@ -96,13 +96,13 @@ func ApplyPlayers(base map[string]PlayerView, patches []sim.Patch) (map[string]P
 			if !ok {
 				return nil, fmt.Errorf("apply patches: unexpected payload %T for %q", patch.Payload, patch.Kind)
 			}
-			view.Player.Inventory = simsnapshots.InventoryFromSlots(payload.Slots)
+			view.Player.Inventory = itemspkg.InventoryFromSimSlots(payload.Slots)
 		case sim.PatchPlayerEquipment:
 			payload, ok := payloadAsPlayerEquipment(patch.Payload)
 			if !ok {
 				return nil, fmt.Errorf("apply patches: unexpected payload %T for %q", patch.Payload, patch.Kind)
 			}
-			view.Player.Equipment = simsnapshots.EquipmentFromSlots(payload.Slots)
+			view.Player.Equipment = itemspkg.EquipmentFromSimSlots(payload.Slots)
 		default:
 			return nil, fmt.Errorf("apply patches: unsupported patch kind %q", patch.Kind)
 		}

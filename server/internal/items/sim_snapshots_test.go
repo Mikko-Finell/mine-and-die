@@ -1,19 +1,19 @@
-package simsnapshots_test
+package items_test
 
 import (
 	"testing"
 
-	"mine-and-die/server/internal/items/simsnapshots"
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 )
 
-func TestInventoryFromSlotsClonesSnapshot(t *testing.T) {
+func TestInventoryFromSimSlotsClonesSnapshot(t *testing.T) {
 	slots := []sim.InventorySlot{{
 		Slot: 2,
 		Item: sim.ItemStack{Type: "arrow", FungibilityKey: "stack", Quantity: 5},
 	}}
 
-	inv := simsnapshots.InventoryFromSlots(slots)
+	inv := itemspkg.InventoryFromSimSlots(slots)
 	if len(inv.Slots) != 1 {
 		t.Fatalf("expected 1 slot, got %d", len(inv.Slots))
 	}
@@ -26,18 +26,18 @@ func TestInventoryFromSlotsClonesSnapshot(t *testing.T) {
 		t.Fatalf("expected cloned inventory to remain 5, got %d", inv.Slots[0].Item.Quantity)
 	}
 
-	if empty := simsnapshots.InventoryFromSlots(nil); len(empty.Slots) != 0 {
+	if empty := itemspkg.InventoryFromSimSlots(nil); len(empty.Slots) != 0 {
 		t.Fatalf("expected empty inventory to have no slots")
 	}
 }
 
-func TestEquipmentFromSlotsClonesSnapshot(t *testing.T) {
+func TestEquipmentFromSimSlotsClonesSnapshot(t *testing.T) {
 	slots := []sim.EquippedItem{{
 		Slot: sim.EquipSlot("Head"),
 		Item: sim.ItemStack{Type: "helm", FungibilityKey: "unique", Quantity: 1},
 	}}
 
-	eq := simsnapshots.EquipmentFromSlots(slots)
+	eq := itemspkg.EquipmentFromSimSlots(slots)
 	if len(eq.Slots) != 1 {
 		t.Fatalf("expected 1 slot, got %d", len(eq.Slots))
 	}
@@ -50,7 +50,7 @@ func TestEquipmentFromSlotsClonesSnapshot(t *testing.T) {
 		t.Fatalf("expected cloned equipment to remain 1, got %d", eq.Slots[0].Item.Quantity)
 	}
 
-	if empty := simsnapshots.EquipmentFromSlots(nil); len(empty.Slots) != 0 {
+	if empty := itemspkg.EquipmentFromSimSlots(nil); len(empty.Slots) != 0 {
 		t.Fatalf("expected empty equipment to have no slots")
 	}
 }
