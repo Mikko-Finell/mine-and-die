@@ -413,7 +413,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Carve out `combat/` for hit and damage rules.
   - [x] Carve out `stats/` for actor stats.
   - [x] Carve out `items/` for items and equipment.
-  - [ ] Carve out `ai/` for NPC logic and behaviors.
+  - [x] Carve out `ai/` for NPC logic and behaviors.
+  - [x] Move NPC spawn configuration and AI library bootstrapping into `internal/ai` so world construction only wires adapters and defaults.
+  - [ ] Move the legacy `worldNPCSpawner` adapter and associated spawn entry points into `internal/ai` so world construction simply forwards spawn callbacks and inventory defaults.
   - [x] Move the actor inventory state and mutation helpers (`inventory.go`, `equipment.go`) into a new `internal/items` package so the legacy world wrapper delegates item bookkeeping to the shared adapters.
   - [ ] Move the ground item mutation and lifecycle helpers (`ground_items.go`) into `internal/items` so drop/pickup flows reuse the shared item adapters.
 - [ ] Route mutations only through `journal` APIs to record diffs.
