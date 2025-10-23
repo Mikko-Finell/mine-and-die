@@ -1,6 +1,10 @@
 package world
 
-import "time"
+import (
+	"time"
+
+	itemspkg "mine-and-die/server/internal/items"
+)
 
 // LegacyFollowEffect captures the subset of legacy effect fields required to
 // update follow attachments without importing the legacy world types.
@@ -17,7 +21,7 @@ type LegacyFollowEffectAdvanceConfig struct {
 
 	ForEachEffect func(func(effect any))
 	Inspect       func(effect any) LegacyFollowEffect
-	ActorByID     func(string) *Actor
+	ActorByID     func(string) *itemspkg.Actor
 
 	Expire      func(effect any, now time.Time)
 	ClearFollow func(effect any)
@@ -29,7 +33,7 @@ type LegacyFollowEffectAdvanceConfig struct {
 type LegacyFollowEffectUpdateConfig struct {
 	Effect any
 	Fields LegacyFollowEffect
-	Actor  *Actor
+	Actor  *itemspkg.Actor
 	Now    time.Time
 
 	Expire      func(effect any, now time.Time)
@@ -46,7 +50,7 @@ func AdvanceLegacyFollowEffects(cfg LegacyFollowEffectAdvanceConfig) {
 
 	cfg.ForEachEffect(func(effect any) {
 		fields := cfg.Inspect(effect)
-		var actor *Actor
+		var actor *itemspkg.Actor
 		if fields.FollowActorID != "" && cfg.ActorByID != nil {
 			actor = cfg.ActorByID(fields.FollowActorID)
 		}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
 	simpaches "mine-and-die/server/internal/sim/patches"
@@ -927,7 +928,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 
 			var metadata map[string]any
 			switch failureReason {
-			case worldpkg.PickupFailureReasonOutOfRange:
+			case itemspkg.PickupFailureReasonOutOfRange:
 				meta := make(map[string]any)
 				if failureStackID != "" {
 					meta["stackId"] = failureStackID
@@ -938,7 +939,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 				if len(meta) > 0 {
 					metadata = meta
 				}
-			case worldpkg.PickupFailureReasonInventoryError:
+			case itemspkg.PickupFailureReasonInventoryError:
 				meta := make(map[string]any)
 				if errMsg != "" {
 					meta["error"] = errMsg

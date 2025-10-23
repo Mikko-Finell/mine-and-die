@@ -415,9 +415,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Carve out `items/` for items and equipment.
   - [x] Carve out `ai/` for NPC logic and behaviors.
   - [x] Move NPC spawn configuration and AI library bootstrapping into `internal/ai` so world construction only wires adapters and defaults.
-  - [ ] Move the legacy `worldNPCSpawner` adapter and associated spawn entry points into `internal/ai` so world construction simply forwards spawn callbacks and inventory defaults.
+  - [x] Move the legacy `worldNPCSpawner` adapter and associated spawn entry points into `internal/ai` so world construction simply forwards spawn callbacks and inventory defaults.
   - [x] Move the actor inventory state and mutation helpers (`inventory.go`, `equipment.go`) into a new `internal/items` package so the legacy world wrapper delegates item bookkeeping to the shared adapters.
-  - [ ] Move the ground item mutation and lifecycle helpers (`ground_items.go`) into `internal/items` so drop/pickup flows reuse the shared item adapters.
+  - [x] Move the ground item mutation and lifecycle helpers (`ground_items.go`) into `internal/items` so drop/pickup flows reuse the shared item adapters.
+  - [x] Update the legacy world wrapper to delegate ground item drops and pickups through the `internal/items` helpers so journal emission and telemetry wiring live behind the shared adapters.
+  - [x] Move the ground drop delegate assembly (`buildGroundDropDelegates`, `invokeGroundDrop`, and associated helpers) into `internal/items` so the legacy world wrapper only injects inventory drains, RNG hooks, and telemetry callbacks.
+  - [x] Move the ground drop inventory drain helpers (`removeStacksFunc`, `removeGoldQuantityFunc`, `inventoryDrainFunc`, and `equipmentDrainFunc`) into `internal/items`, exposing config-driven adapters so the world wrapper just supplies mutate closures and actor lookups.
+  - [ ] Thread journal-aware quantity and position setters through `items.GroundDropConfig` so drop flows record patches via shared `internal/journal` adapters instead of calling the legacy world helpers directly.
 - [ ] Route mutations only through `journal` APIs to record diffs.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 

@@ -1,10 +1,19 @@
-package world
+package items
 
 import (
 	"errors"
 	"math"
 	"testing"
 )
+
+func mustBuildGroundDropDelegates(t *testing.T, cfg GroundDropConfig) GroundDropDelegates {
+	t.Helper()
+	delegates, ok := BuildGroundDropDelegates(cfg)
+	if !ok {
+		t.Fatalf("expected ground drop delegates to be constructed")
+	}
+	return delegates
+}
 
 func TestNearestGroundItemReturnsClosestStack(t *testing.T) {
 	items := map[string]*GroundItemState{
@@ -344,26 +353,27 @@ func TestDropAllItemsOfTypePlacesStacksOnGround(t *testing.T) {
 	cfg := ScatterConfig{TileSize: 10}
 
 	ensureCalls := 0
-	total := DropAllItemsOfType(
-		items,
-		byTile,
-		&nextID,
-		actor,
-		"gold",
-		"loot",
-		cfg,
-		nil,
-		nil,
-		func(s *ItemStack) bool {
+	delegates := mustBuildGroundDropDelegates(t, GroundDropConfig{
+		Items:       items,
+		ItemsByTile: byTile,
+		NextID:      &nextID,
+		Actor:       actor,
+		Scatter:     cfg,
+		EnsureKey: func(s *ItemStack) bool {
 			ensureCalls++
 			if s.FungibilityKey == "" {
 				s.FungibilityKey = "gold-key"
 			}
 			return true
 		},
-		func(item *GroundItemState, qty int) { item.Qty = qty },
-		func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
-		nil,
+		SetQuantity: func(item *GroundItemState, qty int) { item.Qty = qty },
+		SetPosition: func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+	})
+
+	total := DropAllItemsOfType(
+		delegates,
+		"gold",
+		"loot",
 		func(itemType string) []ItemStack {
 			if itemType != "gold" {
 				t.Fatalf("expected gold item type, got %q", itemType)
@@ -414,24 +424,21 @@ func TestDropAllInventoryDropsCombinedStacks(t *testing.T) {
 	equipmentCalled := false
 	logCalls := 0
 
-	total := DropAllInventory(
-		items,
-		byTile,
-		&nextID,
-		actor,
-		"death",
-		cfg,
-		nil,
-		nil,
-		func(s *ItemStack) bool {
+	delegates := mustBuildGroundDropDelegates(t, GroundDropConfig{
+		Items:       items,
+		ItemsByTile: byTile,
+		NextID:      &nextID,
+		Actor:       actor,
+		Scatter:     cfg,
+		EnsureKey: func(s *ItemStack) bool {
 			if s.FungibilityKey == "" {
 				s.FungibilityKey = s.Type + "-key"
 			}
 			return true
 		},
-		func(item *GroundItemState, qty int) { item.Qty = qty },
-		func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
-		func(_ *Actor, stack ItemStack, reason, stackID string) {
+		SetQuantity: func(item *GroundItemState, qty int) { item.Qty = qty },
+		SetPosition: func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		LogDrop: func(_ *Actor, stack ItemStack, reason, stackID string) {
 			logCalls++
 			if reason != "death" {
 				t.Fatalf("expected log reason 'death', got %q", reason)
@@ -443,6 +450,11 @@ func TestDropAllInventoryDropsCombinedStacks(t *testing.T) {
 				t.Fatalf("expected logged stack quantity to be positive")
 			}
 		},
+	})
+
+	total := DropAllInventory(
+		delegates,
+		"death",
 		func() []ItemStack {
 			inventoryCalled = true
 			return []ItemStack{{Type: "gold", FungibilityKey: "gold-key", Quantity: 4}}
@@ -478,24 +490,25 @@ func TestDropAllGoldUsesGoldItemType(t *testing.T) {
 	var requestedType string
 	calls := 0
 
-	total := DropAllGold(
-		items,
-		byTile,
-		&nextID,
-		actor,
-		"manual",
-		cfg,
-		nil,
-		nil,
-		func(s *ItemStack) bool {
+	delegates := mustBuildGroundDropDelegates(t, GroundDropConfig{
+		Items:       items,
+		ItemsByTile: byTile,
+		NextID:      &nextID,
+		Actor:       actor,
+		Scatter:     cfg,
+		EnsureKey: func(s *ItemStack) bool {
 			if s.FungibilityKey == "" {
 				s.FungibilityKey = "gold-key"
 			}
 			return true
 		},
-		func(item *GroundItemState, qty int) { item.Qty = qty },
-		func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
-		nil,
+		SetQuantity: func(item *GroundItemState, qty int) { item.Qty = qty },
+		SetPosition: func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+	})
+
+	total := DropAllGold(
+		delegates,
+		"manual",
 		func(itemType string) []ItemStack {
 			requestedType = itemType
 			calls++
@@ -529,25 +542,27 @@ func TestDropGoldQuantityPlacesStack(t *testing.T) {
 	removeCalls := 0
 	logged := false
 
-	result, failure := DropGoldQuantity(
-		items,
-		byTile,
-		&nextID,
-		actor,
-		3,
-		"manual",
-		cfg,
-		nil,
-		nil,
-		func(s *ItemStack) bool {
+	delegates := mustBuildGroundDropDelegates(t, GroundDropConfig{
+		Items:       items,
+		ItemsByTile: byTile,
+		NextID:      &nextID,
+		Actor:       actor,
+		Scatter:     cfg,
+		EnsureKey: func(s *ItemStack) bool {
 			if s.FungibilityKey == "" {
 				s.FungibilityKey = "gold-key"
 			}
 			return true
 		},
-		func(item *GroundItemState, qty int) { item.Qty = qty },
-		func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
-		func(*Actor, ItemStack, string, string) { logged = true },
+		SetQuantity: func(item *GroundItemState, qty int) { item.Qty = qty },
+		SetPosition: func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		LogDrop:     func(*Actor, ItemStack, string, string) { logged = true },
+	})
+
+	result, failure := DropGoldQuantity(
+		delegates,
+		3,
+		"manual",
 		func() int {
 			availableCalls++
 			return 5
@@ -597,20 +612,21 @@ func TestDropGoldQuantityInsufficientGold(t *testing.T) {
 
 	removeCalled := false
 
+	delegates := mustBuildGroundDropDelegates(t, GroundDropConfig{
+		Items:       items,
+		ItemsByTile: byTile,
+		NextID:      &nextID,
+		Actor:       actor,
+		Scatter:     cfg,
+		EnsureKey:   func(*ItemStack) bool { return true },
+		SetQuantity: func(*GroundItemState, int) {},
+		SetPosition: func(*GroundItemState, float64, float64) {},
+	})
+
 	result, failure := DropGoldQuantity(
-		items,
-		byTile,
-		&nextID,
-		actor,
+		delegates,
 		5,
 		"manual",
-		cfg,
-		nil,
-		nil,
-		func(*ItemStack) bool { return true },
-		func(*GroundItemState, int) {},
-		func(*GroundItemState, float64, float64) {},
-		nil,
 		func() int { return 3 },
 		func(int) (int, error) {
 			removeCalled = true
@@ -640,20 +656,21 @@ func TestDropGoldQuantityInventoryError(t *testing.T) {
 	actor := &Actor{ID: "player-3", X: 0, Y: 0}
 	cfg := ScatterConfig{TileSize: 4}
 
+	delegates := mustBuildGroundDropDelegates(t, GroundDropConfig{
+		Items:       items,
+		ItemsByTile: byTile,
+		NextID:      &nextID,
+		Actor:       actor,
+		Scatter:     cfg,
+		EnsureKey:   func(*ItemStack) bool { return true },
+		SetQuantity: func(*GroundItemState, int) {},
+		SetPosition: func(*GroundItemState, float64, float64) {},
+	})
+
 	result, failure := DropGoldQuantity(
-		items,
-		byTile,
-		&nextID,
-		actor,
+		delegates,
 		4,
 		"manual",
-		cfg,
-		nil,
-		nil,
-		func(*ItemStack) bool { return true },
-		func(*GroundItemState, int) {},
-		func(*GroundItemState, float64, float64) {},
-		nil,
 		func() int { return 6 },
 		func(qty int) (int, error) {
 			if qty != 4 {
@@ -847,5 +864,205 @@ func TestPickupNearestItemNilInputs(t *testing.T) {
 	}
 	if failure == nil || failure.Reason != PickupFailureReasonNotFound {
 		t.Fatalf("expected not_found failure for missing inputs, got %#v", failure)
+	}
+}
+
+func TestGroundDropRemoveStacksFuncPrefersHandledProvider(t *testing.T) {
+	cfg := GroundDropActorConfig{
+		RemovePlayerStacks: func(itemType string) ([]ItemStack, bool) {
+			if itemType != "gold" {
+				t.Fatalf("expected gold item type, got %q", itemType)
+			}
+			return []ItemStack{{Type: itemType, Quantity: 2}}, true
+		},
+		RemoveFallbackStacks: func(string) ([]ItemStack, bool) {
+			t.Fatalf("fallback should not be invoked when player handler succeeds")
+			return nil, true
+		},
+	}
+
+	remover := GroundDropRemoveStacksFunc(cfg)
+	if remover == nil {
+		t.Fatalf("expected remover to be constructed")
+	}
+
+	stacks := remover("gold")
+	if len(stacks) != 1 || stacks[0].Quantity != 2 {
+		t.Fatalf("expected handled stacks, got %#v", stacks)
+	}
+}
+
+func TestGroundDropRemoveStacksFuncFallsBackWhenNotHandled(t *testing.T) {
+	fallbackCalled := false
+	cfg := GroundDropActorConfig{
+		RemovePlayerStacks: func(string) ([]ItemStack, bool) {
+			return nil, false
+		},
+		RemoveFallbackStacks: func(itemType string) ([]ItemStack, bool) {
+			fallbackCalled = true
+			return []ItemStack{{Type: itemType, Quantity: 1}}, true
+		},
+	}
+
+	remover := GroundDropRemoveStacksFunc(cfg)
+	if remover == nil {
+		t.Fatalf("expected remover to be constructed")
+	}
+
+	stacks := remover("iron")
+	if !fallbackCalled {
+		t.Fatalf("expected fallback provider to run")
+	}
+	if len(stacks) != 1 || stacks[0].Type != "iron" {
+		t.Fatalf("expected fallback stacks, got %#v", stacks)
+	}
+}
+
+func TestGroundDropRemoveStacksFuncNilWhenNoProviders(t *testing.T) {
+	if GroundDropRemoveStacksFunc(GroundDropActorConfig{}) != nil {
+		t.Fatalf("expected nil remover when no providers configured")
+	}
+}
+
+func TestGroundDropInventoryDrainFuncPrefersHandled(t *testing.T) {
+	cfg := GroundDropActorConfig{
+		DrainPlayerInventory: func() ([]ItemStack, bool) {
+			return []ItemStack{{Type: "gold", Quantity: 3}}, true
+		},
+		DrainFallbackInventory: func() ([]ItemStack, bool) {
+			t.Fatalf("expected fallback inventory to remain unused")
+			return nil, true
+		},
+	}
+
+	drain := GroundDropInventoryDrainFunc(cfg)
+	if drain == nil {
+		t.Fatalf("expected inventory drain to be constructed")
+	}
+
+	stacks := drain()
+	if len(stacks) != 1 || stacks[0].Quantity != 3 {
+		t.Fatalf("expected player inventory stacks, got %#v", stacks)
+	}
+}
+
+func TestGroundDropInventoryDrainFuncFallsBack(t *testing.T) {
+	fallbackCalled := false
+	cfg := GroundDropActorConfig{
+		DrainPlayerInventory: func() ([]ItemStack, bool) {
+			return nil, false
+		},
+		DrainFallbackInventory: func() ([]ItemStack, bool) {
+			fallbackCalled = true
+			return []ItemStack{{Type: "potion", Quantity: 1}}, true
+		},
+	}
+
+	drain := GroundDropInventoryDrainFunc(cfg)
+	if drain == nil {
+		t.Fatalf("expected inventory drain to be constructed")
+	}
+
+	stacks := drain()
+	if !fallbackCalled {
+		t.Fatalf("expected fallback inventory to run")
+	}
+	if len(stacks) != 1 || stacks[0].Type != "potion" {
+		t.Fatalf("expected fallback inventory stack, got %#v", stacks)
+	}
+}
+
+func TestGroundDropInventoryDrainFuncNilWhenNoProviders(t *testing.T) {
+	if GroundDropInventoryDrainFunc(GroundDropActorConfig{}) != nil {
+		t.Fatalf("expected nil inventory drain when no providers configured")
+	}
+}
+
+func TestGroundDropEquipmentDrainFuncPrefersHandled(t *testing.T) {
+	cfg := GroundDropActorConfig{
+		DrainPlayerEquipment: func() ([]ItemStack, bool) {
+			return []ItemStack{{Type: "sword", Quantity: 1}}, true
+		},
+		DrainFallbackEquipment: func() ([]ItemStack, bool) {
+			t.Fatalf("expected fallback equipment to remain unused")
+			return nil, true
+		},
+	}
+
+	drain := GroundDropEquipmentDrainFunc(cfg)
+	if drain == nil {
+		t.Fatalf("expected equipment drain to be constructed")
+	}
+
+	stacks := drain()
+	if len(stacks) != 1 || stacks[0].Type != "sword" {
+		t.Fatalf("expected player equipment stack, got %#v", stacks)
+	}
+}
+
+func TestGroundDropEquipmentDrainFuncFallsBack(t *testing.T) {
+	fallbackCalled := false
+	cfg := GroundDropActorConfig{
+		DrainNPCEquipment: func() ([]ItemStack, bool) {
+			return nil, false
+		},
+		DrainFallbackEquipment: func() ([]ItemStack, bool) {
+			fallbackCalled = true
+			return []ItemStack{{Type: "shield", Quantity: 1}}, true
+		},
+	}
+
+	drain := GroundDropEquipmentDrainFunc(cfg)
+	if drain == nil {
+		t.Fatalf("expected equipment drain to be constructed")
+	}
+
+	stacks := drain()
+	if !fallbackCalled {
+		t.Fatalf("expected fallback equipment to run")
+	}
+	if len(stacks) != 1 || stacks[0].Type != "shield" {
+		t.Fatalf("expected fallback equipment stack, got %#v", stacks)
+	}
+}
+
+func TestGroundDropEquipmentDrainFuncNilWhenNoProviders(t *testing.T) {
+	if GroundDropEquipmentDrainFunc(GroundDropActorConfig{}) != nil {
+		t.Fatalf("expected nil equipment drain when no providers configured")
+	}
+}
+
+func TestGroundDropRemoveGoldQuantityFuncNilWhenUnconfigured(t *testing.T) {
+	if GroundDropRemoveGoldQuantityFunc(GroundDropActorConfig{}) != nil {
+		t.Fatalf("expected nil gold quantity remover when not configured")
+	}
+}
+
+func TestGroundDropRemoveGoldQuantityFuncDelegates(t *testing.T) {
+	called := false
+	cfg := GroundDropActorConfig{
+		RemoveGoldQuantity: func(quantity int) (int, error) {
+			called = true
+			if quantity != 4 {
+				t.Fatalf("expected quantity 4, got %d", quantity)
+			}
+			return quantity, nil
+		},
+	}
+
+	remove := GroundDropRemoveGoldQuantityFunc(cfg)
+	if remove == nil {
+		t.Fatalf("expected gold quantity remover to be constructed")
+	}
+
+	qty, err := remove(4)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if qty != 4 {
+		t.Fatalf("expected quantity 4, got %d", qty)
+	}
+	if !called {
+		t.Fatalf("expected gold removal provider to be invoked")
 	}
 }

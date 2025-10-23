@@ -7,6 +7,7 @@ import (
 	effectcontract "mine-and-die/server/effects/contract"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
+	itemspkg "mine-and-die/server/internal/items"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 )
@@ -331,12 +332,12 @@ func (w *World) advanceEffects(now time.Time, dt float64) {
 				Height:        state.Height,
 			}
 		},
-		ActorByID: func(id string) *worldpkg.Actor {
+		ActorByID: func(id string) *itemspkg.Actor {
 			actor := w.actorByID(id)
 			if actor == nil {
 				return nil
 			}
-			return &worldpkg.Actor{ID: id, X: actor.X, Y: actor.Y}
+			return &itemspkg.Actor{ID: id, X: actor.X, Y: actor.Y}
 		},
 		Expire: func(effect any, at time.Time) {
 			state, _ := effect.(*effectState)

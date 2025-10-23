@@ -1,7 +1,7 @@
 package server
 
-import worldpkg "mine-and-die/server/internal/world"
+import itemspkg "mine-and-die/server/internal/items"
 
-type GroundItem = worldpkg.GroundItem
-type groundTileKey = worldpkg.GroundTileKey
-type groundItemState = worldpkg.GroundItemState
+type GroundItem = itemspkg.GroundItem
+type groundTileKey = itemspkg.GroundTileKey
+type groundItemState = itemspkg.GroundItemState
