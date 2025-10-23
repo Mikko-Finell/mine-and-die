@@ -3,6 +3,7 @@ package patches
 import (
 	"fmt"
 
+	"mine-and-die/server/internal/items/simsnapshots"
 	"mine-and-die/server/internal/sim"
 )
 
@@ -28,21 +29,11 @@ func clonePlayer(player sim.Player) sim.Player {
 }
 
 func cloneInventory(inv sim.Inventory) sim.Inventory {
-	if len(inv.Slots) == 0 {
-		return sim.Inventory{}
-	}
-	slots := make([]sim.InventorySlot, len(inv.Slots))
-	copy(slots, inv.Slots)
-	return sim.Inventory{Slots: slots}
+	return simsnapshots.InventoryFromSlots(inv.Slots)
 }
 
 func cloneEquipment(eq sim.Equipment) sim.Equipment {
-	if len(eq.Slots) == 0 {
-		return sim.Equipment{}
-	}
-	slots := make([]sim.EquippedItem, len(eq.Slots))
-	copy(slots, eq.Slots)
-	return sim.Equipment{Slots: slots}
+	return simsnapshots.EquipmentFromSlots(eq.Slots)
 }
 
 // ApplyPlayers applies player-related patches to the provided snapshot view.
@@ -105,13 +96,13 @@ func ApplyPlayers(base map[string]PlayerView, patches []sim.Patch) (map[string]P
 			if !ok {
 				return nil, fmt.Errorf("apply patches: unexpected payload %T for %q", patch.Payload, patch.Kind)
 			}
-			view.Player.Inventory = sim.Inventory{Slots: cloneInventorySlots(payload.Slots)}
+			view.Player.Inventory = simsnapshots.InventoryFromSlots(payload.Slots)
 		case sim.PatchPlayerEquipment:
 			payload, ok := payloadAsPlayerEquipment(patch.Payload)
 			if !ok {
 				return nil, fmt.Errorf("apply patches: unexpected payload %T for %q", patch.Payload, patch.Kind)
 			}
-			view.Player.Equipment = sim.Equipment{Slots: cloneEquipmentSlots(payload.Slots)}
+			view.Player.Equipment = simsnapshots.EquipmentFromSlots(payload.Slots)
 		default:
 			return nil, fmt.Errorf("apply patches: unsupported patch kind %q", patch.Kind)
 		}
@@ -120,24 +111,6 @@ func ApplyPlayers(base map[string]PlayerView, patches []sim.Patch) (map[string]P
 	}
 
 	return next, nil
-}
-
-func cloneInventorySlots(slots []sim.InventorySlot) []sim.InventorySlot {
-	if len(slots) == 0 {
-		return nil
-	}
-	cloned := make([]sim.InventorySlot, len(slots))
-	copy(cloned, slots)
-	return cloned
-}
-
-func cloneEquipmentSlots(slots []sim.EquippedItem) []sim.EquippedItem {
-	if len(slots) == 0 {
-		return nil
-	}
-	cloned := make([]sim.EquippedItem, len(slots))
-	copy(cloned, slots)
-	return cloned
 }
 
 func payloadAsPlayerPos(value any) (sim.PlayerPosPayload, bool) {

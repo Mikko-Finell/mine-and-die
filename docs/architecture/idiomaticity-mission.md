@@ -447,7 +447,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Move the inventory and equipment patch payload conversions into `internal/items` so the adapter reuses the shared item helpers when cloning patch payloads.
 - [x] Move the actor inventory and equipment snapshot conversions into `internal/items` so adapter and world callers share the same helpers when translating actors.
 - [x] Add `internal/items` helpers that wrap the slot mappers to build full `sim.Inventory` and `sim.Equipment` snapshots (and the reverse) so the adapter and tests can drop their struct-assembly loops.
-- [ ] Update `internal/sim/patches` player replay helpers to use the shared inventory/equipment snapshot builders so clone/apply flows drop their bespoke slice copy logic.
+- [x] Update `internal/sim/patches` player replay helpers to use the shared inventory/equipment snapshot builders so clone/apply flows drop their bespoke slice copy logic.
+- [x] Update `internal/simutil` clone helpers to use the shared inventory/equipment snapshot builders so the utilities drop their `items/simpayloads` slice copy dependency.
+- [x] Update `internal/items/simpayloads` inventory and equipment payload cloning to reuse the shared snapshot builders so patch conversions drop their bespoke slice copy logic.
+- [x] Add dedicated `internal/items/simsnapshots` helpers that assemble `sim.Inventory` and `sim.Equipment` snapshots from `[]sim` slots and update the `sim/patches`, `simutil`, and `items/simpayloads` callers to use them so identity mapper closures disappear.
+- [ ] Expose slot clone helpers from `internal/items` (for example `CloneInventorySlots` and `CloneEquippedItems`) and update `simutil` and `items/simpayloads` to call them directly so the struct assemblers no longer reach into `.Slots` for cloning.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**
