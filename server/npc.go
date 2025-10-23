@@ -3,6 +3,7 @@ package server
 import (
 	"time"
 
+	ai "mine-and-die/server/internal/ai"
 	stats "mine-and-die/server/stats"
 )
 
@@ -29,7 +30,7 @@ type npcState struct {
 	ExperienceReward int
 	AIState          uint8
 	AIConfigID       uint16
-	Blackboard       npcBlackboard
+	Blackboard       ai.Blackboard
 	Waypoints        []vec2
 	Home             vec2
 	cooldowns        map[string]time.Time

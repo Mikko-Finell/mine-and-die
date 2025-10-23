@@ -8,6 +8,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	ai "mine-and-die/server/internal/ai"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	internalstats "mine-and-die/server/internal/stats"
@@ -90,7 +91,7 @@ type World struct {
 	nextEffectID            uint64
 	nextNPCID               uint64
 	nextGroundItemID        uint64
-	aiLibrary               *aiLibrary
+	aiLibrary               *ai.Library
 	config                  worldConfig
 	rng                     *rand.Rand
 	seed                    string
@@ -177,7 +178,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		effectsIndex:        newEffectSpatialIndex(effectSpatialCellSize, effectSpatialMaxPerCell),
 		effectTriggers:      make([]EffectTrigger, 0),
 		projectileTemplates: newProjectileTemplates(),
-		aiLibrary:           globalAILibrary,
+		aiLibrary:           ai.GlobalLibrary,
 		config:              normalized,
 		rng:                 newDeterministicRNG(normalized.Seed, "world"),
 		seed:                normalized.Seed,
@@ -787,27 +788,14 @@ func (w *World) initializeGoblinState(goblin *npcState) {
 	if goblin == nil {
 		return
 	}
-	if w.aiLibrary != nil {
-		if cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin); cfg != nil {
-			goblin.AIConfigID = cfg.id
-			goblin.AIState = cfg.initialState
-			cfg.applyDefaults(&goblin.Blackboard)
-		}
-	}
-	if goblin.Blackboard.ArriveRadius <= 0 {
-		goblin.Blackboard.ArriveRadius = 16
-	}
-	if goblin.Blackboard.PauseTicks == 0 {
-		goblin.Blackboard.PauseTicks = 30
-	}
-	if goblin.Blackboard.StuckEpsilon <= 0 {
-		goblin.Blackboard.StuckEpsilon = 0.5
-	}
-	if goblin.Blackboard.WaypointIndex < 0 || goblin.Blackboard.WaypointIndex >= len(goblin.Waypoints) {
-		goblin.Blackboard.WaypointIndex = 0
-	}
-	goblin.Blackboard.NextDecisionAt = 0
-	goblin.Blackboard.LastWaypointIndex = -1
+	ai.BootstrapNPC(ai.SpawnBootstrapConfig{
+		Library:       w.aiLibrary,
+		Type:          string(NPCTypeGoblin),
+		ConfigID:      &goblin.AIConfigID,
+		State:         &goblin.AIState,
+		Blackboard:    &goblin.Blackboard,
+		WaypointCount: len(goblin.Waypoints),
+	})
 
 	resolveObstaclePenetration(&goblin.actorState, w.obstacles, w.width(), w.height())
 	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
@@ -852,25 +840,14 @@ func (w *World) initializeRatState(rat *npcState) {
 	if rat == nil {
 		return
 	}
-	if w.aiLibrary != nil {
-		if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
-			rat.AIConfigID = cfg.id
-			rat.AIState = cfg.initialState
-			cfg.applyDefaults(&rat.Blackboard)
-		}
-	}
-	if rat.Blackboard.ArriveRadius <= 0 {
-		rat.Blackboard.ArriveRadius = 10
-	}
-	if rat.Blackboard.PauseTicks == 0 {
-		rat.Blackboard.PauseTicks = 20
-	}
-	if rat.Blackboard.StuckEpsilon <= 0 {
-		rat.Blackboard.StuckEpsilon = 0.5
-	}
-	rat.Blackboard.WaypointIndex = 0
-	rat.Blackboard.NextDecisionAt = 0
-	rat.Blackboard.LastWaypointIndex = -1
+	ai.BootstrapNPC(ai.SpawnBootstrapConfig{
+		Library:       w.aiLibrary,
+		Type:          string(NPCTypeRat),
+		ConfigID:      &rat.AIConfigID,
+		State:         &rat.AIState,
+		Blackboard:    &rat.Blackboard,
+		WaypointCount: len(rat.Waypoints),
+	})
 
 	resolveObstaclePenetration(&rat.actorState, w.obstacles, w.width(), w.height())
 	rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}

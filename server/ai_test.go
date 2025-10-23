@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	ai "mine-and-die/server/internal/ai"
 	stats "mine-and-die/server/stats"
 )
 
@@ -14,7 +15,7 @@ func newStaticAIWorld() (*World, *npcState) {
 		npcs:      make(map[string]*npcState),
 		effects:   make([]*effectState, 0),
 		obstacles: nil,
-		aiLibrary: globalAILibrary,
+		aiLibrary: ai.GlobalLibrary,
 	}
 	w.configureEffectHitAdapter()
 	w.configureMeleeAbilityGate()
@@ -49,26 +50,15 @@ func newStaticAIWorld() (*World, *npcState) {
 		},
 	}
 
-	if w.aiLibrary != nil {
-		if cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin); cfg != nil {
-			npc.AIConfigID = cfg.id
-			npc.AIState = cfg.initialState
-			cfg.applyDefaults(&npc.Blackboard)
-		}
-	}
-	if npc.Blackboard.ArriveRadius <= 0 {
-		npc.Blackboard.ArriveRadius = 16
-	}
-	if npc.Blackboard.PauseTicks == 0 {
-		npc.Blackboard.PauseTicks = 30
-	}
-	if npc.Blackboard.StuckEpsilon <= 0 {
-		npc.Blackboard.StuckEpsilon = 0.5
-	}
-	npc.Blackboard.WaypointIndex = 0
-	npc.Blackboard.NextDecisionAt = 0
+	ai.BootstrapNPC(ai.SpawnBootstrapConfig{
+		Library:       w.aiLibrary,
+		Type:          string(NPCTypeGoblin),
+		ConfigID:      &npc.AIConfigID,
+		State:         &npc.AIState,
+		Blackboard:    &npc.Blackboard,
+		WaypointCount: len(npc.Waypoints),
+	})
 	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
-	npc.Blackboard.LastWaypointIndex = -1
 
 	w.npcs[npc.ID] = npc
 	return w, npc
@@ -79,11 +69,11 @@ func goblinStateID(t *testing.T, w *World, name string) uint8 {
 	if w == nil || w.aiLibrary == nil {
 		t.Fatalf("ai library not initialised")
 	}
-	cfg := w.aiLibrary.ConfigForType(NPCTypeGoblin)
+	cfg := w.aiLibrary.ConfigForType(string(NPCTypeGoblin))
 	if cfg == nil {
 		t.Fatalf("missing goblin ai config")
 	}
-	for idx, state := range cfg.stateNames {
+	for idx, state := range cfg.StateNames() {
 		if state == name {
 			return uint8(idx)
 		}
@@ -98,7 +88,7 @@ func newRatTestWorld() (*World, *npcState) {
 		npcs:      make(map[string]*npcState),
 		effects:   make([]*effectState, 0),
 		obstacles: nil,
-		aiLibrary: globalAILibrary,
+		aiLibrary: ai.GlobalLibrary,
 	}
 	w.configureEffectHitAdapter()
 	w.configureMeleeAbilityGate()
@@ -128,25 +118,14 @@ func newRatTestWorld() (*World, *npcState) {
 		Home:             vec2{X: 420, Y: 360},
 	}
 
-	if w.aiLibrary != nil {
-		if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
-			rat.AIConfigID = cfg.id
-			rat.AIState = cfg.initialState
-			cfg.applyDefaults(&rat.Blackboard)
-		}
-	}
-	if rat.Blackboard.ArriveRadius <= 0 {
-		rat.Blackboard.ArriveRadius = 10
-	}
-	if rat.Blackboard.PauseTicks == 0 {
-		rat.Blackboard.PauseTicks = 20
-	}
-	if rat.Blackboard.StuckEpsilon <= 0 {
-		rat.Blackboard.StuckEpsilon = 0.4
-	}
-	rat.Blackboard.WaypointIndex = 0
-	rat.Blackboard.NextDecisionAt = 0
-	rat.Blackboard.LastWaypointIndex = -1
+	ai.BootstrapNPC(ai.SpawnBootstrapConfig{
+		Library:       w.aiLibrary,
+		Type:          string(NPCTypeRat),
+		ConfigID:      &rat.AIConfigID,
+		State:         &rat.AIState,
+		Blackboard:    &rat.Blackboard,
+		WaypointCount: len(rat.Waypoints),
+	})
 	rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
 
 	w.npcs[rat.ID] = rat
@@ -164,7 +143,7 @@ func TestGoblinPatrolsBetweenWaypoints(t *testing.T) {
 
 	var waitStateID uint8 = 255
 	if cfg := w.aiLibrary.ConfigByID(npc.AIConfigID); cfg != nil {
-		for idx, name := range cfg.stateNames {
+		for idx, name := range cfg.StateNames() {
 			if name == "Wait" {
 				waitStateID = uint8(idx)
 				break
@@ -485,8 +464,8 @@ func TestRatFleesFromNearbyThreat(t *testing.T) {
 	w.players[player.ID] = player
 
 	var fleeStateID uint8 = 255
-	if cfg := w.aiLibrary.ConfigForType(NPCTypeRat); cfg != nil {
-		for idx, name := range cfg.stateNames {
+	if cfg := w.aiLibrary.ConfigForType(string(NPCTypeRat)); cfg != nil {
+		for idx, name := range cfg.StateNames() {
 			if name == "Flee" {
 				fleeStateID = uint8(idx)
 				break
