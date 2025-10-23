@@ -12,6 +12,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
 	worldpkg "mine-and-die/server/internal/world"
@@ -346,7 +347,7 @@ func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
 
 func TestBroadcastLoggingRedactsPayload(t *testing.T) {
 	hub := newHub()
-	groundItems := []GroundItem{{
+	groundItems := []itemspkg.GroundItem{{
 		ID:   "ground-fireball",
 		Type: "fireball",
 		X:    1,
@@ -375,6 +376,89 @@ func TestBroadcastLoggingRedactsPayload(t *testing.T) {
 	}
 	if strings.Contains(logOutput, "\"type\":\"fireball\"") {
 		t.Fatalf("expected broadcast log to redact payload contents, got %q", logOutput)
+	}
+}
+
+func TestMarshalStateIncludesSharedGroundItemSchema(t *testing.T) {
+	hub := newHub()
+	join := hub.Join()
+
+	hub.mu.Lock()
+	player := hub.world.players[join.ID]
+	if player == nil {
+		hub.mu.Unlock()
+		t.Fatalf("expected player %s to be present in world", join.ID)
+	}
+	stack := hub.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: 3}, "test")
+	hub.mu.Unlock()
+	if stack == nil {
+		t.Fatalf("expected ground item stack to be created")
+	}
+
+	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)
+	if err != nil {
+		t.Fatalf("marshalState returned error: %v", err)
+	}
+
+	var msg stateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to decode state payload: %v", err)
+	}
+
+	expected := stack.GroundItem
+	if len(msg.GroundItems) == 0 {
+		t.Fatalf("expected ground items to be included in snapshot")
+	}
+
+	var found bool
+	for _, item := range msg.GroundItems {
+		if item.ID != expected.ID {
+			continue
+		}
+		found = true
+		if item.Type != expected.Type {
+			t.Fatalf("expected type %q, got %q", expected.Type, item.Type)
+		}
+		if item.FungibilityKey != expected.FungibilityKey {
+			t.Fatalf("expected fungibility key %q, got %q", expected.FungibilityKey, item.FungibilityKey)
+		}
+		if item.Qty != expected.Qty {
+			t.Fatalf("expected quantity %d, got %d", expected.Qty, item.Qty)
+		}
+		if item.X != expected.X || item.Y != expected.Y {
+			t.Fatalf("expected position (%f,%f), got (%f,%f)", expected.X, expected.Y, item.X, item.Y)
+		}
+	}
+	if !found {
+		t.Fatalf("expected snapshot to include ground item %q", expected.ID)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to decode raw payload: %v", err)
+	}
+
+	rawItems, ok := payload["groundItems"].([]any)
+	if !ok {
+		t.Fatalf("expected groundItems field to decode as array, got %T", payload["groundItems"])
+	}
+
+	var raw map[string]any
+	for _, entry := range rawItems {
+		candidate, ok := entry.(map[string]any)
+		if !ok {
+			t.Fatalf("expected ground item entry to decode as object, got %T", entry)
+		}
+		if id, _ := candidate["id"].(string); id == expected.ID {
+			raw = candidate
+			break
+		}
+	}
+	if raw == nil {
+		t.Fatalf("expected raw payload to include ground item %q", expected.ID)
+	}
+	if _, ok := raw["fungibility_key"]; !ok {
+		t.Fatalf("expected raw payload to expose fungibility_key field")
 	}
 }
 

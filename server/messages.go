@@ -2,22 +2,23 @@ package server
 
 import (
 	effectcontract "mine-and-die/server/effects/contract"
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 )
 
 type joinResponse struct {
-	Ver               int                 `json:"ver"`
-	ID                string              `json:"id"`
-	Players           []sim.Player        `json:"players"`
-	NPCs              []sim.NPC           `json:"npcs"`
-	Obstacles         []sim.Obstacle      `json:"obstacles"`
-	EffectTriggers    []sim.EffectTrigger `json:"effectTriggers,omitempty"`
-	GroundItems       []sim.GroundItem    `json:"groundItems,omitempty"`
-	Patches           []sim.Patch         `json:"patches,omitempty"`
-	Config            sim.WorldConfig     `json:"config"`
-	Resync            bool                `json:"resync"`
-	KeyframeInterval  int                 `json:"keyframeInterval,omitempty"`
-	EffectCatalogHash string              `json:"effectCatalogHash"`
+	Ver               int                   `json:"ver"`
+	ID                string                `json:"id"`
+	Players           []sim.Player          `json:"players"`
+	NPCs              []sim.NPC             `json:"npcs"`
+	Obstacles         []sim.Obstacle        `json:"obstacles"`
+	EffectTriggers    []sim.EffectTrigger   `json:"effectTriggers,omitempty"`
+	GroundItems       []itemspkg.GroundItem `json:"groundItems,omitempty"`
+	Patches           []sim.Patch           `json:"patches,omitempty"`
+	Config            sim.WorldConfig       `json:"config"`
+	Resync            bool                  `json:"resync"`
+	KeyframeInterval  int                   `json:"keyframeInterval,omitempty"`
+	EffectCatalogHash string                `json:"effectCatalogHash"`
 }
 
 func (joinResponse) ProtoJoinResponse() {}
@@ -33,7 +34,7 @@ type stateMessage struct {
 	EffectUpdates    []effectcontract.EffectUpdateEvent `json:"effect_update,omitempty"`
 	EffectEnds       []effectcontract.EffectEndEvent    `json:"effect_ended,omitempty"`
 	EffectSeqCursors map[string]effectcontract.Seq      `json:"effect_seq_cursors,omitempty"`
-	GroundItems      []sim.GroundItem                   `json:"groundItems,omitempty"`
+	GroundItems      []itemspkg.GroundItem              `json:"groundItems,omitempty"`
 	Patches          []sim.Patch                        `json:"patches"`
 	Tick             uint64                             `json:"t"`
 	Sequence         uint64                             `json:"sequence"`
@@ -45,15 +46,15 @@ type stateMessage struct {
 }
 
 type keyframeMessage struct {
-	Ver         int              `json:"ver"`
-	Type        string           `json:"type"`
-	Sequence    uint64           `json:"sequence"`
-	Tick        uint64           `json:"t"`
-	Players     []sim.Player     `json:"players"`
-	NPCs        []sim.NPC        `json:"npcs"`
-	Obstacles   []sim.Obstacle   `json:"obstacles"`
-	GroundItems []sim.GroundItem `json:"groundItems"`
-	Config      sim.WorldConfig  `json:"config"`
+	Ver         int                   `json:"ver"`
+	Type        string                `json:"type"`
+	Sequence    uint64                `json:"sequence"`
+	Tick        uint64                `json:"t"`
+	Players     []sim.Player          `json:"players"`
+	NPCs        []sim.NPC             `json:"npcs"`
+	Obstacles   []sim.Obstacle        `json:"obstacles"`
+	GroundItems []itemspkg.GroundItem `json:"groundItems"`
+	Config      sim.WorldConfig       `json:"config"`
 }
 
 type keyframeNackMessage struct {

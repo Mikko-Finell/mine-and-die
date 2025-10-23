@@ -1,5 +1,7 @@
 package sim
 
+import itemspkg "mine-and-die/server/internal/items"
+
 // Actor captures the shared state for any living entity in the world.
 type Actor struct {
 	ID        string          `json:"id"`
@@ -49,15 +51,8 @@ type EffectTrigger struct {
 	Colors   []string           `json:"colors,omitempty"`
 }
 
-// GroundItem represents a stack of items that exists in the world.
-type GroundItem struct {
-	ID             string   `json:"id"`
-	Type           ItemType `json:"type"`
-	FungibilityKey string   `json:"fungibility_key"`
-	X              float64  `json:"x"`
-	Y              float64  `json:"y"`
-	Qty            int      `json:"qty"`
-}
+// GroundItem mirrors the shared ground item stack exposed to callers.
+type GroundItem = itemspkg.GroundItem
 
 // Snapshot captures the state exposed to non-simulation callers.
 type Snapshot struct {

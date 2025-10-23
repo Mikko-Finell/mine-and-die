@@ -4,6 +4,8 @@ import (
 	"errors"
 	"math"
 	"testing"
+
+	"mine-and-die/server/internal/journal"
 )
 
 func mustBuildGroundDropDelegates(t *testing.T, cfg GroundDropConfig) GroundDropDelegates {
@@ -13,6 +15,31 @@ func mustBuildGroundDropDelegates(t *testing.T, cfg GroundDropConfig) GroundDrop
 		t.Fatalf("expected ground drop delegates to be constructed")
 	}
 	return delegates
+}
+
+func TestBuildGroundDropDelegatesRequiresAppendPatch(t *testing.T) {
+	items := make(map[string]*GroundItemState)
+	byTile := make(map[GroundTileKey]map[string]*GroundItemState)
+	var nextID uint64
+
+	cfg := GroundDropConfig{
+		Items:       items,
+		ItemsByTile: byTile,
+		NextID:      &nextID,
+		Actor:       &Actor{ID: "actor-append"},
+		Scatter:     ScatterConfig{},
+		EnsureKey:   func(*ItemStack) bool { return true },
+	}
+
+	if _, ok := BuildGroundDropDelegates(cfg); ok {
+		t.Fatalf("expected build to fail when appendPatch missing")
+	}
+
+	cfg.AppendPatch = func(journal.Patch) {}
+
+	if _, ok := BuildGroundDropDelegates(cfg); !ok {
+		t.Fatalf("expected build to succeed once appendPatch provided")
+	}
 }
 
 func TestNearestGroundItemReturnsClosestStack(t *testing.T) {
@@ -138,6 +165,88 @@ func TestSetGroundItemQuantityNilPointer(t *testing.T) {
 	}
 }
 
+func TestGroundItemQuantityJournalSetterRecordsPatch(t *testing.T) {
+	var patches []journal.Patch
+	setter := GroundItemQuantityJournalSetter(func(p journal.Patch) {
+		patches = append(patches, p)
+	})
+
+	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-1", Qty: 2}}
+
+	setter(item, 5)
+
+	if item.Qty != 5 {
+		t.Fatalf("expected quantity to update to 5, got %d", item.Qty)
+	}
+	if item.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", item.Version)
+	}
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != journal.PatchGroundItemQty {
+		t.Fatalf("expected patch kind %q, got %q", journal.PatchGroundItemQty, patch.Kind)
+	}
+	payload, ok := patch.Payload.(journal.GroundItemQtyPayload)
+	if !ok {
+		t.Fatalf("expected payload type GroundItemQtyPayload, got %T", patch.Payload)
+	}
+	if payload.Qty != 5 {
+		t.Fatalf("expected payload quantity 5, got %d", payload.Qty)
+	}
+
+	setter(item, 5)
+
+	if item.Version != 1 {
+		t.Fatalf("expected version to remain 1 after noop, got %d", item.Version)
+	}
+	if len(patches) != 1 {
+		t.Fatalf("expected patch count to remain 1 after noop, got %d", len(patches))
+	}
+}
+
+func TestGroundItemPositionJournalSetterRecordsPatch(t *testing.T) {
+	var patches []journal.Patch
+	setter := GroundItemPositionJournalSetter(func(p journal.Patch) {
+		patches = append(patches, p)
+	})
+
+	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-2", X: 1, Y: 2}}
+
+	setter(item, 3, 4)
+
+	if item.X != 3 || item.Y != 4 {
+		t.Fatalf("expected position to update to (3,4), got (%.2f, %.2f)", item.X, item.Y)
+	}
+	if item.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", item.Version)
+	}
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != journal.PatchGroundItemPos {
+		t.Fatalf("expected patch kind %q, got %q", journal.PatchGroundItemPos, patch.Kind)
+	}
+	payload, ok := patch.Payload.(journal.GroundItemPosPayload)
+	if !ok {
+		t.Fatalf("expected payload type GroundItemPosPayload, got %T", patch.Payload)
+	}
+	if payload.X != 3 || payload.Y != 4 {
+		t.Fatalf("expected payload coordinates (3,4), got (%.2f, %.2f)", payload.X, payload.Y)
+	}
+
+	setter(item, 3, 4)
+
+	if item.Version != 1 {
+		t.Fatalf("expected version to remain 1 after noop, got %d", item.Version)
+	}
+	if len(patches) != 1 {
+		t.Fatalf("expected patch count to remain 1 after noop, got %d", len(patches))
+	}
+}
+
 func TestScatterGroundItemPositionDefaultsToTileCenterWhenActorMissing(t *testing.T) {
 	cfg := ScatterConfig{TileSize: 10, Padding: 1, MinDistance: 0.5, MaxDistance: 2}
 	tile := GroundTileKey{X: 3, Y: 4}
@@ -175,6 +284,9 @@ func TestUpsertGroundItemCreatesNewEntry(t *testing.T) {
 	cfg := ScatterConfig{TileSize: 10, MinDistance: 0, MaxDistance: 0, Padding: 0}
 
 	ensured := false
+	setQuantity := GroundItemQuantityJournalSetter(nil)
+	setPosition := GroundItemPositionJournalSetter(nil)
+
 	created := UpsertGroundItem(
 		items,
 		byTile,
@@ -190,8 +302,8 @@ func TestUpsertGroundItemCreatesNewEntry(t *testing.T) {
 			s.FungibilityKey = "gold-key"
 			return true
 		},
-		func(item *GroundItemState, qty int) { item.Qty = qty },
-		func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		setQuantity,
+		setPosition,
 		nil,
 	)
 
@@ -226,6 +338,9 @@ func TestUpsertGroundItemMergesExistingStack(t *testing.T) {
 	stack := ItemStack{Type: "gold", FungibilityKey: "gold-key", Quantity: 4}
 	cfg := ScatterConfig{TileSize: 10}
 
+	setQuantity := GroundItemQuantityJournalSetter(nil)
+	setPosition := GroundItemPositionJournalSetter(nil)
+
 	merged := UpsertGroundItem(
 		items,
 		byTile,
@@ -237,8 +352,8 @@ func TestUpsertGroundItemMergesExistingStack(t *testing.T) {
 		func() float64 { return 0 },
 		func(_, _ float64) float64 { return 0 },
 		nil,
-		func(item *GroundItemState, qty int) { item.Qty = qty },
-		func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		setQuantity,
+		setPosition,
 		nil,
 	)
 
@@ -253,6 +368,71 @@ func TestUpsertGroundItemMergesExistingStack(t *testing.T) {
 	}
 }
 
+func TestUpsertGroundItemJournalSettersRecordPatches(t *testing.T) {
+	tile := GroundTileKey{X: 1, Y: 2}
+	existing := &GroundItemState{GroundItem: GroundItem{ID: "ground-7", Type: "gold", FungibilityKey: "gold-key", Qty: 4, X: 1, Y: 1}}
+	existing.Tile = tile
+
+	items := map[string]*GroundItemState{existing.ID: existing}
+	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {existing.FungibilityKey: existing}}
+	nextID := uint64(7)
+
+	actor := &Actor{ID: "actor-merge", X: 15.5, Y: 25.25}
+	stack := ItemStack{Type: "gold", FungibilityKey: "gold-key", Quantity: 2}
+	cfg := ScatterConfig{TileSize: 10, MinDistance: 0, MaxDistance: 0, Padding: 0}
+
+	var patches []journal.Patch
+	merged := UpsertGroundItem(
+		items,
+		byTile,
+		&nextID,
+		actor,
+		stack,
+		"test",
+		cfg,
+		nil,
+		nil,
+		nil,
+		GroundItemQuantityJournalSetter(func(p journal.Patch) {
+			patches = append(patches, p)
+		}),
+		GroundItemPositionJournalSetter(func(p journal.Patch) {
+			patches = append(patches, p)
+		}),
+		nil,
+	)
+
+	if merged != existing {
+		t.Fatalf("expected existing stack to be returned")
+	}
+	if merged.Qty != 6 {
+		t.Fatalf("expected merged quantity 6, got %d", merged.Qty)
+	}
+	if merged.X != actor.X || merged.Y != actor.Y {
+		t.Fatalf("expected merged position to match actor (%.2f, %.2f), got (%.2f, %.2f)", actor.X, actor.Y, merged.X, merged.Y)
+	}
+	if merged.Version != 2 {
+		t.Fatalf("expected merge to bump version twice, got %d", merged.Version)
+	}
+	if len(patches) != 2 {
+		t.Fatalf("expected patches for quantity and position, got %d", len(patches))
+	}
+	if patches[0].Kind != journal.PatchGroundItemQty {
+		t.Fatalf("expected first patch kind %q, got %q", journal.PatchGroundItemQty, patches[0].Kind)
+	}
+	qtyPayload, ok := patches[0].Payload.(journal.GroundItemQtyPayload)
+	if !ok || qtyPayload.Qty != 6 {
+		t.Fatalf("expected quantity payload 6, got %#v", patches[0].Payload)
+	}
+	if patches[1].Kind != journal.PatchGroundItemPos {
+		t.Fatalf("expected second patch kind %q, got %q", journal.PatchGroundItemPos, patches[1].Kind)
+	}
+	posPayload, ok := patches[1].Payload.(journal.GroundItemPosPayload)
+	if !ok || posPayload.X != actor.X || posPayload.Y != actor.Y {
+		t.Fatalf("expected position payload (%.2f, %.2f), got %#v", actor.X, actor.Y, patches[1].Payload)
+	}
+}
+
 func TestUpsertGroundItemReturnsNilWhenFungibilityMissing(t *testing.T) {
 	items := make(map[string]*GroundItemState)
 	byTile := make(map[GroundTileKey]map[string]*GroundItemState)
@@ -261,6 +441,9 @@ func TestUpsertGroundItemReturnsNilWhenFungibilityMissing(t *testing.T) {
 	actor := &Actor{ID: "npc-1", X: 1, Y: 1}
 	stack := ItemStack{Type: "mystery", Quantity: 1}
 	cfg := ScatterConfig{TileSize: 5}
+
+	setQuantity := GroundItemQuantityJournalSetter(nil)
+	setPosition := GroundItemPositionJournalSetter(nil)
 
 	created := UpsertGroundItem(
 		items,
@@ -273,8 +456,8 @@ func TestUpsertGroundItemReturnsNilWhenFungibilityMissing(t *testing.T) {
 		nil,
 		nil,
 		func(*ItemStack) bool { return false },
-		nil,
-		nil,
+		setQuantity,
+		setPosition,
 		nil,
 	)
 
@@ -299,7 +482,7 @@ func TestRemoveGroundItemClearsStoreAndTile(t *testing.T) {
 	items := map[string]*GroundItemState{item.ID: item}
 	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {"gold-key": item}}
 
-	RemoveGroundItem(items, byTile, item, func(target *GroundItemState, qty int) { target.Qty = qty })
+	RemoveGroundItem(items, byTile, item, func(journal.Patch) {})
 
 	if len(items) != 0 {
 		t.Fatalf("expected items map to be empty after removal")
@@ -309,6 +492,62 @@ func TestRemoveGroundItemClearsStoreAndTile(t *testing.T) {
 	}
 	if item.Qty != 0 {
 		t.Fatalf("expected removal to zero the quantity, got %d", item.Qty)
+	}
+}
+
+func TestRemoveGroundItemRequiresAppendPatch(t *testing.T) {
+	tile := GroundTileKey{X: 1, Y: 2}
+	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-required", Type: "gold", FungibilityKey: "gold-key", Qty: 4}, Tile: tile}
+
+	items := map[string]*GroundItemState{item.ID: item}
+	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {"gold-key": item}}
+
+	RemoveGroundItem(items, byTile, item, nil)
+
+	if len(items) != 1 {
+		t.Fatalf("expected items map to remain unchanged when appendPatch missing")
+	}
+	if len(byTile) != 1 {
+		t.Fatalf("expected tile index to remain unchanged when appendPatch missing")
+	}
+	if item.Qty != 4 {
+		t.Fatalf("expected quantity to remain at 4 when appendPatch missing, got %d", item.Qty)
+	}
+}
+
+func TestRemoveGroundItemJournalSetterRecordsPatch(t *testing.T) {
+	tile := GroundTileKey{X: 4, Y: 1}
+	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-6", Type: "gold", FungibilityKey: "gold-key", Qty: 3}, Tile: tile}
+
+	items := map[string]*GroundItemState{item.ID: item}
+	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {"gold-key": item}}
+
+	var patches []journal.Patch
+	RemoveGroundItem(
+		items,
+		byTile,
+		item,
+		func(p journal.Patch) {
+			patches = append(patches, p)
+		},
+	)
+
+	if item.Version != 1 {
+		t.Fatalf("expected removal to increment version to 1, got %d", item.Version)
+	}
+	if len(patches) != 1 {
+		t.Fatalf("expected removal to record 1 patch, got %d", len(patches))
+	}
+	patch := patches[0]
+	if patch.Kind != journal.PatchGroundItemQty {
+		t.Fatalf("expected removal patch kind %q, got %q", journal.PatchGroundItemQty, patch.Kind)
+	}
+	payload, ok := patch.Payload.(journal.GroundItemQtyPayload)
+	if !ok {
+		t.Fatalf("expected payload type GroundItemQtyPayload, got %T", patch.Payload)
+	}
+	if payload.Qty != 0 {
+		t.Fatalf("expected removal patch quantity 0, got %d", payload.Qty)
 	}
 }
 
@@ -366,8 +605,7 @@ func TestDropAllItemsOfTypePlacesStacksOnGround(t *testing.T) {
 			}
 			return true
 		},
-		SetQuantity: func(item *GroundItemState, qty int) { item.Qty = qty },
-		SetPosition: func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		AppendPatch: func(journal.Patch) {},
 	})
 
 	total := DropAllItemsOfType(
@@ -436,8 +674,7 @@ func TestDropAllInventoryDropsCombinedStacks(t *testing.T) {
 			}
 			return true
 		},
-		SetQuantity: func(item *GroundItemState, qty int) { item.Qty = qty },
-		SetPosition: func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		AppendPatch: func(journal.Patch) {},
 		LogDrop: func(_ *Actor, stack ItemStack, reason, stackID string) {
 			logCalls++
 			if reason != "death" {
@@ -502,8 +739,7 @@ func TestDropAllGoldUsesGoldItemType(t *testing.T) {
 			}
 			return true
 		},
-		SetQuantity: func(item *GroundItemState, qty int) { item.Qty = qty },
-		SetPosition: func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		AppendPatch: func(journal.Patch) {},
 	})
 
 	total := DropAllGold(
@@ -554,8 +790,7 @@ func TestDropGoldQuantityPlacesStack(t *testing.T) {
 			}
 			return true
 		},
-		SetQuantity: func(item *GroundItemState, qty int) { item.Qty = qty },
-		SetPosition: func(item *GroundItemState, x, y float64) { item.X, item.Y = x, y },
+		AppendPatch: func(journal.Patch) {},
 		LogDrop:     func(*Actor, ItemStack, string, string) { logged = true },
 	})
 
@@ -619,8 +854,7 @@ func TestDropGoldQuantityInsufficientGold(t *testing.T) {
 		Actor:       actor,
 		Scatter:     cfg,
 		EnsureKey:   func(*ItemStack) bool { return true },
-		SetQuantity: func(*GroundItemState, int) {},
-		SetPosition: func(*GroundItemState, float64, float64) {},
+		AppendPatch: func(journal.Patch) {},
 	})
 
 	result, failure := DropGoldQuantity(
@@ -663,8 +897,7 @@ func TestDropGoldQuantityInventoryError(t *testing.T) {
 		Actor:       actor,
 		Scatter:     cfg,
 		EnsureKey:   func(*ItemStack) bool { return true },
-		SetQuantity: func(*GroundItemState, int) {},
-		SetPosition: func(*GroundItemState, float64, float64) {},
+		AppendPatch: func(journal.Patch) {},
 	})
 
 	result, failure := DropGoldQuantity(
@@ -695,15 +928,18 @@ func TestDropGoldQuantityInventoryError(t *testing.T) {
 }
 
 func TestPickupNearestItemTransfersStack(t *testing.T) {
-	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-1", Type: "gold", FungibilityKey: "gold-key", Qty: 5, X: 3, Y: 4}}
+	tile := GroundTileKey{X: 0, Y: 0}
+	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-1", Type: "gold", FungibilityKey: "gold-key", Qty: 5, X: 3, Y: 4}, Tile: tile}
 	items := map[string]*GroundItemState{item.ID: item}
+	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {item.FungibilityKey: item}}
 	actor := &Actor{ID: "player-1", X: 0, Y: 0}
 
 	added := false
-	removed := false
+	var patches []journal.Patch
 
 	result, failure := PickupNearestItem(
 		items,
+		byTile,
 		actor,
 		"gold",
 		10,
@@ -714,11 +950,8 @@ func TestPickupNearestItemTransfersStack(t *testing.T) {
 			added = true
 			return nil
 		},
-		func(target *GroundItemState) {
-			if target != item {
-				t.Fatalf("expected removal of ground-1, got %#v", target)
-			}
-			removed = true
+		func(p journal.Patch) {
+			patches = append(patches, p)
 		},
 	)
 
@@ -738,21 +971,31 @@ func TestPickupNearestItemTransfersStack(t *testing.T) {
 	if !added {
 		t.Fatalf("expected addToInventory callback to run")
 	}
-	if !removed {
-		t.Fatalf("expected removeItem callback to run")
+	if len(items) != 0 {
+		t.Fatalf("expected items map to be cleared after pickup")
+	}
+	if len(byTile) != 0 {
+		t.Fatalf("expected tile index to be cleared after pickup")
+	}
+	if len(patches) != 1 {
+		t.Fatalf("expected removal to append a quantity patch, got %d", len(patches))
 	}
 }
 
 func TestPickupNearestItemOutOfRange(t *testing.T) {
-	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-2", Type: "gold", Qty: 1, X: 10, Y: 0}}
+	tile := GroundTileKey{X: 1, Y: 0}
+	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-2", Type: "gold", FungibilityKey: "gold-key", Qty: 1, X: 10, Y: 0}, Tile: tile}
 	items := map[string]*GroundItemState{item.ID: item}
+	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {item.FungibilityKey: item}}
 	actor := &Actor{ID: "player-2", X: 0, Y: 0}
 
 	addCalled := false
 	removeCalled := false
+	var patches []journal.Patch
 
 	result, failure := PickupNearestItem(
 		items,
+		byTile,
 		actor,
 		"gold",
 		5,
@@ -760,8 +1003,9 @@ func TestPickupNearestItemOutOfRange(t *testing.T) {
 			addCalled = true
 			return nil
 		},
-		func(*GroundItemState) {
+		func(p journal.Patch) {
 			removeCalled = true
+			patches = append(patches, p)
 		},
 	)
 
@@ -783,17 +1027,29 @@ func TestPickupNearestItemOutOfRange(t *testing.T) {
 	if removeCalled {
 		t.Fatalf("expected removeItem not to be called for out of range stack")
 	}
+	if len(items) != 1 {
+		t.Fatalf("expected items map to remain unchanged when out of range")
+	}
+	if len(byTile) != 1 {
+		t.Fatalf("expected tile index to remain unchanged when out of range")
+	}
+	if len(patches) != 0 {
+		t.Fatalf("expected no patches when out of range, got %d", len(patches))
+	}
 }
 
 func TestPickupNearestItemHandlesEmptyStacks(t *testing.T) {
-	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-3", Type: "gold", Qty: 0}}
+	tile := GroundTileKey{X: 0, Y: 1}
+	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-3", Type: "gold", FungibilityKey: "gold-key", Qty: 0}, Tile: tile}
 	items := map[string]*GroundItemState{item.ID: item}
+	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {item.FungibilityKey: item}}
 	actor := &Actor{ID: "player-3", X: 0, Y: 0}
 
-	removed := false
+	var patches []journal.Patch
 
 	result, failure := PickupNearestItem(
 		items,
+		byTile,
 		actor,
 		"gold",
 		2,
@@ -801,11 +1057,8 @@ func TestPickupNearestItemHandlesEmptyStacks(t *testing.T) {
 			t.Fatalf("did not expect inventory mutation for empty stack")
 			return nil
 		},
-		func(target *GroundItemState) {
-			if target != item {
-				t.Fatalf("expected empty stack to be removed")
-			}
-			removed = true
+		func(p journal.Patch) {
+			patches = append(patches, p)
 		},
 	)
 
@@ -818,26 +1071,39 @@ func TestPickupNearestItemHandlesEmptyStacks(t *testing.T) {
 	if failure.StackID != item.ID {
 		t.Fatalf("expected failure to include stack ID %q, got %q", item.ID, failure.StackID)
 	}
-	if !removed {
-		t.Fatalf("expected removeItem to be called for empty stack")
+	if len(items) != 0 {
+		t.Fatalf("expected items map to be cleared after removing empty stack")
+	}
+	if len(byTile) != 0 {
+		t.Fatalf("expected tile index to be cleared after removing empty stack")
+	}
+	if len(patches) != 0 {
+		t.Fatalf("expected no patches when empty stack removed, got %d", len(patches))
 	}
 }
 
 func TestPickupNearestItemInventoryError(t *testing.T) {
-	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-4", Type: "gold", Qty: 3}}
+	tile := GroundTileKey{X: 2, Y: 0}
+	item := &GroundItemState{GroundItem: GroundItem{ID: "ground-4", Type: "gold", FungibilityKey: "gold-key", Qty: 3}, Tile: tile}
 	items := map[string]*GroundItemState{item.ID: item}
+	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {item.FungibilityKey: item}}
 	actor := &Actor{ID: "player-4", X: 0, Y: 0}
 
 	invErr := errors.New("inventory full")
 	removeCalled := false
+	var patches []journal.Patch
 
 	result, failure := PickupNearestItem(
 		items,
+		byTile,
 		actor,
 		"gold",
 		5,
 		func(ItemStack) error { return invErr },
-		func(*GroundItemState) { removeCalled = true },
+		func(p journal.Patch) {
+			removeCalled = true
+			patches = append(patches, p)
+		},
 	)
 
 	if result != nil {
@@ -855,10 +1121,19 @@ func TestPickupNearestItemInventoryError(t *testing.T) {
 	if removeCalled {
 		t.Fatalf("expected removeItem not to be called when inventory mutation fails")
 	}
+	if len(items) != 1 {
+		t.Fatalf("expected items map to remain unchanged when inventory fails")
+	}
+	if len(byTile) != 1 {
+		t.Fatalf("expected tile index to remain unchanged when inventory fails")
+	}
+	if len(patches) != 0 {
+		t.Fatalf("expected no patches when inventory mutation fails, got %d", len(patches))
+	}
 }
 
 func TestPickupNearestItemNilInputs(t *testing.T) {
-	result, failure := PickupNearestItem(nil, nil, "gold", 5, nil, nil)
+	result, failure := PickupNearestItem(nil, nil, nil, "gold", 5, nil, nil)
 	if result != nil {
 		t.Fatalf("expected nil result when inputs missing, got %#v", result)
 	}

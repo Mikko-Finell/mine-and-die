@@ -1,7 +1,7 @@
 package sim
 
 // ItemType represents a unique identifier for an item kind.
-type ItemType string
+type ItemType = string
 
 // ItemStack represents a quantity of a specific item type and fungibility key.
 type ItemStack struct {

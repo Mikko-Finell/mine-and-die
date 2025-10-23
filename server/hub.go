@@ -393,7 +393,7 @@ func (h *Hub) EffectCatalogSnapshot() map[string]effectCatalogMetadata {
 	return h.effectCatalogSnapshotLocked()
 }
 
-func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTriggers bool) ([]Player, []NPC, []EffectTrigger, []GroundItem) {
+func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTriggers bool) ([]Player, []NPC, []EffectTrigger, []itemspkg.GroundItem) {
 	if h == nil {
 		return make([]Player, 0), make([]NPC, 0), nil, nil
 	}
@@ -415,11 +415,11 @@ func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTrigger
 				triggers = make([]EffectTrigger, 0)
 			}
 		}
-		var groundItems []GroundItem
+		var groundItems []itemspkg.GroundItem
 		if includeGroundItems {
-			groundItems = legacyGroundItemsFromSim(snapshot.GroundItems)
+			groundItems = simutil.CloneGroundItems(snapshot.GroundItems)
 			if groundItems == nil {
-				groundItems = make([]GroundItem, 0)
+				groundItems = make([]itemspkg.GroundItem, 0)
 			}
 		}
 		return players, npcs, triggers, groundItems
@@ -440,11 +440,11 @@ func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTrigger
 			triggers = make([]EffectTrigger, 0)
 		}
 	}
-	var groundItems []GroundItem
+	var groundItems []itemspkg.GroundItem
 	if includeGroundItems {
 		groundItems = h.world.GroundItemsSnapshot()
 		if groundItems == nil {
-			groundItems = make([]GroundItem, 0)
+			groundItems = make([]itemspkg.GroundItem, 0)
 		}
 	}
 	return players, npcs, triggers, groundItems
@@ -475,7 +475,7 @@ func (h *Hub) simSnapshotLocked(includeGroundItems bool, includeEffectTriggers b
 		AliveEffectIDs: simutil.CloneAliveEffectIDs(simAliveEffectIDsFromLegacy(h.world.effects)),
 	}
 	if includeGroundItems {
-		snapshot.GroundItems = simutil.CloneGroundItems(simGroundItemsFromLegacy(h.world.GroundItemsSnapshot()))
+		snapshot.GroundItems = simutil.CloneGroundItems(h.world.GroundItemsSnapshot())
 	}
 	if includeEffectTriggers {
 		snapshot.EffectEvents = simutil.CloneEffectTriggers(simEffectTriggersFromLegacy(h.world.flushEffectTriggersLocked()))
@@ -485,20 +485,20 @@ func (h *Hub) simSnapshotLocked(includeGroundItems bool, includeEffectTriggers b
 
 // legacyGroundItemsSnapshotLocked returns a broadcast-friendly snapshot of ground items.
 // Callers must hold h.mu.
-func (h *Hub) legacyGroundItemsSnapshotLocked() []GroundItem {
+func (h *Hub) legacyGroundItemsSnapshotLocked() []itemspkg.GroundItem {
 	if h == nil {
-		return make([]GroundItem, 0)
+		return make([]itemspkg.GroundItem, 0)
 	}
 	if h.engine != nil {
-		items := legacyGroundItemsFromSim(h.engine.Snapshot().GroundItems)
+		items := simutil.CloneGroundItems(h.engine.Snapshot().GroundItems)
 		if items == nil {
-			return make([]GroundItem, 0)
+			return make([]itemspkg.GroundItem, 0)
 		}
 		return items
 	}
 	items := h.world.GroundItemsSnapshot()
 	if items == nil {
-		return make([]GroundItem, 0)
+		return make([]itemspkg.GroundItem, 0)
 	}
 	return items
 }
@@ -562,7 +562,7 @@ func (h *Hub) Join() joinResponse {
 	snapshot := h.simSnapshotLocked(true, false)
 	players := legacyPlayersFromSim(snapshot.Players)
 	npcs := legacyNPCsFromSim(snapshot.NPCs)
-	groundItems := legacyGroundItemsFromSim(snapshot.GroundItems)
+	groundItems := simutil.CloneGroundItems(snapshot.GroundItems)
 	cfg := h.config
 	h.mu.Unlock()
 
@@ -646,7 +646,7 @@ func (h *Hub) CurrentConfig() worldConfig {
 }
 
 // Subscribe associates a WebSocket connection with an existing player.
-func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []sim.Player, []sim.NPC, []sim.GroundItem, bool) {
+func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []sim.Player, []sim.NPC, []itemspkg.GroundItem, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -1050,7 +1050,7 @@ func (h *Hub) UpdateHeartbeat(playerID string, receivedAt time.Time, clientSent 
 
 // processLoopStep applies post-step bookkeeping and returns converted snapshots
 // alongside subscribers that should be closed.
-func (h *Hub) processLoopStep(result sim.LoopStepResult) ([]Player, []NPC, []EffectTrigger, []GroundItem, []*subscriber) {
+func (h *Hub) processLoopStep(result sim.LoopStepResult) ([]Player, []NPC, []EffectTrigger, []itemspkg.GroundItem, []*subscriber) {
 	if h == nil {
 		return nil, nil, nil, nil, nil
 	}
@@ -1071,12 +1071,12 @@ func (h *Hub) processLoopStep(result sim.LoopStepResult) ([]Player, []NPC, []Eff
 	players := legacyPlayersFromSim(snapshot.Players)
 	npcs := legacyNPCsFromSim(snapshot.NPCs)
 	triggers := legacyEffectTriggersFromSim(snapshot.EffectEvents)
-	groundItems := legacyGroundItemsFromSim(snapshot.GroundItems)
+	groundItems := simutil.CloneGroundItems(snapshot.GroundItems)
 
 	return players, npcs, triggers, groundItems, toClose
 }
 
-func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigger, []GroundItem, []*subscriber) {
+func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigger, []itemspkg.GroundItem, []*subscriber) {
 	if h == nil || h.engine == nil {
 		return nil, nil, nil, nil, nil
 	}
@@ -1241,7 +1241,7 @@ func (h *Hub) shouldIncludeSnapshot() bool {
 	return tick >= last && tick-last >= interval64
 }
 
-func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.EffectTrigger, groundItems []sim.GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
+func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.EffectTrigger, groundItems []itemspkg.GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	h.mu.Lock()
 	engine := h.engine
 	var (
@@ -1295,7 +1295,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 		}
 		if includeSnapshot {
 			if groundItems == nil {
-				groundItems = make([]sim.GroundItem, 0)
+				groundItems = make([]itemspkg.GroundItem, 0)
 			}
 			obstacles = simutil.CloneObstacles(simObstaclesFromLegacy(h.world.obstacles))
 		} else {
@@ -1330,7 +1330,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 			npcs = make([]sim.NPC, 0)
 		}
 		if groundItems == nil {
-			groundItems = make([]sim.GroundItem, 0)
+			groundItems = make([]itemspkg.GroundItem, 0)
 		}
 	}
 	if triggers == nil {
@@ -1484,7 +1484,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 				Players:     legacyPlayersFromSim(players),
 				NPCs:        legacyNPCsFromSim(npcs),
 				Obstacles:   legacyObstaclesFromSim(obstacles),
-				GroundItems: legacyGroundItemsFromSim(groundItems),
+				GroundItems: simutil.CloneGroundItems(groundItems),
 				Config:      cfg,
 			}
 			legacyRecord := h.world.journal.RecordKeyframe(legacyFrame)
@@ -1562,7 +1562,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 }
 
 // MarshalState serializes a world snapshot using the legacy hub marshaller.
-func (h *Hub) MarshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.EffectTrigger, groundItems []sim.GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
+func (h *Hub) MarshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.EffectTrigger, groundItems []itemspkg.GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	return h.marshalState(players, npcs, triggers, groundItems, drainPatches, includeSnapshot)
 }
 
@@ -1704,7 +1704,7 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 }
 
 // broadcastState sends the latest world snapshot to every subscriber.
-func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem) {
+func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []itemspkg.GroundItem) {
 	h.scheduleResyncIfNeeded()
 	includeSnapshot := h.shouldIncludeSnapshot()
 	simPlayers := simPlayersFromLegacy(players)
@@ -1713,11 +1713,11 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 	if len(triggers) > 0 {
 		simTriggers = simEffectTriggersFromLegacy(triggers)
 	}
-	var simGroundItems []sim.GroundItem
+	var clonedGroundItems []itemspkg.GroundItem
 	if len(groundItems) > 0 {
-		simGroundItems = simGroundItemsFromLegacy(groundItems)
+		clonedGroundItems = simutil.CloneGroundItems(groundItems)
 	}
-	data, entities, err := h.marshalState(simPlayers, simNPCs, simTriggers, simGroundItems, true, includeSnapshot)
+	data, entities, err := h.marshalState(simPlayers, simNPCs, simTriggers, clonedGroundItems, true, includeSnapshot)
 	if err != nil {
 		h.logf("failed to marshal state message: %v", err)
 		return
@@ -1772,7 +1772,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 }
 
 // BroadcastState sends a snapshot to every active subscriber.
-func (h *Hub) BroadcastState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem) {
+func (h *Hub) BroadcastState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []itemspkg.GroundItem) {
 	h.broadcastState(players, npcs, triggers, groundItems)
 }
 

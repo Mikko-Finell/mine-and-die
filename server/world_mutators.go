@@ -345,36 +345,6 @@ func (w *World) SetEffectParam(eff *effectState, key string, value float64) {
 	w.recordEffectUpdate(eff, "param")
 }
 
-// SetGroundItemPosition updates a ground item's position, bumps the version, and records a patch.
-func (w *World) SetGroundItemPosition(item *groundItemState, x, y float64) {
-	if w == nil || item == nil {
-		return
-	}
-
-	if !items.SetGroundItemPosition(&item.X, &item.Y, x, y) {
-		return
-	}
-
-	item.Version++
-
-	w.appendPatch(PatchGroundItemPos, item.ID, GroundItemPosPayload{X: item.X, Y: item.Y})
-}
-
-// SetGroundItemQuantity updates a ground item's quantity, bumps the version, and records a patch.
-func (w *World) SetGroundItemQuantity(item *groundItemState, qty int) {
-	if w == nil || item == nil {
-		return
-	}
-
-	if !items.SetGroundItemQuantity(&item.Qty, qty) {
-		return
-	}
-
-	item.Version++
-
-	w.appendPatch(PatchGroundItemQty, item.ID, GroundItemQtyPayload{Qty: item.Qty})
-}
-
 func cloneEffectParams(params map[string]float64) map[string]float64 {
 	if len(params) == 0 {
 		return nil

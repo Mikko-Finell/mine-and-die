@@ -421,8 +421,22 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - [x] Update the legacy world wrapper to delegate ground item drops and pickups through the `internal/items` helpers so journal emission and telemetry wiring live behind the shared adapters.
   - [x] Move the ground drop delegate assembly (`buildGroundDropDelegates`, `invokeGroundDrop`, and associated helpers) into `internal/items` so the legacy world wrapper only injects inventory drains, RNG hooks, and telemetry callbacks.
   - [x] Move the ground drop inventory drain helpers (`removeStacksFunc`, `removeGoldQuantityFunc`, `inventoryDrainFunc`, and `equipmentDrainFunc`) into `internal/items`, exposing config-driven adapters so the world wrapper just supplies mutate closures and actor lookups.
-  - [ ] Thread journal-aware quantity and position setters through `items.GroundDropConfig` so drop flows record patches via shared `internal/journal` adapters instead of calling the legacy world helpers directly.
-- [ ] Route mutations only through `journal` APIs to record diffs.
+- [x] Thread journal-aware quantity and position setters through `items.GroundDropConfig` so drop flows record patches via shared `internal/journal` adapters instead of calling the legacy world helpers directly.
+- [x] Update ground item removal to route through the journal-aware quantity setter so `items.RemoveGroundItem` records patches without invoking the legacy world helper.
+- [x] Swap `World.upsertGroundItem` over to the journal-aware quantity and position setters so ground item merges stop calling the legacy world helpers.
+- [x] Retire the legacy `World.SetGroundItemQuantity`/`SetGroundItemPosition` helpers by updating remaining call sites and tests to rely on the journal-aware setters directly.
+- [x] Route mutations only through `journal` APIs to record diffs.
+- [x] Collapse the `items.GroundDropConfig` setter hooks into a shared journal appender so `BuildGroundDropDelegates` constructs the patch-recording setters internally and callers cannot bypass diff emission.
+- [x] Update `items.RemoveGroundItem` to accept a journal append callback and construct its own quantity setter so deletions always emit patches through the shared helpers.
+- [x] Update `items.PickupNearestItem` to require the tile index and journal appender so it removes depleted stacks via `RemoveGroundItem` and always records quantity patches.
+- [x] Retire the world `removeGroundItem` wrapper by updating tests and call sites to invoke `items.RemoveGroundItem` directly with the shared journal dependency.
+- [x] Replace the `groundItemState` alias with `items.GroundItemState` throughout the server so world code works with the shared item types directly.
+- [x] Replace the remaining `GroundItem` alias with `items.GroundItem` so server tests and helpers operate on the shared item structs.
+- [x] Replace the `groundTileKey` alias with `items.GroundTileKey` so server code uses the shared tile metadata type directly.
+- [x] Collapse the `sim_engine_adapter` ground item conversions to work with `[]itemspkg.GroundItem` end-to-end so hub snapshots and broadcasts stop hopping between legacy and shared item types.
+- [x] Update hub state messages and marshaling helpers to encode `[]itemspkg.GroundItem` directly so the network layer no longer depends on `sim` ground item wrappers.
+- [x] Add regression coverage proving `Hub.marshalState` emits `groundItems` using the shared `internal/items` schema so the new payload shape stays locked for network consumers.
+- [ ] Extend the websocket subscribe/resubscribe tests to assert the initial state payload carries the shared ground item schema and trim any remaining `sim` ground item clones from the handler.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**

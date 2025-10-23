@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
+
+	"mine-and-die/server/internal/journal"
 )
 
 const positionEpsilon = 1e-6
@@ -137,6 +139,10 @@ func UpsertGroundItem(
 		return nil
 	}
 
+	if setQuantity == nil || setPosition == nil {
+		return nil
+	}
+
 	tile := TileForPosition(actor.X, actor.Y, cfg.TileSize)
 	x, y := ScatterGroundItemPosition(actor, tile, cfg, randomAngle, randomDistance)
 
@@ -156,18 +162,9 @@ func UpsertGroundItem(
 	}
 
 	if existing := itemsByType[stack.FungibilityKey]; existing != nil {
-		if setQuantity != nil {
-			setQuantity(existing, existing.Qty+stack.Quantity)
-		} else {
-			existing.Qty += stack.Quantity
-		}
+		setQuantity(existing, existing.Qty+stack.Quantity)
 		existing.Tile = tile
-		if setPosition != nil {
-			setPosition(existing, x, y)
-		} else {
-			existing.X = x
-			existing.Y = y
-		}
+		setPosition(existing, x, y)
 		if logDrop != nil {
 			logDrop(actor, stack, reason, existing.ID)
 		}
@@ -204,18 +201,16 @@ func RemoveGroundItem(
 	items map[string]*GroundItemState,
 	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
 	item *GroundItemState,
-	setQuantity func(*GroundItemState, int),
+	appendPatch func(journal.Patch),
 ) {
-	if items == nil || item == nil {
+	if items == nil || item == nil || appendPatch == nil {
 		return
 	}
 
+	setQuantity := GroundItemQuantityJournalSetter(appendPatch)
+
 	if item.Qty > 0 {
-		if setQuantity != nil {
-			setQuantity(item, 0)
-		} else {
-			item.Qty = 0
-		}
+		setQuantity(item, 0)
 	}
 
 	delete(items, item.ID)
@@ -385,13 +380,14 @@ type DropFailure struct {
 // success or a PickupFailure when the attempt cannot be completed.
 func PickupNearestItem(
 	items map[string]*GroundItemState,
+	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
 	actor *Actor,
 	itemType string,
 	maxDistance float64,
 	addToInventory func(ItemStack) error,
-	removeItem func(*GroundItemState),
+	appendPatch func(journal.Patch),
 ) (*PickupResult, *PickupFailure) {
-	if len(items) == 0 || actor == nil || itemType == "" || addToInventory == nil || removeItem == nil {
+	if len(items) == 0 || actor == nil || itemType == "" || addToInventory == nil || appendPatch == nil {
 		return nil, &PickupFailure{Reason: PickupFailureReasonNotFound}
 	}
 
@@ -425,7 +421,7 @@ func PickupNearestItem(
 
 	if item == nil {
 		if depleted != nil {
-			removeItem(depleted)
+			RemoveGroundItem(items, itemsByTile, depleted, appendPatch)
 			return nil, &PickupFailure{Reason: PickupFailureReasonNotFound, StackID: depleted.ID}
 		}
 		return nil, &PickupFailure{Reason: PickupFailureReasonNotFound}
@@ -437,7 +433,7 @@ func PickupNearestItem(
 
 	qty := item.Qty
 	if qty <= 0 {
-		removeItem(item)
+		RemoveGroundItem(items, itemsByTile, item, appendPatch)
 		return nil, &PickupFailure{Reason: PickupFailureReasonNotFound, StackID: item.ID}
 	}
 
@@ -454,7 +450,7 @@ func PickupNearestItem(
 		return nil, failure
 	}
 
-	removeItem(item)
+	RemoveGroundItem(items, itemsByTile, item, appendPatch)
 	return &PickupResult{StackID: item.ID, Quantity: qty, Distance: bestDistance}, nil
 }
 
@@ -467,8 +463,7 @@ type GroundDropConfig struct {
 	RandomAngle    func() float64
 	RandomDistance func(min, max float64) float64
 	EnsureKey      func(*ItemStack) bool
-	SetQuantity    func(*GroundItemState, int)
-	SetPosition    func(*GroundItemState, float64, float64)
+	AppendPatch    func(journal.Patch)
 	LogDrop        func(*Actor, ItemStack, string, string)
 }
 
@@ -484,6 +479,50 @@ type GroundDropDelegates struct {
 	setQuantity func(*GroundItemState, int)
 	setPosition func(*GroundItemState, float64, float64)
 	logDrop     func(*Actor, ItemStack, string, string)
+}
+
+// GroundItemQuantityJournalSetter returns a setter that updates the stack quantity and
+// records a journal patch when the value changes.
+func GroundItemQuantityJournalSetter(appendPatch func(journal.Patch)) func(*GroundItemState, int) {
+	return func(item *GroundItemState, qty int) {
+		if item == nil {
+			return
+		}
+		if !SetGroundItemQuantity(&item.Qty, qty) {
+			return
+		}
+		item.Version++
+		if appendPatch == nil {
+			return
+		}
+		appendPatch(journal.Patch{
+			Kind:     journal.PatchGroundItemQty,
+			EntityID: item.ID,
+			Payload:  journal.GroundItemQtyPayload{Qty: item.Qty},
+		})
+	}
+}
+
+// GroundItemPositionJournalSetter returns a setter that updates the stack coordinates and
+// records a journal patch when the value changes.
+func GroundItemPositionJournalSetter(appendPatch func(journal.Patch)) func(*GroundItemState, float64, float64) {
+	return func(item *GroundItemState, x, y float64) {
+		if item == nil {
+			return
+		}
+		if !SetGroundItemPosition(&item.X, &item.Y, x, y) {
+			return
+		}
+		item.Version++
+		if appendPatch == nil {
+			return
+		}
+		appendPatch(journal.Patch{
+			Kind:     journal.PatchGroundItemPos,
+			EntityID: item.ID,
+			Payload:  journal.GroundItemPosPayload{X: item.X, Y: item.Y},
+		})
+	}
 }
 
 // GroundDropRemoveStacksProvider removes all stacks of the requested item type when the
@@ -514,7 +553,7 @@ type GroundDropActorConfig struct {
 }
 
 func BuildGroundDropDelegates(cfg GroundDropConfig) (GroundDropDelegates, bool) {
-	if cfg.Items == nil || cfg.ItemsByTile == nil || cfg.NextID == nil || cfg.Actor == nil {
+	if cfg.Items == nil || cfg.ItemsByTile == nil || cfg.NextID == nil || cfg.Actor == nil || cfg.AppendPatch == nil {
 		return GroundDropDelegates{}, false
 	}
 
@@ -527,8 +566,8 @@ func BuildGroundDropDelegates(cfg GroundDropConfig) (GroundDropDelegates, bool) 
 		angleFn:     cfg.RandomAngle,
 		distanceFn:  cfg.RandomDistance,
 		ensureKey:   cfg.EnsureKey,
-		setQuantity: cfg.SetQuantity,
-		setPosition: cfg.SetPosition,
+		setQuantity: GroundItemQuantityJournalSetter(cfg.AppendPatch),
+		setPosition: GroundItemPositionJournalSetter(cfg.AppendPatch),
 		logDrop:     cfg.LogDrop,
 	}
 

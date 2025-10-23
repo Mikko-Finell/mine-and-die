@@ -10,6 +10,7 @@ import (
 
 	effectcontract "mine-and-die/server/effects/contract"
 	internaleffects "mine-and-die/server/internal/effects"
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 	simpaches "mine-and-die/server/internal/sim/patches"
 	"mine-and-die/server/logging"
@@ -25,18 +26,18 @@ func findPlayer(players []Player, id string) *Player {
 	return nil
 }
 
-func marshalStateLegacy(h *Hub, players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
+func marshalStateLegacy(h *Hub, players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []itemspkg.GroundItem, drainPatches bool, includeSnapshot bool) ([]byte, int, error) {
 	simPlayers := simPlayersFromLegacy(players)
 	simNPCs := simNPCsFromLegacy(npcs)
 	var simTriggers []sim.EffectTrigger
 	if len(triggers) > 0 {
 		simTriggers = simEffectTriggersFromLegacy(triggers)
 	}
-	var simGroundItems []sim.GroundItem
+	var clonedGroundItems []itemspkg.GroundItem
 	if len(groundItems) > 0 {
-		simGroundItems = simGroundItemsFromLegacy(groundItems)
+		clonedGroundItems = append([]itemspkg.GroundItem(nil), groundItems...)
 	}
-	return h.marshalState(simPlayers, simNPCs, simTriggers, simGroundItems, drainPatches, includeSnapshot)
+	return h.marshalState(simPlayers, simNPCs, simTriggers, clonedGroundItems, drainPatches, includeSnapshot)
 }
 
 func hasFollowEffect(effects []*effectState, effectType, actorID string) bool {
@@ -2425,7 +2426,7 @@ func TestConsoleDropGoldBroadcastsGroundItemsFromSimEngine(t *testing.T) {
 
 	snapshot := sim.Snapshot{GroundItems: []sim.GroundItem{{
 		ID:             "engine-ground",
-		Type:           sim.ItemType(ItemTypeGold),
+		Type:           string(ItemTypeGold),
 		FungibilityKey: "engine-fungibility",
 		X:              42,
 		Y:              24,
@@ -2465,7 +2466,7 @@ func TestConsolePickupGoldBroadcastsGroundItemsFromSimEngine(t *testing.T) {
 
 	snapshot := sim.Snapshot{GroundItems: []sim.GroundItem{{
 		ID:             "engine-ground",
-		Type:           sim.ItemType(ItemTypeGold),
+		Type:           string(ItemTypeGold),
 		FungibilityKey: "engine-fungibility",
 		X:              11,
 		Y:              7,
@@ -2510,7 +2511,7 @@ func TestRunSimulationBroadcastsGroundItemsFromSimEngine(t *testing.T) {
 
 	snapshot := sim.Snapshot{GroundItems: []sim.GroundItem{{
 		ID:             "engine-ground",
-		Type:           sim.ItemType(ItemTypeGold),
+		Type:           string(ItemTypeGold),
 		FungibilityKey: "engine-fungibility",
 		X:              12,
 		Y:              34,
