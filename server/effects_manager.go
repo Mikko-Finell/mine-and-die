@@ -6,6 +6,7 @@ import (
 
 	effectcatalog "mine-and-die/server/effects/catalog"
 	effectcontract "mine-and-die/server/effects/contract"
+	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	loggingeconomy "mine-and-die/server/logging/economy"
@@ -173,6 +174,13 @@ func (a projectileOwnerAdapter) Position() (float64, float64) {
 
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
 	hooks := make(map[string]internaleffects.HookSet)
+	var ownerLookup worldpkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
+	var stateLookup worldpkg.AbilityOwnerStateLookup[*actorState]
+	if world != nil {
+		world.configureAbilityOwnerAdapters()
+		ownerLookup = world.abilityOwnerLookup
+		stateLookup = world.abilityOwnerStateLookup
+	}
 	hooks[effectcontract.HookMeleeSpawn] = internaleffects.MeleeSpawnHook(internaleffects.MeleeSpawnHookConfig{
 		TileSize:        tileSize,
 		DefaultWidth:    meleeAttackWidth,
@@ -180,17 +188,21 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		DefaultDamage:   meleeAttackDamage,
 		DefaultDuration: meleeAttackDuration,
 		LookupOwner: func(actorID string) *internaleffects.MeleeOwner {
-			if world == nil || actorID == "" {
+			if actorID == "" {
 				return nil
 			}
-			owner, _ := world.abilityOwner(actorID)
-			if owner == nil {
+			if ownerLookup == nil {
 				return nil
 			}
-			state, _ := world.abilityOwnerState(actorID)
+			owner, _, ok := ownerLookup(actorID)
+			if !ok || owner == nil {
+				return nil
+			}
 			var reference any
-			if state != nil {
-				reference = state
+			if stateLookup != nil {
+				if state, _, ok := stateLookup(actorID); ok && state != nil {
+					reference = state
+				}
 			}
 			return &internaleffects.MeleeOwner{
 				X:         owner.X,
@@ -320,11 +332,14 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			return world.projectileTemplates[definitionID]
 		},
 		LookupOwner: func(actorID string) internaleffects.ProjectileOwner {
-			if world == nil || actorID == "" {
+			if actorID == "" {
 				return nil
 			}
-			owner, _ := world.abilityOwner(actorID)
-			if owner == nil {
+			if ownerLookup == nil {
+				return nil
+			}
+			owner, _, ok := ownerLookup(actorID)
+			if !ok || owner == nil {
 				return nil
 			}
 			return projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: owner.Facing}
