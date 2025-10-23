@@ -473,7 +473,7 @@ func (h *Hub) simSnapshotLocked(includeGroundItems bool, includeEffectTriggers b
 		Players:        simutil.ClonePlayers(simPlayersFromLegacy(players)),
 		NPCs:           simutil.CloneNPCs(simNPCsFromLegacy(npcs)),
 		Obstacles:      simutil.CloneObstacles(simObstaclesFromLegacy(h.world.obstacles)),
-		AliveEffectIDs: simutil.CloneAliveEffectIDs(simAliveEffectIDsFromLegacy(h.world.effects)),
+		AliveEffectIDs: internaleffects.CloneAliveEffectIDs(internaleffects.AliveEffectIDsFromStates(h.world.effects)),
 	}
 	if includeGroundItems {
 		snapshot.GroundItems = itemspkg.CloneGroundItems(h.world.GroundItemsSnapshot())
@@ -1270,7 +1270,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 		} else if triggers == nil {
 			triggers = make([]sim.EffectTrigger, 0)
 		}
-		aliveEffectIDs = simutil.CloneAliveEffectIDs(simSnapshot.AliveEffectIDs)
+		aliveEffectIDs = internaleffects.CloneAliveEffectIDs(simSnapshot.AliveEffectIDs)
 	} else {
 		if includeSnapshot {
 			needSnapshot := players == nil || npcs == nil
@@ -1457,7 +1457,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 		} else {
 			simEffectBatch = engine.SnapshotEffectEvents()
 		}
-		effectBatch = legacyEffectEventBatchFromSim(simEffectBatch)
+		effectBatch = internaleffects.LegacyEffectEventBatchFromSim(simEffectBatch)
 	}
 
 	if patches == nil {
@@ -1579,7 +1579,7 @@ func (h *Hub) scheduleResyncIfNeeded() (bool, resyncSignal) {
 	if !ok {
 		return false, resyncSignal{}
 	}
-	signal := legacyEffectResyncSignalFromSim(simSignal)
+	signal := internaleffects.LegacyEffectResyncSignalFromSim(simSignal)
 
 	h.forceKeyframe()
 	h.resyncNext.Store(true)

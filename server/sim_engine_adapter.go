@@ -6,9 +6,9 @@ import (
 	effectcontract "mine-and-die/server/effects/contract"
 	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
+	itemssim "mine-and-die/server/internal/items/simpayloads"
 	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
-	"mine-and-die/server/internal/simutil"
 )
 
 type legacyEngineAdapter struct {
@@ -82,7 +82,7 @@ func (a *legacyEngineAdapter) Snapshot() sim.Snapshot {
 	groundItems := a.world.GroundItemsSnapshot()
 	triggers := a.world.flushEffectTriggersLocked()
 	obstacles := a.world.obstacles
-	aliveEffectIDs := simAliveEffectIDsFromLegacy(a.world.effects)
+	aliveEffectIDs := internaleffects.AliveEffectIDsFromStates(a.world.effects)
 	simPlayers := simPlayersFromLegacy(players)
 	if len(simPlayers) > 0 {
 		for i := range simPlayers {
@@ -135,7 +135,7 @@ func (a *legacyEngineAdapter) DrainEffectEvents() sim.EffectEventBatch {
 		return sim.EffectEventBatch{}
 	}
 	batch := a.world.journal.DrainEffectEvents()
-	return simEffectEventBatchFromLegacy(batch)
+	return internaleffects.SimEffectEventBatchFromLegacy(batch)
 }
 
 func (a *legacyEngineAdapter) SnapshotEffectEvents() sim.EffectEventBatch {
@@ -143,14 +143,14 @@ func (a *legacyEngineAdapter) SnapshotEffectEvents() sim.EffectEventBatch {
 		return sim.EffectEventBatch{}
 	}
 	batch := a.world.journal.SnapshotEffectEvents()
-	return simEffectEventBatchFromLegacy(batch)
+	return internaleffects.SimEffectEventBatchFromLegacy(batch)
 }
 
 func (a *legacyEngineAdapter) RestoreEffectEvents(batch sim.EffectEventBatch) {
 	if a == nil || a.world == nil {
 		return
 	}
-	legacy := legacyEffectEventBatchFromSim(batch)
+	legacy := internaleffects.LegacyEffectEventBatchFromSim(batch)
 	a.world.journal.RestoreEffectEvents(legacy)
 }
 
@@ -162,7 +162,7 @@ func (a *legacyEngineAdapter) ConsumeEffectResyncHint() (sim.EffectResyncSignal,
 	if !ok {
 		return sim.EffectResyncSignal{}, false
 	}
-	return simEffectResyncSignalFromLegacy(signal), true
+	return internaleffects.SimEffectResyncSignalFromLegacy(signal), true
 }
 
 func (a *legacyEngineAdapter) RecordKeyframe(frame sim.Keyframe) sim.KeyframeRecordResult {
@@ -485,23 +485,6 @@ func legacyObstaclesFromSim(obstacles []sim.Obstacle) []Obstacle {
 	return converted
 }
 
-func simAliveEffectIDsFromLegacy(effects []*effectState) []string {
-	if len(effects) == 0 {
-		return nil
-	}
-	ids := make([]string, 0, len(effects))
-	for _, eff := range effects {
-		if eff == nil || eff.ID == "" {
-			continue
-		}
-		ids = append(ids, eff.ID)
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	return ids
-}
-
 func simWorldConfigFromLegacy(cfg worldConfig) sim.WorldConfig {
 	return sim.WorldConfig{
 		Obstacles:      cfg.Obstacles,
@@ -569,26 +552,38 @@ func convertPatchPayloadToSim(payload any) any {
 		}
 		return sim.HealthPayload{Health: value.Health, MaxHealth: value.MaxHealth}
 	case InventoryPayload:
-		return sim.InventoryPayload{Slots: simInventorySlotsFromAny(value.Slots)}
+		return itemssim.SimInventoryPayloadFromLegacy(journal.InventoryPayload(value))
 	case *InventoryPayload:
 		if value == nil {
 			return nil
 		}
-		return sim.InventoryPayload{Slots: simInventorySlotsFromAny(value.Slots)}
+		converted := itemssim.SimInventoryPayloadFromLegacyPtr((*journal.InventoryPayload)(value))
+		if converted == nil {
+			return nil
+		}
+		return *converted
 	case EquipmentPayload:
-		return sim.EquipmentPayload{Slots: simEquippedItemsFromAny(value.Slots)}
+		return itemssim.SimEquipmentPayloadFromLegacy(journal.EquipmentPayload(value))
 	case *EquipmentPayload:
 		if value == nil {
 			return nil
 		}
-		return sim.EquipmentPayload{Slots: simEquippedItemsFromAny(value.Slots)}
+		converted := itemssim.SimEquipmentPayloadFromLegacyPtr((*journal.EquipmentPayload)(value))
+		if converted == nil {
+			return nil
+		}
+		return *converted
 	case EffectParamsPayload:
-		return sim.EffectParamsPayload{Params: simutil.CloneFloatMap(value.Params)}
+		return internaleffects.SimEffectParamsPayloadFromLegacy(journal.EffectParamsPayload(value))
 	case *EffectParamsPayload:
 		if value == nil {
 			return nil
 		}
-		return sim.EffectParamsPayload{Params: simutil.CloneFloatMap(value.Params)}
+		converted := internaleffects.SimEffectParamsPayloadFromLegacyPtr((*journal.EffectParamsPayload)(value))
+		if converted == nil {
+			return nil
+		}
+		return *converted
 	case GroundItemQtyPayload:
 		return sim.GroundItemQtyPayload{Qty: value.Qty}
 	case *GroundItemQtyPayload:
@@ -626,52 +621,6 @@ func toSimFacingFromAny(value any) sim.FacingDirection {
 	}
 }
 
-func simInventorySlotsFromAny(value any) []sim.InventorySlot {
-	switch slots := value.(type) {
-	case nil:
-		return nil
-	case []sim.InventorySlot:
-		return simutil.CloneInventorySlots(slots)
-	case []InventorySlot:
-		return simInventorySlotsFromLegacy(slots)
-	case *[]sim.InventorySlot:
-		if slots == nil {
-			return nil
-		}
-		return simutil.CloneInventorySlots(*slots)
-	case *[]InventorySlot:
-		if slots == nil {
-			return nil
-		}
-		return simInventorySlotsFromLegacy(*slots)
-	default:
-		return nil
-	}
-}
-
-func simEquippedItemsFromAny(value any) []sim.EquippedItem {
-	switch slots := value.(type) {
-	case nil:
-		return nil
-	case []sim.EquippedItem:
-		return simutil.CloneEquippedItems(slots)
-	case []EquippedItem:
-		return simEquippedItemsFromLegacy(slots)
-	case *[]sim.EquippedItem:
-		if slots == nil {
-			return nil
-		}
-		return simutil.CloneEquippedItems(*slots)
-	case *[]EquippedItem:
-		if slots == nil {
-			return nil
-		}
-		return simEquippedItemsFromLegacy(*slots)
-	default:
-		return nil
-	}
-}
-
 func legacyPatchesFromSim(patches []sim.Patch) []Patch {
 	if len(patches) == 0 {
 		return nil
@@ -682,68 +631,6 @@ func legacyPatchesFromSim(patches []sim.Patch) []Patch {
 			Kind:     legacyPatchKindFromSim(patch.Kind),
 			EntityID: patch.EntityID,
 			Payload:  convertPatchPayloadFromSim(patch.Payload),
-		}
-	}
-	return converted
-}
-
-func simEffectEventBatchFromLegacy(batch EffectEventBatch) sim.EffectEventBatch {
-	return sim.EffectEventBatch{
-		Spawns:      journal.CloneEffectSpawnEvents(batch.Spawns),
-		Updates:     journal.CloneEffectUpdateEvents(batch.Updates),
-		Ends:        journal.CloneEffectEndEvents(batch.Ends),
-		LastSeqByID: journal.CopySeqMap(batch.LastSeqByID),
-	}
-}
-
-func legacyEffectEventBatchFromSim(batch sim.EffectEventBatch) EffectEventBatch {
-	return EffectEventBatch{
-		Spawns:      journal.CloneEffectSpawnEvents(batch.Spawns),
-		Updates:     journal.CloneEffectUpdateEvents(batch.Updates),
-		Ends:        journal.CloneEffectEndEvents(batch.Ends),
-		LastSeqByID: journal.CopySeqMap(batch.LastSeqByID),
-	}
-}
-
-func simEffectResyncSignalFromLegacy(signal resyncSignal) sim.EffectResyncSignal {
-	return sim.EffectResyncSignal{
-		LostSpawns:  signal.LostSpawns,
-		TotalEvents: signal.TotalEvents,
-		Reasons:     simResyncReasonsFromLegacy(signal.Reasons),
-	}
-}
-
-func legacyEffectResyncSignalFromSim(signal sim.EffectResyncSignal) resyncSignal {
-	return resyncSignal{
-		LostSpawns:  signal.LostSpawns,
-		TotalEvents: signal.TotalEvents,
-		Reasons:     legacyResyncReasonsFromSim(signal.Reasons),
-	}
-}
-
-func simResyncReasonsFromLegacy(reasons []resyncReason) []sim.EffectResyncReason {
-	if len(reasons) == 0 {
-		return nil
-	}
-	converted := make([]sim.EffectResyncReason, len(reasons))
-	for i, reason := range reasons {
-		converted[i] = sim.EffectResyncReason{
-			Kind:     reason.Kind,
-			EffectID: reason.EffectID,
-		}
-	}
-	return converted
-}
-
-func legacyResyncReasonsFromSim(reasons []sim.EffectResyncReason) []resyncReason {
-	if len(reasons) == 0 {
-		return nil
-	}
-	converted := make([]resyncReason, len(reasons))
-	for i, reason := range reasons {
-		converted[i] = resyncReason{
-			Kind:     reason.Kind,
-			EffectID: reason.EffectID,
 		}
 	}
 	return converted
@@ -760,53 +647,27 @@ func convertPatchPayloadFromSim(payload any) any {
 	case sim.HealthPayload:
 		return HealthPayload{Health: value.Health, MaxHealth: value.MaxHealth}
 	case sim.InventoryPayload:
-		inv := legacyInventoryFromSim(sim.Inventory{Slots: value.Slots})
+		converted := itemssim.LegacyInventoryPayloadFromSim(value)
+		slots, ok := converted.Slots.([]sim.InventorySlot)
+		if !ok {
+			slots = itemssim.SimInventorySlotsFromAny(converted.Slots)
+		}
+		inv := legacyInventoryFromSim(sim.Inventory{Slots: slots})
 		return InventoryPayload{Slots: inv.Slots}
 	case sim.EquipmentPayload:
-		eq := legacyEquipmentFromSim(sim.Equipment{Slots: value.Slots})
+		converted := itemssim.LegacyEquipmentPayloadFromSim(value)
+		slots, ok := converted.Slots.([]sim.EquippedItem)
+		if !ok {
+			slots = itemssim.SimEquippedItemsFromAny(converted.Slots)
+		}
+		eq := legacyEquipmentFromSim(sim.Equipment{Slots: slots})
 		return EquipmentPayload{Slots: eq.Slots}
 	case sim.EffectParamsPayload:
-		return EffectParamsPayload{Params: simutil.CloneFloatMap(value.Params)}
+		return internaleffects.LegacyEffectParamsPayloadFromSim(value)
 	case sim.GroundItemQtyPayload:
 		return GroundItemQtyPayload{Qty: value.Qty}
 	default:
 		return value
-	}
-}
-
-func simInventorySlotsFromLegacy(slots []InventorySlot) []sim.InventorySlot {
-	if len(slots) == 0 {
-		return nil
-	}
-	converted := make([]sim.InventorySlot, len(slots))
-	for i, slot := range slots {
-		converted[i] = sim.InventorySlot{
-			Slot: slot.Slot,
-			Item: simItemStackFromLegacy(slot.Item),
-		}
-	}
-	return converted
-}
-
-func simEquippedItemsFromLegacy(slots []EquippedItem) []sim.EquippedItem {
-	if len(slots) == 0 {
-		return nil
-	}
-	converted := make([]sim.EquippedItem, len(slots))
-	for i, slot := range slots {
-		converted[i] = sim.EquippedItem{
-			Slot: toSimEquipSlot(slot.Slot),
-			Item: simItemStackFromLegacy(slot.Item),
-		}
-	}
-	return converted
-}
-
-func simItemStackFromLegacy(stack ItemStack) sim.ItemStack {
-	return sim.ItemStack{
-		Type:           toSimItemType(stack.Type),
-		FungibilityKey: stack.FungibilityKey,
-		Quantity:       stack.Quantity,
 	}
 }
 
@@ -824,11 +685,11 @@ func simActorFromLegacy(actor Actor) sim.Actor {
 }
 
 func simInventoryFromLegacy(inv Inventory) sim.Inventory {
-	return sim.Inventory{Slots: simInventorySlotsFromLegacy(inv.Slots)}
+	return sim.Inventory{Slots: itemssim.SimInventorySlotsFromAny(inv.Slots)}
 }
 
 func simEquipmentFromLegacy(eq Equipment) sim.Equipment {
-	return sim.Equipment{Slots: simEquippedItemsFromLegacy(eq.Slots)}
+	return sim.Equipment{Slots: itemssim.SimEquippedItemsFromAny(eq.Slots)}
 }
 
 func legacyActorFromSim(actor sim.Actor) Actor {
