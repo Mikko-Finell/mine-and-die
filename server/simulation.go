@@ -728,7 +728,42 @@ func (w *World) applyNPCPositionMutations(initial map[string]vec2, proposed map[
 }
 
 func (w *World) spawnInitialNPCs() {
-	worldpkg.SeedInitialNPCs(worldNPCSpawner{world: w})
+	ai.SeedInitialNPCs(w.npcSpawner())
+}
+
+func (w *World) npcSpawner() ai.WorldNPCSpawner {
+	return ai.WorldNPCSpawner{
+		ConfigFunc: func() worldpkg.Config {
+			if w == nil {
+				return worldpkg.DefaultConfig()
+			}
+			return w.config
+		},
+		DimensionsFunc: func() (float64, float64) {
+			if w == nil {
+				return worldpkg.DefaultWidth, worldpkg.DefaultHeight
+			}
+			return w.dimensions()
+		},
+		SubsystemRNGFunc: func(label string) *rand.Rand {
+			if w == nil {
+				return nil
+			}
+			return w.subsystemRNG(label)
+		},
+		SpawnGoblinFunc: func(x, y float64, waypoints []worldpkg.Vec2, goldQty, potionQty int) {
+			if w == nil {
+				return
+			}
+			w.spawnGoblinAt(x, y, waypoints, goldQty, potionQty)
+		},
+		SpawnRatFunc: func(x, y float64) {
+			if w == nil {
+				return
+			}
+			w.spawnRatAt(x, y)
+		},
+	}
 }
 
 func (w *World) spawnGoblinAt(x, y float64, waypoints []vec2, goldQty, potionQty int) {
@@ -803,7 +838,7 @@ func (w *World) initializeGoblinState(goblin *npcState) {
 }
 
 func (w *World) spawnExtraGoblins(count int) {
-	worldpkg.SpawnExtraGoblins(worldNPCSpawner{world: w}, count)
+	ai.SpawnExtraGoblins(w.npcSpawner(), count)
 }
 
 func (w *World) spawnRatAt(x, y float64) {
@@ -855,48 +890,5 @@ func (w *World) initializeRatState(rat *npcState) {
 }
 
 func (w *World) spawnExtraRats(count int) {
-	worldpkg.SpawnExtraRats(worldNPCSpawner{world: w}, count)
-}
-
-type worldNPCSpawner struct {
-	world *World
-}
-
-func (s worldNPCSpawner) Config() worldpkg.Config {
-	if s.world == nil {
-		return worldpkg.DefaultConfig()
-	}
-	return s.world.config
-}
-
-func (s worldNPCSpawner) Dimensions() (float64, float64) {
-	if s.world == nil {
-		return worldpkg.DefaultWidth, worldpkg.DefaultHeight
-	}
-	return s.world.dimensions()
-}
-
-func (s worldNPCSpawner) SubsystemRNG(label string) *rand.Rand {
-	if s.world == nil {
-		return newDeterministicRNG(worldpkg.DefaultSeed, label)
-	}
-	return s.world.subsystemRNG(label)
-}
-
-func (s worldNPCSpawner) SpawnGoblinAt(x, y float64, waypoints []worldpkg.Vec2, goldQty, potionQty int) {
-	if s.world == nil {
-		return
-	}
-	converted := make([]vec2, len(waypoints))
-	for i, wp := range waypoints {
-		converted[i] = vec2{X: wp.X, Y: wp.Y}
-	}
-	s.world.spawnGoblinAt(x, y, converted, goldQty, potionQty)
-}
-
-func (s worldNPCSpawner) SpawnRatAt(x, y float64) {
-	if s.world == nil {
-		return
-	}
-	s.world.spawnRatAt(x, y)
+	ai.SpawnExtraRats(w.npcSpawner(), count)
 }

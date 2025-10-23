@@ -3,6 +3,8 @@ package world
 import (
 	"testing"
 	"time"
+
+	itemspkg "mine-and-die/server/internal/items"
 )
 
 type testFollowEffect struct {
@@ -30,11 +32,11 @@ func TestAdvanceLegacyFollowEffectsRepositionsAttachment(t *testing.T) {
 				Height:        state.height,
 			}
 		},
-		ActorByID: func(id string) *Actor {
+		ActorByID: func(id string) *itemspkg.Actor {
 			if id != "actor-1" {
 				return nil
 			}
-			return &Actor{ID: id, X: 40, Y: 70}
+			return &itemspkg.Actor{ID: id, X: 40, Y: 70}
 		},
 		SetPosition: func(effect any, x, y float64) {
 			called = true
@@ -68,11 +70,11 @@ func TestAdvanceLegacyFollowEffectsDefaultsDimensions(t *testing.T) {
 			state, _ := effect.(*testFollowEffect)
 			return LegacyFollowEffect{FollowActorID: state.followID}
 		},
-		ActorByID: func(id string) *Actor {
+		ActorByID: func(id string) *itemspkg.Actor {
 			if id != "actor-2" {
 				return nil
 			}
-			return &Actor{ID: id, X: 100, Y: 200}
+			return &itemspkg.Actor{ID: id, X: 100, Y: 200}
 		},
 		SetPosition: func(effect any, x, y float64) {
 			called = true
@@ -107,7 +109,7 @@ func TestAdvanceLegacyFollowEffectsExpiresMissingActor(t *testing.T) {
 			state, _ := effect.(*testFollowEffect)
 			return LegacyFollowEffect{FollowActorID: state.followID}
 		},
-		ActorByID: func(id string) *Actor {
+		ActorByID: func(id string) *itemspkg.Actor {
 			return nil
 		},
 		Expire: func(effect any, at time.Time) {

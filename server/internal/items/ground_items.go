@@ -1,10 +1,16 @@
-package world
+package items
 
 import (
 	"fmt"
 	"math"
 	"sort"
 )
+
+const positionEpsilon = 1e-6
+
+func positionsEqual(ax, ay, bx, by float64) bool {
+	return math.Abs(ax-bx) <= positionEpsilon && math.Abs(ay-by) <= positionEpsilon
+}
 
 // GroundTileKey identifies the map tile that currently contains a ground item stack.
 type GroundTileKey struct {
@@ -269,7 +275,7 @@ func SetGroundItemPosition(x, y *float64, newX, newY float64) bool {
 		return false
 	}
 
-	if PositionsEqual(*x, *y, newX, newY) {
+	if positionsEqual(*x, *y, newX, newY) {
 		return false
 	}
 
@@ -452,27 +458,196 @@ func PickupNearestItem(
 	return &PickupResult{StackID: item.ID, Quantity: qty, Distance: bestDistance}, nil
 }
 
+type GroundDropConfig struct {
+	Items          map[string]*GroundItemState
+	ItemsByTile    map[GroundTileKey]map[string]*GroundItemState
+	NextID         *uint64
+	Actor          *Actor
+	Scatter        ScatterConfig
+	RandomAngle    func() float64
+	RandomDistance func(min, max float64) float64
+	EnsureKey      func(*ItemStack) bool
+	SetQuantity    func(*GroundItemState, int)
+	SetPosition    func(*GroundItemState, float64, float64)
+	LogDrop        func(*Actor, ItemStack, string, string)
+}
+
+type GroundDropDelegates struct {
+	items       map[string]*GroundItemState
+	itemsByTile map[GroundTileKey]map[string]*GroundItemState
+	nextID      *uint64
+	actor       *Actor
+	cfg         ScatterConfig
+	angleFn     func() float64
+	distanceFn  func(min, max float64) float64
+	ensureKey   func(*ItemStack) bool
+	setQuantity func(*GroundItemState, int)
+	setPosition func(*GroundItemState, float64, float64)
+	logDrop     func(*Actor, ItemStack, string, string)
+}
+
+// GroundDropRemoveStacksProvider removes all stacks of the requested item type when the
+// actor lookup succeeds. The boolean return value indicates whether the provider handled
+// the request (allowing callers to fall back when lookups fail).
+type GroundDropRemoveStacksProvider func(string) ([]ItemStack, bool)
+
+// GroundDropDrainProvider drains stacks when the actor lookup succeeds. The boolean return
+// value indicates whether the provider handled the request.
+type GroundDropDrainProvider func() ([]ItemStack, bool)
+
+// GroundDropActorConfig wires the closures required for inventory and equipment drains
+// across the various actor ownership cases.
+type GroundDropActorConfig struct {
+	RemovePlayerStacks   GroundDropRemoveStacksProvider
+	RemoveNPCStacks      GroundDropRemoveStacksProvider
+	RemoveFallbackStacks GroundDropRemoveStacksProvider
+
+	RemoveGoldQuantity func(int) (int, error)
+
+	DrainPlayerInventory   GroundDropDrainProvider
+	DrainNPCInventory      GroundDropDrainProvider
+	DrainFallbackInventory GroundDropDrainProvider
+
+	DrainPlayerEquipment   GroundDropDrainProvider
+	DrainNPCEquipment      GroundDropDrainProvider
+	DrainFallbackEquipment GroundDropDrainProvider
+}
+
+func BuildGroundDropDelegates(cfg GroundDropConfig) (GroundDropDelegates, bool) {
+	if cfg.Items == nil || cfg.ItemsByTile == nil || cfg.NextID == nil || cfg.Actor == nil {
+		return GroundDropDelegates{}, false
+	}
+
+	delegates := GroundDropDelegates{
+		items:       cfg.Items,
+		itemsByTile: cfg.ItemsByTile,
+		nextID:      cfg.NextID,
+		actor:       cfg.Actor,
+		cfg:         cfg.Scatter,
+		angleFn:     cfg.RandomAngle,
+		distanceFn:  cfg.RandomDistance,
+		ensureKey:   cfg.EnsureKey,
+		setQuantity: cfg.SetQuantity,
+		setPosition: cfg.SetPosition,
+		logDrop:     cfg.LogDrop,
+	}
+
+	return delegates, true
+}
+
+func InvokeGroundDrop(cfg GroundDropConfig, call func(GroundDropDelegates) int) int {
+	if call == nil {
+		return 0
+	}
+
+	delegates, ok := BuildGroundDropDelegates(cfg)
+	if !ok {
+		return 0
+	}
+
+	return call(delegates)
+}
+
+func GroundDropRemoveStacksFunc(cfg GroundDropActorConfig) func(string) []ItemStack {
+	providers := make([]GroundDropRemoveStacksProvider, 0, 3)
+	if cfg.RemovePlayerStacks != nil {
+		providers = append(providers, cfg.RemovePlayerStacks)
+	}
+	if cfg.RemoveNPCStacks != nil {
+		providers = append(providers, cfg.RemoveNPCStacks)
+	}
+	if cfg.RemoveFallbackStacks != nil {
+		providers = append(providers, cfg.RemoveFallbackStacks)
+	}
+	if len(providers) == 0 {
+		return nil
+	}
+
+	return func(itemType string) []ItemStack {
+		if itemType == "" {
+			return nil
+		}
+		for _, provider := range providers {
+			stacks, handled := provider(itemType)
+			if handled {
+				return stacks
+			}
+		}
+		return nil
+	}
+}
+
+func GroundDropInventoryDrainFunc(cfg GroundDropActorConfig) func() []ItemStack {
+	providers := make([]GroundDropDrainProvider, 0, 3)
+	if cfg.DrainPlayerInventory != nil {
+		providers = append(providers, cfg.DrainPlayerInventory)
+	}
+	if cfg.DrainNPCInventory != nil {
+		providers = append(providers, cfg.DrainNPCInventory)
+	}
+	if cfg.DrainFallbackInventory != nil {
+		providers = append(providers, cfg.DrainFallbackInventory)
+	}
+	if len(providers) == 0 {
+		return nil
+	}
+
+	return func() []ItemStack {
+		for _, provider := range providers {
+			stacks, handled := provider()
+			if handled {
+				return stacks
+			}
+		}
+		return nil
+	}
+}
+
+func GroundDropEquipmentDrainFunc(cfg GroundDropActorConfig) func() []ItemStack {
+	providers := make([]GroundDropDrainProvider, 0, 3)
+	if cfg.DrainPlayerEquipment != nil {
+		providers = append(providers, cfg.DrainPlayerEquipment)
+	}
+	if cfg.DrainNPCEquipment != nil {
+		providers = append(providers, cfg.DrainNPCEquipment)
+	}
+	if cfg.DrainFallbackEquipment != nil {
+		providers = append(providers, cfg.DrainFallbackEquipment)
+	}
+	if len(providers) == 0 {
+		return nil
+	}
+
+	return func() []ItemStack {
+		for _, provider := range providers {
+			stacks, handled := provider()
+			if handled {
+				return stacks
+			}
+		}
+		return nil
+	}
+}
+
+func GroundDropRemoveGoldQuantityFunc(cfg GroundDropActorConfig) func(int) (int, error) {
+	return cfg.RemoveGoldQuantity
+}
+
+func (d GroundDropDelegates) valid() bool {
+	return d.items != nil && d.itemsByTile != nil && d.nextID != nil && d.actor != nil
+}
+
 // DropGoldQuantity removes the requested quantity of gold from the actor via the provided
 // callbacks and places it on the ground. Returns a DropResult on success or a DropFailure when
 // the transfer cannot be completed.
 func DropGoldQuantity(
-	items map[string]*GroundItemState,
-	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
-	nextID *uint64,
-	actor *Actor,
+	delegates GroundDropDelegates,
 	quantity int,
 	reason string,
-	cfg ScatterConfig,
-	randomAngle func() float64,
-	randomDistance func(min, max float64) float64,
-	ensureKey func(*ItemStack) bool,
-	setQuantity func(*GroundItemState, int),
-	setPosition func(*GroundItemState, float64, float64),
-	logDrop func(*Actor, ItemStack, string, string),
 	available func() int,
 	removeQuantity func(int) (int, error),
 ) (*DropResult, *DropFailure) {
-	if actor == nil {
+	if !delegates.valid() {
 		return nil, &DropFailure{Reason: DropFailureReasonInventoryError}
 	}
 	if quantity <= 0 {
@@ -497,19 +672,19 @@ func DropGoldQuantity(
 
 	stack := ItemStack{Type: goldItemType, Quantity: removed}
 	item := UpsertGroundItem(
-		items,
-		itemsByTile,
-		nextID,
-		actor,
+		delegates.items,
+		delegates.itemsByTile,
+		delegates.nextID,
+		delegates.actor,
 		stack,
 		reason,
-		cfg,
-		randomAngle,
-		randomDistance,
-		ensureKey,
-		setQuantity,
-		setPosition,
-		logDrop,
+		delegates.cfg,
+		delegates.angleFn,
+		delegates.distanceFn,
+		delegates.ensureKey,
+		delegates.setQuantity,
+		delegates.setPosition,
+		delegates.logDrop,
 	)
 
 	result := &DropResult{Quantity: removed}
@@ -522,34 +697,14 @@ func DropGoldQuantity(
 // DropAllGold removes all gold stacks from the actor and places them on the ground.
 // Returns the total quantity dropped.
 func DropAllGold(
-	items map[string]*GroundItemState,
-	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
-	nextID *uint64,
-	actor *Actor,
+	delegates GroundDropDelegates,
 	reason string,
-	cfg ScatterConfig,
-	randomAngle func() float64,
-	randomDistance func(min, max float64) float64,
-	ensureKey func(*ItemStack) bool,
-	setQuantity func(*GroundItemState, int),
-	setPosition func(*GroundItemState, float64, float64),
-	logDrop func(*Actor, ItemStack, string, string),
 	removeStacks func(string) []ItemStack,
 ) int {
 	return DropAllItemsOfType(
-		items,
-		itemsByTile,
-		nextID,
-		actor,
+		delegates,
 		goldItemType,
 		reason,
-		cfg,
-		randomAngle,
-		randomDistance,
-		ensureKey,
-		setQuantity,
-		setPosition,
-		logDrop,
 		removeStacks,
 	)
 }
@@ -557,62 +712,32 @@ func DropAllGold(
 // DropAllItemsOfType removes all stacks of the requested item type from the actor and
 // places them on the ground. Returns the total quantity dropped.
 func DropAllItemsOfType(
-	items map[string]*GroundItemState,
-	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
-	nextID *uint64,
-	actor *Actor,
+	delegates GroundDropDelegates,
 	itemType string,
 	reason string,
-	cfg ScatterConfig,
-	randomAngle func() float64,
-	randomDistance func(min, max float64) float64,
-	ensureKey func(*ItemStack) bool,
-	setQuantity func(*GroundItemState, int),
-	setPosition func(*GroundItemState, float64, float64),
-	logDrop func(*Actor, ItemStack, string, string),
 	removeStacks func(string) []ItemStack,
 ) int {
-	if actor == nil || itemType == "" || removeStacks == nil {
+	if !delegates.valid() || itemType == "" || removeStacks == nil {
 		return 0
 	}
 
 	stacks := removeStacks(itemType)
 	return dropStacks(
-		items,
-		itemsByTile,
-		nextID,
-		actor,
+		delegates,
 		stacks,
 		reason,
-		cfg,
-		randomAngle,
-		randomDistance,
-		ensureKey,
-		setQuantity,
-		setPosition,
-		logDrop,
 	)
 }
 
 // DropAllInventory drains the actor's inventory and equipment, placing the collected
 // stacks on the ground. Returns the total quantity dropped.
 func DropAllInventory(
-	items map[string]*GroundItemState,
-	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
-	nextID *uint64,
-	actor *Actor,
+	delegates GroundDropDelegates,
 	reason string,
-	cfg ScatterConfig,
-	randomAngle func() float64,
-	randomDistance func(min, max float64) float64,
-	ensureKey func(*ItemStack) bool,
-	setQuantity func(*GroundItemState, int),
-	setPosition func(*GroundItemState, float64, float64),
-	logDrop func(*Actor, ItemStack, string, string),
 	drainInventory func() []ItemStack,
 	drainEquipment func() []ItemStack,
 ) int {
-	if actor == nil {
+	if !delegates.valid() {
 		return 0
 	}
 
@@ -625,38 +750,18 @@ func DropAllInventory(
 	}
 
 	return dropStacks(
-		items,
-		itemsByTile,
-		nextID,
-		actor,
+		delegates,
 		stacks,
 		reason,
-		cfg,
-		randomAngle,
-		randomDistance,
-		ensureKey,
-		setQuantity,
-		setPosition,
-		logDrop,
 	)
 }
 
 func dropStacks(
-	items map[string]*GroundItemState,
-	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
-	nextID *uint64,
-	actor *Actor,
+	delegates GroundDropDelegates,
 	stacks []ItemStack,
 	reason string,
-	cfg ScatterConfig,
-	randomAngle func() float64,
-	randomDistance func(min, max float64) float64,
-	ensureKey func(*ItemStack) bool,
-	setQuantity func(*GroundItemState, int),
-	setPosition func(*GroundItemState, float64, float64),
-	logDrop func(*Actor, ItemStack, string, string),
 ) int {
-	if items == nil || itemsByTile == nil || nextID == nil || actor == nil {
+	if !delegates.valid() {
 		return 0
 	}
 	if len(stacks) == 0 {
@@ -669,19 +774,19 @@ func dropStacks(
 			continue
 		}
 		UpsertGroundItem(
-			items,
-			itemsByTile,
-			nextID,
-			actor,
+			delegates.items,
+			delegates.itemsByTile,
+			delegates.nextID,
+			delegates.actor,
 			stack,
 			reason,
-			cfg,
-			randomAngle,
-			randomDistance,
-			ensureKey,
-			setQuantity,
-			setPosition,
-			logDrop,
+			delegates.cfg,
+			delegates.angleFn,
+			delegates.distanceFn,
+			delegates.ensureKey,
+			delegates.setQuantity,
+			delegates.setPosition,
+			delegates.logDrop,
 		)
 		total += stack.Quantity
 	}

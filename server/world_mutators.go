@@ -351,7 +351,7 @@ func (w *World) SetGroundItemPosition(item *groundItemState, x, y float64) {
 		return
 	}
 
-	if !worldpkg.SetGroundItemPosition(&item.X, &item.Y, x, y) {
+	if !items.SetGroundItemPosition(&item.X, &item.Y, x, y) {
 		return
 	}
 
@@ -366,7 +366,7 @@ func (w *World) SetGroundItemQuantity(item *groundItemState, qty int) {
 		return
 	}
 
-	if !worldpkg.SetGroundItemQuantity(&item.Qty, qty) {
+	if !items.SetGroundItemQuantity(&item.Qty, qty) {
 		return
 	}
 
