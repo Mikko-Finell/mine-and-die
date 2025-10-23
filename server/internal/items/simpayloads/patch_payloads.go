@@ -3,19 +3,19 @@ package simpayloads
 import (
 	"reflect"
 
-	"mine-and-die/server/internal/items/simsnapshots"
+	itemspkg "mine-and-die/server/internal/items"
 	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
 )
 
 // CloneInventorySlots returns a deep copy of the provided inventory slots.
 func CloneInventorySlots(slots []sim.InventorySlot) []sim.InventorySlot {
-	return simsnapshots.InventoryFromSlots(slots).Slots
+	return itemspkg.InventoryFromSimSlots(slots).Slots
 }
 
 // CloneEquippedItems returns a deep copy of the provided equipped item slots.
 func CloneEquippedItems(slots []sim.EquippedItem) []sim.EquippedItem {
-	return simsnapshots.EquipmentFromSlots(slots).Slots
+	return itemspkg.EquipmentFromSimSlots(slots).Slots
 }
 
 // SimInventoryPayloadFromLegacy converts a legacy inventory payload into its

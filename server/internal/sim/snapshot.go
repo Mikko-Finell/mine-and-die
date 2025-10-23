@@ -1,6 +1,6 @@
 package sim
 
-import itemspkg "mine-and-die/server/internal/items"
+import itemsapi "mine-and-die/server/internal/items/api"
 
 // Actor captures the shared state for any living entity in the world.
 type Actor struct {
@@ -52,7 +52,7 @@ type EffectTrigger struct {
 }
 
 // GroundItem mirrors the shared ground item stack exposed to callers.
-type GroundItem = itemspkg.GroundItem
+type GroundItem = itemsapi.GroundItem
 
 // Snapshot captures the state exposed to non-simulation callers.
 type Snapshot struct {
