@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 	simpaches "mine-and-die/server/internal/sim/patches"
 	"mine-and-die/server/logging"
@@ -296,10 +297,21 @@ func TestApplyPatchesUpdatesEquipment(t *testing.T) {
 		t.Fatalf("expected player-1 in replayed snapshot")
 	}
 
-	expected := simEquipmentFromLegacy(Equipment{Slots: []EquippedItem{
-		{Slot: EquipSlotBody, Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1}},
-		{Slot: EquipSlotMainHand, Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1}},
-	}})
+	expected := sim.Equipment{
+		Slots: itemspkg.EquipmentSlotsFrom([]EquippedItem{
+			{Slot: EquipSlotBody, Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1}},
+			{Slot: EquipSlotMainHand, Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1}},
+		}, func(slot EquippedItem) sim.EquippedItem {
+			return sim.EquippedItem{
+				Slot: toSimEquipSlot(slot.Slot),
+				Item: sim.ItemStack{
+					Type:           toSimItemType(slot.Item.Type),
+					FungibilityKey: slot.Item.FungibilityKey,
+					Quantity:       slot.Item.Quantity,
+				},
+			}
+		}),
+	}
 
 	if !simEquipmentsEqual(expected, replayedView.Player.Actor.Equipment) {
 		t.Fatalf("expected equipment update to replay, got %+v", replayedView.Player.Actor.Equipment)
