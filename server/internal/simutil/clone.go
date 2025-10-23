@@ -3,7 +3,7 @@ package simutil
 import (
 	effectspkg "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
-	itemssim "mine-and-die/server/internal/items/simpayloads"
+	"mine-and-die/server/internal/items/simsnapshots"
 	"mine-and-die/server/internal/sim"
 )
 
@@ -68,12 +68,12 @@ func CloneActor(actor sim.Actor) sim.Actor {
 
 // CloneInventory returns a deep copy of the provided inventory.
 func CloneInventory(inv sim.Inventory) sim.Inventory {
-	return sim.Inventory{Slots: itemssim.CloneInventorySlots(inv.Slots)}
+	return simsnapshots.InventoryFromSlots(inv.Slots)
 }
 
 // CloneEquipment returns a deep copy of the provided equipment.
 func CloneEquipment(eq sim.Equipment) sim.Equipment {
-	return sim.Equipment{Slots: itemssim.CloneEquippedItems(eq.Slots)}
+	return simsnapshots.EquipmentFromSlots(eq.Slots)
 }
 
 // CloneObstacles returns a deep copy of the provided obstacle slice.
@@ -140,20 +140,20 @@ func ClonePatchPayload(payload any) any {
 		cloned := *value
 		return cloned
 	case sim.InventoryPayload:
-		return sim.InventoryPayload{Slots: itemssim.CloneInventorySlots(value.Slots)}
+		return sim.InventoryPayload{Slots: simsnapshots.InventoryFromSlots(value.Slots).Slots}
 	case *sim.InventoryPayload:
 		if value == nil {
 			return nil
 		}
-		cloned := sim.InventoryPayload{Slots: itemssim.CloneInventorySlots(value.Slots)}
+		cloned := sim.InventoryPayload{Slots: simsnapshots.InventoryFromSlots(value.Slots).Slots}
 		return cloned
 	case sim.EquipmentPayload:
-		return sim.EquipmentPayload{Slots: itemssim.CloneEquippedItems(value.Slots)}
+		return sim.EquipmentPayload{Slots: simsnapshots.EquipmentFromSlots(value.Slots).Slots}
 	case *sim.EquipmentPayload:
 		if value == nil {
 			return nil
 		}
-		cloned := sim.EquipmentPayload{Slots: itemssim.CloneEquippedItems(value.Slots)}
+		cloned := sim.EquipmentPayload{Slots: simsnapshots.EquipmentFromSlots(value.Slots).Slots}
 		return cloned
 	case sim.EffectParamsPayload:
 		return sim.EffectParamsPayload{Params: effectspkg.CloneEffectParams(value.Params)}
