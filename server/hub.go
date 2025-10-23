@@ -13,6 +13,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
@@ -410,14 +411,14 @@ func (h *Hub) legacySnapshotLocked(includeGroundItems bool, includeEffectTrigger
 		}
 		var triggers []EffectTrigger
 		if includeEffectTriggers {
-			triggers = legacyEffectTriggersFromSim(snapshot.EffectEvents)
+			triggers = internaleffects.LegacyEffectTriggersFromSim(snapshot.EffectEvents)
 			if triggers == nil {
 				triggers = make([]EffectTrigger, 0)
 			}
 		}
 		var groundItems []itemspkg.GroundItem
 		if includeGroundItems {
-			groundItems = simutil.CloneGroundItems(snapshot.GroundItems)
+			groundItems = itemspkg.CloneGroundItems(snapshot.GroundItems)
 			if groundItems == nil {
 				groundItems = make([]itemspkg.GroundItem, 0)
 			}
@@ -475,10 +476,10 @@ func (h *Hub) simSnapshotLocked(includeGroundItems bool, includeEffectTriggers b
 		AliveEffectIDs: simutil.CloneAliveEffectIDs(simAliveEffectIDsFromLegacy(h.world.effects)),
 	}
 	if includeGroundItems {
-		snapshot.GroundItems = simutil.CloneGroundItems(h.world.GroundItemsSnapshot())
+		snapshot.GroundItems = itemspkg.CloneGroundItems(h.world.GroundItemsSnapshot())
 	}
 	if includeEffectTriggers {
-		snapshot.EffectEvents = simutil.CloneEffectTriggers(simEffectTriggersFromLegacy(h.world.flushEffectTriggersLocked()))
+		snapshot.EffectEvents = internaleffects.CloneEffectTriggers(internaleffects.SimEffectTriggersFromLegacy(h.world.flushEffectTriggersLocked()))
 	}
 	return snapshot
 }
@@ -490,7 +491,7 @@ func (h *Hub) legacyGroundItemsSnapshotLocked() []itemspkg.GroundItem {
 		return make([]itemspkg.GroundItem, 0)
 	}
 	if h.engine != nil {
-		items := simutil.CloneGroundItems(h.engine.Snapshot().GroundItems)
+		items := itemspkg.CloneGroundItems(h.engine.Snapshot().GroundItems)
 		if items == nil {
 			return make([]itemspkg.GroundItem, 0)
 		}
@@ -562,7 +563,7 @@ func (h *Hub) Join() joinResponse {
 	snapshot := h.simSnapshotLocked(true, false)
 	players := legacyPlayersFromSim(snapshot.Players)
 	npcs := legacyNPCsFromSim(snapshot.NPCs)
-	groundItems := simutil.CloneGroundItems(snapshot.GroundItems)
+	groundItems := itemspkg.CloneGroundItems(snapshot.GroundItems)
 	cfg := h.config
 	h.mu.Unlock()
 
@@ -1070,8 +1071,8 @@ func (h *Hub) processLoopStep(result sim.LoopStepResult) ([]Player, []NPC, []Eff
 	snapshot := result.Snapshot
 	players := legacyPlayersFromSim(snapshot.Players)
 	npcs := legacyNPCsFromSim(snapshot.NPCs)
-	triggers := legacyEffectTriggersFromSim(snapshot.EffectEvents)
-	groundItems := simutil.CloneGroundItems(snapshot.GroundItems)
+	triggers := internaleffects.LegacyEffectTriggersFromSim(snapshot.EffectEvents)
+	groundItems := itemspkg.CloneGroundItems(snapshot.GroundItems)
 
 	return players, npcs, triggers, groundItems, toClose
 }
@@ -1260,10 +1261,10 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 				npcs = simutil.CloneNPCs(simSnapshot.NPCs)
 			}
 			if groundItems == nil {
-				groundItems = simutil.CloneGroundItems(simSnapshot.GroundItems)
+				groundItems = itemspkg.CloneGroundItems(simSnapshot.GroundItems)
 			}
 			if triggers == nil {
-				triggers = simutil.CloneEffectTriggers(simSnapshot.EffectEvents)
+				triggers = internaleffects.CloneEffectTriggers(simSnapshot.EffectEvents)
 			}
 			obstacles = simutil.CloneObstacles(simSnapshot.Obstacles)
 		} else if triggers == nil {
@@ -1284,10 +1285,10 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 					npcs = simutil.CloneNPCs(simSnapshot.NPCs)
 				}
 				if needGround && groundItems == nil {
-					groundItems = simutil.CloneGroundItems(simSnapshot.GroundItems)
+					groundItems = itemspkg.CloneGroundItems(simSnapshot.GroundItems)
 				}
 				if needTriggers && triggers == nil {
-					triggers = simutil.CloneEffectTriggers(simSnapshot.EffectEvents)
+					triggers = internaleffects.CloneEffectTriggers(simSnapshot.EffectEvents)
 				}
 			}
 		} else if triggers == nil {
@@ -1471,7 +1472,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 			Players:     simutil.ClonePlayers(players),
 			NPCs:        simutil.CloneNPCs(npcs),
 			Obstacles:   simutil.CloneObstacles(obstacles),
-			GroundItems: simutil.CloneGroundItems(groundItems),
+			GroundItems: itemspkg.CloneGroundItems(groundItems),
 			Config:      simCfg,
 		}
 		var record sim.KeyframeRecordResult
@@ -1484,7 +1485,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 				Players:     legacyPlayersFromSim(players),
 				NPCs:        legacyNPCsFromSim(npcs),
 				Obstacles:   legacyObstaclesFromSim(obstacles),
-				GroundItems: simutil.CloneGroundItems(groundItems),
+				GroundItems: itemspkg.CloneGroundItems(groundItems),
 				Config:      cfg,
 			}
 			legacyRecord := h.world.journal.RecordKeyframe(legacyFrame)
@@ -1624,7 +1625,7 @@ func (h *Hub) lookupKeyframe(sequence uint64) (keyframeMessage, keyframeLookupSt
 			Players:     simutil.ClonePlayers(frame.Players),
 			NPCs:        simutil.CloneNPCs(frame.NPCs),
 			Obstacles:   simutil.CloneObstacles(frame.Obstacles),
-			GroundItems: simutil.CloneGroundItems(frame.GroundItems),
+			GroundItems: itemspkg.CloneGroundItems(frame.GroundItems),
 			Config:      frame.Config,
 		}
 		return snapshot, keyframeLookupFound
@@ -1711,11 +1712,11 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 	simNPCs := simNPCsFromLegacy(npcs)
 	var simTriggers []sim.EffectTrigger
 	if len(triggers) > 0 {
-		simTriggers = simEffectTriggersFromLegacy(triggers)
+		simTriggers = internaleffects.SimEffectTriggersFromLegacy(triggers)
 	}
 	var clonedGroundItems []itemspkg.GroundItem
 	if len(groundItems) > 0 {
-		clonedGroundItems = simutil.CloneGroundItems(groundItems)
+		clonedGroundItems = itemspkg.CloneGroundItems(groundItems)
 	}
 	data, entities, err := h.marshalState(simPlayers, simNPCs, simTriggers, clonedGroundItems, true, includeSnapshot)
 	if err != nil {

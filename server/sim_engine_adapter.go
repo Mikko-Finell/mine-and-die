@@ -4,6 +4,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
 	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
@@ -98,8 +99,8 @@ func (a *legacyEngineAdapter) Snapshot() sim.Snapshot {
 	return sim.Snapshot{
 		Players:        simPlayers,
 		NPCs:           simNPCsFromLegacy(npcs),
-		GroundItems:    simutil.CloneGroundItems(groundItems),
-		EffectEvents:   simEffectTriggersFromLegacy(triggers),
+		GroundItems:    itemspkg.CloneGroundItems(groundItems),
+		EffectEvents:   internaleffects.SimEffectTriggersFromLegacy(triggers),
 		Obstacles:      simObstaclesFromLegacy(obstacles),
 		AliveEffectIDs: aliveEffectIDs,
 	}
@@ -349,50 +350,6 @@ func legacyActorsFromSimSnapshot(snapshot sim.Snapshot) ([]Player, []NPC) {
 	return players, npcs
 }
 
-func simEffectTriggersFromLegacy(triggers []EffectTrigger) []sim.EffectTrigger {
-	if len(triggers) == 0 {
-		return nil
-	}
-	converted := make([]sim.EffectTrigger, len(triggers))
-	for i, trigger := range triggers {
-		converted[i] = sim.EffectTrigger{
-			ID:       trigger.ID,
-			Type:     trigger.Type,
-			Start:    trigger.Start,
-			Duration: trigger.Duration,
-			X:        trigger.X,
-			Y:        trigger.Y,
-			Width:    trigger.Width,
-			Height:   trigger.Height,
-			Params:   simutil.CloneFloatMap(trigger.Params),
-			Colors:   simutil.CloneStringSlice(trigger.Colors),
-		}
-	}
-	return converted
-}
-
-func legacyEffectTriggersFromSim(triggers []sim.EffectTrigger) []EffectTrigger {
-	if len(triggers) == 0 {
-		return nil
-	}
-	converted := make([]EffectTrigger, len(triggers))
-	for i, trigger := range triggers {
-		converted[i] = EffectTrigger{
-			ID:       trigger.ID,
-			Type:     trigger.Type,
-			Start:    trigger.Start,
-			Duration: trigger.Duration,
-			X:        trigger.X,
-			Y:        trigger.Y,
-			Width:    trigger.Width,
-			Height:   trigger.Height,
-			Params:   simutil.CloneFloatMap(trigger.Params),
-			Colors:   simutil.CloneStringSlice(trigger.Colors),
-		}
-	}
-	return converted
-}
-
 func simPatchesFromLegacy(patches []Patch) []sim.Patch {
 	if len(patches) == 0 {
 		return nil
@@ -439,7 +396,7 @@ func simKeyframeFromLegacy(frame keyframe) sim.Keyframe {
 		Players:     simPlayersFromLegacy(legacyPlayers),
 		NPCs:        simNPCsFromLegacy(legacyNPCs),
 		Obstacles:   simObstaclesFromLegacy(legacyObstacles),
-		GroundItems: simutil.CloneGroundItems(legacyGroundItems),
+		GroundItems: itemspkg.CloneGroundItems(legacyGroundItems),
 		Config:      simWorldConfigFromLegacy(legacyConfig),
 		RecordedAt:  frame.RecordedAt,
 	}
@@ -452,7 +409,7 @@ func legacyKeyframeFromSim(frame sim.Keyframe) keyframe {
 		Players:     legacyPlayersFromSim(frame.Players),
 		NPCs:        legacyNPCsFromSim(frame.NPCs),
 		Obstacles:   legacyObstaclesFromSim(frame.Obstacles),
-		GroundItems: simutil.CloneGroundItems(frame.GroundItems),
+		GroundItems: itemspkg.CloneGroundItems(frame.GroundItems),
 		Config:      legacyWorldConfigFromSim(frame.Config),
 		RecordedAt:  frame.RecordedAt,
 	}

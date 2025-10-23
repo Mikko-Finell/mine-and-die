@@ -155,7 +155,7 @@ func TestMarshalStateOmitsGroundItemsFromDiffFrames(t *testing.T) {
 		t.Fatalf("expected snapshot to contain one ground item, got %d", len(snapshot))
 	}
 
-	data, _, err := hub.marshalState(nil, nil, nil, append([]itemspkg.GroundItem(nil), snapshot...), true, false)
+	data, _, err := hub.marshalState(nil, nil, nil, itemspkg.CloneGroundItems(snapshot), true, false)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}

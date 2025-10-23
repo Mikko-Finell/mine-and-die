@@ -14,18 +14,7 @@ import (
 
 // EffectTrigger represents a one-shot visual instruction that the client may
 // execute without additional server updates.
-type EffectTrigger struct {
-	ID       string             `json:"id"`
-	Type     string             `json:"type"`
-	Start    int64              `json:"start,omitempty"`
-	Duration int64              `json:"duration,omitempty"`
-	X        float64            `json:"x,omitempty"`
-	Y        float64            `json:"y,omitempty"`
-	Width    float64            `json:"width,omitempty"`
-	Height   float64            `json:"height,omitempty"`
-	Params   map[string]float64 `json:"params,omitempty"`
-	Colors   []string           `json:"colors,omitempty"`
-}
+type EffectTrigger = internaleffects.Trigger
 
 type (
 	effectState          = internaleffects.State

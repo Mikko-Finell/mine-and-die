@@ -1,6 +1,10 @@
 package simutil
 
-import "mine-and-die/server/internal/sim"
+import (
+	effectspkg "mine-and-die/server/internal/effects"
+	itemspkg "mine-and-die/server/internal/items"
+	"mine-and-die/server/internal/sim"
+)
 
 // CloneSnapshot returns a deep copy of the provided snapshot, including nested
 // player, NPC, ground item, effect trigger, obstacle, and alive effect ID data.
@@ -8,8 +12,8 @@ func CloneSnapshot(snapshot sim.Snapshot) sim.Snapshot {
 	return sim.Snapshot{
 		Players:        ClonePlayers(snapshot.Players),
 		NPCs:           CloneNPCs(snapshot.NPCs),
-		GroundItems:    CloneGroundItems(snapshot.GroundItems),
-		EffectEvents:   CloneEffectTriggers(snapshot.EffectEvents),
+		GroundItems:    itemspkg.CloneGroundItems(snapshot.GroundItems),
+		EffectEvents:   effectspkg.CloneEffectTriggers(snapshot.EffectEvents),
 		Obstacles:      CloneObstacles(snapshot.Obstacles),
 		AliveEffectIDs: CloneAliveEffectIDs(snapshot.AliveEffectIDs),
 	}
@@ -88,40 +92,6 @@ func CloneEquippedItems(slots []sim.EquippedItem) []sim.EquippedItem {
 	}
 	cloned := make([]sim.EquippedItem, len(slots))
 	copy(cloned, slots)
-	return cloned
-}
-
-// CloneGroundItems returns a deep copy of the provided ground item slice.
-func CloneGroundItems(items []sim.GroundItem) []sim.GroundItem {
-	if len(items) == 0 {
-		return nil
-	}
-	cloned := make([]sim.GroundItem, len(items))
-	copy(cloned, items)
-	return cloned
-}
-
-// CloneEffectTriggers returns a deep copy of the provided effect trigger slice.
-func CloneEffectTriggers(triggers []sim.EffectTrigger) []sim.EffectTrigger {
-	if len(triggers) == 0 {
-		return nil
-	}
-	cloned := make([]sim.EffectTrigger, len(triggers))
-	for i, trigger := range triggers {
-		cloned[i] = CloneEffectTrigger(trigger)
-	}
-	return cloned
-}
-
-// CloneEffectTrigger returns a deep copy of the provided effect trigger.
-func CloneEffectTrigger(trigger sim.EffectTrigger) sim.EffectTrigger {
-	cloned := trigger
-	if len(trigger.Params) > 0 {
-		cloned.Params = CloneFloatMap(trigger.Params)
-	}
-	if len(trigger.Colors) > 0 {
-		cloned.Colors = CloneStringSlice(trigger.Colors)
-	}
 	return cloned
 }
 
