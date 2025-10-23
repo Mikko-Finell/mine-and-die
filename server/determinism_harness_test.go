@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 	worldpkg "mine-and-die/server/internal/world"
@@ -129,8 +130,8 @@ func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptio
 		if opts.recordKeyframes {
 			simPlayers := simPlayersFromLegacy(players)
 			simNPCs := simNPCsFromLegacy(npcs)
-			simTriggers := simEffectTriggersFromLegacy(triggers)
-			clonedGroundItems := append([]itemspkg.GroundItem(nil), groundItems...)
+			simTriggers := internaleffects.SimEffectTriggersFromLegacy(triggers)
+			clonedGroundItems := itemspkg.CloneGroundItems(groundItems)
 			if _, _, err := hub.marshalState(simPlayers, simNPCs, simTriggers, clonedGroundItems, false, true); err != nil {
 				t.Fatalf("failed to record keyframe during determinism harness: %v", err)
 			}

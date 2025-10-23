@@ -6,6 +6,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 )
@@ -108,16 +109,16 @@ func TestSimSnapshotConversionRoundTrip(t *testing.T) {
 	snapshot := sim.Snapshot{
 		Players:        simPlayersFromLegacy(legacyPlayers),
 		NPCs:           simNPCsFromLegacy(legacyNPCs),
-		GroundItems:    append([]itemspkg.GroundItem(nil), legacyGround...),
-		EffectEvents:   simEffectTriggersFromLegacy(legacyEffects),
+		GroundItems:    itemspkg.CloneGroundItems(legacyGround),
+		EffectEvents:   internaleffects.SimEffectTriggersFromLegacy(legacyEffects),
 		Obstacles:      simObstaclesFromLegacy(legacyObstacles),
 		AliveEffectIDs: append([]string(nil), aliveEffects...),
 	}
 
 	roundPlayers := legacyPlayersFromSim(snapshot.Players)
 	roundNPCs := legacyNPCsFromSim(snapshot.NPCs)
-	roundGround := append([]itemspkg.GroundItem(nil), snapshot.GroundItems...)
-	roundEffects := legacyEffectTriggersFromSim(snapshot.EffectEvents)
+	roundGround := itemspkg.CloneGroundItems(snapshot.GroundItems)
+	roundEffects := internaleffects.LegacyEffectTriggersFromSim(snapshot.EffectEvents)
 	roundObstacles := legacyObstaclesFromSim(snapshot.Obstacles)
 
 	if !reflect.DeepEqual(legacyPlayers, roundPlayers) {

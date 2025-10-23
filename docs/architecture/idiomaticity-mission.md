@@ -436,7 +436,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Collapse the `sim_engine_adapter` ground item conversions to work with `[]itemspkg.GroundItem` end-to-end so hub snapshots and broadcasts stop hopping between legacy and shared item types.
 - [x] Update hub state messages and marshaling helpers to encode `[]itemspkg.GroundItem` directly so the network layer no longer depends on `sim` ground item wrappers.
 - [x] Add regression coverage proving `Hub.marshalState` emits `groundItems` using the shared `internal/items` schema so the new payload shape stays locked for network consumers.
-- [ ] Extend the websocket subscribe/resubscribe tests to assert the initial state payload carries the shared ground item schema and trim any remaining `sim` ground item clones from the handler.
+- [x] Extend the websocket subscribe/resubscribe tests to assert the initial state payload carries the shared ground item schema and trim any remaining `sim` ground item clones from the handler.
+- [x] Replace `simutil.CloneGroundItems` with an `items.CloneGroundItems` helper and update hub/keyframe call sites to rely on the shared item package for snapshot cloning.
+- [x] Replace the remaining ad-hoc ground item slice clones in determinism and marshaling tests with `items.CloneGroundItems` so coverage exercises the shared helper path.
+- [x] Replace `simutil.CloneEffectTriggers` with an `effects.CloneEffectTriggers` helper and route hub/journal packaging through the shared effects package so the simulation utilities keep shrinking.
+- [x] Move the effect trigger conversion helpers (`simEffectTriggersFromLegacy`/`legacyEffectTriggersFromSim`) into `internal/effects` so hub and adapter callers reuse the shared clone path and the remaining map/string cloning can leave `simutil`.
+- [ ] Move the effect params patch payload conversions (`EffectParamsPayload` cases in `sim_engine_adapter.go`) into `internal/effects` so the adapter clones effect parameter maps through the shared helpers and `simutil` can drop its float map clone.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**

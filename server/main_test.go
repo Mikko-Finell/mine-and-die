@@ -31,12 +31,9 @@ func marshalStateLegacy(h *Hub, players []Player, npcs []NPC, triggers []EffectT
 	simNPCs := simNPCsFromLegacy(npcs)
 	var simTriggers []sim.EffectTrigger
 	if len(triggers) > 0 {
-		simTriggers = simEffectTriggersFromLegacy(triggers)
+		simTriggers = internaleffects.SimEffectTriggersFromLegacy(triggers)
 	}
-	var clonedGroundItems []itemspkg.GroundItem
-	if len(groundItems) > 0 {
-		clonedGroundItems = append([]itemspkg.GroundItem(nil), groundItems...)
-	}
+	clonedGroundItems := itemspkg.CloneGroundItems(groundItems)
 	return h.marshalState(simPlayers, simNPCs, simTriggers, clonedGroundItems, drainPatches, includeSnapshot)
 }
 
