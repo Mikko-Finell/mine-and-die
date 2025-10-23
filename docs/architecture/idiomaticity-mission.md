@@ -441,7 +441,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Replace the remaining ad-hoc ground item slice clones in determinism and marshaling tests with `items.CloneGroundItems` so coverage exercises the shared helper path.
 - [x] Replace `simutil.CloneEffectTriggers` with an `effects.CloneEffectTriggers` helper and route hub/journal packaging through the shared effects package so the simulation utilities keep shrinking.
 - [x] Move the effect trigger conversion helpers (`simEffectTriggersFromLegacy`/`legacyEffectTriggersFromSim`) into `internal/effects` so hub and adapter callers reuse the shared clone path and the remaining map/string cloning can leave `simutil`.
-- [ ] Move the effect params patch payload conversions (`EffectParamsPayload` cases in `sim_engine_adapter.go`) into `internal/effects` so the adapter clones effect parameter maps through the shared helpers and `simutil` can drop its float map clone.
+- [x] Move the effect params patch payload conversions (`EffectParamsPayload` cases in `sim_engine_adapter.go`) into `internal/effects` so the adapter clones effect parameter maps through the shared helpers and `simutil` can drop its float map clone.
+- [x] Move the effect event batch and resync signal conversions out of `sim_engine_adapter.go` into `internal/effects` so the adapter and hub rely on the shared helpers when cloning journal batches.
+- [x] Route alive effect ID cloning through `internal/effects` so the adapter, hub, and tests stop depending on the server-local helper and `simutil` can drop its dedicated clone function.
+- [x] Move the inventory and equipment patch payload conversions into `internal/items` so the adapter reuses the shared item helpers when cloning patch payloads.
+- [ ] Move the actor inventory and equipment snapshot conversions into `internal/items` so adapter and world callers share the same helpers when translating actors.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**
