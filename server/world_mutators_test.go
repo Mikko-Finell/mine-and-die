@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
 )
@@ -671,9 +672,11 @@ func TestSetEffectParamRecordsPatch(t *testing.T) {
 
 func TestSetGroundItemQuantityRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	item := &groundItemState{GroundItem: GroundItem{ID: "ground-1", Qty: 1, X: 0, Y: 0}}
+	item := &itemspkg.GroundItemState{GroundItem: itemspkg.GroundItem{ID: "ground-1", Qty: 1, X: 0, Y: 0}}
 
-	w.SetGroundItemQuantity(item, 5)
+	setter := itemspkg.GroundItemQuantityJournalSetter(w.journal.AppendPatch)
+
+	setter(item, 5)
 
 	if item.Version != 1 {
 		t.Fatalf("expected item version to increment, got %d", item.Version)

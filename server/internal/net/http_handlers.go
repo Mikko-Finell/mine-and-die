@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mine-and-die/server"
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/net/ws"
 	"mine-and-die/server/internal/sim"
@@ -186,12 +187,12 @@ func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
 		}
 
 		type resubscribeRequest struct {
-			Players         []sim.Player        `json:"players"`
-			NPCs            []sim.NPC           `json:"npcs"`
-			EffectTriggers  []sim.EffectTrigger `json:"effectTriggers"`
-			GroundItems     []sim.GroundItem    `json:"groundItems"`
-			DrainPatches    *bool               `json:"drainPatches"`
-			IncludeSnapshot *bool               `json:"includeSnapshot"`
+			Players         []sim.Player          `json:"players"`
+			NPCs            []sim.NPC             `json:"npcs"`
+			EffectTriggers  []sim.EffectTrigger   `json:"effectTriggers"`
+			GroundItems     []itemspkg.GroundItem `json:"groundItems"`
+			DrainPatches    *bool                 `json:"drainPatches"`
+			IncludeSnapshot *bool                 `json:"includeSnapshot"`
 		}
 
 		var req resubscribeRequest

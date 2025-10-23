@@ -11,6 +11,7 @@ import (
 	ai "mine-and-die/server/internal/ai"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
+	itemspkg "mine-and-die/server/internal/items"
 	internalstats "mine-and-die/server/internal/stats"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
@@ -103,8 +104,8 @@ type World struct {
 	playerHitCallback worldpkg.EffectHitCallback
 	npcHitCallback    worldpkg.EffectHitCallback
 
-	groundItems       map[string]*groundItemState
-	groundItemsByTile map[groundTileKey]map[string]*groundItemState
+	groundItems       map[string]*itemspkg.GroundItemState
+	groundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
 	journal           Journal
 }
 
@@ -184,8 +185,8 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 		seed:                normalized.Seed,
 		publisher:           publisher,
 		telemetry:           nil,
-		groundItems:         make(map[string]*groundItemState),
-		groundItemsByTile:   make(map[groundTileKey]map[string]*groundItemState),
+		groundItems:         make(map[string]*itemspkg.GroundItemState),
+		groundItemsByTile:   make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState),
 		journal:             newJournal(capacity, maxAge),
 	}
 	w.statusEffectDefs = newStatusEffectDefinitions(w)

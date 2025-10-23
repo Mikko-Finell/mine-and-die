@@ -4,6 +4,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	itemspkg "mine-and-die/server/internal/items"
 	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/internal/simutil"
@@ -97,7 +98,7 @@ func (a *legacyEngineAdapter) Snapshot() sim.Snapshot {
 	return sim.Snapshot{
 		Players:        simPlayers,
 		NPCs:           simNPCsFromLegacy(npcs),
-		GroundItems:    simGroundItemsFromLegacy(groundItems),
+		GroundItems:    simutil.CloneGroundItems(groundItems),
 		EffectEvents:   simEffectTriggersFromLegacy(triggers),
 		Obstacles:      simObstaclesFromLegacy(obstacles),
 		AliveEffectIDs: aliveEffectIDs,
@@ -348,42 +349,6 @@ func legacyActorsFromSimSnapshot(snapshot sim.Snapshot) ([]Player, []NPC) {
 	return players, npcs
 }
 
-func simGroundItemsFromLegacy(items []GroundItem) []sim.GroundItem {
-	if len(items) == 0 {
-		return nil
-	}
-	converted := make([]sim.GroundItem, len(items))
-	for i, item := range items {
-		converted[i] = sim.GroundItem{
-			ID:             item.ID,
-			Type:           toSimItemType(ItemType(item.Type)),
-			FungibilityKey: item.FungibilityKey,
-			X:              item.X,
-			Y:              item.Y,
-			Qty:            item.Qty,
-		}
-	}
-	return converted
-}
-
-func legacyGroundItemsFromSim(items []sim.GroundItem) []GroundItem {
-	if len(items) == 0 {
-		return nil
-	}
-	converted := make([]GroundItem, len(items))
-	for i, item := range items {
-		converted[i] = GroundItem{
-			ID:             item.ID,
-			Type:           string(legacyItemTypeFromSim(item.Type)),
-			FungibilityKey: item.FungibilityKey,
-			X:              item.X,
-			Y:              item.Y,
-			Qty:            item.Qty,
-		}
-	}
-	return converted
-}
-
 func simEffectTriggersFromLegacy(triggers []EffectTrigger) []sim.EffectTrigger {
 	if len(triggers) == 0 {
 		return nil
@@ -448,7 +413,7 @@ func simKeyframeFromLegacy(frame keyframe) sim.Keyframe {
 		legacyPlayers     []Player
 		legacyNPCs        []NPC
 		legacyObstacles   []Obstacle
-		legacyGroundItems []GroundItem
+		legacyGroundItems []itemspkg.GroundItem
 		legacyConfig      worldConfig
 	)
 
@@ -461,7 +426,7 @@ func simKeyframeFromLegacy(frame keyframe) sim.Keyframe {
 	if typed, ok := frame.Obstacles.([]Obstacle); ok {
 		legacyObstacles = typed
 	}
-	if typed, ok := frame.GroundItems.([]GroundItem); ok {
+	if typed, ok := frame.GroundItems.([]itemspkg.GroundItem); ok {
 		legacyGroundItems = typed
 	}
 	if typed, ok := frame.Config.(worldConfig); ok {
@@ -474,7 +439,7 @@ func simKeyframeFromLegacy(frame keyframe) sim.Keyframe {
 		Players:     simPlayersFromLegacy(legacyPlayers),
 		NPCs:        simNPCsFromLegacy(legacyNPCs),
 		Obstacles:   simObstaclesFromLegacy(legacyObstacles),
-		GroundItems: simGroundItemsFromLegacy(legacyGroundItems),
+		GroundItems: simutil.CloneGroundItems(legacyGroundItems),
 		Config:      simWorldConfigFromLegacy(legacyConfig),
 		RecordedAt:  frame.RecordedAt,
 	}
@@ -487,7 +452,7 @@ func legacyKeyframeFromSim(frame sim.Keyframe) keyframe {
 		Players:     legacyPlayersFromSim(frame.Players),
 		NPCs:        legacyNPCsFromSim(frame.NPCs),
 		Obstacles:   legacyObstaclesFromSim(frame.Obstacles),
-		GroundItems: legacyGroundItemsFromSim(frame.GroundItems),
+		GroundItems: simutil.CloneGroundItems(frame.GroundItems),
 		Config:      legacyWorldConfigFromSim(frame.Config),
 		RecordedAt:  frame.RecordedAt,
 	}

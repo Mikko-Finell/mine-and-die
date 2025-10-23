@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
@@ -17,12 +18,12 @@ func TestNPCRemovalPurgesPatches(t *testing.T) {
 
 	tile := tileForPosition(npc.X, npc.Y)
 	def, _ := ItemDefinitionFor(ItemTypeGold)
-	existing := &groundItemState{GroundItem: GroundItem{ID: "ground-existing", Type: string(ItemTypeGold), FungibilityKey: def.FungibilityKey, Qty: 1}, Tile: tile}
+	existing := &itemspkg.GroundItemState{GroundItem: itemspkg.GroundItem{ID: "ground-existing", Type: string(ItemTypeGold), FungibilityKey: def.FungibilityKey, Qty: 1}, Tile: tile}
 	w.groundItems[existing.ID] = existing
 	if w.groundItemsByTile == nil {
-		w.groundItemsByTile = make(map[groundTileKey]map[string]*groundItemState)
+		w.groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
 	}
-	w.groundItemsByTile[tile] = map[string]*groundItemState{def.FungibilityKey: existing}
+	w.groundItemsByTile[tile] = map[string]*itemspkg.GroundItemState{def.FungibilityKey: existing}
 
 	w.SetNPCHealth(npc.ID, 0)
 	if err := w.MutateNPCInventory(npc.ID, func(inv *Inventory) error {

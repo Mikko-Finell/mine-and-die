@@ -56,39 +56,39 @@ func (w *World) ensureGroundItemStorage() {
 		return
 	}
 	if w.groundItems == nil {
-		w.groundItems = make(map[string]*groundItemState)
+		w.groundItems = make(map[string]*itemspkg.GroundItemState)
 	}
 	if w.groundItemsByTile == nil {
-		w.groundItemsByTile = make(map[groundTileKey]map[string]*groundItemState)
+		w.groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
 	}
 }
 
 // GroundItemsSnapshot returns a copy of the ground items for broadcasting.
-func (w *World) GroundItemsSnapshot() []GroundItem {
+func (w *World) GroundItemsSnapshot() []itemspkg.GroundItem {
 	if w == nil {
-		return make([]GroundItem, 0)
+		return make([]itemspkg.GroundItem, 0)
 	}
 	return itemspkg.GroundItemsSnapshot(w.groundItems)
 }
 
-func tileForPosition(x, y float64) groundTileKey {
+func tileForPosition(x, y float64) itemspkg.GroundTileKey {
 	return itemspkg.TileForPosition(x, y, tileSize)
 }
 
-func tileCenter(key groundTileKey) (float64, float64) {
+func tileCenter(key itemspkg.GroundTileKey) (float64, float64) {
 	return itemspkg.TileCenter(key, tileSize)
 }
 
-func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason string) *groundItemState {
+func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason string) *itemspkg.GroundItemState {
 	if w == nil || actor == nil || stack.Quantity <= 0 || stack.Type == "" {
 		return nil
 	}
 
 	if w.groundItems == nil {
-		w.groundItems = make(map[string]*groundItemState)
+		w.groundItems = make(map[string]*itemspkg.GroundItemState)
 	}
 	if w.groundItemsByTile == nil {
-		w.groundItemsByTile = make(map[groundTileKey]map[string]*groundItemState)
+		w.groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
 	}
 
 	cfg := scatterConfig()
@@ -127,19 +127,15 @@ func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason stri
 			}
 			return false
 		},
-		func(item *groundItemState, qty int) {
-			w.SetGroundItemQuantity(item, qty)
-		},
-		func(item *groundItemState, x, y float64) {
-			w.SetGroundItemPosition(item, x, y)
-		},
+		itemspkg.GroundItemQuantityJournalSetter(w.journal.AppendPatch),
+		itemspkg.GroundItemPositionJournalSetter(w.journal.AppendPatch),
 		func(_ *itemspkg.Actor, stack itemspkg.ItemStack, reason, stackID string) {
 			w.logGoldDrop(actor, fromWorldItemStack(stack), reason, stackID)
 		},
 	)
 }
 
-func (w *World) scatterGroundItemPosition(actor *actorState, tile groundTileKey) (float64, float64) {
+func (w *World) scatterGroundItemPosition(actor *actorState, tile itemspkg.GroundTileKey) (float64, float64) {
 	cfg := scatterConfig()
 	worldActor := toWorldActor(actor)
 
@@ -154,22 +150,7 @@ func (w *World) scatterGroundItemPosition(actor *actorState, tile groundTileKey)
 	return itemspkg.ScatterGroundItemPosition(worldActor, tile, cfg, angleFn, distanceFn)
 }
 
-func (w *World) removeGroundItem(item *groundItemState) {
-	if w == nil || item == nil {
-		return
-	}
-
-	itemspkg.RemoveGroundItem(
-		w.groundItems,
-		w.groundItemsByTile,
-		item,
-		func(target *groundItemState, qty int) {
-			w.SetGroundItemQuantity(target, qty)
-		},
-	)
-}
-
-func (w *World) nearestGroundItem(actor *actorState, itemType ItemType) (*groundItemState, float64) {
+func (w *World) nearestGroundItem(actor *actorState, itemType ItemType) (*itemspkg.GroundItemState, float64) {
 	if w == nil {
 		return nil, 0
 	}
@@ -188,6 +169,7 @@ func (w *World) pickupNearestGold(actor *actorState) (*itemspkg.PickupResult, *i
 
 	return itemspkg.PickupNearestItem(
 		w.groundItems,
+		w.groundItemsByTile,
 		worldActor,
 		string(ItemTypeGold),
 		groundPickupRadius,
@@ -201,9 +183,7 @@ func (w *World) pickupNearestGold(actor *actorState) (*itemspkg.PickupResult, *i
 				return addErr
 			})
 		},
-		func(item *itemspkg.GroundItemState) {
-			w.removeGroundItem(item)
-		},
+		w.journal.AppendPatch,
 	)
 }
 
@@ -282,12 +262,7 @@ func (w *World) groundDropConfig(actor *actorState) (itemspkg.GroundDropConfig, 
 		RandomAngle:    angleFn,
 		RandomDistance: distanceFn,
 		EnsureKey:      ensureKey,
-		SetQuantity: func(item *itemspkg.GroundItemState, qty int) {
-			w.SetGroundItemQuantity(item, qty)
-		},
-		SetPosition: func(item *itemspkg.GroundItemState, x, y float64) {
-			w.SetGroundItemPosition(item, x, y)
-		},
+		AppendPatch:    w.journal.AppendPatch,
 		LogDrop: func(_ *itemspkg.Actor, stack itemspkg.ItemStack, dropReason, stackID string) {
 			w.logGoldDrop(actor, fromWorldItemStack(stack), dropReason, stackID)
 		},

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 	logging "mine-and-die/server/logging"
 )
@@ -16,9 +17,9 @@ func TestRemoveGroundItemRecordsQuantityPatch(t *testing.T) {
 		t.Fatalf("expected gold definition to be registered")
 	}
 
-	tile := groundTileKey{X: 1, Y: 2}
-	item := &groundItemState{
-		GroundItem: GroundItem{
+	tile := itemspkg.GroundTileKey{X: 1, Y: 2}
+	item := &itemspkg.GroundItemState{
+		GroundItem: itemspkg.GroundItem{
 			ID:             "ground-1",
 			Type:           string(ItemTypeGold),
 			FungibilityKey: def.FungibilityKey,
@@ -30,9 +31,9 @@ func TestRemoveGroundItemRecordsQuantityPatch(t *testing.T) {
 	}
 
 	w.groundItems[item.ID] = item
-	w.groundItemsByTile[tile] = map[string]*groundItemState{def.FungibilityKey: item}
+	w.groundItemsByTile[tile] = map[string]*itemspkg.GroundItemState{def.FungibilityKey: item}
 
-	w.removeGroundItem(item)
+	itemspkg.RemoveGroundItem(w.groundItems, w.groundItemsByTile, item, w.journal.AppendPatch)
 
 	if _, exists := w.groundItems[item.ID]; exists {
 		t.Fatalf("expected ground item %q to be removed from world", item.ID)
@@ -68,9 +69,9 @@ func TestMarshalStateKeepsGroundItemRemovalPatch(t *testing.T) {
 		t.Fatalf("expected gold definition to be registered")
 	}
 
-	tile := groundTileKey{X: 0, Y: 0}
-	item := &groundItemState{
-		GroundItem: GroundItem{
+	tile := itemspkg.GroundTileKey{X: 0, Y: 0}
+	item := &itemspkg.GroundItemState{
+		GroundItem: itemspkg.GroundItem{
 			ID:             "ground-42",
 			Type:           string(ItemTypeGold),
 			FungibilityKey: def.FungibilityKey,
@@ -82,9 +83,9 @@ func TestMarshalStateKeepsGroundItemRemovalPatch(t *testing.T) {
 	}
 
 	hub.world.groundItems[item.ID] = item
-	hub.world.groundItemsByTile[tile] = map[string]*groundItemState{def.FungibilityKey: item}
+	hub.world.groundItemsByTile[tile] = map[string]*itemspkg.GroundItemState{def.FungibilityKey: item}
 
-	hub.world.removeGroundItem(item)
+	itemspkg.RemoveGroundItem(hub.world.groundItems, hub.world.groundItemsByTile, item, hub.world.journal.AppendPatch)
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
 	if err != nil {
@@ -133,9 +134,9 @@ func TestMarshalStateOmitsGroundItemsFromDiffFrames(t *testing.T) {
 		t.Fatalf("expected gold definition to be registered")
 	}
 
-	tile := groundTileKey{X: 3, Y: 1}
-	item := &groundItemState{
-		GroundItem: GroundItem{
+	tile := itemspkg.GroundTileKey{X: 3, Y: 1}
+	item := &itemspkg.GroundItemState{
+		GroundItem: itemspkg.GroundItem{
 			ID:             "ground-99",
 			Type:           string(ItemTypeGold),
 			FungibilityKey: def.FungibilityKey,
@@ -147,14 +148,14 @@ func TestMarshalStateOmitsGroundItemsFromDiffFrames(t *testing.T) {
 	}
 
 	hub.world.groundItems[item.ID] = item
-	hub.world.groundItemsByTile[tile] = map[string]*groundItemState{def.FungibilityKey: item}
+	hub.world.groundItemsByTile[tile] = map[string]*itemspkg.GroundItemState{def.FungibilityKey: item}
 
 	snapshot := hub.world.GroundItemsSnapshot()
 	if len(snapshot) != 1 {
 		t.Fatalf("expected snapshot to contain one ground item, got %d", len(snapshot))
 	}
 
-	data, _, err := hub.marshalState(nil, nil, nil, simGroundItemsFromLegacy(snapshot), true, false)
+	data, _, err := hub.marshalState(nil, nil, nil, append([]itemspkg.GroundItem(nil), snapshot...), true, false)
 	if err != nil {
 		t.Fatalf("marshalState returned error: %v", err)
 	}
