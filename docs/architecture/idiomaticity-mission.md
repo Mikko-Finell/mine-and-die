@@ -395,7 +395,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Drop the `handle.SetActor` guard in `World.attachStatusEffectVisual` so fallback attachments update the handle actor reference directly through the accessor.
 - [x] Drop the `handle.SetActor` guard in `World.applyStatusEffect` so reused and newly created handles update the actor reference directly through the accessor.
 - [x] Drop the `handle.Actor` guard in `World.handleBurningStatusApply` so the fallback path relies on the handle-provided actor reference when attaching visuals.
-- [ ] Drop the `handle.Actor` guard in `World.attachStatusEffectVisual` so the helper always resolves fallback actors through the handle accessor.
+- [x] Drop the `handle.Actor` guard in `World.attachStatusEffectVisual` so the helper always resolves fallback actors through the handle accessor.
+- [x] Add regression coverage proving the fallback attachment path resolves the actor through the handle when callers pass a nil actor pointer.
+- [ ] Move `World.abilityOwner` and `World.abilityOwnerState` into `internal/world`, returning adapters that expose `combat.AbilityActor` snapshots so combat ability gating lives behind the world package seams.
 
 - [x] Keep the tick loop in `sim/engine`:
 

@@ -144,3 +144,58 @@ func TestApplyStatusEffectAttachesFallbackVisualWhenManagerMissing(t *testing.T)
 		t.Fatalf("expected effect expiration after apply time, got %v", effect.ExpiresAt)
 	}
 }
+
+func TestAttachStatusEffectVisualResolvesActorFromHandle(t *testing.T) {
+	t.Parallel()
+
+	const (
+		actorID = "target-42"
+	)
+
+	now := time.UnixMilli(1_700_000_123)
+	lifetime := 350 * time.Millisecond
+
+	world := &World{
+		effects:     make([]*effectState, 0),
+		effectsByID: make(map[string]*effectState),
+		currentTick: 64,
+	}
+	world.statusEffectDefs = newStatusEffectDefinitions(world)
+
+	actor := &actorState{Actor: Actor{ID: actorID, X: 320, Y: 440}}
+	inst := &statusEffectInstance{}
+	handle := newStatusEffectInstanceHandle(inst, actor)
+
+	effect := world.attachStatusEffectVisual(handle, nil, StatusEffectBurning, "", effectTypeBurningVisual, lifetime, time.Time{}, now)
+	if effect == nil {
+		t.Fatalf("expected fallback visual effect to be constructed")
+	}
+
+	if inst.attachedEffect != effect {
+		t.Fatalf("expected status effect instance to hold attached effect")
+	}
+	if effect.Owner != actorID {
+		t.Fatalf("expected effect owner %q, got %q", actorID, effect.Owner)
+	}
+	if effect.FollowActorID != actorID {
+		t.Fatalf("expected effect to follow actor %q, got %q", actorID, effect.FollowActorID)
+	}
+	if effect.StatusEffect != StatusEffectBurning {
+		t.Fatalf("expected status effect %q, got %q", StatusEffectBurning, effect.StatusEffect)
+	}
+
+	expectedWidth := playerHalf * 2
+	if effect.Width != expectedWidth || effect.Height != expectedWidth {
+		t.Fatalf("expected effect footprint %.1f x %.1f, got %.1f x %.1f", expectedWidth, expectedWidth, effect.Width, effect.Height)
+	}
+	expectedX := actor.X - expectedWidth/2
+	expectedY := actor.Y - expectedWidth/2
+	if effect.X != expectedX || effect.Y != expectedY {
+		t.Fatalf("expected effect position (%.1f, %.1f), got (%.1f, %.1f)", expectedX, expectedY, effect.X, effect.Y)
+	}
+
+	expectedExpiry := now.Add(lifetime)
+	if !effect.ExpiresAt.Equal(expectedExpiry) {
+		t.Fatalf("expected expiration %v, got %v", expectedExpiry, effect.ExpiresAt)
+	}
+}

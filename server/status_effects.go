@@ -455,10 +455,8 @@ func (w *World) attachStatusEffectVisual(handle worldpkg.StatusEffectInstanceHan
 	}
 
 	if actor == nil {
-		if handle.Actor != nil {
-			cast, _ := handle.Actor().(*actorState)
-			actor = cast
-		}
+		cast, _ := handle.Actor().(*actorState)
+		actor = cast
 	}
 	if actor == nil {
 		return nil
