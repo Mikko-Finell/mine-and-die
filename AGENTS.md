@@ -16,7 +16,8 @@ All coordination happens there — phases, order, progress markers, and next tas
 
   * Mark that exact task done.
   * Add **the next obvious concrete task** under "Next task" for the next contributor. Keep it surgical, not vague.
-  * If the phase is actually complete end-to-end, mark it `[DONE]`.
+  * If the change you made was relatively small and you see a series of similarly small changes with similar patterns in the mission file, go ahead and **finish the "Next task" you just created**. The current work is very repetetive and simple, and we have good tests to rely on, no need to individually commit every small change. Repeat this until you've accumulated a decently sized commit (at least 500 LOC changes).
+ 
 * If you discover a missing prerequisite, append a new phase as `[TODO]` rather than improvising silently.
 * If blocked on something external, mark the phase `[BLOCKED]` and state why.
 * Try to avoid adding shims or feature flags or anything like that if you can. If the task requires it, mark them with code comments.
