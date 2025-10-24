@@ -1,90 +1,10 @@
-package simpayloads
+package items
 
 import (
 	"reflect"
 
-	itemspkg "mine-and-die/server/internal/items"
-	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
 )
-
-// CloneInventorySlots returns a deep copy of the provided inventory slots.
-func CloneInventorySlots(slots []sim.InventorySlot) []sim.InventorySlot {
-	return itemspkg.InventoryFromSimSlots(slots).Slots
-}
-
-// CloneEquippedItems returns a deep copy of the provided equipped item slots.
-func CloneEquippedItems(slots []sim.EquippedItem) []sim.EquippedItem {
-	return itemspkg.EquipmentFromSimSlots(slots).Slots
-}
-
-// SimInventoryPayloadFromLegacy converts a legacy inventory payload into its
-// simulation equivalent, cloning and normalizing the slot data so callers
-// receive an independent slice backed by `sim` types.
-func SimInventoryPayloadFromLegacy(payload journal.InventoryPayload) sim.InventoryPayload {
-	return sim.InventoryPayload{Slots: SimInventorySlotsFromAny(payload.Slots)}
-}
-
-// SimInventoryPayloadFromLegacyPtr converts a legacy inventory payload pointer
-// into its simulation equivalent. Nil pointers return nil.
-func SimInventoryPayloadFromLegacyPtr(payload *journal.InventoryPayload) *sim.InventoryPayload {
-	if payload == nil {
-		return nil
-	}
-	converted := SimInventoryPayloadFromLegacy(*payload)
-	return &converted
-}
-
-// SimEquipmentPayloadFromLegacy converts a legacy equipment payload into its
-// simulation equivalent, cloning and normalizing the slot data so callers
-// receive an independent slice backed by `sim` types.
-func SimEquipmentPayloadFromLegacy(payload journal.EquipmentPayload) sim.EquipmentPayload {
-	return sim.EquipmentPayload{Slots: SimEquippedItemsFromAny(payload.Slots)}
-}
-
-// SimEquipmentPayloadFromLegacyPtr converts a legacy equipment payload pointer
-// into its simulation equivalent. Nil pointers return nil.
-func SimEquipmentPayloadFromLegacyPtr(payload *journal.EquipmentPayload) *sim.EquipmentPayload {
-	if payload == nil {
-		return nil
-	}
-	converted := SimEquipmentPayloadFromLegacy(*payload)
-	return &converted
-}
-
-// LegacyInventoryPayloadFromSim converts a simulation inventory payload into
-// its legacy equivalent, cloning the slot slice so callers receive an
-// independent copy.
-func LegacyInventoryPayloadFromSim(payload sim.InventoryPayload) journal.InventoryPayload {
-	return journal.InventoryPayload{Slots: CloneInventorySlots(payload.Slots)}
-}
-
-// LegacyInventoryPayloadFromSimPtr converts a simulation inventory payload
-// pointer into its legacy equivalent. Nil pointers return nil.
-func LegacyInventoryPayloadFromSimPtr(payload *sim.InventoryPayload) *journal.InventoryPayload {
-	if payload == nil {
-		return nil
-	}
-	converted := LegacyInventoryPayloadFromSim(*payload)
-	return &converted
-}
-
-// LegacyEquipmentPayloadFromSim converts a simulation equipment payload into
-// its legacy equivalent, cloning the slot slice so callers receive an
-// independent copy.
-func LegacyEquipmentPayloadFromSim(payload sim.EquipmentPayload) journal.EquipmentPayload {
-	return journal.EquipmentPayload{Slots: CloneEquippedItems(payload.Slots)}
-}
-
-// LegacyEquipmentPayloadFromSimPtr converts a simulation equipment payload
-// pointer into its legacy equivalent. Nil pointers return nil.
-func LegacyEquipmentPayloadFromSimPtr(payload *sim.EquipmentPayload) *journal.EquipmentPayload {
-	if payload == nil {
-		return nil
-	}
-	converted := LegacyEquipmentPayloadFromSim(*payload)
-	return &converted
-}
 
 // SimInventorySlotsFromAny converts an arbitrary collection of legacy
 // inventory slots into their simulation equivalents. Supported shapes include

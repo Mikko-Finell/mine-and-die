@@ -13,6 +13,11 @@ func TestInventoryFromSimSlotsClonesSnapshot(t *testing.T) {
 		Item: sim.ItemStack{Type: "arrow", FungibilityKey: "stack", Quantity: 5},
 	}}
 
+	cloned := itemspkg.CloneInventorySlots(slots)
+	if len(cloned) != 1 {
+		t.Fatalf("expected 1 cloned slot, got %d", len(cloned))
+	}
+
 	inv := itemspkg.InventoryFromSimSlots(slots)
 	if len(inv.Slots) != 1 {
 		t.Fatalf("expected 1 slot, got %d", len(inv.Slots))
@@ -36,6 +41,11 @@ func TestEquipmentFromSimSlotsClonesSnapshot(t *testing.T) {
 		Slot: sim.EquipSlot("Head"),
 		Item: sim.ItemStack{Type: "helm", FungibilityKey: "unique", Quantity: 1},
 	}}
+
+	cloned := itemspkg.CloneEquippedItems(slots)
+	if len(cloned) != 1 {
+		t.Fatalf("expected 1 cloned slot, got %d", len(cloned))
+	}
 
 	eq := itemspkg.EquipmentFromSimSlots(slots)
 	if len(eq.Slots) != 1 {
