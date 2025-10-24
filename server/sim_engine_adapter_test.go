@@ -10,6 +10,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 	simutil "mine-and-die/server/internal/simutil"
 )
 
@@ -962,7 +963,7 @@ func TestSimEffectEventBatchConversionRoundTripPreservesSequences(t *testing.T) 
 		},
 	}
 
-	simBatch := internaleffects.SimEffectEventBatchFromLegacy(journal.EffectEventBatch(legacy))
+	simBatch := internaleffects.SimEffectEventBatchFromTyped(simpatches.EffectEventBatch(legacy))
 	if !reflect.DeepEqual(legacy.LastSeqByID, simBatch.LastSeqByID) {
 		t.Fatalf("expected seq map %#v, got %#v", legacy.LastSeqByID, simBatch.LastSeqByID)
 	}
@@ -972,9 +973,9 @@ func TestSimEffectEventBatchConversionRoundTripPreservesSequences(t *testing.T) 
 		t.Fatalf("legacy sequence mutated unexpectedly: %d", legacy.LastSeqByID["effect-1"])
 	}
 
-	roundTrip := internaleffects.LegacyEffectEventBatchFromSim(internaleffects.SimEffectEventBatchFromLegacy(journal.EffectEventBatch(legacy)))
-	if !reflect.DeepEqual(legacy, roundTrip) {
-		t.Fatalf("effect batch round trip mismatch\nlegacy: %#v\nround-trip: %#v", legacy, roundTrip)
+	roundTrip := internaleffects.TypedEffectEventBatchFromSim(internaleffects.SimEffectEventBatchFromTyped(simpatches.EffectEventBatch(legacy)))
+	if !reflect.DeepEqual(simpatches.EffectEventBatch(legacy), roundTrip) {
+		t.Fatalf("effect batch round trip mismatch\ntyped: %#v\nround-trip: %#v", legacy, roundTrip)
 	}
 }
 
@@ -1882,11 +1883,11 @@ func TestSimEffectEventBatchConversionRoundTrip(t *testing.T) {
 		},
 	}
 
-	simBatch := internaleffects.SimEffectEventBatchFromLegacy(journal.EffectEventBatch(legacyBatch))
-	roundTrip := internaleffects.LegacyEffectEventBatchFromSim(simBatch)
+	simBatch := internaleffects.SimEffectEventBatchFromTyped(simpatches.EffectEventBatch(legacyBatch))
+	roundTrip := internaleffects.TypedEffectEventBatchFromSim(simBatch)
 
-	if !reflect.DeepEqual(legacyBatch, roundTrip) {
-		t.Fatalf("effect batch round trip mismatch\nlegacy: %#v\nround-trip: %#v", legacyBatch, roundTrip)
+	if !reflect.DeepEqual(simpatches.EffectEventBatch(legacyBatch), roundTrip) {
+		t.Fatalf("effect batch round trip mismatch\ntyped: %#v\nround-trip: %#v", legacyBatch, roundTrip)
 	}
 
 	simBatch.Spawns[0].Instance.Params["power"] = 99
@@ -1938,8 +1939,8 @@ func TestSimEffectResyncSignalConversionRoundTrip(t *testing.T) {
 		},
 	}
 
-	simSignal := internaleffects.SimEffectResyncSignalFromLegacy(journal.ResyncSignal(legacySignal))
-	roundTrip := internaleffects.LegacyEffectResyncSignalFromSim(simSignal)
+	simSignal := internaleffects.SimEffectResyncSignalFromTyped(typedEffectResyncSignalFromLegacy(journal.ResyncSignal(legacySignal)))
+	roundTrip := resyncSignalFromTyped(internaleffects.TypedEffectResyncSignalFromSim(simSignal))
 
 	if !reflect.DeepEqual(legacySignal, roundTrip) {
 		t.Fatalf("effect resync signal round trip mismatch\nlegacy: %#v\nround: %#v", legacySignal, roundTrip)

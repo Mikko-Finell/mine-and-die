@@ -1,8 +1,8 @@
 package effects
 
 import (
-	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 )
 
 // CloneEffectParams returns a deep copy of the provided effect parameter map.
@@ -10,36 +10,36 @@ func CloneEffectParams(params map[string]float64) map[string]float64 {
 	return cloneFloatMap(params)
 }
 
-// SimEffectParamsPayloadFromLegacy converts a legacy effect-params payload into
+// SimEffectParamsPayloadFromTyped converts a typed effect-params payload into
 // its simulation equivalent, cloning the mutable parameter map so callers
 // receive an independent copy.
-func SimEffectParamsPayloadFromLegacy(payload journal.EffectParamsPayload) sim.EffectParamsPayload {
+func SimEffectParamsPayloadFromTyped(payload simpatches.EffectParamsPayload) sim.EffectParamsPayload {
 	return sim.EffectParamsPayload{Params: CloneEffectParams(payload.Params)}
 }
 
-// SimEffectParamsPayloadFromLegacyPtr converts a legacy effect-params payload
+// SimEffectParamsPayloadFromTypedPtr converts a typed effect-params payload
 // pointer into its simulation equivalent. Nil pointers return nil.
-func SimEffectParamsPayloadFromLegacyPtr(payload *journal.EffectParamsPayload) *sim.EffectParamsPayload {
+func SimEffectParamsPayloadFromTypedPtr(payload *simpatches.EffectParamsPayload) *sim.EffectParamsPayload {
 	if payload == nil {
 		return nil
 	}
-	converted := SimEffectParamsPayloadFromLegacy(*payload)
+	converted := SimEffectParamsPayloadFromTyped(*payload)
 	return &converted
 }
 
-// LegacyEffectParamsPayloadFromSim converts a simulation effect-params payload
-// into its legacy equivalent, cloning the mutable parameter map so callers
+// TypedEffectParamsPayloadFromSim converts a simulation effect-params payload
+// into its typed equivalent, cloning the mutable parameter map so callers
 // receive an independent copy.
-func LegacyEffectParamsPayloadFromSim(payload sim.EffectParamsPayload) journal.EffectParamsPayload {
-	return journal.EffectParamsPayload{Params: CloneEffectParams(payload.Params)}
+func TypedEffectParamsPayloadFromSim(payload sim.EffectParamsPayload) simpatches.EffectParamsPayload {
+	return simpatches.EffectParamsPayload{Params: CloneEffectParams(payload.Params)}
 }
 
-// LegacyEffectParamsPayloadFromSimPtr converts a simulation effect-params
-// payload pointer into its legacy equivalent. Nil pointers return nil.
-func LegacyEffectParamsPayloadFromSimPtr(payload *sim.EffectParamsPayload) *journal.EffectParamsPayload {
+// TypedEffectParamsPayloadFromSimPtr converts a simulation effect-params
+// payload pointer into its typed equivalent. Nil pointers return nil.
+func TypedEffectParamsPayloadFromSimPtr(payload *sim.EffectParamsPayload) *simpatches.EffectParamsPayload {
 	if payload == nil {
 		return nil
 	}
-	converted := LegacyEffectParamsPayloadFromSim(*payload)
+	converted := TypedEffectParamsPayloadFromSim(*payload)
 	return &converted
 }

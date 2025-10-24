@@ -4,22 +4,22 @@ import (
 	"reflect"
 	"testing"
 
-	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 )
 
 func TestEffectParamsPayloadConversions(t *testing.T) {
-	legacy := journal.EffectParamsPayload{Params: map[string]float64{"radius": 3}}
-	simPayload := SimEffectParamsPayloadFromLegacy(legacy)
+	typedPayload := simpatches.EffectParamsPayload{Params: map[string]float64{"radius": 3}}
+	simPayload := SimEffectParamsPayloadFromTyped(typedPayload)
 	if simPayload.Params["radius"] != 3 {
 		t.Fatalf("expected radius to be copied, got %v", simPayload.Params["radius"])
 	}
 	simPayload.Params["radius"] = 9
-	if legacy.Params["radius"] != 3 {
+	if typedPayload.Params["radius"] != 3 {
 		t.Fatalf("expected legacy params to remain unchanged after mutation")
 	}
 
-	roundTrip := LegacyEffectParamsPayloadFromSim(simPayload)
+	roundTrip := TypedEffectParamsPayloadFromSim(simPayload)
 	if !reflect.DeepEqual(roundTrip.Params, map[string]float64{"radius": 9}) {
 		t.Fatalf("expected round-trip params to match mutated sim payload, got %#v", roundTrip.Params)
 	}
@@ -28,29 +28,29 @@ func TestEffectParamsPayloadConversions(t *testing.T) {
 		t.Fatalf("expected sim payload to remain unchanged after legacy mutation")
 	}
 
-	if converted := SimEffectParamsPayloadFromLegacyPtr(nil); converted != nil {
+	if converted := SimEffectParamsPayloadFromTypedPtr(nil); converted != nil {
 		t.Fatalf("expected nil pointer conversion to return nil, got %#v", converted)
 	}
-	if converted := LegacyEffectParamsPayloadFromSimPtr(nil); converted != nil {
+	if converted := TypedEffectParamsPayloadFromSimPtr(nil); converted != nil {
 		t.Fatalf("expected nil pointer conversion to return nil, got %#v", converted)
 	}
 
-	legacyPtr := journal.EffectParamsPayload{Params: map[string]float64{"speed": 2}}
-	simPtr := SimEffectParamsPayloadFromLegacyPtr(&legacyPtr)
+	typedPtr := simpatches.EffectParamsPayload{Params: map[string]float64{"speed": 2}}
+	simPtr := SimEffectParamsPayloadFromTypedPtr(&typedPtr)
 	if simPtr == nil || simPtr.Params["speed"] != 2 {
 		t.Fatalf("expected pointer conversion to copy params, got %#v", simPtr)
 	}
 	simPtr.Params["speed"] = 5
-	if legacyPtr.Params["speed"] != 2 {
+	if typedPtr.Params["speed"] != 2 {
 		t.Fatalf("expected legacy pointer to remain unchanged after sim mutation")
 	}
 
 	simPayloadPtr := sim.EffectParamsPayload{Params: map[string]float64{"scale": 4}}
-	legacyConverted := LegacyEffectParamsPayloadFromSimPtr(&simPayloadPtr)
-	if legacyConverted == nil || legacyConverted.Params["scale"] != 4 {
-		t.Fatalf("expected legacy pointer conversion to copy params, got %#v", legacyConverted)
+	typedConverted := TypedEffectParamsPayloadFromSimPtr(&simPayloadPtr)
+	if typedConverted == nil || typedConverted.Params["scale"] != 4 {
+		t.Fatalf("expected legacy pointer conversion to copy params, got %#v", typedConverted)
 	}
-	legacyConverted.Params["scale"] = 6
+	typedConverted.Params["scale"] = 6
 	if simPayloadPtr.Params["scale"] != 4 {
 		t.Fatalf("expected sim payload pointer to remain unchanged after mutation")
 	}

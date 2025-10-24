@@ -358,7 +358,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
   - Prioritize the patch typing effort by defining a canonical `Patch` struct inside `internal/sim/patches`, mirroring the current map fields so legacy callers can be updated incrementally.
 
 - [x] Replace untyped patch maps with typed structs under `sim/patches`.
-- [ ] Update `server/patches.go` re-exports to source from `sim/patches` instead of `internal/journal` so callers adopt the canonical patch definitions.
+- [x] Update `server/patches.go` re-exports to source from `sim/patches` instead of `internal/journal` so callers adopt the canonical patch definitions.
+- [x] Switch `internal/items` ground item journal setters to emit `sim/patches` typed patch structs instead of `internal/journal` aliases.
+- [x] Switch `internal/effects` patch payload helpers to emit `sim/patches` typed patch structs so effect journal emission no longer depends on `internal/journal` aliases.
+- [x] Switch `internal/effects` effect event batch conversions to consume typed effect events instead of `internal/journal` aliases.
+- [ ] Update `server/patches.go` effect event re-exports to point at the typed definitions so downstream callers stop depending on `internal/journal` structs.
 - [ ] Add versioned encoders in `net/proto`; keep a compatibility layer for one release cycle.
 - [ ] Freeze serialization format and validate via property tests (decode→encode→decode).
 - [ ] Introduce `Version` field in client protocol messages.

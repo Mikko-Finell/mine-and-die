@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"mine-and-die/server/internal/journal"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 )
 
 const (
@@ -18,71 +19,71 @@ const (
 	envJournalMaxAgeMS = "KEYFRAME_JOURNAL_MAX_AGE_MS"
 )
 
-type PatchKind = journal.PatchKind
+type PatchKind = simpatches.PatchKind
 
 const (
-	PatchPlayerPos       = journal.PatchPlayerPos
-	PatchPlayerFacing    = journal.PatchPlayerFacing
-	PatchPlayerIntent    = journal.PatchPlayerIntent
-	PatchPlayerHealth    = journal.PatchPlayerHealth
-	PatchPlayerInventory = journal.PatchPlayerInventory
-	PatchPlayerEquipment = journal.PatchPlayerEquipment
-	PatchPlayerRemoved   = journal.PatchPlayerRemoved
+	PatchPlayerPos       = simpatches.PatchPlayerPos
+	PatchPlayerFacing    = simpatches.PatchPlayerFacing
+	PatchPlayerIntent    = simpatches.PatchPlayerIntent
+	PatchPlayerHealth    = simpatches.PatchPlayerHealth
+	PatchPlayerInventory = simpatches.PatchPlayerInventory
+	PatchPlayerEquipment = simpatches.PatchPlayerEquipment
+	PatchPlayerRemoved   = simpatches.PatchPlayerRemoved
 
-	PatchNPCPos       = journal.PatchNPCPos
-	PatchNPCFacing    = journal.PatchNPCFacing
-	PatchNPCHealth    = journal.PatchNPCHealth
-	PatchNPCInventory = journal.PatchNPCInventory
-	PatchNPCEquipment = journal.PatchNPCEquipment
+	PatchNPCPos       = simpatches.PatchNPCPos
+	PatchNPCFacing    = simpatches.PatchNPCFacing
+	PatchNPCHealth    = simpatches.PatchNPCHealth
+	PatchNPCInventory = simpatches.PatchNPCInventory
+	PatchNPCEquipment = simpatches.PatchNPCEquipment
 
-	PatchEffectPos    = journal.PatchEffectPos
-	PatchEffectParams = journal.PatchEffectParams
+	PatchEffectPos    = simpatches.PatchEffectPos
+	PatchEffectParams = simpatches.PatchEffectParams
 
-	PatchGroundItemPos = journal.PatchGroundItemPos
-	PatchGroundItemQty = journal.PatchGroundItemQty
+	PatchGroundItemPos = simpatches.PatchGroundItemPos
+	PatchGroundItemQty = simpatches.PatchGroundItemQty
 )
 
-type Patch = journal.Patch
+type Patch = simpatches.Patch
 
-type PositionPayload = journal.PositionPayload
+type PositionPayload = simpatches.PositionPayload
 
-type PlayerPosPayload = journal.PlayerPosPayload
+type PlayerPosPayload = simpatches.PlayerPosPayload
 
-type NPCPosPayload = journal.NPCPosPayload
+type NPCPosPayload = simpatches.NPCPosPayload
 
-type EffectPosPayload = journal.EffectPosPayload
+type EffectPosPayload = simpatches.EffectPosPayload
 
-type GroundItemPosPayload = journal.GroundItemPosPayload
+type GroundItemPosPayload = simpatches.GroundItemPosPayload
 
-type FacingPayload = journal.FacingPayload
+type FacingPayload = simpatches.FacingPayload
 
-type PlayerFacingPayload = journal.PlayerFacingPayload
+type PlayerFacingPayload = simpatches.PlayerFacingPayload
 
-type NPCFacingPayload = journal.NPCFacingPayload
+type NPCFacingPayload = simpatches.NPCFacingPayload
 
-type PlayerIntentPayload = journal.PlayerIntentPayload
+type PlayerIntentPayload = simpatches.PlayerIntentPayload
 
-type HealthPayload = journal.HealthPayload
+type HealthPayload = simpatches.HealthPayload
 
-type PlayerHealthPayload = journal.PlayerHealthPayload
+type PlayerHealthPayload = simpatches.PlayerHealthPayload
 
-type NPCHealthPayload = journal.NPCHealthPayload
+type NPCHealthPayload = simpatches.NPCHealthPayload
 
-type InventoryPayload = journal.InventoryPayload
+type InventoryPayload = simpatches.InventoryPayload
 
-type PlayerInventoryPayload = journal.PlayerInventoryPayload
+type PlayerInventoryPayload = simpatches.PlayerInventoryPayload
 
-type NPCInventoryPayload = journal.NPCInventoryPayload
+type NPCInventoryPayload = simpatches.NPCInventoryPayload
 
-type EquipmentPayload = journal.EquipmentPayload
+type EquipmentPayload = simpatches.EquipmentPayload
 
-type PlayerEquipmentPayload = journal.PlayerEquipmentPayload
+type PlayerEquipmentPayload = simpatches.PlayerEquipmentPayload
 
-type NPCEquipmentPayload = journal.NPCEquipmentPayload
+type NPCEquipmentPayload = simpatches.NPCEquipmentPayload
 
-type EffectParamsPayload = journal.EffectParamsPayload
+type EffectParamsPayload = simpatches.EffectParamsPayload
 
-type GroundItemQtyPayload = journal.GroundItemQtyPayload
+type GroundItemQtyPayload = simpatches.GroundItemQtyPayload
 
 type EffectEventBatch = journal.EffectEventBatch
 

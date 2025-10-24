@@ -8,6 +8,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 )
 
 var (
@@ -151,7 +152,7 @@ func (a *legacyEngineAdapter) DrainEffectEvents() sim.EffectEventBatch {
 		return sim.EffectEventBatch{}
 	}
 	batch := a.world.journal.DrainEffectEvents()
-	return internaleffects.SimEffectEventBatchFromLegacy(batch)
+	return internaleffects.SimEffectEventBatchFromTyped(simpatches.EffectEventBatch(batch))
 }
 
 func (a *legacyEngineAdapter) SnapshotEffectEvents() sim.EffectEventBatch {
@@ -159,15 +160,15 @@ func (a *legacyEngineAdapter) SnapshotEffectEvents() sim.EffectEventBatch {
 		return sim.EffectEventBatch{}
 	}
 	batch := a.world.journal.SnapshotEffectEvents()
-	return internaleffects.SimEffectEventBatchFromLegacy(batch)
+	return internaleffects.SimEffectEventBatchFromTyped(simpatches.EffectEventBatch(batch))
 }
 
 func (a *legacyEngineAdapter) RestoreEffectEvents(batch sim.EffectEventBatch) {
 	if a == nil || a.world == nil {
 		return
 	}
-	legacy := internaleffects.LegacyEffectEventBatchFromSim(batch)
-	a.world.journal.RestoreEffectEvents(legacy)
+	typed := internaleffects.TypedEffectEventBatchFromSim(batch)
+	a.world.journal.RestoreEffectEvents(journal.EffectEventBatch(typed))
 }
 
 func (a *legacyEngineAdapter) ConsumeEffectResyncHint() (sim.EffectResyncSignal, bool) {
@@ -178,7 +179,7 @@ func (a *legacyEngineAdapter) ConsumeEffectResyncHint() (sim.EffectResyncSignal,
 	if !ok {
 		return sim.EffectResyncSignal{}, false
 	}
-	return internaleffects.SimEffectResyncSignalFromLegacy(signal), true
+	return internaleffects.SimEffectResyncSignalFromTyped(typedEffectResyncSignalFromLegacy(signal)), true
 }
 
 func (a *legacyEngineAdapter) RecordKeyframe(frame sim.Keyframe) sim.KeyframeRecordResult {
@@ -582,12 +583,12 @@ func convertPatchPayloadToSim(payload any) any {
 		}
 		return sim.EquipmentPayload{Slots: itemspkg.SimEquippedItemsFromAny(value.Slots)}
 	case EffectParamsPayload:
-		return internaleffects.SimEffectParamsPayloadFromLegacy(journal.EffectParamsPayload(value))
+		return internaleffects.SimEffectParamsPayloadFromTyped(value)
 	case *EffectParamsPayload:
 		if value == nil {
 			return nil
 		}
-		converted := internaleffects.SimEffectParamsPayloadFromLegacyPtr((*journal.EffectParamsPayload)(value))
+		converted := internaleffects.SimEffectParamsPayloadFromTypedPtr(value)
 		if converted == nil {
 			return nil
 		}
@@ -644,6 +645,23 @@ func legacyPatchesFromSim(patches []sim.Patch) []Patch {
 	return converted
 }
 
+func typedEffectResyncSignalFromLegacy(signal journal.ResyncSignal) simpatches.EffectResyncSignal {
+	converted := simpatches.EffectResyncSignal{
+		LostSpawns:  signal.LostSpawns,
+		TotalEvents: signal.TotalEvents,
+	}
+	if len(signal.Reasons) > 0 {
+		converted.Reasons = make([]simpatches.EffectResyncReason, len(signal.Reasons))
+		for i, reason := range signal.Reasons {
+			converted.Reasons[i] = simpatches.EffectResyncReason{
+				Kind:     reason.Kind,
+				EffectID: reason.EffectID,
+			}
+		}
+	}
+	return converted
+}
+
 func convertPatchPayloadFromSim(payload any) any {
 	switch value := payload.(type) {
 	case sim.PositionPayload:
@@ -661,7 +679,7 @@ func convertPatchPayloadFromSim(payload any) any {
 		slots := itemspkg.CloneEquippedItems(value.Slots)
 		return itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, EquipmentPayload](slots)
 	case sim.EffectParamsPayload:
-		return internaleffects.LegacyEffectParamsPayloadFromSim(value)
+		return internaleffects.TypedEffectParamsPayloadFromSim(value)
 	case sim.GroundItemQtyPayload:
 		return GroundItemQtyPayload{Qty: value.Qty}
 	default:
