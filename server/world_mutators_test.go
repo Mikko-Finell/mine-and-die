@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -17,6 +18,520 @@ func requireInventorySlots(t *testing.T, slots any) []InventorySlot {
 		t.Fatalf("expected inventory slots to be []InventorySlot, got %T", slots)
 	}
 	return converted
+}
+
+func requireEquipmentSlots(t *testing.T, slots any) []EquippedItem {
+	t.Helper()
+	converted, ok := slots.([]EquippedItem)
+	if !ok {
+		t.Fatalf("expected equipment slots to be []EquippedItem, got %T", slots)
+	}
+	return converted
+}
+
+func TestMutateEquipmentRecordsPlayerPatch(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-record", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches after adding player")
+	}
+
+	stack := ItemStack{Type: ItemTypeIronDagger, Quantity: 1}
+
+	if err := w.MutateEquipment("player-equipment-record", func(eq *Equipment) error {
+		eq.Set(EquipSlotMainHand, stack)
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating equipment: %v", err)
+	}
+
+	if player.version != 1 {
+		t.Fatalf("expected player version to increment, got %d", player.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected one patch, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchPlayerEquipment {
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerEquipment, patch.Kind)
+	}
+	if patch.EntityID != "player-equipment-record" {
+		t.Fatalf("expected patch entity player-equipment-record, got %q", patch.EntityID)
+	}
+
+	payload, ok := patch.Payload.(PlayerEquipmentPayload)
+	if !ok {
+		t.Fatalf("expected payload to be PlayerEquipmentPayload, got %T", patch.Payload)
+	}
+
+	expected := itemspkg.EquipmentPayloadFromSlots[EquippedItem, PlayerEquipmentPayload]([]EquippedItem{{
+		Slot: EquipSlotMainHand,
+		Item: stack,
+	}})
+
+	expectedSlots := requireEquipmentSlots(t, expected.Slots)
+	slots := requireEquipmentSlots(t, payload.Slots)
+	if len(slots) != len(expectedSlots) {
+		t.Fatalf("expected payload to contain %d slot(s), got %d", len(expectedSlots), len(slots))
+	}
+
+	got := slots[0]
+	want := expectedSlots[0]
+	if got.Slot != want.Slot {
+		t.Fatalf("expected slot %q, got %q", want.Slot, got.Slot)
+	}
+	if got.Item.Type != want.Item.Type {
+		t.Fatalf("expected slot item type %q, got %q", want.Item.Type, got.Item.Type)
+	}
+	if got.Item.Quantity != want.Item.Quantity {
+		t.Fatalf("expected slot quantity %d, got %d", want.Item.Quantity, got.Item.Quantity)
+	}
+}
+
+func TestMutateEquipmentEmitsSortedSlots(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-sorted", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches after adding player")
+	}
+
+	if err := w.MutateEquipment("player-equipment-sorted", func(eq *Equipment) error {
+		eq.Set(EquipSlotAccessory, ItemStack{Type: ItemTypeTravelerCharm, Quantity: 1})
+		eq.Set(EquipSlotMainHand, ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::sorted", Quantity: 1})
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating equipment: %v", err)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected one patch, got %d", len(patches))
+	}
+
+	payload, ok := patches[0].Payload.(PlayerEquipmentPayload)
+	if !ok {
+		t.Fatalf("expected payload to be PlayerEquipmentPayload, got %T", patches[0].Payload)
+	}
+
+	slots := requireEquipmentSlots(t, payload.Slots)
+	if len(slots) != 2 {
+		t.Fatalf("expected payload to contain 2 slots, got %d", len(slots))
+	}
+
+	if slots[0].Slot != EquipSlotMainHand {
+		t.Fatalf("expected main hand to appear first, got %q", slots[0].Slot)
+	}
+	if slots[1].Slot != EquipSlotAccessory {
+		t.Fatalf("expected accessory to appear second, got %q", slots[1].Slot)
+	}
+
+	expected := itemspkg.EquipmentPayloadFromSlots[EquippedItem, PlayerEquipmentPayload]([]EquippedItem{{
+		Slot: EquipSlotMainHand,
+		Item: ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::sorted", Quantity: 1},
+	}, {
+		Slot: EquipSlotAccessory,
+		Item: ItemStack{Type: ItemTypeTravelerCharm, Quantity: 1},
+	}})
+
+	expectedSlots := requireEquipmentSlots(t, expected.Slots)
+	for idx := range slots {
+		if slots[idx].Slot != expectedSlots[idx].Slot {
+			t.Fatalf("expected slot order %q at index %d, got %q", expectedSlots[idx].Slot, idx, slots[idx].Slot)
+		}
+		if slots[idx].Item.Type != expectedSlots[idx].Item.Type {
+			t.Fatalf("expected slot item type %q at index %d, got %q", expectedSlots[idx].Item.Type, idx, slots[idx].Item.Type)
+		}
+	}
+}
+
+func TestMutateEquipmentPatchCloneIndependent(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-clone", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches after adding player")
+	}
+
+	original := ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::clone", Quantity: 1}
+
+	if err := w.MutateEquipment("player-equipment-clone", func(eq *Equipment) error {
+		eq.Set(EquipSlotMainHand, original)
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating equipment: %v", err)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected one patch, got %d", len(patches))
+	}
+
+	payload, ok := patches[0].Payload.(PlayerEquipmentPayload)
+	if !ok {
+		t.Fatalf("expected payload to be PlayerEquipmentPayload, got %T", patches[0].Payload)
+	}
+
+	slots := requireEquipmentSlots(t, payload.Slots)
+	if len(slots) != 1 {
+		t.Fatalf("expected payload to contain 1 slot, got %d", len(slots))
+	}
+
+	captured := slots[0]
+
+	player.Equipment.Set(EquipSlotMainHand, ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::mutated", Quantity: 1})
+
+	if slots[0].Item.Type != captured.Item.Type {
+		t.Fatalf("expected payload item type to remain %q, got %q", captured.Item.Type, slots[0].Item.Type)
+	}
+	if slots[0].Slot != captured.Slot {
+		t.Fatalf("expected payload slot to remain %q, got %q", captured.Slot, slots[0].Slot)
+	}
+}
+
+func TestMutateEquipmentUpdatesPlayerSlot(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	initial := NewEquipment()
+	initial.Set(EquipSlotMainHand, ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::base", Quantity: 1})
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-update", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches after adding player")
+	}
+
+	upgraded := ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::upgraded", Quantity: 1}
+
+	if err := w.MutateEquipment("player-equipment-update", func(eq *Equipment) error {
+		eq.Set(EquipSlotMainHand, upgraded)
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating equipment: %v", err)
+	}
+
+	if player.version != 1 {
+		t.Fatalf("expected player version to increment, got %d", player.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected one patch, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchPlayerEquipment {
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerEquipment, patch.Kind)
+	}
+
+	payload, ok := patch.Payload.(PlayerEquipmentPayload)
+	if !ok {
+		t.Fatalf("expected payload to be PlayerEquipmentPayload, got %T", patch.Payload)
+	}
+
+	expected := itemspkg.EquipmentPayloadFromSlots[EquippedItem, PlayerEquipmentPayload]([]EquippedItem{{
+		Slot: EquipSlotMainHand,
+		Item: upgraded,
+	}})
+
+	expectedSlots := requireEquipmentSlots(t, expected.Slots)
+	slots := requireEquipmentSlots(t, payload.Slots)
+	if len(slots) != len(expectedSlots) {
+		t.Fatalf("expected payload to contain %d slot(s), got %d", len(expectedSlots), len(slots))
+	}
+
+	got := slots[0]
+	want := expectedSlots[0]
+	if got.Slot != want.Slot {
+		t.Fatalf("expected slot %q, got %q", want.Slot, got.Slot)
+	}
+	if got.Item.Type != want.Item.Type {
+		t.Fatalf("expected slot item type %q, got %q", want.Item.Type, got.Item.Type)
+	}
+	if got.Item.Quantity != want.Item.Quantity {
+		t.Fatalf("expected slot quantity %d, got %d", want.Item.Quantity, got.Item.Quantity)
+	}
+}
+
+func TestMutateEquipmentRemovalClearsPlayerPayload(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	initial := NewEquipment()
+	initial.Set(EquipSlotMainHand, ItemStack{Type: ItemTypeIronDagger, Quantity: 1})
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-remove", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches after adding player")
+	}
+
+	if err := w.MutateEquipment("player-equipment-remove", func(eq *Equipment) error {
+		if _, ok := eq.Remove(EquipSlotMainHand); !ok {
+			t.Fatalf("expected equipment to contain main hand entry")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating equipment: %v", err)
+	}
+
+	if player.version != 1 {
+		t.Fatalf("expected player version to increment, got %d", player.version)
+	}
+
+	if len(player.Equipment.Slots) != 0 {
+		t.Fatalf("expected equipment to be empty after removal")
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected one patch, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchPlayerEquipment {
+		t.Fatalf("expected patch kind %q, got %q", PatchPlayerEquipment, patch.Kind)
+	}
+
+	payload, ok := patch.Payload.(PlayerEquipmentPayload)
+	if !ok {
+		t.Fatalf("expected payload to be PlayerEquipmentPayload, got %T", patch.Payload)
+	}
+
+	slots := requireEquipmentSlots(t, payload.Slots)
+	if slots != nil {
+		t.Fatalf("expected payload slots to be nil after removal, got %v", slots)
+	}
+}
+
+func TestMutateEquipmentErrorRestoresPlayerState(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	initial := NewEquipment()
+	original := ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::error", Quantity: 1}
+	initial.Set(EquipSlotMainHand, original)
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-error", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches after adding player")
+	}
+
+	mutateErr := errors.New("equip failure")
+
+	if err := w.MutateEquipment("player-equipment-error", func(eq *Equipment) error {
+		eq.Set(EquipSlotMainHand, ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::error-updated", Quantity: 1})
+		return mutateErr
+	}); !errors.Is(err, mutateErr) {
+		t.Fatalf("expected mutate to return sentinel error, got %v", err)
+	}
+
+	if player.version != 0 {
+		t.Fatalf("expected player version to remain 0 after failed mutate, got %d", player.version)
+	}
+
+	stack, ok := player.Equipment.Get(EquipSlotMainHand)
+	if !ok {
+		t.Fatalf("expected equipment to retain main hand item")
+	}
+	if stack.Type != original.Type {
+		t.Fatalf("expected equipment to keep item type %q, got %q", original.Type, stack.Type)
+	}
+	if stack.FungibilityKey != original.FungibilityKey {
+		t.Fatalf("expected equipment to keep fungibility key %q, got %q", original.FungibilityKey, stack.FungibilityKey)
+	}
+
+	if len(w.snapshotPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches after failed mutate")
+	}
+}
+
+func TestMutateEquipmentNoopDoesNotEmitPlayerPatch(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	initial := NewEquipment()
+	kept := ItemStack{Type: ItemTypeIronDagger, Quantity: 1}
+	initial.Set(EquipSlotMainHand, kept)
+
+	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-noop", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	w.AddPlayer(player)
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches after adding player")
+	}
+
+	if err := w.MutateEquipment("player-equipment-noop", func(eq *Equipment) error {
+		eq.Set(EquipSlotMainHand, kept)
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating equipment: %v", err)
+	}
+
+	if player.version != 0 {
+		t.Fatalf("expected player version to remain 0 for noop mutate, got %d", player.version)
+	}
+
+	if len(w.snapshotPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches for noop mutate")
+	}
+}
+
+func TestMutateEquipmentRecordsNPCPatch(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-equipment-record", Equipment: NewEquipment()}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	w.npcs = map[string]*npcState{"npc-equipment-record": npc}
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches before mutating npc equipment")
+	}
+
+	stack := ItemStack{Type: ItemTypeIronDagger, Quantity: 1}
+
+	if err := w.MutateEquipment("npc-equipment-record", func(eq *Equipment) error {
+		eq.Set(EquipSlotOffHand, stack)
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating npc equipment: %v", err)
+	}
+
+	if npc.version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected one patch, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchNPCEquipment {
+		t.Fatalf("expected patch kind %q, got %q", PatchNPCEquipment, patch.Kind)
+	}
+	if patch.EntityID != "npc-equipment-record" {
+		t.Fatalf("expected patch entity npc-equipment-record, got %q", patch.EntityID)
+	}
+
+	payload, ok := patch.Payload.(NPCEquipmentPayload)
+	if !ok {
+		t.Fatalf("expected payload to be NPCEquipmentPayload, got %T", patch.Payload)
+	}
+
+	expected := itemspkg.EquipmentPayloadFromSlots[EquippedItem, NPCEquipmentPayload]([]EquippedItem{{
+		Slot: EquipSlotOffHand,
+		Item: stack,
+	}})
+
+	expectedSlots := requireEquipmentSlots(t, expected.Slots)
+	slots := requireEquipmentSlots(t, payload.Slots)
+	if len(slots) != len(expectedSlots) {
+		t.Fatalf("expected payload to contain %d slot(s), got %d", len(expectedSlots), len(slots))
+	}
+
+	got := slots[0]
+	want := expectedSlots[0]
+	if got.Slot != want.Slot {
+		t.Fatalf("expected slot %q, got %q", want.Slot, got.Slot)
+	}
+	if got.Item.Type != want.Item.Type {
+		t.Fatalf("expected slot item type %q, got %q", want.Item.Type, got.Item.Type)
+	}
+	if got.Item.Quantity != want.Item.Quantity {
+		t.Fatalf("expected slot quantity %d, got %d", want.Item.Quantity, got.Item.Quantity)
+	}
+}
+
+func TestMutateEquipmentRemovalClearsNPCPayload(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	initial := NewEquipment()
+	initial.Set(EquipSlotOffHand, ItemStack{Type: ItemTypeIronDagger, Quantity: 1})
+
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-equipment-remove", Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	w.npcs = map[string]*npcState{"npc-equipment-remove": npc}
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches before mutating npc equipment")
+	}
+
+	if err := w.MutateEquipment("npc-equipment-remove", func(eq *Equipment) error {
+		if _, ok := eq.Remove(EquipSlotOffHand); !ok {
+			t.Fatalf("expected equipment to contain off hand entry")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating npc equipment: %v", err)
+	}
+
+	if npc.version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	}
+
+	if len(npc.Equipment.Slots) != 0 {
+		t.Fatalf("expected npc equipment to be empty after removal")
+	}
+
+	patches := w.snapshotPatchesLocked()
+	if len(patches) != 1 {
+		t.Fatalf("expected one patch, got %d", len(patches))
+	}
+
+	patch := patches[0]
+	if patch.Kind != PatchNPCEquipment {
+		t.Fatalf("expected patch kind %q, got %q", PatchNPCEquipment, patch.Kind)
+	}
+
+	payload, ok := patch.Payload.(NPCEquipmentPayload)
+	if !ok {
+		t.Fatalf("expected payload to be NPCEquipmentPayload, got %T", patch.Payload)
+	}
+
+	slots := requireEquipmentSlots(t, payload.Slots)
+	if slots != nil {
+		t.Fatalf("expected payload slots to be nil after removal, got %v", slots)
+	}
+}
+
+func TestMutateEquipmentNoopDoesNotEmitNPCPatch(t *testing.T) {
+	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
+
+	initial := NewEquipment()
+	kept := ItemStack{Type: ItemTypeIronDagger, Quantity: 1}
+	initial.Set(EquipSlotOffHand, kept)
+
+	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-equipment-noop", Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	w.npcs = map[string]*npcState{"npc-equipment-noop": npc}
+
+	if len(w.drainPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches before mutating npc equipment")
+	}
+
+	if err := w.MutateEquipment("npc-equipment-noop", func(eq *Equipment) error {
+		eq.Set(EquipSlotOffHand, kept)
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error mutating npc equipment: %v", err)
+	}
+
+	if npc.version != 0 {
+		t.Fatalf("expected npc version to remain 0 for noop mutate, got %d", npc.version)
+	}
+
+	if len(w.snapshotPatchesLocked()) != 0 {
+		t.Fatalf("expected no patches for npc noop mutate")
+	}
 }
 
 func TestSetPositionNoopDoesNotEmitPatch(t *testing.T) {

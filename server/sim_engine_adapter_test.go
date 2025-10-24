@@ -276,6 +276,124 @@ func TestConvertPatchPayloadToSimEquipmentPointerClones(t *testing.T) {
 	}
 }
 
+func TestLegacyPatchesFromSimEquipmentUsesItemsAssembler(t *testing.T) {
+	simSlots := []sim.EquippedItem{{
+		Slot: sim.EquipSlotMainHand,
+		Item: sim.ItemStack{Type: sim.ItemType("sword"), FungibilityKey: "unique", Quantity: 1},
+	}}
+
+	patches := []sim.Patch{
+		{
+			Kind:     sim.PatchPlayerEquipment,
+			EntityID: "player-1",
+			Payload:  sim.EquipmentPayload{Slots: itemspkg.CloneEquippedItems(simSlots)},
+		},
+		{
+			Kind:     sim.PatchNPCEquipment,
+			EntityID: "npc-1",
+			Payload:  sim.EquipmentPayload{Slots: itemspkg.CloneEquippedItems(simSlots)},
+		},
+	}
+
+	converted := legacyPatchesFromSim(patches)
+	if len(converted) != len(patches) {
+		t.Fatalf("expected %d patches, got %d", len(patches), len(converted))
+	}
+
+	expectedSlots := []EquippedItem{{
+		Slot: EquipSlotMainHand,
+		Item: ItemStack{Type: ItemType("sword"), FungibilityKey: "unique", Quantity: 1},
+	}}
+	expectedPayload := itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload](append([]EquippedItem(nil), expectedSlots...))
+
+	for i, patch := range converted {
+		if patch.Kind != legacyPatchKindFromSim(patches[i].Kind) {
+			t.Fatalf("expected patch kind %v, got %v", legacyPatchKindFromSim(patches[i].Kind), patch.Kind)
+		}
+
+		payload, ok := patch.Payload.(EquipmentPayload)
+		if !ok {
+			t.Fatalf("expected EquipmentPayload, got %T", patch.Payload)
+		}
+
+		slots, ok := payload.Slots.([]EquippedItem)
+		if !ok {
+			t.Fatalf("expected equipment slots to use []EquippedItem, got %T", payload.Slots)
+		}
+
+		if !reflect.DeepEqual(expectedSlots, slots) {
+			t.Fatalf("expected slots %#v, got %#v", expectedSlots, slots)
+		}
+
+		if !reflect.DeepEqual(expectedPayload, payload) {
+			t.Fatalf("expected payload %#v, got %#v", expectedPayload, payload)
+		}
+	}
+
+	simSlots[0].Item.Quantity = 99
+	convertedSlots, ok := converted[0].Payload.(EquipmentPayload).Slots.([]EquippedItem)
+	if !ok {
+		t.Fatalf("expected EquipmentPayload slots to assert, got %T", converted[0].Payload)
+	}
+	if convertedSlots[0].Item.Quantity != 1 {
+		t.Fatalf("expected converted payload to retain quantity 1, got %d", convertedSlots[0].Item.Quantity)
+	}
+}
+
+func TestLegacyActorFromSimEquipmentUsesItemsAssembler(t *testing.T) {
+	simActor := sim.Actor{
+		ID: "npc-1",
+		Equipment: sim.Equipment{Slots: []sim.EquippedItem{{
+			Slot: sim.EquipSlotHead,
+			Item: sim.ItemStack{Type: sim.ItemType("helm"), FungibilityKey: "rare-helm", Quantity: 1},
+		}}},
+	}
+
+	converted := legacyActorFromSim(simActor)
+
+	expectedSlots := []EquippedItem{{
+		Slot: EquipSlotHead,
+		Item: ItemStack{Type: ItemType("helm"), FungibilityKey: "rare-helm", Quantity: 1},
+	}}
+	expectedEquipment := itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment](append([]EquippedItem(nil), expectedSlots...))
+
+	if !reflect.DeepEqual(expectedEquipment, converted.Equipment) {
+		t.Fatalf("expected equipment %#v, got %#v", expectedEquipment, converted.Equipment)
+	}
+
+	converted.Equipment.Slots[0].Item.Quantity = 7
+	if simActor.Equipment.Slots[0].Item.Quantity != 1 {
+		t.Fatalf("expected legacy conversion to deep copy slots, got quantity %d", simActor.Equipment.Slots[0].Item.Quantity)
+	}
+}
+
+func TestSimActorFromLegacyEquipmentUsesItemsAssembler(t *testing.T) {
+	legacyActor := Actor{
+		ID: "player-1",
+		Equipment: itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment]([]EquippedItem{{
+			Slot: EquipSlotOffHand,
+			Item: ItemStack{Type: ItemType("shield"), FungibilityKey: "tower-shield", Quantity: 1},
+		}}),
+	}
+
+	converted := simActorFromLegacy(legacyActor)
+
+	expectedSlots := []sim.EquippedItem{{
+		Slot: sim.EquipSlotOffHand,
+		Item: sim.ItemStack{Type: sim.ItemType("shield"), FungibilityKey: "tower-shield", Quantity: 1},
+	}}
+	expectedEquipment := itemspkg.EquipmentValueFromSlots[sim.EquippedItem, sim.Equipment](append([]sim.EquippedItem(nil), expectedSlots...))
+
+	if !reflect.DeepEqual(expectedEquipment, converted.Equipment) {
+		t.Fatalf("expected equipment %#v, got %#v", expectedEquipment, converted.Equipment)
+	}
+
+	converted.Equipment.Slots[0].Item.Quantity = 6
+	if legacyActor.Equipment.Slots[0].Item.Quantity != 1 {
+		t.Fatalf("expected sim conversion to deep copy slots, got quantity %d", legacyActor.Equipment.Slots[0].Item.Quantity)
+	}
+}
+
 func TestSimKeyframeConversionRoundTripPreservesSequencing(t *testing.T) {
 	recorded := time.Unix(1700000000, 0).UTC()
 	legacy := keyframe{
