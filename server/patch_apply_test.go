@@ -27,10 +27,10 @@ func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 		Facing:    FacingUp,
 		Health:    75,
 		MaxHealth: 100,
-		Inventory: Inventory{Slots: []InventorySlot{{
+		Inventory: itemspkg.InventoryValueFromSlots[InventorySlot, Inventory]([]InventorySlot{{
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 3},
-		}}},
+		}}),
 	}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	basePlayer.intentX = 0.5
 	basePlayer.intentY = -0.5
@@ -110,10 +110,10 @@ func TestApplyPatchesNoop(t *testing.T) {
 		Facing:    FacingRight,
 		Health:    90,
 		MaxHealth: 100,
-		Inventory: Inventory{Slots: []InventorySlot{{
+		Inventory: itemspkg.InventoryValueFromSlots[InventorySlot, Inventory]([]InventorySlot{{
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 1},
-		}}},
+		}}),
 	}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	player.intentX = 1
 	player.intentY = 0
@@ -203,10 +203,10 @@ func TestApplyPatchesDuplicatePatchesLastWriteWins(t *testing.T) {
 			Facing:    FacingDown,
 			Health:    10,
 			MaxHealth: 20,
-			Inventory: Inventory{Slots: []InventorySlot{{
+			Inventory: itemspkg.InventoryValueFromSlots[InventorySlot, Inventory]([]InventorySlot{{
 				Slot: 0,
 				Item: ItemStack{Type: ItemTypeGold, Quantity: 1},
-			}}},
+			}}),
 		}}, 0, 0),
 	}
 
@@ -217,17 +217,17 @@ func TestApplyPatchesDuplicatePatchesLastWriteWins(t *testing.T) {
 		{Kind: PatchPlayerIntent, EntityID: "player-1", Payload: PlayerIntentPayload{DX: -1, DY: 1}},
 		{Kind: PatchPlayerHealth, EntityID: "player-1", Payload: PlayerHealthPayload{Health: 15, MaxHealth: 30}},
 		{Kind: PatchPlayerHealth, EntityID: "player-1", Payload: PlayerHealthPayload{Health: 8}},
-		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: PlayerInventoryPayload{Slots: []InventorySlot{{
+		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: itemspkg.InventoryPayloadFromSlots[InventorySlot, PlayerInventoryPayload]([]InventorySlot{{
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
-		}}}},
-		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: PlayerInventoryPayload{Slots: []InventorySlot{{
+		}})},
+		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: itemspkg.InventoryPayloadFromSlots[InventorySlot, PlayerInventoryPayload]([]InventorySlot{{
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeHealthPotion, Quantity: 1},
 		}, {
 			Slot: 1,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 4},
-		}}}},
+		}})},
 		{Kind: PatchPlayerFacing, EntityID: "player-1", Payload: PlayerFacingPayload{Facing: FacingLeft}},
 		{Kind: PatchPlayerFacing, EntityID: "player-1", Payload: PlayerFacingPayload{Facing: FacingUp}},
 	}
@@ -244,13 +244,13 @@ func TestApplyPatchesDuplicatePatchesLastWriteWins(t *testing.T) {
 		Facing:    FacingUp,
 		Health:    8,
 		MaxHealth: 30,
-		Inventory: Inventory{Slots: []InventorySlot{{
+		Inventory: itemspkg.InventoryValueFromSlots[InventorySlot, Inventory]([]InventorySlot{{
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeHealthPotion, Quantity: 1},
 		}, {
 			Slot: 1,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 4},
-		}}},
+		}}),
 	}}, -1, 1)
 
 	replayedView, ok := replayed["player-1"]
@@ -271,19 +271,20 @@ func TestApplyPatchesUpdatesEquipment(t *testing.T) {
 	base := map[string]PlayerPatchView{
 		"player-1": playerViewFromLegacy(Player{Actor: Actor{
 			ID: "player-1",
-			Equipment: Equipment{Slots: []EquippedItem{{
+			Equipment: itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment]([]EquippedItem{{
 				Slot: EquipSlotBody,
 				Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1},
-			}}}}}, 0, 0),
+			}}),
+		}}, 0, 0),
 	}
 
 	patches := []Patch{{
 		Kind:     PatchPlayerEquipment,
 		EntityID: "player-1",
-		Payload: EquipmentPayload{Slots: []EquippedItem{
+		Payload: itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload]([]EquippedItem{
 			{Slot: EquipSlotBody, Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1}},
 			{Slot: EquipSlotMainHand, Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1}},
-		}},
+		}),
 	}}
 
 	frozen := clonePlayerViews(base)

@@ -223,9 +223,7 @@ func TestInventoryToSimBuildsSnapshot(t *testing.T) {
 				Quantity:       slot.Item.Quantity,
 			},
 		}
-	}, func(slots []sim.InventorySlot) sim.Inventory {
-		return sim.Inventory{Slots: slots}
-	})
+	}, items.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory])
 
 	if len(inv.Slots) != 1 {
 		t.Fatalf("expected 1 inventory slot, got %d", len(inv.Slots))
@@ -239,16 +237,12 @@ func TestInventoryToSimBuildsSnapshot(t *testing.T) {
 		t.Fatalf("expected converted inventory to remain 5, got %d", inv.Slots[0].Item.Quantity)
 	}
 
-	empty := items.AssembleInventory([]legacyInventorySlot{}, func(slot legacyInventorySlot) sim.InventorySlot { return sim.InventorySlot{} }, func(slots []sim.InventorySlot) sim.Inventory {
-		return sim.Inventory{Slots: slots}
-	})
+	empty := items.AssembleInventory([]legacyInventorySlot{}, func(slot legacyInventorySlot) sim.InventorySlot { return sim.InventorySlot{} }, items.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory])
 	if empty.Slots != nil {
 		t.Fatalf("expected empty inventory to have nil slots")
 	}
 
-	nilConverter := items.AssembleInventory(legacySlots, nil, func(slots []sim.InventorySlot) sim.Inventory {
-		return sim.Inventory{Slots: slots}
-	})
+	nilConverter := items.AssembleInventory(legacySlots, nil, items.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory])
 	if nilConverter.Slots != nil {
 		t.Fatalf("expected nil converter to produce nil slots")
 	}
@@ -316,9 +310,7 @@ func TestEquipmentToSimBuildsSnapshot(t *testing.T) {
 				Quantity:       slot.Item.Quantity,
 			},
 		}
-	}, func(slots []sim.EquippedItem) sim.Equipment {
-		return sim.Equipment{Slots: slots}
-	})
+	}, items.EquipmentValueFromSlots[sim.EquippedItem, sim.Equipment])
 
 	if len(eq.Slots) != 1 {
 		t.Fatalf("expected 1 equipped slot, got %d", len(eq.Slots))
@@ -332,16 +324,12 @@ func TestEquipmentToSimBuildsSnapshot(t *testing.T) {
 		t.Fatalf("expected converted equipment to remain 1, got %d", eq.Slots[0].Item.Quantity)
 	}
 
-	empty := items.AssembleEquipment([]*legacyEquippedItem{}, func(slot *legacyEquippedItem) sim.EquippedItem { return sim.EquippedItem{} }, func(slots []sim.EquippedItem) sim.Equipment {
-		return sim.Equipment{Slots: slots}
-	})
+	empty := items.AssembleEquipment([]*legacyEquippedItem{}, func(slot *legacyEquippedItem) sim.EquippedItem { return sim.EquippedItem{} }, items.EquipmentValueFromSlots[sim.EquippedItem, sim.Equipment])
 	if empty.Slots != nil {
 		t.Fatalf("expected empty equipment to have nil slots")
 	}
 
-	nilConverter := items.AssembleEquipment(legacySlots, nil, func(slots []sim.EquippedItem) sim.Equipment {
-		return sim.Equipment{Slots: slots}
-	})
+	nilConverter := items.AssembleEquipment(legacySlots, nil, items.EquipmentValueFromSlots[sim.EquippedItem, sim.Equipment])
 	if nilConverter.Slots != nil {
 		t.Fatalf("expected nil converter to produce nil slots")
 	}

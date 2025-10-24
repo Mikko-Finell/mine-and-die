@@ -10,6 +10,23 @@ import (
 	"mine-and-die/server/internal/sim"
 )
 
+var (
+	inventorySlotFromSim = itemspkg.InventorySlotFromSimConverter(
+		func(index int, item ItemStack) InventorySlot {
+			return InventorySlot{Slot: index, Item: item}
+		},
+		legacyItemStackFromSim,
+	)
+
+	equippedItemFromSim = itemspkg.EquippedItemFromSimConverter(
+		func(slot EquipSlot, item ItemStack) EquippedItem {
+			return EquippedItem{Slot: slot, Item: item}
+		},
+		legacyEquipSlotFromSim,
+		legacyItemStackFromSim,
+	)
+)
+
 type legacyEngineAdapter struct {
 	world *World
 	deps  sim.Deps
@@ -639,10 +656,10 @@ func convertPatchPayloadFromSim(payload any) any {
 		return HealthPayload{Health: value.Health, MaxHealth: value.MaxHealth}
 	case sim.InventoryPayload:
 		inv := sim.Inventory{Slots: itemspkg.CloneInventorySlots(value.Slots)}
-		return itemspkg.InventoryFromSim(inv, inventorySlotFromSim, inventoryPayloadFromSlots)
+		return itemspkg.InventoryFromSim(inv, inventorySlotFromSim, itemspkg.InventoryPayloadFromSlots[InventorySlot, InventoryPayload])
 	case sim.EquipmentPayload:
 		eq := sim.Equipment{Slots: itemspkg.CloneEquippedItems(value.Slots)}
-		return itemspkg.EquipmentFromSim(eq, equippedItemFromSim, equipmentPayloadFromSlots)
+		return itemspkg.EquipmentFromSim(eq, equippedItemFromSim, itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload])
 	case sim.EffectParamsPayload:
 		return internaleffects.LegacyEffectParamsPayloadFromSim(value)
 	case sim.GroundItemQtyPayload:
@@ -669,9 +686,7 @@ func simActorFromLegacy(actor Actor) sim.Actor {
 					Quantity:       slot.Item.Quantity,
 				},
 			}
-		}, func(slots []sim.InventorySlot) sim.Inventory {
-			return sim.Inventory{Slots: slots}
-		}),
+		}, itemspkg.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory]),
 		Equipment: itemspkg.AssembleEquipment(actor.Equipment.Slots, func(slot EquippedItem) sim.EquippedItem {
 			return sim.EquippedItem{
 				Slot: toSimEquipSlot(slot.Slot),
@@ -681,9 +696,7 @@ func simActorFromLegacy(actor Actor) sim.Actor {
 					Quantity:       slot.Item.Quantity,
 				},
 			}
-		}, func(slots []sim.EquippedItem) sim.Equipment {
-			return sim.Equipment{Slots: slots}
-		}),
+		}, itemspkg.EquipmentValueFromSlots[sim.EquippedItem, sim.Equipment]),
 	}
 }
 
@@ -695,8 +708,8 @@ func legacyActorFromSim(actor sim.Actor) Actor {
 		Facing:    legacyFacingFromSim(actor.Facing),
 		Health:    actor.Health,
 		MaxHealth: actor.MaxHealth,
-		Inventory: itemspkg.InventoryFromSim(actor.Inventory, inventorySlotFromSim, inventoryFromSlots),
-		Equipment: itemspkg.EquipmentFromSim(actor.Equipment, equippedItemFromSim, equipmentFromSlots),
+		Inventory: itemspkg.InventoryFromSim(actor.Inventory, inventorySlotFromSim, itemspkg.InventoryValueFromSlots[InventorySlot, Inventory]),
+		Equipment: itemspkg.EquipmentFromSim(actor.Equipment, equippedItemFromSim, itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment]),
 	}
 }
 
@@ -706,36 +719,6 @@ func legacyItemStackFromSim(stack sim.ItemStack) ItemStack {
 		FungibilityKey: stack.FungibilityKey,
 		Quantity:       stack.Quantity,
 	}
-}
-
-func inventorySlotFromSim(slot sim.InventorySlot) InventorySlot {
-	return InventorySlot{
-		Slot: slot.Slot,
-		Item: legacyItemStackFromSim(slot.Item),
-	}
-}
-
-func inventoryFromSlots(slots []InventorySlot) Inventory {
-	return Inventory{Slots: slots}
-}
-
-func inventoryPayloadFromSlots(slots []InventorySlot) InventoryPayload {
-	return InventoryPayload{Slots: slots}
-}
-
-func equippedItemFromSim(slot sim.EquippedItem) EquippedItem {
-	return EquippedItem{
-		Slot: legacyEquipSlotFromSim(slot.Slot),
-		Item: legacyItemStackFromSim(slot.Item),
-	}
-}
-
-func equipmentFromSlots(slots []EquippedItem) Equipment {
-	return Equipment{Slots: slots}
-}
-
-func equipmentPayloadFromSlots(slots []EquippedItem) EquipmentPayload {
-	return EquipmentPayload{Slots: slots}
 }
 
 // Ensure legacyEngineAdapter implements sim.EngineCore.

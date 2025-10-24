@@ -112,7 +112,7 @@ func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityI
 		func(inv Inventory) Inventory { return inv.Clone() },
 		inventoriesEqual,
 		func(inv Inventory) {
-			w.appendPatch(kind, entityID, InventoryPayload{Slots: cloneInventorySlots(inv.Slots)})
+			w.appendPatch(kind, entityID, items.InventoryPayloadFromSlots[InventorySlot, InventoryPayload](cloneInventorySlots(inv.Slots)))
 		},
 	)
 }
@@ -129,7 +129,7 @@ func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityI
 		func(eq Equipment) Equipment { return eq.Clone() },
 		equipmentsEqual,
 		func(eq Equipment) {
-			w.appendPatch(kind, entityID, EquipmentPayload{Slots: cloneEquipmentSlots(eq.Slots)})
+			w.appendPatch(kind, entityID, items.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload](cloneEquipmentSlots(eq.Slots)))
 		},
 	)
 }

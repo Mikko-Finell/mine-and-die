@@ -52,14 +52,14 @@ func TestSimSnapshotConversionRoundTrip(t *testing.T) {
 			Facing:    FacingUp,
 			Health:    87,
 			MaxHealth: 100,
-			Inventory: Inventory{Slots: []InventorySlot{{
+			Inventory: itemspkg.InventoryValueFromSlots[InventorySlot, Inventory]([]InventorySlot{{
 				Slot: 1,
 				Item: ItemStack{Type: ItemTypeGold, FungibilityKey: "gold", Quantity: 30},
-			}}},
-			Equipment: Equipment{Slots: []EquippedItem{{
+			}}),
+			Equipment: itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment]([]EquippedItem{{
 				Slot: EquipSlotMainHand,
 				Item: ItemStack{Type: ItemType("sword"), FungibilityKey: "", Quantity: 1},
-			}}},
+			}}),
 		},
 	}}
 	legacyNPCs := []NPC{{
@@ -190,14 +190,14 @@ func TestSimPatchConversionRoundTrip(t *testing.T) {
 		{Kind: PatchPlayerFacing, EntityID: "player-2", Payload: FacingPayload{Facing: FacingRight}},
 		{Kind: PatchPlayerIntent, EntityID: "player-3", Payload: PlayerIntentPayload{DX: 0.5, DY: 0.75}},
 		{Kind: PatchPlayerHealth, EntityID: "player-4", Payload: HealthPayload{Health: 75, MaxHealth: 100}},
-		{Kind: PatchPlayerInventory, EntityID: "player-5", Payload: InventoryPayload{Slots: []InventorySlot{{
+		{Kind: PatchPlayerInventory, EntityID: "player-5", Payload: itemspkg.InventoryPayloadFromSlots[InventorySlot, InventoryPayload]([]InventorySlot{{
 			Slot: 3,
 			Item: ItemStack{Type: ItemType("arrow"), Quantity: 20},
-		}}}},
-		{Kind: PatchPlayerEquipment, EntityID: "player-6", Payload: EquipmentPayload{Slots: []EquippedItem{{
+		}})},
+		{Kind: PatchPlayerEquipment, EntityID: "player-6", Payload: itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload]([]EquippedItem{{
 			Slot: EquipSlotHead,
 			Item: ItemStack{Type: ItemType("helm"), Quantity: 1},
-		}}}},
+		}})},
 		{Kind: PatchEffectParams, EntityID: "effect-1", Payload: EffectParamsPayload{Params: map[string]float64{"radius": 4}}},
 		{Kind: PatchGroundItemQty, EntityID: "ground-1", Payload: GroundItemQtyPayload{Qty: 9}},
 	}
@@ -228,8 +228,8 @@ func TestConvertPatchPayloadToSimInventoryPointerClones(t *testing.T) {
 		Item: ItemStack{Type: ItemType("arrow"), FungibilityKey: "stack", Quantity: 3},
 	}}
 
-	payload := &InventoryPayload{Slots: slots}
-	converted, ok := convertPatchPayloadToSim(payload).(sim.InventoryPayload)
+	payload := itemspkg.InventoryPayloadFromSlots[InventorySlot, InventoryPayload](slots)
+	converted, ok := convertPatchPayloadToSim(&payload).(sim.InventoryPayload)
 	if !ok {
 		t.Fatalf("expected sim.InventoryPayload, got %T", convertPatchPayloadToSim(payload))
 	}
@@ -258,8 +258,8 @@ func TestConvertPatchPayloadToSimEquipmentPointerClones(t *testing.T) {
 		Item: ItemStack{Type: ItemType("sword"), FungibilityKey: "unique", Quantity: 1},
 	}}
 
-	payload := &EquipmentPayload{Slots: slots}
-	converted, ok := convertPatchPayloadToSim(payload).(sim.EquipmentPayload)
+	payload := itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload](slots)
+	converted, ok := convertPatchPayloadToSim(&payload).(sim.EquipmentPayload)
 	if !ok {
 		t.Fatalf("expected sim.EquipmentPayload, got %T", convertPatchPayloadToSim(payload))
 	}

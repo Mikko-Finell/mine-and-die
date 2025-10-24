@@ -483,12 +483,10 @@ func TestStateMessageWithPatchesRoundTrip(t *testing.T) {
 			{
 				Kind:     sim.PatchPlayerInventory,
 				EntityID: "player-1",
-				Payload: sim.PlayerInventoryPayload{
-					Slots: []sim.InventorySlot{{
-						Slot: 0,
-						Item: sim.ItemStack{Type: sim.ItemType(ItemTypeGold), Quantity: 2},
-					}},
-				},
+				Payload: itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, sim.PlayerInventoryPayload]([]sim.InventorySlot{{
+					Slot: 0,
+					Item: sim.ItemStack{Type: sim.ItemType(ItemTypeGold), Quantity: 2},
+				}}),
 			},
 		},
 		Tick:       1,
