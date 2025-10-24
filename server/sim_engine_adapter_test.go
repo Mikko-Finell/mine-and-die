@@ -10,6 +10,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	journal "mine-and-die/server/internal/journal"
 	"mine-and-die/server/internal/sim"
+	simutil "mine-and-die/server/internal/simutil"
 )
 
 func TestSimCommandConversionRoundTrip(t *testing.T) {
@@ -1191,6 +1192,443 @@ func TestHubAdapterKeyframeRecordingMatchesJournal(t *testing.T) {
 		if size != got.Size || oldest != got.OldestSequence || newest != got.NewestSequence {
 			t.Fatalf("unexpected adapter window after seq %d: size=%d oldest=%d newest=%d want size=%d oldest=%d newest=%d", tc.sequence, size, oldest, newest, got.Size, got.OldestSequence, got.NewestSequence)
 		}
+	}
+}
+
+func TestLegacyAdapterRecordKeyframeClonesGroundItems(t *testing.T) {
+	hub := newHub()
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
+	}
+
+	groundItems := []itemspkg.GroundItem{{
+		ID:             "ground-100",
+		Type:           "potion",
+		FungibilityKey: "potion-small",
+		X:              1.5,
+		Y:              -2.75,
+		Qty:            3,
+	}, {
+		ID:             "ground-101",
+		Type:           "gold",
+		FungibilityKey: "gold",
+		X:              -4.25,
+		Y:              9.75,
+		Qty:            120,
+	}}
+	expected := itemspkg.CloneGroundItems(groundItems)
+
+	frame := sim.Keyframe{
+		Sequence:    410,
+		Tick:        905,
+		GroundItems: groundItems,
+	}
+
+	adapter.RecordKeyframe(frame)
+
+	frame.GroundItems[0].Qty = 99
+	groundItems[1].Qty = 77
+
+	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
+	}
+
+	recordedGround, ok := recorded.GroundItems.([]itemspkg.GroundItem)
+	if !ok {
+		t.Fatalf("expected recorded ground items to be []itemspkg.GroundItem, got %T", recorded.GroundItems)
+	}
+
+	if !reflect.DeepEqual(expected, recordedGround) {
+		t.Fatalf("unexpected recorded ground items: got %#v want %#v", recordedGround, expected)
+	}
+
+	if recordedGround[0].Qty != expected[0].Qty || recordedGround[1].Qty != expected[1].Qty {
+		t.Fatalf("expected recorded ground item quantities %v, got %v", []int{expected[0].Qty, expected[1].Qty}, []int{recordedGround[0].Qty, recordedGround[1].Qty})
+	}
+
+	if &recordedGround[0] == &frame.GroundItems[0] {
+		t.Fatalf("expected recorded ground items to be cloned from input frame")
+	}
+
+	if &recordedGround[0] == &groundItems[0] {
+		t.Fatalf("expected recorded ground items to be cloned from original slice")
+	}
+}
+
+func TestLegacyAdapterKeyframeBySequenceClonesGroundItems(t *testing.T) {
+	hub := newHub()
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
+	}
+
+	groundItems := []itemspkg.GroundItem{{
+		ID:             "ground-200",
+		Type:           "scroll",
+		FungibilityKey: "scroll-fire",
+		X:              -7.5,
+		Y:              4.5,
+		Qty:            2,
+	}, {
+		ID:             "ground-201",
+		Type:           "potion",
+		FungibilityKey: "potion-large",
+		X:              12.25,
+		Y:              -6.75,
+		Qty:            5,
+	}}
+	expected := itemspkg.CloneGroundItems(groundItems)
+
+	frame := sim.Keyframe{
+		Sequence:    512,
+		Tick:        1337,
+		GroundItems: groundItems,
+	}
+
+	adapter.RecordKeyframe(frame)
+
+	groundItems[0].Qty = 41
+	frame.GroundItems[1].Qty = 19
+
+	fetched, ok := adapter.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected adapter to return keyframe %d", frame.Sequence)
+	}
+
+	if !reflect.DeepEqual(expected, fetched.GroundItems) {
+		t.Fatalf("unexpected fetched ground items: got %#v want %#v", fetched.GroundItems, expected)
+	}
+
+	fetched.GroundItems[0].Qty = 73
+
+	again, ok := adapter.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected adapter to return keyframe %d on second fetch", frame.Sequence)
+	}
+
+	if !reflect.DeepEqual(expected, again.GroundItems) {
+		t.Fatalf("expected adapter to clone ground items, got %#v want %#v", again.GroundItems, expected)
+	}
+
+	if &again.GroundItems[0] == &fetched.GroundItems[0] {
+		t.Fatalf("expected adapter keyframe lookup to clone ground item slices on each call")
+	}
+
+	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
+	}
+	recordedGround, ok := recorded.GroundItems.([]itemspkg.GroundItem)
+	if !ok {
+		t.Fatalf("expected recorded ground items to be []itemspkg.GroundItem, got %T", recorded.GroundItems)
+	}
+
+	if !reflect.DeepEqual(expected, recordedGround) {
+		t.Fatalf("expected journal to retain original ground items, got %#v want %#v", recordedGround, expected)
+	}
+}
+
+func TestHubKeyframeClonesGroundItems(t *testing.T) {
+	hub := newHub()
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
+	}
+
+	groundItems := []itemspkg.GroundItem{{
+		ID:             "ground-300",
+		Type:           "relic",
+		FungibilityKey: "relic-ancient",
+		X:              6.75,
+		Y:              -1.5,
+		Qty:            1,
+	}, {
+		ID:             "ground-301",
+		Type:           "gold",
+		FungibilityKey: "gold",
+		X:              -11.25,
+		Y:              3.5,
+		Qty:            75,
+	}}
+	expected := itemspkg.CloneGroundItems(groundItems)
+
+	frame := sim.Keyframe{
+		Sequence:    640,
+		Tick:        2048,
+		GroundItems: groundItems,
+	}
+
+	adapter.RecordKeyframe(frame)
+
+	groundItems[0].Qty = 5
+	frame.GroundItems[1].Qty = 48
+
+	snapshot, ok := hub.Keyframe(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d", frame.Sequence)
+	}
+
+	if !reflect.DeepEqual(expected, snapshot.GroundItems) {
+		t.Fatalf("unexpected hub keyframe ground items: got %#v want %#v", snapshot.GroundItems, expected)
+	}
+
+	snapshot.GroundItems[0].Qty = 29
+
+	again, ok := hub.Keyframe(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d on second lookup", frame.Sequence)
+	}
+
+	if !reflect.DeepEqual(expected, again.GroundItems) {
+		t.Fatalf("expected hub keyframe lookup to clone ground items, got %#v want %#v", again.GroundItems, expected)
+	}
+
+	if &again.GroundItems[0] == &snapshot.GroundItems[0] {
+		t.Fatalf("expected hub keyframe lookup to clone ground item slices on each call")
+	}
+
+	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
+	}
+	recordedGround, ok := recorded.GroundItems.([]itemspkg.GroundItem)
+	if !ok {
+		t.Fatalf("expected recorded ground items to be []itemspkg.GroundItem, got %T", recorded.GroundItems)
+	}
+
+	if !reflect.DeepEqual(expected, recordedGround) {
+		t.Fatalf("expected journal to retain original ground items, got %#v want %#v", recordedGround, expected)
+	}
+}
+
+func TestHubKeyframeClonesActors(t *testing.T) {
+	hub := newHub()
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
+	}
+
+	playerInventory := []sim.InventorySlot{{
+		Slot: 0,
+		Item: sim.ItemStack{Type: sim.ItemType("potion"), FungibilityKey: "stamina", Quantity: 4},
+	}, {
+		Slot: 2,
+		Item: sim.ItemStack{Type: sim.ItemType("scroll"), FungibilityKey: "teleport", Quantity: 1},
+	}}
+	playerEquipment := []sim.EquippedItem{{
+		Slot: sim.EquipSlotMainHand,
+		Item: sim.ItemStack{Type: sim.ItemType("axe"), FungibilityKey: "double", Quantity: 1},
+	}, {
+		Slot: sim.EquipSlotBoots,
+		Item: sim.ItemStack{Type: sim.ItemType("boots"), FungibilityKey: "leather", Quantity: 1},
+	}}
+
+	npcInventory := []sim.InventorySlot{{
+		Slot: 1,
+		Item: sim.ItemStack{Type: sim.ItemType("gem"), FungibilityKey: "sapphire", Quantity: 2},
+	}}
+	npcEquipment := []sim.EquippedItem{{
+		Slot: sim.EquipSlotHead,
+		Item: sim.ItemStack{Type: sim.ItemType("mask"), FungibilityKey: "shadow", Quantity: 1},
+	}}
+
+	players := []sim.Player{{
+		Actor: sim.Actor{
+			ID:        "player-500",
+			X:         -6.5,
+			Y:         12.75,
+			Facing:    sim.FacingUp,
+			Health:    95,
+			MaxHealth: 110,
+			Inventory: sim.Inventory{Slots: itemspkg.CloneInventorySlots(playerInventory)},
+			Equipment: sim.Equipment{Slots: itemspkg.CloneEquippedItems(playerEquipment)},
+		},
+	}}
+	npcs := []sim.NPC{{
+		Actor: sim.Actor{
+			ID:        "npc-500",
+			X:         4.0,
+			Y:         -7.5,
+			Facing:    sim.FacingDown,
+			Health:    38,
+			MaxHealth: 55,
+			Inventory: sim.Inventory{Slots: itemspkg.CloneInventorySlots(npcInventory)},
+			Equipment: sim.Equipment{Slots: itemspkg.CloneEquippedItems(npcEquipment)},
+		},
+		Type:             sim.NPCTypeRat,
+		AIControlled:     false,
+		ExperienceReward: 9,
+	}}
+
+	expectedPlayers := simutil.ClonePlayers(players)
+	expectedNPCs := simutil.CloneNPCs(npcs)
+
+	frame := sim.Keyframe{
+		Sequence:  912,
+		Tick:      2049,
+		Players:   players,
+		NPCs:      npcs,
+		Obstacles: []sim.Obstacle{{ID: "obstacle-500", X: -8, Y: 3.25, Width: 1.5, Height: 1}},
+	}
+
+	adapter.RecordKeyframe(frame)
+
+	players[0].Inventory.Slots[0].Item.Quantity = 22
+	players[0].Equipment.Slots[0].Item.Quantity = 3
+	frame.Players[0].Health = 10
+	npcs[0].Inventory.Slots[0].Item.Quantity = 11
+	frame.NPCs[0].Equipment.Slots[0].Item.Quantity = 5
+
+	snapshot, ok := hub.Keyframe(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d", frame.Sequence)
+	}
+
+	if len(snapshot.Players) != len(expectedPlayers) {
+		t.Fatalf("expected %d players in keyframe snapshot, got %d", len(expectedPlayers), len(snapshot.Players))
+	}
+	if len(snapshot.NPCs) != len(expectedNPCs) {
+		t.Fatalf("expected %d NPCs in keyframe snapshot, got %d", len(expectedNPCs), len(snapshot.NPCs))
+	}
+
+	if !reflect.DeepEqual(expectedPlayers, snapshot.Players) {
+		t.Fatalf("unexpected hub keyframe players: got %#v want %#v", snapshot.Players, expectedPlayers)
+	}
+	if !reflect.DeepEqual(expectedNPCs, snapshot.NPCs) {
+		t.Fatalf("unexpected hub keyframe NPCs: got %#v want %#v", snapshot.NPCs, expectedNPCs)
+	}
+
+	playerSlice := &snapshot.Players[0]
+	npcSlice := &snapshot.NPCs[0]
+
+	snapshot.Players[0].Inventory.Slots[0].Item.Quantity = 77
+	snapshot.Players[0].Equipment.Slots[0].Item.Quantity = 6
+	snapshot.NPCs[0].Inventory.Slots[0].Item.Quantity = 88
+	snapshot.NPCs[0].Equipment.Slots[0].Item.Quantity = 7
+
+	snapshot.Players[0].Health = 0
+	snapshot.NPCs[0].Health = 0
+
+	again, ok := hub.Keyframe(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d on second lookup", frame.Sequence)
+	}
+
+	if !reflect.DeepEqual(expectedPlayers, again.Players) {
+		t.Fatalf("expected cloned players on second hub keyframe lookup, got %#v want %#v", again.Players, expectedPlayers)
+	}
+	if !reflect.DeepEqual(expectedNPCs, again.NPCs) {
+		t.Fatalf("expected cloned NPCs on second hub keyframe lookup, got %#v want %#v", again.NPCs, expectedNPCs)
+	}
+
+	if &again.Players[0] == playerSlice {
+		t.Fatalf("expected hub keyframe lookup to clone player slices on each call")
+	}
+	if &again.NPCs[0] == npcSlice {
+		t.Fatalf("expected hub keyframe lookup to clone NPC slices on each call")
+	}
+
+	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
+	}
+
+	recordedPlayers, ok := recorded.Players.([]Player)
+	if !ok {
+		t.Fatalf("expected recorded players to be []Player, got %T", recorded.Players)
+	}
+	recordedNPCs, ok := recorded.NPCs.([]NPC)
+	if !ok {
+		t.Fatalf("expected recorded NPCs to be []NPC, got %T", recorded.NPCs)
+	}
+
+	expectedLegacyPlayers := legacyPlayersFromSim(expectedPlayers)
+	expectedLegacyNPCs := legacyNPCsFromSim(expectedNPCs)
+
+	if !reflect.DeepEqual(expectedLegacyPlayers, recordedPlayers) {
+		t.Fatalf("expected journal players to remain unchanged, got %#v want %#v", recordedPlayers, expectedLegacyPlayers)
+	}
+	if !reflect.DeepEqual(expectedLegacyNPCs, recordedNPCs) {
+		t.Fatalf("expected journal NPCs to remain unchanged, got %#v want %#v", recordedNPCs, expectedLegacyNPCs)
+	}
+}
+
+func TestHubKeyframeClonesObstacles(t *testing.T) {
+	hub := newHub()
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
+	}
+
+	obstacles := []sim.Obstacle{{
+		ID:     "obstacle-600",
+		Type:   "pillar",
+		X:      2.75,
+		Y:      -1.5,
+		Width:  1.25,
+		Height: 4.5,
+	}, {
+		ID:     "obstacle-601",
+		Type:   "spike",
+		X:      -7.0,
+		Y:      5.5,
+		Width:  2.0,
+		Height: 1.75,
+	}}
+	expected := simutil.CloneObstacles(obstacles)
+
+	frame := sim.Keyframe{
+		Sequence:  914,
+		Tick:      4097,
+		Obstacles: obstacles,
+	}
+
+	adapter.RecordKeyframe(frame)
+
+	obstacles[0].Width = 3.75
+	frame.Obstacles[1].Height = 6.25
+
+	snapshot, ok := hub.Keyframe(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d", frame.Sequence)
+	}
+
+	if !reflect.DeepEqual(expected, snapshot.Obstacles) {
+		t.Fatalf("unexpected hub keyframe obstacles: got %#v want %#v", snapshot.Obstacles, expected)
+	}
+
+	first := &snapshot.Obstacles[0]
+	snapshot.Obstacles[0].Width = 5.5
+	snapshot.Obstacles[1].Height = 8.0
+
+	again, ok := hub.Keyframe(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d on second lookup", frame.Sequence)
+	}
+
+	if !reflect.DeepEqual(expected, again.Obstacles) {
+		t.Fatalf("expected cloned obstacles on second hub keyframe lookup, got %#v want %#v", again.Obstacles, expected)
+	}
+
+	if &again.Obstacles[0] == first {
+		t.Fatalf("expected hub keyframe lookup to clone obstacle slices on each call")
+	}
+
+	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
+	}
+
+	recordedObstacles, ok := recorded.Obstacles.([]Obstacle)
+	if !ok {
+		t.Fatalf("expected recorded obstacles to be []Obstacle, got %T", recorded.Obstacles)
+	}
+
+	expectedLegacyObstacles := legacyObstaclesFromSim(expected)
+	if !reflect.DeepEqual(expectedLegacyObstacles, recordedObstacles) {
+		t.Fatalf("expected journal obstacles to remain unchanged, got %#v want %#v", recordedObstacles, expectedLegacyObstacles)
 	}
 }
 
