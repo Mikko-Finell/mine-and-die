@@ -325,15 +325,16 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## [NOT STARTED] Phase 3 — IO and Concurrency Cleanup
+## [IN PROGRESS] Phase 3 — IO and Concurrency Cleanup
 
 - [ ] Objective: Push all concurrency to the perimeter.
 
 ### Next task
 
-- [ ] Document the next logical follow-up step.
+- [ ] Instrument websocket send queues with telemetry counters (queue depth, drops) and surface them through the existing telemetry interfaces.
+- [x] Document the next logical follow-up step.
 
-- [ ] Give each client connection its own writer goroutine and bounded send queue.
+- [x] Give each client connection its own writer goroutine and bounded send queue.
 - [ ] Coordinate hub and match systems without blocking the simulation tick.
 - [ ] Replace ad-hoc broadcast loops with metrics-backed fan-out queues (queue depth, drops).
 

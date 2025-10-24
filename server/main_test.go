@@ -1061,7 +1061,7 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 	diagState.lastRTT = 30 * time.Millisecond
 	hub.world.players[playerID] = diagState
 
-	sub := &subscriber{}
+	sub := newSubscriber(nil)
 	sub.lastAck.Store(47)
 	hub.mu.Lock()
 	hub.subscribers[playerID] = sub
@@ -1090,7 +1090,7 @@ func TestRecordAckTracksMonotonicProgress(t *testing.T) {
 	hub := newHubWithFullWorld()
 	playerID := "monotonic"
 
-	sub := &subscriber{}
+	sub := newSubscriber(nil)
 	hub.mu.Lock()
 	hub.subscribers[playerID] = sub
 	hub.mu.Unlock()

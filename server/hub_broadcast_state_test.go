@@ -98,6 +98,24 @@ func (c *recordingSubscriberConn) snapshot() (int, []time.Time) {
 	return c.writes, copiedDeadlines
 }
 
+func (c *recordingSubscriberConn) waitWrites(t *testing.T, expected int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		c.mu.Lock()
+		writes := c.writes
+		c.mu.Unlock()
+		if writes >= expected {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	c.mu.Lock()
+	writes := c.writes
+	c.mu.Unlock()
+	t.Fatalf("expected %d writes, got %d", expected, writes)
+}
+
 func TestBroadcastStateRefreshesDeadlinesPerSubscriber(t *testing.T) {
 	base := time.Unix(1_700_000_000, 0).UTC()
 	clock := newStubClock([]time.Time{
@@ -117,11 +135,17 @@ func TestBroadcastStateRefreshesDeadlinesPerSubscriber(t *testing.T) {
 	for _, id := range subscriberIDs {
 		conn := &recordingSubscriberConn{}
 		connections[id] = conn
-		hub.subscribers[id] = &subscriber{conn: conn}
+		sub := newSubscriber(conn)
+		hub.subscribers[id] = sub
+		t.Cleanup(sub.Close)
 	}
 	hub.mu.Unlock()
 
 	hub.broadcastState(nil, nil, nil, nil)
+
+	for _, conn := range connections {
+		conn.waitWrites(t, 1)
+	}
 
 	observed := clock.Observed()
 	if len(observed) != len(subscriberIDs)+1 {
