@@ -785,10 +785,11 @@ func TestHubSchedulesResyncAfterJournalHint(t *testing.T) {
 	legacy.world.journal.RecordEffectUpdate(event)
 	legacy.mu.Unlock()
 
-	expected, ok := legacy.world.journal.ConsumeResyncHint()
+	expectedLegacy, ok := legacy.world.journal.ConsumeResyncHint()
 	if !ok {
 		t.Fatalf("expected legacy journal to produce resync hint")
 	}
+	expected := resyncSignalFromTyped(typedEffectResyncSignalFromLegacy(expectedLegacy))
 
 	hub := newHub()
 	hub.SetKeyframeInterval(5)

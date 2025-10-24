@@ -1939,7 +1939,21 @@ func TestSimEffectResyncSignalConversionRoundTrip(t *testing.T) {
 		},
 	}
 
-	simSignal := internaleffects.SimEffectResyncSignalFromTyped(typedEffectResyncSignalFromLegacy(journal.ResyncSignal(legacySignal)))
+	journalSignal := journal.ResyncSignal{
+		LostSpawns:  legacySignal.LostSpawns,
+		TotalEvents: legacySignal.TotalEvents,
+	}
+	if len(legacySignal.Reasons) > 0 {
+		journalSignal.Reasons = make([]journal.ResyncReason, len(legacySignal.Reasons))
+		for i, reason := range legacySignal.Reasons {
+			journalSignal.Reasons[i] = journal.ResyncReason{
+				Kind:     reason.Kind,
+				EffectID: reason.EffectID,
+			}
+		}
+	}
+
+	simSignal := internaleffects.SimEffectResyncSignalFromTyped(typedEffectResyncSignalFromLegacy(journalSignal))
 	roundTrip := resyncSignalFromTyped(internaleffects.TypedEffectResyncSignalFromSim(simSignal))
 
 	if !reflect.DeepEqual(legacySignal, roundTrip) {

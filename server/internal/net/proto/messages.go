@@ -3,7 +3,9 @@ package proto
 import (
 	"encoding/json"
 
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 )
 
 const (
@@ -45,7 +47,17 @@ type stateSnapshot interface {
 
 // EncodeStateSnapshot renders a state snapshot payload.
 func EncodeStateSnapshot(msg stateSnapshot) ([]byte, error) {
-	return json.Marshal(msg)
+	switch payload := msg.(type) {
+	case StateSnapshotV1:
+		return EncodeStateSnapshotV1(payload)
+	case *StateSnapshotV1:
+		if payload == nil {
+			return json.Marshal(payload)
+		}
+		return EncodeStateSnapshotV1(*payload)
+	default:
+		return json.Marshal(msg)
+	}
 }
 
 type joinResponse interface {
@@ -54,7 +66,17 @@ type joinResponse interface {
 
 // EncodeJoinResponse renders a join response payload.
 func EncodeJoinResponse(msg joinResponse) ([]byte, error) {
-	return json.Marshal(msg)
+	switch payload := msg.(type) {
+	case JoinResponseV1:
+		return EncodeJoinResponseV1(payload)
+	case *JoinResponseV1:
+		if payload == nil {
+			return json.Marshal(payload)
+		}
+		return EncodeJoinResponseV1(*payload)
+	default:
+		return json.Marshal(msg)
+	}
 }
 
 type keyframeSnapshot interface {
@@ -63,7 +85,17 @@ type keyframeSnapshot interface {
 
 // EncodeKeyframeSnapshot renders a keyframe payload.
 func EncodeKeyframeSnapshot(msg keyframeSnapshot) ([]byte, error) {
-	return json.Marshal(msg)
+	switch payload := msg.(type) {
+	case KeyframeSnapshotV1:
+		return EncodeKeyframeSnapshotV1(payload)
+	case *KeyframeSnapshotV1:
+		if payload == nil {
+			return json.Marshal(payload)
+		}
+		return EncodeKeyframeSnapshotV1(*payload)
+	default:
+		return json.Marshal(msg)
+	}
 }
 
 type keyframeNack interface {
@@ -266,4 +298,92 @@ func EncodeConsoleAck(msg ConsoleAck) ([]byte, error) {
 		Slot:    msg.Slot,
 	}
 	return json.Marshal(frame)
+}
+
+// StateSnapshotV1 captures the version 1 websocket state payload layout.
+type StateSnapshotV1 struct {
+	Ver              int                             `json:"ver"`
+	Type             string                          `json:"type"`
+	Players          []sim.Player                    `json:"players,omitempty"`
+	NPCs             []sim.NPC                       `json:"npcs,omitempty"`
+	Obstacles        []sim.Obstacle                  `json:"obstacles,omitempty"`
+	EffectTriggers   []sim.EffectTrigger             `json:"effectTriggers,omitempty"`
+	EffectSpawns     []simpatches.EffectSpawnEvent   `json:"effect_spawned,omitempty"`
+	EffectUpdates    []simpatches.EffectUpdateEvent  `json:"effect_update,omitempty"`
+	EffectEnds       []simpatches.EffectEndEvent     `json:"effect_ended,omitempty"`
+	EffectSeqCursors map[string]simpatches.EffectSeq `json:"effect_seq_cursors,omitempty"`
+	GroundItems      []itemspkg.GroundItem           `json:"groundItems,omitempty"`
+	Patches          []simpatches.Patch              `json:"patches"`
+	Tick             uint64                          `json:"t"`
+	Sequence         uint64                          `json:"sequence"`
+	KeyframeSeq      uint64                          `json:"keyframeSeq"`
+	ServerTime       int64                           `json:"serverTime"`
+	Config           sim.WorldConfig                 `json:"config"`
+	Resync           bool                            `json:"resync,omitempty"`
+	KeyframeInterval int                             `json:"keyframeInterval,omitempty"`
+}
+
+// ProtoStateSnapshot tags the struct as a websocket snapshot payload.
+func (StateSnapshotV1) ProtoStateSnapshot() {}
+
+// EncodeStateSnapshotV1 renders a versioned snapshot payload while keeping the
+// legacy JSON layout.
+func EncodeStateSnapshotV1(msg StateSnapshotV1) ([]byte, error) {
+	if msg.Type == "" {
+		msg.Type = TypeState
+	}
+	msg.Ver = Version
+	return json.Marshal(msg)
+}
+
+// JoinResponseV1 captures the version 1 join response layout.
+type JoinResponseV1 struct {
+	Ver               int                   `json:"ver"`
+	ID                string                `json:"id"`
+	Players           []sim.Player          `json:"players"`
+	NPCs              []sim.NPC             `json:"npcs"`
+	Obstacles         []sim.Obstacle        `json:"obstacles"`
+	EffectTriggers    []sim.EffectTrigger   `json:"effectTriggers,omitempty"`
+	GroundItems       []itemspkg.GroundItem `json:"groundItems,omitempty"`
+	Patches           []simpatches.Patch    `json:"patches,omitempty"`
+	Config            sim.WorldConfig       `json:"config"`
+	Resync            bool                  `json:"resync"`
+	KeyframeInterval  int                   `json:"keyframeInterval,omitempty"`
+	EffectCatalogHash string                `json:"effectCatalogHash"`
+}
+
+// ProtoJoinResponse tags the struct as a websocket join response payload.
+func (JoinResponseV1) ProtoJoinResponse() {}
+
+// EncodeJoinResponseV1 renders a versioned join response payload while keeping
+// the legacy JSON layout.
+func EncodeJoinResponseV1(msg JoinResponseV1) ([]byte, error) {
+	msg.Ver = Version
+	return json.Marshal(msg)
+}
+
+// KeyframeSnapshotV1 captures the version 1 keyframe payload layout.
+type KeyframeSnapshotV1 struct {
+	Ver         int                   `json:"ver"`
+	Type        string                `json:"type"`
+	Sequence    uint64                `json:"sequence"`
+	Tick        uint64                `json:"t"`
+	Players     []sim.Player          `json:"players"`
+	NPCs        []sim.NPC             `json:"npcs"`
+	Obstacles   []sim.Obstacle        `json:"obstacles"`
+	GroundItems []itemspkg.GroundItem `json:"groundItems"`
+	Config      sim.WorldConfig       `json:"config"`
+}
+
+// ProtoKeyframeSnapshot tags the struct as a websocket keyframe payload.
+func (KeyframeSnapshotV1) ProtoKeyframeSnapshot() {}
+
+// EncodeKeyframeSnapshotV1 renders a versioned keyframe payload while keeping
+// the legacy JSON layout.
+func EncodeKeyframeSnapshotV1(msg KeyframeSnapshotV1) ([]byte, error) {
+	if msg.Type == "" {
+		msg.Type = TypeKeyframe
+	}
+	msg.Ver = Version
+	return json.Marshal(msg)
 }
