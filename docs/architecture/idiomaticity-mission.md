@@ -61,7 +61,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ## [DONE] Phase 1 — Structural Extraction
 
-- [ ] Objective: Separate concerns without changing runtime behavior.
+- [x] Objective: Separate concerns without changing runtime behavior.
 
 ### Next task
 
@@ -103,7 +103,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ## [DONE] Phase 2 — Simulation Decomposition
 
-- [ ] Objective: Split the monolithic simulation into smaller packages with explicit ownership.
+- [x] Objective: Split the monolithic simulation into smaller packages with explicit ownership.
 
 ### Next task
 
@@ -336,8 +336,6 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [ ] Give each client connection its own writer goroutine and bounded send queue.
 - [ ] Coordinate hub and match systems without blocking the simulation tick.
 - [ ] Replace ad-hoc broadcast loops with metrics-backed fan-out queues (queue depth, drops).
-- [ ] Add latency and tick metrics for p50/p95 duration and send queue stats.
-- [ ] Compare histograms before and after the refactor to confirm no performance regression.
 
 **Definition of done:**
 
