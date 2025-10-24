@@ -2853,10 +2853,10 @@ func TestPlayerViewsFromSimSnapshotCopiesIntent(t *testing.T) {
 		Players: []sim.Player{{
 			Actor: sim.Actor{
 				ID: "player-1",
-				Inventory: sim.Inventory{Slots: []sim.InventorySlot{{
+				Inventory: itemspkg.InventoryFromSimSlots([]sim.InventorySlot{{
 					Slot: 1,
 					Item: sim.ItemStack{Type: sim.ItemType("gold"), Quantity: 3},
-				}}},
+				}}),
 			},
 			IntentDX: 0.5,
 			IntentDY: -0.25,
@@ -3076,14 +3076,14 @@ func TestClonePlayerViewsDeepCopiesData(t *testing.T) {
 			Player: sim.Player{
 				Actor: sim.Actor{
 					ID: "player-clone",
-					Inventory: sim.Inventory{Slots: []sim.InventorySlot{{
+					Inventory: itemspkg.InventoryFromSimSlots([]sim.InventorySlot{{
 						Slot: 0,
 						Item: sim.ItemStack{Type: sim.ItemType("gold"), Quantity: 5},
-					}}},
-					Equipment: sim.Equipment{Slots: []sim.EquippedItem{{
+					}}),
+					Equipment: itemspkg.EquipmentFromSimSlots([]sim.EquippedItem{{
 						Slot: sim.EquipSlotMainHand,
 						Item: sim.ItemStack{Type: sim.ItemType("sword"), Quantity: 1},
-					}}},
+					}}),
 				},
 			},
 			IntentDX: 0.25,

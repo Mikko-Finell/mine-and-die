@@ -7,21 +7,21 @@ import (
 )
 
 type legacyInventorySlot struct {
-	Slot int
-	Qty  int
+	Slot int `json:"slot"`
+	Qty  int `json:"qty"`
 }
 
 type legacyInventory struct {
-	Slots []legacyInventorySlot
+	Slots []legacyInventorySlot `json:"slots"`
 }
 
 type legacyEquippedItem struct {
-	Slot string
-	Qty  int
+	Slot string `json:"slot"`
+	Qty  int    `json:"qty"`
 }
 
 type legacyEquipment struct {
-	Slots []legacyEquippedItem
+	Slots []legacyEquippedItem `json:"slots,omitempty"`
 }
 
 func TestInventoryFromSim(t *testing.T) {
@@ -32,9 +32,7 @@ func TestInventoryFromSim(t *testing.T) {
 
 	converted := InventoryFromSim(inv, func(slot sim.InventorySlot) legacyInventorySlot {
 		return legacyInventorySlot{Slot: slot.Slot, Qty: slot.Item.Quantity}
-	}, func(slots []legacyInventorySlot) legacyInventory {
-		return legacyInventory{Slots: slots}
-	})
+	}, InventoryValueFromSlots[legacyInventorySlot, legacyInventory])
 
 	if len(converted.Slots) != 1 {
 		t.Fatalf("expected 1 slot, got %d", len(converted.Slots))
@@ -47,9 +45,7 @@ func TestInventoryFromSim(t *testing.T) {
 func TestInventoryFromSimEmpty(t *testing.T) {
 	converted := InventoryFromSim(sim.Inventory{}, func(slot sim.InventorySlot) legacyInventorySlot {
 		return legacyInventorySlot{Slot: slot.Slot, Qty: slot.Item.Quantity}
-	}, func(slots []legacyInventorySlot) legacyInventory {
-		return legacyInventory{Slots: slots}
-	})
+	}, InventoryValueFromSlots[legacyInventorySlot, legacyInventory])
 
 	if len(converted.Slots) != 0 {
 		t.Fatalf("expected empty slots, got %d", len(converted.Slots))
@@ -70,10 +66,8 @@ func TestEquipmentFromSim(t *testing.T) {
 	}}}
 
 	converted := EquipmentFromSim(eq, func(slot sim.EquippedItem) legacyEquippedItem {
-		return legacyEquippedItem{Slot: slot.Slot, Qty: slot.Item.Quantity}
-	}, func(slots []legacyEquippedItem) legacyEquipment {
-		return legacyEquipment{Slots: slots}
-	})
+		return legacyEquippedItem{Slot: string(slot.Slot), Qty: slot.Item.Quantity}
+	}, EquipmentValueFromSlots[legacyEquippedItem, legacyEquipment])
 
 	if len(converted.Slots) != 1 {
 		t.Fatalf("expected 1 slot, got %d", len(converted.Slots))
@@ -85,10 +79,8 @@ func TestEquipmentFromSim(t *testing.T) {
 
 func TestEquipmentFromSimEmpty(t *testing.T) {
 	converted := EquipmentFromSim(sim.Equipment{}, func(slot sim.EquippedItem) legacyEquippedItem {
-		return legacyEquippedItem{Slot: slot.Slot, Qty: slot.Item.Quantity}
-	}, func(slots []legacyEquippedItem) legacyEquipment {
-		return legacyEquipment{Slots: slots}
-	})
+		return legacyEquippedItem{Slot: string(slot.Slot), Qty: slot.Item.Quantity}
+	}, EquipmentValueFromSlots[legacyEquippedItem, legacyEquipment])
 
 	if len(converted.Slots) != 0 {
 		t.Fatalf("expected empty slots, got %d", len(converted.Slots))

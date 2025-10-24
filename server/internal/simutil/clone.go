@@ -139,20 +139,20 @@ func ClonePatchPayload(payload any) any {
 		cloned := *value
 		return cloned
 	case sim.InventoryPayload:
-		return sim.InventoryPayload{Slots: itemspkg.CloneInventorySlots(value.Slots)}
+		return itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, sim.InventoryPayload](itemspkg.CloneInventorySlots(value.Slots))
 	case *sim.InventoryPayload:
 		if value == nil {
 			return nil
 		}
-		cloned := sim.InventoryPayload{Slots: itemspkg.CloneInventorySlots(value.Slots)}
+		cloned := itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, sim.InventoryPayload](itemspkg.CloneInventorySlots(value.Slots))
 		return cloned
 	case sim.EquipmentPayload:
-		return sim.EquipmentPayload{Slots: itemspkg.CloneEquippedItems(value.Slots)}
+		return itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, sim.EquipmentPayload](itemspkg.CloneEquippedItems(value.Slots))
 	case *sim.EquipmentPayload:
 		if value == nil {
 			return nil
 		}
-		cloned := sim.EquipmentPayload{Slots: itemspkg.CloneEquippedItems(value.Slots)}
+		cloned := itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, sim.EquipmentPayload](itemspkg.CloneEquippedItems(value.Slots))
 		return cloned
 	case sim.EffectParamsPayload:
 		return sim.EffectParamsPayload{Params: effectspkg.CloneEffectParams(value.Params)}

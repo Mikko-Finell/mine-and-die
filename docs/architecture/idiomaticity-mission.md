@@ -459,7 +459,13 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Update `items/simpayloads` clone helpers to call `items.CloneInventorySlots` / `items.CloneEquippedItems` directly at call sites and remove the wrappers once unused.
 - [x] Remove `internal/items/simpayloads` now that patch conversions rely on the shared item helpers and add adapter coverage for the pointer-based payload cases.
 - [x] Move the legacy inventory and equipment payload assembly helpers from `sim_engine_adapter.go` into `internal/items` so patch and snapshot conversions share the same adapters.
-- [ ] Move the legacy inventory and equipment slot conversion closures (`inventorySlotFromSim` / `equippedItemFromSim`) into `internal/items` so adapter and payload assembly callers reuse shared mapping helpers.
+- [x] Move the legacy inventory and equipment slot conversion closures (`inventorySlotFromSim` / `equippedItemFromSim`) into `internal/items` so adapter and payload assembly callers reuse shared mapping helpers.
+- [x] Move the legacy inventory and equipment assembler helpers (`inventoryFromSlots`, `inventoryPayloadFromSlots`, `equipmentFromSlots`, `equipmentPayloadFromSlots`) into `internal/items` so snapshot and payload conversions share the centralized constructors.
+- [x] Update the `internal/items` snapshot and payload tests to exercise the new assembler helpers so the package relies on the shared constructors end-to-end.
+- [x] Replace the remaining inventory and equipment payload struct literals in `simutil` and server tests with the `items` assembler helpers so payload cloning stays centralized.
+- [x] Update `world_mutators.go` to construct inventory and equipment patch payloads via the shared `items` assembler helpers so runtime diff emission uses the centralized constructors.
+- [x] Convert the remaining inventory and equipment payload constructions in `world_mutators_test.go` and other world tests to the shared helpers so test scaffolding relies on the centralized constructors.
+- [ ] Add world equipment mutation coverage in `world_equipment_test.go` (or neighboring world tests) that verifies patch payloads through `items.EquipmentPayloadFromSlots` so equipment scaffolding uses the centralized constructors.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**

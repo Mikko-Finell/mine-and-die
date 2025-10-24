@@ -3,6 +3,7 @@ package patches
 import (
 	"testing"
 
+	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 )
 
@@ -16,10 +17,10 @@ func TestApplyPlayersReplaysLatestSnapshot(t *testing.T) {
 				Facing:    sim.FacingUp,
 				Health:    75,
 				MaxHealth: 100,
-				Inventory: sim.Inventory{Slots: []sim.InventorySlot{{
+				Inventory: itemspkg.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory]([]sim.InventorySlot{{
 					Slot: 0,
 					Item: sim.ItemStack{Type: "gold", Quantity: 3},
-				}}},
+				}}),
 			}},
 			IntentDX: 0.5,
 			IntentDY: -0.5,
@@ -62,10 +63,10 @@ func TestApplyPlayersReplaysLatestSnapshot(t *testing.T) {
 		{
 			Kind:     sim.PatchPlayerInventory,
 			EntityID: "player-1",
-			Payload: sim.PlayerInventoryPayload{Slots: []sim.InventorySlot{{
+			Payload: itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, sim.PlayerInventoryPayload]([]sim.InventorySlot{{
 				Slot: 1,
 				Item: sim.ItemStack{Type: "potion", Quantity: 2},
-			}}},
+			}}),
 		},
 		{
 			Kind:     sim.PatchPlayerHealth,
@@ -88,10 +89,10 @@ func TestApplyPlayersReplaysLatestSnapshot(t *testing.T) {
 				Facing:    sim.FacingLeft,
 				Health:    40,
 				MaxHealth: 100,
-				Inventory: sim.Inventory{Slots: []sim.InventorySlot{{
+				Inventory: itemspkg.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory]([]sim.InventorySlot{{
 					Slot: 1,
 					Item: sim.ItemStack{Type: "potion", Quantity: 2},
-				}}},
+				}}),
 			}},
 			IntentDX: 1,
 			IntentDY: 0,
@@ -136,10 +137,10 @@ func TestApplyPlayersNoop(t *testing.T) {
 				Facing:    sim.FacingRight,
 				Health:    90,
 				MaxHealth: 100,
-				Inventory: sim.Inventory{Slots: []sim.InventorySlot{{
+				Inventory: itemspkg.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory]([]sim.InventorySlot{{
 					Slot: 0,
 					Item: sim.ItemStack{Type: "gold", Quantity: 1},
-				}}},
+				}}),
 			}},
 			IntentDX: 1,
 			IntentDY: 0,
@@ -355,10 +356,10 @@ func equipmentEqual(a, b sim.Equipment) bool {
 func TestApplyPlayersUpdatesEquipment(t *testing.T) {
 	base := map[string]PlayerView{
 		"player-1": {
-			Player: sim.Player{Actor: sim.Actor{ID: "player-1", Equipment: sim.Equipment{Slots: []sim.EquippedItem{{
+			Player: sim.Player{Actor: sim.Actor{ID: "player-1", Equipment: itemspkg.EquipmentValueFromSlots[sim.EquippedItem, sim.Equipment]([]sim.EquippedItem{{
 				Slot: sim.EquipSlotMainHand,
 				Item: sim.ItemStack{Type: "sword", Quantity: 1},
-			}}}}},
+			}})}},
 		},
 	}
 	original := clonePlayerViewMap(base)
@@ -366,10 +367,10 @@ func TestApplyPlayersUpdatesEquipment(t *testing.T) {
 	patches := []sim.Patch{{
 		Kind:     sim.PatchPlayerEquipment,
 		EntityID: "player-1",
-		Payload: sim.PlayerEquipmentPayload{Slots: []sim.EquippedItem{{
+		Payload: itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, sim.PlayerEquipmentPayload]([]sim.EquippedItem{{
 			Slot: sim.EquipSlotMainHand,
 			Item: sim.ItemStack{Type: "bow", Quantity: 1},
-		}}},
+		}}),
 	}}
 
 	replayed, err := ApplyPlayers(base, patches)
