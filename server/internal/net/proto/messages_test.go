@@ -1,13 +1,40 @@
 package proto
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"os"
+	"reflect"
 	"testing"
 
 	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 	simpatches "mine-and-die/server/internal/sim/patches/typed"
 )
+
+const schemaMigrationEnv = "PROTO_ALLOW_SCHEMA_MIGRATION"
+
+func TestDecodeClientMessageDefaultsVersion(t *testing.T) {
+	payload := []byte(`{"type":"input","dx":1}`)
+
+	msg, err := DecodeClientMessage(payload)
+	if err != nil {
+		t.Fatalf("decode client message: %v", err)
+	}
+	if msg.Ver != Version {
+		t.Fatalf("expected version %d, got %d", Version, msg.Ver)
+	}
+}
+
+func TestDecodeClientMessageRejectsFutureVersion(t *testing.T) {
+	payload := []byte(`{"ver":999,"type":"input","dx":1}`)
+
+	if _, err := DecodeClientMessage(payload); err == nil {
+		t.Fatalf("expected future version to be rejected")
+	}
+}
 
 func TestClientCommand(t *testing.T) {
 	t.Run("move command", func(t *testing.T) {
@@ -286,4 +313,199 @@ func TestEncodeKeyframeSnapshotV1SetsVersionAndType(t *testing.T) {
 	if string(viaInterface) != string(encoded) {
 		t.Fatalf("expected interface encoder to match direct encoding\nwant: %s\ngot:  %s", string(encoded), string(viaInterface))
 	}
+}
+
+func TestStateSnapshotV1DecodeEncodeConsistency(t *testing.T) {
+	raw := loadFixture(t, "testdata/state_snapshot_v1.json")
+
+	var decoded StateSnapshotV1
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+
+	retypePatchPayloads(t, decoded.Patches)
+
+	encoded, err := EncodeStateSnapshotV1(decoded)
+	if err != nil {
+		t.Fatalf("re-encode snapshot: %v", err)
+	}
+	if !bytes.Equal(encoded, raw) {
+		t.Fatalf("encoded snapshot did not match fixture\nwant: %s\ngot:  %s", string(raw), string(encoded))
+	}
+
+	var rebound StateSnapshotV1
+	if err := json.Unmarshal(encoded, &rebound); err != nil {
+		t.Fatalf("decode rebound snapshot: %v", err)
+	}
+	retypePatchPayloads(t, rebound.Patches)
+	if !reflect.DeepEqual(decoded, rebound) {
+		t.Fatalf("snapshot structs diverged after round-trip\nwant: %#v\ngot:  %#v", decoded, rebound)
+	}
+}
+
+func TestJoinResponseV1DecodeEncodeConsistency(t *testing.T) {
+	raw := loadFixture(t, "testdata/join_response_v1.json")
+
+	var decoded JoinResponseV1
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+
+	retypePatchPayloads(t, decoded.Patches)
+
+	encoded, err := EncodeJoinResponseV1(decoded)
+	if err != nil {
+		t.Fatalf("re-encode join response: %v", err)
+	}
+	if !bytes.Equal(encoded, raw) {
+		t.Fatalf("encoded join response did not match fixture\nwant: %s\ngot:  %s", string(raw), string(encoded))
+	}
+
+	var rebound JoinResponseV1
+	if err := json.Unmarshal(encoded, &rebound); err != nil {
+		t.Fatalf("decode rebound join response: %v", err)
+	}
+	retypePatchPayloads(t, rebound.Patches)
+	if !reflect.DeepEqual(decoded, rebound) {
+		t.Fatalf("join response structs diverged after round-trip\nwant: %#v\ngot:  %#v", decoded, rebound)
+	}
+}
+
+func TestKeyframeSnapshotV1DecodeEncodeConsistency(t *testing.T) {
+	raw := loadFixture(t, "testdata/keyframe_snapshot_v1.json")
+
+	var decoded KeyframeSnapshotV1
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+
+	encoded, err := EncodeKeyframeSnapshotV1(decoded)
+	if err != nil {
+		t.Fatalf("re-encode keyframe snapshot: %v", err)
+	}
+	if !bytes.Equal(encoded, raw) {
+		t.Fatalf("encoded keyframe snapshot did not match fixture\nwant: %s\ngot:  %s", string(raw), string(encoded))
+	}
+
+	var rebound KeyframeSnapshotV1
+	if err := json.Unmarshal(encoded, &rebound); err != nil {
+		t.Fatalf("decode rebound keyframe snapshot: %v", err)
+	}
+	if !reflect.DeepEqual(decoded, rebound) {
+		t.Fatalf("keyframe snapshot structs diverged after round-trip\nwant: %#v\ngot:  %#v", decoded, rebound)
+	}
+}
+
+func TestProtoFixtureHashes(t *testing.T) {
+	t.Helper()
+
+	cases := []struct {
+		name     string
+		path     string
+		expected string
+	}{{
+		name:     "state snapshot v1",
+		path:     "testdata/state_snapshot_v1.json",
+		expected: "180fa60ed474d3823359ca3d0423e95490e88b6b75ecbf6f4a85d15469f87e88",
+	}, {
+		name:     "join response v1",
+		path:     "testdata/join_response_v1.json",
+		expected: "dbcaec4967cf7a307da7e43b5c51ea093bd32754d61c93a01e3b64675052e26b",
+	}, {
+		name:     "keyframe snapshot v1",
+		path:     "testdata/keyframe_snapshot_v1.json",
+		expected: "ae6a77f096c30663d75335497027942cdd1bca287649891486648fd5673da855",
+	}}
+
+	allowMigration := os.Getenv(schemaMigrationEnv) != ""
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := os.ReadFile(tc.path)
+			if err != nil {
+				t.Fatalf("read fixture %s: %v", tc.path, err)
+			}
+			sum := sha256.Sum256(data)
+			actual := hex.EncodeToString(sum[:])
+			if actual == tc.expected {
+				return
+			}
+
+			if allowMigration {
+				t.Logf("schema migration allowed: fixture %s hash changed from %s to %s", tc.path, tc.expected, actual)
+				return
+			}
+
+			t.Fatalf("fixture %s hash changed\nexpected: %s\nactual:   %s\nset %s=1 to acknowledge the schema migration", tc.path, tc.expected, actual, schemaMigrationEnv)
+		})
+	}
+}
+
+func retypePatchPayloads(t *testing.T, patches []simpatches.Patch) {
+	t.Helper()
+
+	for i := range patches {
+		if patches[i].Payload == nil {
+			continue
+		}
+
+		switch patches[i].Kind {
+		case simpatches.PatchPlayerPos:
+			patches[i].Payload = decodePayloadAs[simpatches.PlayerPosPayload](t, patches[i].Payload)
+		case simpatches.PatchNPCPos:
+			patches[i].Payload = decodePayloadAs[simpatches.NPCPosPayload](t, patches[i].Payload)
+		case simpatches.PatchPlayerFacing:
+			patches[i].Payload = decodePayloadAs[simpatches.PlayerFacingPayload](t, patches[i].Payload)
+		case simpatches.PatchNPCFacing:
+			patches[i].Payload = decodePayloadAs[simpatches.NPCFacingPayload](t, patches[i].Payload)
+		case simpatches.PatchPlayerIntent:
+			patches[i].Payload = decodePayloadAs[simpatches.PlayerIntentPayload](t, patches[i].Payload)
+		case simpatches.PatchPlayerHealth:
+			patches[i].Payload = decodePayloadAs[simpatches.PlayerHealthPayload](t, patches[i].Payload)
+		case simpatches.PatchNPCHealth:
+			patches[i].Payload = decodePayloadAs[simpatches.NPCHealthPayload](t, patches[i].Payload)
+		case simpatches.PatchPlayerInventory:
+			patches[i].Payload = decodePayloadAs[simpatches.PlayerInventoryPayload](t, patches[i].Payload)
+		case simpatches.PatchNPCInventory:
+			patches[i].Payload = decodePayloadAs[simpatches.NPCInventoryPayload](t, patches[i].Payload)
+		case simpatches.PatchPlayerEquipment:
+			patches[i].Payload = decodePayloadAs[simpatches.PlayerEquipmentPayload](t, patches[i].Payload)
+		case simpatches.PatchNPCEquipment:
+			patches[i].Payload = decodePayloadAs[simpatches.NPCEquipmentPayload](t, patches[i].Payload)
+		case simpatches.PatchEffectPos:
+			patches[i].Payload = decodePayloadAs[simpatches.EffectPosPayload](t, patches[i].Payload)
+		case simpatches.PatchEffectParams:
+			patches[i].Payload = decodePayloadAs[simpatches.EffectParamsPayload](t, patches[i].Payload)
+		case simpatches.PatchGroundItemPos:
+			patches[i].Payload = decodePayloadAs[simpatches.GroundItemPosPayload](t, patches[i].Payload)
+		case simpatches.PatchGroundItemQty:
+			patches[i].Payload = decodePayloadAs[simpatches.GroundItemQtyPayload](t, patches[i].Payload)
+		}
+	}
+}
+
+func decodePayloadAs[T any](t *testing.T, value any) T {
+	t.Helper()
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	var out T
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	return out
+}
+
+func loadFixture(t *testing.T, path string) []byte {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture %q: %v", path, err)
+	}
+	return data
 }
