@@ -50,6 +50,9 @@ const (
 	metricKeyEffectParityFirstHitSamplesPrefix = "telemetry_effect_parity_first_hit_samples_total"
 	metricKeyJournalDropsTotalPrefix           = "telemetry_journal_drops_total"
 	metricKeyCommandDropsTotalPrefix           = "telemetry_command_drops_total"
+	metricKeySubscriberQueueDepth              = "telemetry_ws_queue_depth"
+	metricKeySubscriberQueueMaxDepth           = "telemetry_ws_queue_max_depth"
+	metricKeySubscriberQueueDropsTotal         = "telemetry_ws_queue_drops_total"
 )
 
 type telemetryMetricsAdapter struct {
@@ -229,6 +232,24 @@ func (a *telemetryMetricsAdapter) RecordJournalDrop(reason string) {
 func (a *telemetryMetricsAdapter) RecordCommandDrop(reason, commandType string) {
 	key := a.layeredKey(metricKeyCommandDropsTotalPrefix, reason, commandType)
 	a.add(key, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordSubscriberQueueDepth(depth uint64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	a.metrics.Store(metricKeySubscriberQueueDepth, depth)
+}
+
+func (a *telemetryMetricsAdapter) RecordSubscriberQueueMaxDepth(depth uint64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	a.metrics.Store(metricKeySubscriberQueueMaxDepth, depth)
+}
+
+func (a *telemetryMetricsAdapter) IncrementSubscriberQueueDrops() {
+	a.add(metricKeySubscriberQueueDropsTotal, 1)
 }
 
 func (a *telemetryMetricsAdapter) RecordEffectParity(summary effectParitySummary) {
@@ -532,25 +553,30 @@ type telemetryCounters struct {
 
 	totalTicks   atomic.Uint64
 	effectParity effectParityAggregator
+
+	subscriberQueueDepth    atomic.Int64
+	subscriberQueueMaxDepth atomic.Int64
+	subscriberQueueDrops    atomic.Uint64
 }
 
 type telemetrySnapshot struct {
-	BytesSent                uint64                          `json:"bytesSent"`
-	EntitiesSent             uint64                          `json:"entitiesSent"`
-	TickDuration             int64                           `json:"tickDurationMillis"`
-	KeyframeJournalSize      uint64                          `json:"keyframeJournalSize"`
-	KeyframeOldestSequence   uint64                          `json:"keyframeOldestSequence"`
-	KeyframeNewestSequence   uint64                          `json:"keyframeNewestSequence"`
-	KeyframeRequests         uint64                          `json:"keyframeRequests"`
-	KeyframeNacksExpired     uint64                          `json:"keyframeNacksExpired"`
-	KeyframeNacksRateLimited uint64                          `json:"keyframeNacksRateLimited"`
-	KeyframeRequestLatencyMs uint64                          `json:"keyframeRequestLatencyMs"`
-	Effects                  telemetryEffectsSnapshot        `json:"effects"`
-	EffectTriggers           telemetryEffectTriggersSnapshot `json:"effectTriggers"`
-	JournalDrops             map[string]uint64               `json:"journalDrops,omitempty"`
-	CommandDrops             map[string]map[string]uint64    `json:"commandDrops,omitempty"`
-	EffectParity             telemetryEffectParitySnapshot   `json:"effectParity"`
-	TickBudget               telemetryTickBudgetSnapshot     `json:"tickBudget"`
+	BytesSent                uint64                           `json:"bytesSent"`
+	EntitiesSent             uint64                           `json:"entitiesSent"`
+	TickDuration             int64                            `json:"tickDurationMillis"`
+	KeyframeJournalSize      uint64                           `json:"keyframeJournalSize"`
+	KeyframeOldestSequence   uint64                           `json:"keyframeOldestSequence"`
+	KeyframeNewestSequence   uint64                           `json:"keyframeNewestSequence"`
+	KeyframeRequests         uint64                           `json:"keyframeRequests"`
+	KeyframeNacksExpired     uint64                           `json:"keyframeNacksExpired"`
+	KeyframeNacksRateLimited uint64                           `json:"keyframeNacksRateLimited"`
+	KeyframeRequestLatencyMs uint64                           `json:"keyframeRequestLatencyMs"`
+	Effects                  telemetryEffectsSnapshot         `json:"effects"`
+	EffectTriggers           telemetryEffectTriggersSnapshot  `json:"effectTriggers"`
+	JournalDrops             map[string]uint64                `json:"journalDrops,omitempty"`
+	CommandDrops             map[string]map[string]uint64     `json:"commandDrops,omitempty"`
+	SubscriberQueues         telemetrySubscriberQueueSnapshot `json:"subscriberQueues"`
+	EffectParity             telemetryEffectParitySnapshot    `json:"effectParity"`
+	TickBudget               telemetryTickBudgetSnapshot      `json:"tickBudget"`
 }
 
 type telemetryEffectsSnapshot struct {
@@ -563,6 +589,12 @@ type telemetryEffectsSnapshot struct {
 
 type telemetryEffectTriggersSnapshot struct {
 	EnqueuedTotal map[string]uint64 `json:"enqueuedTotal,omitempty"`
+}
+
+type telemetrySubscriberQueueSnapshot struct {
+	Depth    int64  `json:"depth"`
+	MaxDepth int64  `json:"maxDepth"`
+	Drops    uint64 `json:"drops"`
 }
 
 type telemetryEffectParitySnapshot struct {
@@ -808,6 +840,41 @@ func (t *telemetryCounters) RecordCommandDropped(reason string, cmdType string) 
 	t.metricsAdapter.RecordCommandDrop(reason, secondary)
 }
 
+func (t *telemetryCounters) RecordSubscriberQueueDepth(depth int) {
+	if t == nil {
+		return
+	}
+	if depth < 0 {
+		depth = 0
+	}
+	depth64 := int64(depth)
+	t.subscriberQueueDepth.Store(depth64)
+	for {
+		current := t.subscriberQueueMaxDepth.Load()
+		if depth64 <= current {
+			break
+		}
+		if t.subscriberQueueMaxDepth.CompareAndSwap(current, depth64) {
+			break
+		}
+	}
+	t.metricsAdapter.RecordSubscriberQueueDepth(uint64(depth))
+	maxDepth := t.subscriberQueueMaxDepth.Load()
+	if maxDepth < 0 {
+		maxDepth = 0
+	}
+	t.metricsAdapter.RecordSubscriberQueueMaxDepth(uint64(maxDepth))
+}
+
+func (t *telemetryCounters) RecordSubscriberQueueDrop(depth int) {
+	if t == nil {
+		return
+	}
+	t.RecordSubscriberQueueDepth(depth)
+	t.subscriberQueueDrops.Add(1)
+	t.metricsAdapter.IncrementSubscriberQueueDrops()
+}
+
 func (t *telemetryCounters) RecordEffectParity(summary effectParitySummary) {
 	if t == nil {
 		return
@@ -846,6 +913,11 @@ func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 		},
 		JournalDrops: t.journalDrops.snapshot(),
 		CommandDrops: t.commandDrops.snapshot(),
+		SubscriberQueues: telemetrySubscriberQueueSnapshot{
+			Depth:    t.subscriberQueueDepth.Load(),
+			MaxDepth: t.subscriberQueueMaxDepth.Load(),
+			Drops:    t.subscriberQueueDrops.Load(),
+		},
 		EffectParity: telemetryEffectParitySnapshot{
 			TotalTicks: totalTicks,
 			Entries:    t.effectParity.snapshot(totalTicks),

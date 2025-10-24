@@ -104,7 +104,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 	data, entities, err := h.hub.MarshalState(snapshotPlayers, snapshotNPCs, nil, snapshotGroundItems, false, true)
 	if err != nil {
 		h.logger.Printf("failed to marshal initial state for %s: %v", playerID, err)
-		players, npcs := h.hub.Disconnect(playerID)
+		players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 		if players != nil {
 			h.hub.ForceKeyframe()
 			go h.hub.BroadcastState(players, npcs, nil, nil)
@@ -113,7 +113,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 
 	if err := session.Write(data); err != nil {
-		players, npcs := h.hub.Disconnect(playerID)
+		players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 		if players != nil {
 			h.hub.ForceKeyframe()
 			go h.hub.BroadcastState(players, npcs, nil, nil)
@@ -132,7 +132,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 	for {
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
-			players, npcs := h.hub.Disconnect(playerID)
+			players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 			if players != nil {
 				h.hub.ForceKeyframe()
 				go h.hub.BroadcastState(players, npcs, nil, nil)
@@ -161,7 +161,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				return true
 			}
 			if err := session.Write(data); err != nil {
-				players, npcs := h.hub.Disconnect(playerID)
+				players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 				if players != nil {
 					h.hub.ForceKeyframe()
 					go h.hub.BroadcastState(players, npcs, nil, nil)
@@ -297,7 +297,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 					continue
 				}
 				if err := session.Write(data); err != nil {
-					players, npcs := h.hub.Disconnect(playerID)
+					players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 					if players != nil {
 						h.hub.ForceKeyframe()
 						go h.hub.BroadcastState(players, npcs, nil, nil)
@@ -312,7 +312,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				continue
 			}
 			if err := session.Write(data); err != nil {
-				players, npcs := h.hub.Disconnect(playerID)
+				players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 				if players != nil {
 					h.hub.ForceKeyframe()
 					go h.hub.BroadcastState(players, npcs, nil, nil)

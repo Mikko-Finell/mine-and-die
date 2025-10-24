@@ -331,7 +331,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ### Next task
 
-- [ ] Instrument websocket send queues with telemetry counters (queue depth, drops) and surface them through the existing telemetry interfaces.
+- [x] Instrument websocket send queues with telemetry counters (queue depth, drops) and surface them through the existing telemetry interfaces.
+- [ ] Surface websocket queue telemetry metrics through the diagnostics HTTP response so operators can track depth and drop rates in real time.
 - [x] Document the next logical follow-up step.
 
 - [x] Give each client connection its own writer goroutine and bounded send queue.

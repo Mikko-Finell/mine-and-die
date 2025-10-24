@@ -145,6 +145,27 @@ func TestTelemetryTickBudgetOverrunMetrics(t *testing.T) {
 	}
 }
 
+func TestTelemetrySubscriberQueueSnapshot(t *testing.T) {
+	counters := newTelemetryCounters(nil)
+
+	counters.RecordSubscriberQueueDepth(3)
+	counters.RecordSubscriberQueueDepth(7)
+	counters.RecordSubscriberQueueDrop(7)
+	counters.RecordSubscriberQueueDepth(2)
+
+	snapshot := counters.Snapshot()
+	queues := snapshot.SubscriberQueues
+	if queues.Depth != 2 {
+		t.Fatalf("expected queue depth 2, got %d", queues.Depth)
+	}
+	if queues.MaxDepth != 7 {
+		t.Fatalf("expected max depth 7, got %d", queues.MaxDepth)
+	}
+	if queues.Drops != 1 {
+		t.Fatalf("expected drops 1, got %d", queues.Drops)
+	}
+}
+
 func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
 	metrics := &logging.Metrics{}
 	counters := newTelemetryCounters(telemetry.WrapMetrics(metrics))
@@ -188,6 +209,8 @@ func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
 	counters.RecordJournalDrop("")
 	counters.RecordCommandDropped("queue_full", "move")
 	counters.RecordCommandDropped("", "")
+	counters.RecordSubscriberQueueDepth(4)
+	counters.RecordSubscriberQueueDrop(4)
 
 	snapshot := metrics.Snapshot()
 	if got := snapshot[metricKeyBroadcastTotal]; got != 1 {
@@ -319,5 +342,14 @@ func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
 	commandUnknownKey := metricKeyCommandDropsTotalPrefix + "/unknown/unknown"
 	if got := snapshot[commandUnknownKey]; got != 1 {
 		t.Fatalf("expected command unknown metric 1, got %d", got)
+	}
+	if got := snapshot[metricKeySubscriberQueueDepth]; got != 4 {
+		t.Fatalf("expected subscriber queue depth 4, got %d", got)
+	}
+	if got := snapshot[metricKeySubscriberQueueMaxDepth]; got != 4 {
+		t.Fatalf("expected subscriber queue max depth 4, got %d", got)
+	}
+	if got := snapshot[metricKeySubscriberQueueDropsTotal]; got != 1 {
+		t.Fatalf("expected subscriber queue drops 1, got %d", got)
 	}
 }
