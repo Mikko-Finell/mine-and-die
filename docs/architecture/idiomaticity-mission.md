@@ -468,7 +468,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Add world equipment mutation coverage in `world_equipment_test.go` (or neighboring world tests) that verifies patch payloads through `items.EquipmentPayloadFromSlots` so equipment scaffolding uses the centralized constructors.
 - [x] Add `sim_engine_adapter` equipment patch conversion coverage that asserts `items.EquipmentPayloadFromSlots` assembles the payload so adapter cloning stays centralized.
 - [x] Add `sim_engine_adapter` equipment snapshot conversion coverage that asserts `items.EquipmentValueFromSlots` assembles the player and NPC equipment so snapshot cloning stays centralized.
-- [ ] Add `sim_engine_adapter` equipment keyframe conversion coverage that asserts the shared item assemblers build keyframe payloads so diff archival stays centralized.
+- [x] Add `sim_engine_adapter` equipment keyframe conversion coverage that asserts the shared item assemblers build keyframe payloads so diff archival stays centralized.
+- [x] Add `sim_engine_adapter` inventory keyframe conversion coverage that asserts the shared item assemblers build keyframe payloads so diff archival stays centralized.
+- [x] Add `sim_engine_adapter` equipment keyframe conversion coverage that asserts the shared item assemblers build simulation keyframe payloads so inbound journal restores stay centralized.
+- [x] Add `sim_engine_adapter` inventory keyframe conversion coverage that asserts the shared item assemblers build simulation keyframe payloads so inbound journal restores stay centralized.
+- [x] Add `sim_engine_adapter` keyframe ground item conversion coverage that asserts the shared clone helpers build snapshots in both directions so journal archival keeps using `items.CloneGroundItems`.
+- [ ] Add `sim_engine_adapter` keyframe recording coverage that proves `adapter.RecordKeyframe` clones ground items via `items.CloneGroundItems` before appending to the journal.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**

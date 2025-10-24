@@ -394,6 +394,350 @@ func TestSimActorFromLegacyEquipmentUsesItemsAssembler(t *testing.T) {
 	}
 }
 
+func TestLegacyKeyframeFromSimEquipmentUsesItemsAssembler(t *testing.T) {
+	simPlayerSlots := []sim.EquippedItem{{
+		Slot: sim.EquipSlotMainHand,
+		Item: sim.ItemStack{Type: sim.ItemType("sword"), FungibilityKey: "unique-sword", Quantity: 1},
+	}, {
+		Slot: sim.EquipSlotHead,
+		Item: sim.ItemStack{Type: sim.ItemType("helm"), FungibilityKey: "iron-helm", Quantity: 1},
+	}}
+	simNPCSlots := []sim.EquippedItem{{
+		Slot: sim.EquipSlotMainHand,
+		Item: sim.ItemStack{Type: sim.ItemType("axe"), FungibilityKey: "goblin-axe", Quantity: 1},
+	}}
+
+	frame := sim.Keyframe{
+		Tick:     88,
+		Sequence: 12,
+		Players: []sim.Player{{
+			Actor: sim.Actor{
+				ID:        "player-1",
+				Equipment: sim.Equipment{Slots: itemspkg.CloneEquippedItems(simPlayerSlots)},
+			},
+		}},
+		NPCs: []sim.NPC{{
+			Actor: sim.Actor{
+				ID:        "npc-1",
+				Equipment: sim.Equipment{Slots: itemspkg.CloneEquippedItems(simNPCSlots)},
+			},
+		}},
+	}
+
+	legacy := legacyKeyframeFromSim(frame)
+
+	players, ok := legacy.Players.([]Player)
+	if !ok {
+		t.Fatalf("expected legacy players to assert to []Player, got %T", legacy.Players)
+	}
+	if len(players) != 1 {
+		t.Fatalf("expected 1 legacy player, got %d", len(players))
+	}
+
+	npcs, ok := legacy.NPCs.([]NPC)
+	if !ok {
+		t.Fatalf("expected legacy NPCs to assert to []NPC, got %T", legacy.NPCs)
+	}
+	if len(npcs) != 1 {
+		t.Fatalf("expected 1 legacy NPC, got %d", len(npcs))
+	}
+
+	expectedPlayerSlots := []EquippedItem{{
+		Slot: EquipSlotMainHand,
+		Item: ItemStack{Type: ItemType("sword"), FungibilityKey: "unique-sword", Quantity: 1},
+	}, {
+		Slot: EquipSlotHead,
+		Item: ItemStack{Type: ItemType("helm"), FungibilityKey: "iron-helm", Quantity: 1},
+	}}
+	expectedNPCSlots := []EquippedItem{{
+		Slot: EquipSlotMainHand,
+		Item: ItemStack{Type: ItemType("axe"), FungibilityKey: "goblin-axe", Quantity: 1},
+	}}
+
+	expectedPlayerEquipment := itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment](append([]EquippedItem(nil), expectedPlayerSlots...))
+	expectedNPCEquipment := itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment](append([]EquippedItem(nil), expectedNPCSlots...))
+
+	if !reflect.DeepEqual(expectedPlayerEquipment, players[0].Equipment) {
+		t.Fatalf("expected player equipment %#v, got %#v", expectedPlayerEquipment, players[0].Equipment)
+	}
+	if !reflect.DeepEqual(expectedNPCEquipment, npcs[0].Equipment) {
+		t.Fatalf("expected npc equipment %#v, got %#v", expectedNPCEquipment, npcs[0].Equipment)
+	}
+
+	frame.Players[0].Equipment.Slots[0].Item.Quantity = 99
+	if players[0].Equipment.Slots[0].Item.Quantity != 1 {
+		t.Fatalf("expected legacy player equipment to deep copy slots, got %d", players[0].Equipment.Slots[0].Item.Quantity)
+	}
+
+	players[0].Equipment.Slots[0].Item.Quantity = 7
+	if frame.Players[0].Equipment.Slots[0].Item.Quantity != 99 {
+		t.Fatalf("expected legacy conversion to avoid mutating sim frame, got %d", frame.Players[0].Equipment.Slots[0].Item.Quantity)
+	}
+
+	frame.NPCs[0].Actor.Equipment.Slots[0].Item.Quantity = 42
+	if npcs[0].Equipment.Slots[0].Item.Quantity != 1 {
+		t.Fatalf("expected legacy npc equipment to deep copy slots, got %d", npcs[0].Equipment.Slots[0].Item.Quantity)
+	}
+
+	npcs[0].Equipment.Slots[0].Item.Quantity = 5
+	if frame.NPCs[0].Actor.Equipment.Slots[0].Item.Quantity != 42 {
+		t.Fatalf("expected npc conversion to avoid mutating sim frame, got %d", frame.NPCs[0].Actor.Equipment.Slots[0].Item.Quantity)
+	}
+}
+
+func TestLegacyKeyframeFromSimInventoryUsesItemsAssembler(t *testing.T) {
+	simPlayerSlots := []sim.InventorySlot{{
+		Slot: 0,
+		Item: sim.ItemStack{Type: sim.ItemType("potion"), FungibilityKey: "healing", Quantity: 3},
+	}, {
+		Slot: 1,
+		Item: sim.ItemStack{Type: sim.ItemType("arrow"), FungibilityKey: "iron-arrow", Quantity: 15},
+	}}
+	simNPCSlots := []sim.InventorySlot{{
+		Slot: 0,
+		Item: sim.ItemStack{Type: sim.ItemType("coin"), FungibilityKey: "gold", Quantity: 25},
+	}}
+
+	frame := sim.Keyframe{
+		Players: []sim.Player{{
+			Actor: sim.Actor{
+				ID:        "player-2",
+				Inventory: sim.Inventory{Slots: itemspkg.CloneInventorySlots(simPlayerSlots)},
+			},
+		}},
+		NPCs: []sim.NPC{{
+			Actor: sim.Actor{
+				ID:        "npc-2",
+				Inventory: sim.Inventory{Slots: itemspkg.CloneInventorySlots(simNPCSlots)},
+			},
+		}},
+	}
+
+	legacy := legacyKeyframeFromSim(frame)
+
+	players, ok := legacy.Players.([]Player)
+	if !ok {
+		t.Fatalf("expected legacy players to assert to []Player, got %T", legacy.Players)
+	}
+	if len(players) != 1 {
+		t.Fatalf("expected 1 legacy player, got %d", len(players))
+	}
+
+	npcs, ok := legacy.NPCs.([]NPC)
+	if !ok {
+		t.Fatalf("expected legacy NPCs to assert to []NPC, got %T", legacy.NPCs)
+	}
+	if len(npcs) != 1 {
+		t.Fatalf("expected 1 legacy NPC, got %d", len(npcs))
+	}
+
+	expectedPlayerSlots := []InventorySlot{{
+		Slot: 0,
+		Item: ItemStack{Type: ItemType("potion"), FungibilityKey: "healing", Quantity: 3},
+	}, {
+		Slot: 1,
+		Item: ItemStack{Type: ItemType("arrow"), FungibilityKey: "iron-arrow", Quantity: 15},
+	}}
+	expectedNPCSlots := []InventorySlot{{
+		Slot: 0,
+		Item: ItemStack{Type: ItemType("coin"), FungibilityKey: "gold", Quantity: 25},
+	}}
+
+	expectedPlayerInventory := itemspkg.InventoryValueFromSlots[InventorySlot, Inventory](append([]InventorySlot(nil), expectedPlayerSlots...))
+	expectedNPCInventory := itemspkg.InventoryValueFromSlots[InventorySlot, Inventory](append([]InventorySlot(nil), expectedNPCSlots...))
+
+	if !reflect.DeepEqual(expectedPlayerInventory, players[0].Inventory) {
+		t.Fatalf("expected player inventory %#v, got %#v", expectedPlayerInventory, players[0].Inventory)
+	}
+	if !reflect.DeepEqual(expectedNPCInventory, npcs[0].Inventory) {
+		t.Fatalf("expected npc inventory %#v, got %#v", expectedNPCInventory, npcs[0].Inventory)
+	}
+
+	frame.Players[0].Inventory.Slots[0].Item.Quantity = 99
+	if players[0].Inventory.Slots[0].Item.Quantity != 3 {
+		t.Fatalf("expected legacy player inventory to deep copy slots, got %d", players[0].Inventory.Slots[0].Item.Quantity)
+	}
+
+	players[0].Inventory.Slots[0].Item.Quantity = 7
+	if frame.Players[0].Inventory.Slots[0].Item.Quantity != 99 {
+		t.Fatalf("expected legacy conversion to avoid mutating sim inventory, got %d", frame.Players[0].Inventory.Slots[0].Item.Quantity)
+	}
+
+	frame.NPCs[0].Actor.Inventory.Slots[0].Item.Quantity = 50
+	if npcs[0].Inventory.Slots[0].Item.Quantity != 25 {
+		t.Fatalf("expected legacy npc inventory to deep copy slots, got %d", npcs[0].Inventory.Slots[0].Item.Quantity)
+	}
+
+	npcs[0].Inventory.Slots[0].Item.Quantity = 13
+	if frame.NPCs[0].Actor.Inventory.Slots[0].Item.Quantity != 50 {
+		t.Fatalf("expected npc conversion to avoid mutating sim inventory, got %d", frame.NPCs[0].Actor.Inventory.Slots[0].Item.Quantity)
+	}
+}
+
+func TestSimKeyframeFromLegacyEquipmentUsesItemsAssembler(t *testing.T) {
+	legacyPlayerSlots := []EquippedItem{{
+		Slot: EquipSlotMainHand,
+		Item: ItemStack{Type: ItemType("staff"), FungibilityKey: "mage-staff", Quantity: 1},
+	}}
+	legacyNPCSlots := []EquippedItem{{
+		Slot: EquipSlotBody,
+		Item: ItemStack{Type: ItemType("robe"), FungibilityKey: "cloth-robe", Quantity: 1},
+	}}
+
+	frame := keyframe{
+		Players: []Player{{
+			Actor: Actor{
+				ID:        "player-3",
+				Equipment: itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment](append([]EquippedItem(nil), legacyPlayerSlots...)),
+			},
+		}},
+		NPCs: []NPC{{
+			Actor: Actor{
+				ID:        "npc-3",
+				Equipment: itemspkg.EquipmentValueFromSlots[EquippedItem, Equipment](append([]EquippedItem(nil), legacyNPCSlots...)),
+			},
+		}},
+	}
+
+	simFrame := simKeyframeFromLegacy(frame)
+
+	if len(simFrame.Players) != 1 {
+		t.Fatalf("expected 1 sim player, got %d", len(simFrame.Players))
+	}
+	if len(simFrame.NPCs) != 1 {
+		t.Fatalf("expected 1 sim npc, got %d", len(simFrame.NPCs))
+	}
+
+	expectedPlayerSlots := []sim.EquippedItem{{
+		Slot: sim.EquipSlotMainHand,
+		Item: sim.ItemStack{Type: sim.ItemType("staff"), FungibilityKey: "mage-staff", Quantity: 1},
+	}}
+	expectedNPCSlots := []sim.EquippedItem{{
+		Slot: sim.EquipSlotBody,
+		Item: sim.ItemStack{Type: sim.ItemType("robe"), FungibilityKey: "cloth-robe", Quantity: 1},
+	}}
+
+	expectedPlayerEquipment := itemspkg.EquipmentValueFromSlots[sim.EquippedItem, sim.Equipment](append([]sim.EquippedItem(nil), expectedPlayerSlots...))
+	expectedNPCEquipment := itemspkg.EquipmentValueFromSlots[sim.EquippedItem, sim.Equipment](append([]sim.EquippedItem(nil), expectedNPCSlots...))
+
+	if !reflect.DeepEqual(expectedPlayerEquipment, simFrame.Players[0].Equipment) {
+		t.Fatalf("expected sim player equipment %#v, got %#v", expectedPlayerEquipment, simFrame.Players[0].Equipment)
+	}
+	if !reflect.DeepEqual(expectedNPCEquipment, simFrame.NPCs[0].Equipment) {
+		t.Fatalf("expected sim npc equipment %#v, got %#v", expectedNPCEquipment, simFrame.NPCs[0].Equipment)
+	}
+
+	legacyPlayers, ok := frame.Players.([]Player)
+	if !ok {
+		t.Fatalf("expected legacy players to assert, got %T", frame.Players)
+	}
+	legacyPlayers[0].Equipment.Slots[0].Item.Quantity = 5
+	if simFrame.Players[0].Equipment.Slots[0].Item.Quantity != 1 {
+		t.Fatalf("expected sim player equipment to deep copy slots, got %d", simFrame.Players[0].Equipment.Slots[0].Item.Quantity)
+	}
+
+	simFrame.Players[0].Equipment.Slots[0].Item.Quantity = 9
+	if legacyPlayers[0].Equipment.Slots[0].Item.Quantity != 5 {
+		t.Fatalf("expected legacy player equipment to remain unchanged, got %d", legacyPlayers[0].Equipment.Slots[0].Item.Quantity)
+	}
+
+	legacyNPCs, ok := frame.NPCs.([]NPC)
+	if !ok {
+		t.Fatalf("expected legacy NPCs to assert, got %T", frame.NPCs)
+	}
+	legacyNPCs[0].Equipment.Slots[0].Item.Quantity = 7
+	if simFrame.NPCs[0].Equipment.Slots[0].Item.Quantity != 1 {
+		t.Fatalf("expected sim npc equipment to deep copy slots, got %d", simFrame.NPCs[0].Equipment.Slots[0].Item.Quantity)
+	}
+
+	simFrame.NPCs[0].Equipment.Slots[0].Item.Quantity = 11
+	if legacyNPCs[0].Equipment.Slots[0].Item.Quantity != 7 {
+		t.Fatalf("expected legacy npc equipment to remain unchanged, got %d", legacyNPCs[0].Equipment.Slots[0].Item.Quantity)
+	}
+}
+
+func TestSimKeyframeFromLegacyInventoryUsesItemsAssembler(t *testing.T) {
+	legacyPlayerSlots := []InventorySlot{{
+		Slot: 0,
+		Item: ItemStack{Type: ItemType("gem"), FungibilityKey: "ruby", Quantity: 2},
+	}}
+	legacyNPCSlots := []InventorySlot{{
+		Slot: 0,
+		Item: ItemStack{Type: ItemType("scroll"), FungibilityKey: "fireball", Quantity: 1},
+	}}
+
+	frame := keyframe{
+		Players: []Player{{
+			Actor: Actor{
+				ID:        "player-4",
+				Inventory: itemspkg.InventoryValueFromSlots[InventorySlot, Inventory](append([]InventorySlot(nil), legacyPlayerSlots...)),
+			},
+		}},
+		NPCs: []NPC{{
+			Actor: Actor{
+				ID:        "npc-4",
+				Inventory: itemspkg.InventoryValueFromSlots[InventorySlot, Inventory](append([]InventorySlot(nil), legacyNPCSlots...)),
+			},
+		}},
+	}
+
+	simFrame := simKeyframeFromLegacy(frame)
+
+	if len(simFrame.Players) != 1 {
+		t.Fatalf("expected 1 sim player, got %d", len(simFrame.Players))
+	}
+	if len(simFrame.NPCs) != 1 {
+		t.Fatalf("expected 1 sim npc, got %d", len(simFrame.NPCs))
+	}
+
+	expectedPlayerSlots := []sim.InventorySlot{{
+		Slot: 0,
+		Item: sim.ItemStack{Type: sim.ItemType("gem"), FungibilityKey: "ruby", Quantity: 2},
+	}}
+	expectedNPCSlots := []sim.InventorySlot{{
+		Slot: 0,
+		Item: sim.ItemStack{Type: sim.ItemType("scroll"), FungibilityKey: "fireball", Quantity: 1},
+	}}
+
+	expectedPlayerInventory := itemspkg.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory](append([]sim.InventorySlot(nil), expectedPlayerSlots...))
+	expectedNPCInventory := itemspkg.InventoryValueFromSlots[sim.InventorySlot, sim.Inventory](append([]sim.InventorySlot(nil), expectedNPCSlots...))
+
+	if !reflect.DeepEqual(expectedPlayerInventory, simFrame.Players[0].Inventory) {
+		t.Fatalf("expected sim player inventory %#v, got %#v", expectedPlayerInventory, simFrame.Players[0].Inventory)
+	}
+	if !reflect.DeepEqual(expectedNPCInventory, simFrame.NPCs[0].Inventory) {
+		t.Fatalf("expected sim npc inventory %#v, got %#v", expectedNPCInventory, simFrame.NPCs[0].Inventory)
+	}
+
+	legacyPlayers, ok := frame.Players.([]Player)
+	if !ok {
+		t.Fatalf("expected legacy players to assert, got %T", frame.Players)
+	}
+	legacyPlayers[0].Inventory.Slots[0].Item.Quantity = 5
+	if simFrame.Players[0].Inventory.Slots[0].Item.Quantity != 2 {
+		t.Fatalf("expected sim player inventory to deep copy slots, got %d", simFrame.Players[0].Inventory.Slots[0].Item.Quantity)
+	}
+
+	simFrame.Players[0].Inventory.Slots[0].Item.Quantity = 7
+	if legacyPlayers[0].Inventory.Slots[0].Item.Quantity != 5 {
+		t.Fatalf("expected legacy player inventory to remain unchanged, got %d", legacyPlayers[0].Inventory.Slots[0].Item.Quantity)
+	}
+
+	legacyNPCs, ok := frame.NPCs.([]NPC)
+	if !ok {
+		t.Fatalf("expected legacy NPCs to assert, got %T", frame.NPCs)
+	}
+	legacyNPCs[0].Inventory.Slots[0].Item.Quantity = 3
+	if simFrame.NPCs[0].Inventory.Slots[0].Item.Quantity != 1 {
+		t.Fatalf("expected sim npc inventory to deep copy slots, got %d", simFrame.NPCs[0].Inventory.Slots[0].Item.Quantity)
+	}
+
+	simFrame.NPCs[0].Inventory.Slots[0].Item.Quantity = 9
+	if legacyNPCs[0].Inventory.Slots[0].Item.Quantity != 3 {
+		t.Fatalf("expected legacy npc inventory to remain unchanged, got %d", legacyNPCs[0].Inventory.Slots[0].Item.Quantity)
+	}
+}
+
 func TestSimKeyframeConversionRoundTripPreservesSequencing(t *testing.T) {
 	recorded := time.Unix(1700000000, 0).UTC()
 	legacy := keyframe{
@@ -462,6 +806,101 @@ func TestSimKeyframeConversionRoundTripPreservesSequencing(t *testing.T) {
 	roundTrip := legacyKeyframeFromSim(simKeyframeFromLegacy(legacy))
 	if !reflect.DeepEqual(legacy, roundTrip) {
 		t.Fatalf("keyframe round trip mismatch\nlegacy: %#v\nround-trip: %#v", legacy, roundTrip)
+	}
+}
+
+func TestSimKeyframeFromLegacyClonesGroundItems(t *testing.T) {
+	legacyGround := []itemspkg.GroundItem{{
+		ID:             "ground-1",
+		Type:           "potion",
+		FungibilityKey: "potion-small",
+		X:              4.5,
+		Y:              -2.25,
+		Qty:            3,
+	}, {
+		ID:             "ground-2",
+		Type:           "gold",
+		FungibilityKey: "gold",
+		X:              -7.5,
+		Y:              8.75,
+		Qty:            120,
+	}}
+	expected := itemspkg.CloneGroundItems(legacyGround)
+
+	frame := keyframe{
+		Tick:        99,
+		Sequence:    1001,
+		GroundItems: legacyGround,
+	}
+
+	converted := simKeyframeFromLegacy(frame)
+
+	if !reflect.DeepEqual(expected, converted.GroundItems) {
+		t.Fatalf("expected ground items %#v, got %#v", expected, converted.GroundItems)
+	}
+
+	legacyGround[0].Qty = 9
+	if converted.GroundItems[0].Qty != expected[0].Qty {
+		t.Fatalf("expected converted ground item qty %d after legacy mutation, got %d", expected[0].Qty, converted.GroundItems[0].Qty)
+	}
+
+	converted.GroundItems[1].Qty = 64
+	if legacyGround[1].Qty != expected[1].Qty {
+		t.Fatalf("expected legacy ground item qty %d after sim mutation, got %d", expected[1].Qty, legacyGround[1].Qty)
+	}
+
+	if &converted.GroundItems[0] == &expected[0] {
+		t.Fatalf("expected converted ground items to clone values, but addresses match")
+	}
+}
+
+func TestLegacyKeyframeFromSimClonesGroundItems(t *testing.T) {
+	simGround := []itemspkg.GroundItem{{
+		ID:             "ground-3",
+		Type:           "scroll",
+		FungibilityKey: "scroll-fire",
+		X:              12.5,
+		Y:              0.25,
+		Qty:            1,
+	}, {
+		ID:             "ground-4",
+		Type:           "potion",
+		FungibilityKey: "potion-large",
+		X:              -3.5,
+		Y:              -9.5,
+		Qty:            2,
+	}}
+	expected := itemspkg.CloneGroundItems(simGround)
+
+	frame := sim.Keyframe{
+		Tick:        200,
+		Sequence:    211,
+		GroundItems: simGround,
+	}
+
+	converted := legacyKeyframeFromSim(frame)
+
+	typed, ok := converted.GroundItems.([]itemspkg.GroundItem)
+	if !ok {
+		t.Fatalf("expected legacy ground items to be []itemspkg.GroundItem, got %T", converted.GroundItems)
+	}
+
+	if !reflect.DeepEqual(expected, typed) {
+		t.Fatalf("expected legacy ground items %#v, got %#v", expected, typed)
+	}
+
+	frame.GroundItems[0].Qty = 17
+	if typed[0].Qty != expected[0].Qty {
+		t.Fatalf("expected legacy ground item qty %d after sim mutation, got %d", expected[0].Qty, typed[0].Qty)
+	}
+
+	typed[1].Qty = 42
+	if frame.GroundItems[1].Qty != expected[1].Qty {
+		t.Fatalf("expected sim ground item qty %d after legacy mutation, got %d", expected[1].Qty, frame.GroundItems[1].Qty)
+	}
+
+	if &typed[0] == &expected[0] {
+		t.Fatalf("expected legacy keyframe conversion to clone ground items, but addresses match")
 	}
 }
 
