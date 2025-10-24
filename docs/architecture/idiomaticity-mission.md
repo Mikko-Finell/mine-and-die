@@ -398,8 +398,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [ ] Configure `golangci-lint` with cyclomatic limits and forbid package cycles.
   - Introduce a `make lint` entry that runs `golangci-lint` with `gocyclo` thresholds for Go code and a `depguard` rule that blocks `internal/sim/internal` imports from networking packages before wiring it into CI.
 - [ ] Add CI race detection (`go test -race ./...`).
-- [ ] Commit a concise `ARCHITECTURE.md` and `STYLE.md` next to the code, not only in docs.
-- [ ] Document dependency rules and testing expectations.
+- [x] Commit a concise `ARCHITECTURE.md` and `STYLE.md` next to the code, not only in docs.
+- [x] Document dependency rules and testing expectations.
 
 **Definition of done:**
 
