@@ -1257,6 +1257,66 @@ func TestLegacyAdapterRecordKeyframeClonesGroundItems(t *testing.T) {
 	}
 }
 
+func TestLegacyAdapterRecordKeyframeCopiesConfig(t *testing.T) {
+	hub := newHub()
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
+	}
+
+	config := sim.WorldConfig{
+		Obstacles:      true,
+		ObstaclesCount: 6,
+		GoldMines:      true,
+		GoldMineCount:  4,
+		NPCs:           true,
+		GoblinCount:    7,
+		RatCount:       8,
+		NPCCount:       15,
+		Lava:           true,
+		LavaCount:      9,
+		Seed:           "crystal-caves",
+		Width:          160,
+		Height:         140,
+	}
+	expected := config
+
+	frame := sim.Keyframe{
+		Sequence: 512,
+		Tick:     1331,
+		Config:   config,
+		Players:  []sim.Player{{Actor: sim.Actor{ID: "player-150"}}},
+		GroundItems: []itemspkg.GroundItem{{
+			ID:             "ground-150",
+			Type:           "gem",
+			FungibilityKey: "emerald",
+			X:              2.5,
+			Y:              -1.25,
+			Qty:            5,
+		}},
+	}
+
+	adapter.RecordKeyframe(frame)
+
+	frame.Config.Seed = "mutated"
+	config.GoblinCount = 99
+
+	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
+	}
+
+	recordedConfig, ok := recorded.Config.(worldConfig)
+	if !ok {
+		t.Fatalf("expected recorded config to be worldConfig, got %T", recorded.Config)
+	}
+
+	expectedLegacy := legacyWorldConfigFromSim(expected)
+	if !reflect.DeepEqual(expectedLegacy, recordedConfig) {
+		t.Fatalf("expected recorded config to remain unchanged, got %#v want %#v", recordedConfig, expectedLegacy)
+	}
+}
+
 func TestLegacyAdapterKeyframeBySequenceClonesGroundItems(t *testing.T) {
 	hub := newHub()
 	adapter := hub.adapter
@@ -1327,6 +1387,80 @@ func TestLegacyAdapterKeyframeBySequenceClonesGroundItems(t *testing.T) {
 
 	if !reflect.DeepEqual(expected, recordedGround) {
 		t.Fatalf("expected journal to retain original ground items, got %#v want %#v", recordedGround, expected)
+	}
+}
+
+func TestLegacyAdapterKeyframeBySequenceCopiesConfig(t *testing.T) {
+	hub := newHub()
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
+	}
+
+	config := sim.WorldConfig{
+		Obstacles:      true,
+		ObstaclesCount: 7,
+		GoldMines:      true,
+		GoldMineCount:  3,
+		NPCs:           true,
+		GoblinCount:    4,
+		RatCount:       6,
+		NPCCount:       10,
+		Lava:           true,
+		LavaCount:      8,
+		Seed:           "volcano",
+		Width:          192,
+		Height:         108,
+	}
+	expected := config
+
+	frame := sim.Keyframe{
+		Sequence:  704,
+		Tick:      2112,
+		Config:    config,
+		Players:   []sim.Player{{Actor: sim.Actor{ID: "player-200"}}},
+		Obstacles: []sim.Obstacle{{ID: "obstacle-700"}},
+	}
+
+	adapter.RecordKeyframe(frame)
+
+	config.GoldMineCount = 11
+	frame.Config.Seed = "mutated"
+
+	fetched, ok := adapter.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected adapter to return keyframe %d", frame.Sequence)
+	}
+
+	if fetched.Config != expected {
+		t.Fatalf("unexpected adapter keyframe config: got %#v want %#v", fetched.Config, expected)
+	}
+
+	fetched.Config.Height = 512
+	fetched.Config.LavaCount = 2
+
+	again, ok := adapter.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected adapter to return keyframe %d on second fetch", frame.Sequence)
+	}
+
+	if again.Config != expected {
+		t.Fatalf("expected adapter keyframe config to remain unchanged, got %#v want %#v", again.Config, expected)
+	}
+
+	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
+	}
+
+	recordedConfig, ok := recorded.Config.(worldConfig)
+	if !ok {
+		t.Fatalf("expected recorded config to be worldConfig, got %T", recorded.Config)
+	}
+
+	expectedLegacy := legacyWorldConfigFromSim(expected)
+	if !reflect.DeepEqual(expectedLegacy, recordedConfig) {
+		t.Fatalf("expected journal config to remain unchanged, got %#v want %#v", recordedConfig, expectedLegacy)
 	}
 }
 
