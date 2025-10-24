@@ -473,7 +473,16 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Add `sim_engine_adapter` equipment keyframe conversion coverage that asserts the shared item assemblers build simulation keyframe payloads so inbound journal restores stay centralized.
 - [x] Add `sim_engine_adapter` inventory keyframe conversion coverage that asserts the shared item assemblers build simulation keyframe payloads so inbound journal restores stay centralized.
 - [x] Add `sim_engine_adapter` keyframe ground item conversion coverage that asserts the shared clone helpers build snapshots in both directions so journal archival keeps using `items.CloneGroundItems`.
-- [ ] Add `sim_engine_adapter` keyframe recording coverage that proves `adapter.RecordKeyframe` clones ground items via `items.CloneGroundItems` before appending to the journal.
+- [x] Add `sim_engine_adapter` keyframe recording coverage that proves `adapter.RecordKeyframe` clones ground items via `items.CloneGroundItems` before appending to the journal.
+- [x] Add `sim_engine_adapter` keyframe lookup coverage that proves `adapter.KeyframeBySequence` clones ground items via `items.CloneGroundItems` when serving callers.
+- [x] Add hub keyframe lookup coverage that proves `Hub.Keyframe` clones ground items via `items.CloneGroundItems` so snapshots cannot mutate the journal.
+- [x] Add hub keyframe request coverage that proves `HandleKeyframeRequest` clones ground items via `items.CloneGroundItems` before responding to clients.
+- [x] Add hub keyframe request coverage that proves player and NPC slices are deep-cloned so client mutations cannot affect the journal state.
+- [x] Add hub keyframe lookup coverage that proves player and NPC slices are deep-cloned so snapshots cannot mutate the journal state.
+- [x] Add hub keyframe request coverage that proves obstacle slices are deep-cloned so client mutations cannot affect the journal state.
+- [x] Add hub keyframe lookup coverage that proves obstacle slices are deep-cloned so snapshots cannot mutate the journal state.
+- [x] Add hub keyframe request coverage that proves world config metadata is copied before responding so client mutations cannot affect the journal state.
+- [ ] Add hub keyframe lookup coverage that proves world config metadata is copied before returning so snapshots cannot mutate the journal state.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**
