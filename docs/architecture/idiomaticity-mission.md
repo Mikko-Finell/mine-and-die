@@ -365,7 +365,6 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Update `server/patches.go` effect event re-exports to point at the typed definitions so downstream callers stop depending on `internal/journal` structs.
 - [x] Sketch `internal/net/proto` versioned snapshot/patch encoders that wrap the typed contract structs while keeping the existing JSON shape for the compatibility window.
 - [x] Thread the new versioned encoders through the hub state/keyframe/join marshaling paths while defaulting to version 1 payloads.
-- [ ] Add version-selection helpers in `internal/net/proto` so callers can request future protocol revisions while keeping the legacy JSON layout as the default.
 - [ ] Freeze serialization format and validate via property tests (decode→encode→decode).
 - [ ] Introduce `Version` field in client protocol messages.
 - [ ] Update CI to fail on incompatible schema changes unless a migration flag is set.
