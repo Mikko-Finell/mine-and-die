@@ -649,17 +649,17 @@ func convertPatchPayloadFromSim(payload any) any {
 	case sim.PositionPayload:
 		return PositionPayload{X: value.X, Y: value.Y}
 	case sim.FacingPayload:
-		return FacingPayload{Facing: legacyFacingFromSim(value.Facing)}
+		return FacingPayload{Facing: sim.FacingDirection(legacyFacingFromSim(value.Facing))}
 	case sim.PlayerIntentPayload:
 		return PlayerIntentPayload{DX: value.DX, DY: value.DY}
 	case sim.HealthPayload:
 		return HealthPayload{Health: value.Health, MaxHealth: value.MaxHealth}
 	case sim.InventoryPayload:
-		inv := sim.Inventory{Slots: itemspkg.CloneInventorySlots(value.Slots)}
-		return itemspkg.InventoryFromSim(inv, inventorySlotFromSim, itemspkg.InventoryPayloadFromSlots[InventorySlot, InventoryPayload])
+		slots := itemspkg.CloneInventorySlots(value.Slots)
+		return itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, InventoryPayload](slots)
 	case sim.EquipmentPayload:
-		eq := sim.Equipment{Slots: itemspkg.CloneEquippedItems(value.Slots)}
-		return itemspkg.EquipmentFromSim(eq, equippedItemFromSim, itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload])
+		slots := itemspkg.CloneEquippedItems(value.Slots)
+		return itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, EquipmentPayload](slots)
 	case sim.EffectParamsPayload:
 		return internaleffects.LegacyEffectParamsPayloadFromSim(value)
 	case sim.GroundItemQtyPayload:

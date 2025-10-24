@@ -188,17 +188,21 @@ func TestAliveEffectIDsFromStates(t *testing.T) {
 func TestSimPatchConversionRoundTrip(t *testing.T) {
 	legacyPatches := []Patch{
 		{Kind: PatchPlayerPos, EntityID: "player-1", Payload: PositionPayload{X: 1.5, Y: -2.25}},
-		{Kind: PatchPlayerFacing, EntityID: "player-2", Payload: FacingPayload{Facing: FacingRight}},
+		{Kind: PatchPlayerFacing, EntityID: "player-2", Payload: FacingPayload{Facing: sim.FacingDirection(FacingRight)}},
 		{Kind: PatchPlayerIntent, EntityID: "player-3", Payload: PlayerIntentPayload{DX: 0.5, DY: 0.75}},
 		{Kind: PatchPlayerHealth, EntityID: "player-4", Payload: HealthPayload{Health: 75, MaxHealth: 100}},
-		{Kind: PatchPlayerInventory, EntityID: "player-5", Payload: itemspkg.InventoryPayloadFromSlots[InventorySlot, InventoryPayload]([]InventorySlot{{
-			Slot: 3,
-			Item: ItemStack{Type: ItemType("arrow"), Quantity: 20},
-		}})},
-		{Kind: PatchPlayerEquipment, EntityID: "player-6", Payload: itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload]([]EquippedItem{{
-			Slot: EquipSlotHead,
-			Item: ItemStack{Type: ItemType("helm"), Quantity: 1},
-		}})},
+		{Kind: PatchPlayerInventory, EntityID: "player-5", Payload: itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, InventoryPayload](
+			itemspkg.SimInventorySlotsFromAny([]InventorySlot{{
+				Slot: 3,
+				Item: ItemStack{Type: ItemType("arrow"), Quantity: 20},
+			}}),
+		)},
+		{Kind: PatchPlayerEquipment, EntityID: "player-6", Payload: itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, EquipmentPayload](
+			itemspkg.SimEquippedItemsFromAny([]EquippedItem{{
+				Slot: EquipSlotHead,
+				Item: ItemStack{Type: ItemType("helm"), Quantity: 1},
+			}}),
+		)},
 		{Kind: PatchEffectParams, EntityID: "effect-1", Payload: EffectParamsPayload{Params: map[string]float64{"radius": 4}}},
 		{Kind: PatchGroundItemQty, EntityID: "ground-1", Payload: GroundItemQtyPayload{Qty: 9}},
 	}
@@ -229,7 +233,9 @@ func TestConvertPatchPayloadToSimInventoryPointerClones(t *testing.T) {
 		Item: ItemStack{Type: ItemType("arrow"), FungibilityKey: "stack", Quantity: 3},
 	}}
 
-	payload := itemspkg.InventoryPayloadFromSlots[InventorySlot, InventoryPayload](slots)
+	payload := itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, InventoryPayload](
+		itemspkg.SimInventorySlotsFromAny(slots),
+	)
 	converted, ok := convertPatchPayloadToSim(&payload).(sim.InventoryPayload)
 	if !ok {
 		t.Fatalf("expected sim.InventoryPayload, got %T", convertPatchPayloadToSim(payload))
@@ -259,7 +265,9 @@ func TestConvertPatchPayloadToSimEquipmentPointerClones(t *testing.T) {
 		Item: ItemStack{Type: ItemType("sword"), FungibilityKey: "unique", Quantity: 1},
 	}}
 
-	payload := itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload](slots)
+	payload := itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, EquipmentPayload](
+		itemspkg.SimEquippedItemsFromAny(slots),
+	)
 	converted, ok := convertPatchPayloadToSim(&payload).(sim.EquipmentPayload)
 	if !ok {
 		t.Fatalf("expected sim.EquipmentPayload, got %T", convertPatchPayloadToSim(payload))
@@ -305,7 +313,9 @@ func TestLegacyPatchesFromSimEquipmentUsesItemsAssembler(t *testing.T) {
 		Slot: EquipSlotMainHand,
 		Item: ItemStack{Type: ItemType("sword"), FungibilityKey: "unique", Quantity: 1},
 	}}
-	expectedPayload := itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload](append([]EquippedItem(nil), expectedSlots...))
+	expectedPayload := itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, EquipmentPayload](
+		itemspkg.SimEquippedItemsFromAny(append([]EquippedItem(nil), expectedSlots...)),
+	)
 
 	for i, patch := range converted {
 		if patch.Kind != legacyPatchKindFromSim(patches[i].Kind) {
@@ -317,12 +327,8 @@ func TestLegacyPatchesFromSimEquipmentUsesItemsAssembler(t *testing.T) {
 			t.Fatalf("expected EquipmentPayload, got %T", patch.Payload)
 		}
 
-		slots, ok := payload.Slots.([]EquippedItem)
-		if !ok {
-			t.Fatalf("expected equipment slots to use []EquippedItem, got %T", payload.Slots)
-		}
-
-		if !reflect.DeepEqual(expectedSlots, slots) {
+		slots := itemspkg.SimEquippedItemsFromAny(payload.Slots)
+		if !reflect.DeepEqual(itemspkg.SimEquippedItemsFromAny(expectedSlots), slots) {
 			t.Fatalf("expected slots %#v, got %#v", expectedSlots, slots)
 		}
 
@@ -332,10 +338,7 @@ func TestLegacyPatchesFromSimEquipmentUsesItemsAssembler(t *testing.T) {
 	}
 
 	simSlots[0].Item.Quantity = 99
-	convertedSlots, ok := converted[0].Payload.(EquipmentPayload).Slots.([]EquippedItem)
-	if !ok {
-		t.Fatalf("expected EquipmentPayload slots to assert, got %T", converted[0].Payload)
-	}
+	convertedSlots := itemspkg.SimEquippedItemsFromAny(converted[0].Payload.(EquipmentPayload).Slots)
 	if convertedSlots[0].Item.Quantity != 1 {
 		t.Fatalf("expected converted payload to retain quantity 1, got %d", convertedSlots[0].Item.Quantity)
 	}

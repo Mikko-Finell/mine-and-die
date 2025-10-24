@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	itemspkg "mine-and-die/server/internal/items"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
@@ -148,14 +149,11 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected payload to be NPCInventoryPayload, got %T", patch.Payload)
 	}
-	slots, ok := payload.Slots.([]InventorySlot)
-	if !ok {
-		t.Fatalf("expected payload slots to be []InventorySlot, got %T", payload.Slots)
-	}
+	slots := itemspkg.SimInventorySlotsFromAny(payload.Slots)
 	if len(slots) != 1 {
 		t.Fatalf("expected payload to contain 1 slot, got %d", len(slots))
 	}
-	if slots[0].Item.Type != ItemTypeGold {
+	if ItemType(slots[0].Item.Type) != ItemTypeGold {
 		t.Fatalf("expected slot item type %q, got %q", ItemTypeGold, slots[0].Item.Type)
 	}
 	if slots[0].Item.Quantity != 1 {

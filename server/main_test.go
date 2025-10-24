@@ -297,7 +297,7 @@ func TestMovementEmitsPlayerPositionPatch(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected facing payload to be PlayerFacingPayload, got %T", facingPatch.Payload)
 	}
-	if facingPayload.Facing != FacingRight {
+	if facingPayload.Facing != sim.FacingDirection(FacingRight) {
 		hub.mu.Unlock()
 		t.Fatalf("expected facing payload to be %q, got %q", FacingRight, facingPayload.Facing)
 	}
