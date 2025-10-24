@@ -2,6 +2,7 @@ package proto
 
 import (
 	"encoding/json"
+	"fmt"
 
 	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
@@ -129,7 +130,16 @@ type ClientMessage struct {
 // DecodeClientMessage converts raw websocket payloads into a structured message.
 func DecodeClientMessage(payload []byte) (ClientMessage, error) {
 	var msg ClientMessage
-	return msg, json.Unmarshal(payload, &msg)
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		return msg, err
+	}
+	if msg.Ver == 0 {
+		msg.Ver = Version
+	}
+	if msg.Ver != Version {
+		return msg, fmt.Errorf("unsupported client protocol version %d", msg.Ver)
+	}
+	return msg, nil
 }
 
 // ClientCommand captures the structured simulation command carried by a

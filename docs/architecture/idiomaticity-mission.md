@@ -348,9 +348,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## [IN PROGRESS] Phase 4 — Typed Contracts & Versioning
+## [DONE] Phase 4 — Typed Contracts & Versioning
 
-- [ ] Objective: Solidify data interchange formats and backward compatibility.
+- [x] Objective: Solidify data interchange formats and backward compatibility.
 
 ### Next task
 
@@ -365,15 +365,17 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Update `server/patches.go` effect event re-exports to point at the typed definitions so downstream callers stop depending on `internal/journal` structs.
 - [x] Sketch `internal/net/proto` versioned snapshot/patch encoders that wrap the typed contract structs while keeping the existing JSON shape for the compatibility window.
 - [x] Thread the new versioned encoders through the hub state/keyframe/join marshaling paths while defaulting to version 1 payloads.
-- [ ] Freeze serialization format and validate via property tests (decode→encode→decode).
-- [ ] Introduce `Version` field in client protocol messages.
-- [ ] Update CI to fail on incompatible schema changes unless a migration flag is set.
+- [x] Freeze serialization format and validate via property tests (decode→encode→decode).
+  - Lock version 1 snapshot/join/keyframe JSON fixtures under `internal/net/proto/testdata` and add round-trip tests so encoding stays stable.
+- [x] Introduce `Version` field in client protocol messages.
+  - Thread the websocket client payload version through `ClientMessage` decode/encode helpers while defaulting to version 1 when absent.
+- [x] Update CI to fail on incompatible schema changes unless a migration flag is set.
 
 **Definition of done:**
 
-- [ ] Keep patches, snapshots, and messages typed and versioned.
-- [ ] Keep compatibility mode available for older clients.
-- [ ] Keep the golden test producing identical checksums.
+- [x] Keep patches, snapshots, and messages typed and versioned.
+- [x] Keep compatibility mode available for older clients.
+- [x] Keep the golden test producing identical checksums.
 
 ---
 
@@ -383,7 +385,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ### Next task
 
-- [ ] Document the next logical follow-up step.
+- [ ] Document the next logical follow-up step for Phase 5, outlining how the observability tooling will be staged alongside new `/debug/pprof/` endpoints.
 
 - [ ] Integrate `pprof` and optional tracing endpoints under `/debug/pprof/`.
 - [ ] Add `make deps-check` to enforce import boundaries (`net/*` must not import `sim/*` internals).
