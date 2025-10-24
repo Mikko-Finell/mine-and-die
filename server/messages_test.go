@@ -1298,6 +1298,78 @@ func TestHandleKeyframeRequestClonesObstacles(t *testing.T) {
 	}
 }
 
+func TestHubKeyframeCopiesConfig(t *testing.T) {
+	hub := newHub()
+	adapter := hub.adapter
+	if adapter == nil {
+		t.Fatalf("expected hub adapter to be initialized")
+	}
+
+	config := sim.WorldConfig{
+		Obstacles:      true,
+		ObstaclesCount: 4,
+		GoldMines:      true,
+		GoldMineCount:  2,
+		NPCs:           true,
+		GoblinCount:    3,
+		RatCount:       6,
+		NPCCount:       9,
+		Lava:           true,
+		LavaCount:      5,
+		Seed:           "volcano",
+		Width:          256,
+		Height:         128,
+	}
+	expected := config
+
+	frame := sim.Keyframe{
+		Sequence: 381,
+		Tick:     2701,
+		Config:   config,
+	}
+
+	adapter.RecordKeyframe(frame)
+
+	config.GoldMineCount = 77
+	frame.Config.Seed = "mutated"
+
+	snapshot, ok := hub.Keyframe(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d", frame.Sequence)
+	}
+
+	if snapshot.Config != expected {
+		t.Fatalf("unexpected keyframe config: got %#v want %#v", snapshot.Config, expected)
+	}
+
+	snapshot.Config.Height = 999
+	snapshot.Config.LavaCount = 42
+
+	again, ok := hub.Keyframe(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected hub to return keyframe %d on second lookup", frame.Sequence)
+	}
+
+	if again.Config != expected {
+		t.Fatalf("expected keyframe config to remain unchanged, got %#v want %#v", again.Config, expected)
+	}
+
+	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
+	}
+
+	recordedConfig, ok := recorded.Config.(worldConfig)
+	if !ok {
+		t.Fatalf("expected recorded config to be worldConfig, got %T", recorded.Config)
+	}
+
+	expectedLegacy := legacyWorldConfigFromSim(expected)
+	if !reflect.DeepEqual(expectedLegacy, recordedConfig) {
+		t.Fatalf("expected journal config to remain unchanged, got %#v want %#v", recordedConfig, expectedLegacy)
+	}
+}
+
 func TestHandleKeyframeRequestCopiesConfig(t *testing.T) {
 	hub := newHub()
 	adapter := hub.adapter

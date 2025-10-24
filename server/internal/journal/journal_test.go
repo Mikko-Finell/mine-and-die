@@ -1,6 +1,7 @@
 package journal
 
 import (
+	"reflect"
 	"testing"
 
 	effectcontract "mine-and-die/server/effects/contract"
@@ -278,5 +279,149 @@ func TestJournalResyncPolicySignals(t *testing.T) {
 
 	if _, ok := j.ConsumeResyncHint(); ok {
 		t.Fatalf("expected no resync hint without a new lost spawn")
+	}
+}
+
+func TestJournalRecordKeyframeCopiesConfig(t *testing.T) {
+	type testWorldConfig struct {
+		Obstacles      bool
+		ObstaclesCount int
+		GoldMines      bool
+		GoldMineCount  int
+		NPCs           bool
+		GoblinCount    int
+		RatCount       int
+		NPCCount       int
+		Lava           bool
+		LavaCount      int
+		Seed           string
+		Width          float64
+		Height         float64
+	}
+
+	journal := New(4, 0)
+
+	config := testWorldConfig{
+		Obstacles:      true,
+		ObstaclesCount: 6,
+		GoldMines:      true,
+		GoldMineCount:  3,
+		NPCs:           true,
+		GoblinCount:    5,
+		RatCount:       7,
+		NPCCount:       12,
+		Lava:           true,
+		LavaCount:      2,
+		Seed:           "baseline",
+		Width:          160,
+		Height:         90,
+	}
+	expected := config
+
+	frame := Keyframe{
+		Tick:     256,
+		Sequence: 8001,
+		Config:   config,
+	}
+
+	journal.RecordKeyframe(frame)
+
+	config.GoblinCount = 99
+	frame.Config = testWorldConfig{Seed: "mutated"}
+
+	recorded, ok := journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to return keyframe %d", frame.Sequence)
+	}
+
+	typed, ok := recorded.Config.(testWorldConfig)
+	if !ok {
+		t.Fatalf("expected recorded config to be testWorldConfig, got %T", recorded.Config)
+	}
+	if !reflect.DeepEqual(expected, typed) {
+		t.Fatalf("unexpected recorded keyframe config: got %#v want %#v", typed, expected)
+	}
+	if _, ok := recorded.Config.(*testWorldConfig); ok {
+		t.Fatalf("expected recorded config to be stored by value")
+	}
+}
+
+func TestJournalKeyframeBySequenceCopiesConfig(t *testing.T) {
+	type testWorldConfig struct {
+		Obstacles      bool
+		ObstaclesCount int
+		GoldMines      bool
+		GoldMineCount  int
+		NPCs           bool
+		GoblinCount    int
+		RatCount       int
+		NPCCount       int
+		Lava           bool
+		LavaCount      int
+		Seed           string
+		Width          float64
+		Height         float64
+	}
+
+	journal := New(4, 0)
+
+	config := testWorldConfig{
+		Obstacles:      true,
+		ObstaclesCount: 5,
+		GoldMines:      true,
+		GoldMineCount:  2,
+		NPCs:           true,
+		GoblinCount:    3,
+		RatCount:       4,
+		NPCCount:       7,
+		Lava:           true,
+		LavaCount:      1,
+		Seed:           "steady",
+		Width:          128,
+		Height:         96,
+	}
+	expected := config
+
+	frame := Keyframe{
+		Tick:     512,
+		Sequence: 9001,
+		Config:   config,
+	}
+
+	journal.RecordKeyframe(frame)
+
+	config.GoblinCount = 99
+	frame.Config = testWorldConfig{Seed: "mutated"}
+
+	fetched, ok := journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to return keyframe %d", frame.Sequence)
+	}
+
+	typed, ok := fetched.Config.(testWorldConfig)
+	if !ok {
+		t.Fatalf("expected fetched config to be testWorldConfig, got %T", fetched.Config)
+	}
+	if !reflect.DeepEqual(expected, typed) {
+		t.Fatalf("unexpected keyframe config: got %#v want %#v", typed, expected)
+	}
+	if _, ok := fetched.Config.(*testWorldConfig); ok {
+		t.Fatalf("expected keyframe config to be stored by value")
+	}
+
+	typed.Width = 999
+	typed.LavaCount = 42
+
+	again, ok := journal.KeyframeBySequence(frame.Sequence)
+	if !ok {
+		t.Fatalf("expected journal to return keyframe %d on second lookup", frame.Sequence)
+	}
+
+	typedAgain, ok := again.Config.(testWorldConfig)
+	if !ok {
+		t.Fatalf("expected second fetched config to be testWorldConfig, got %T", again.Config)
+	}
+	if !reflect.DeepEqual(expected, typedAgain) {
+		t.Fatalf("expected keyframe config to remain unchanged, got %#v want %#v", typedAgain, expected)
 	}
 }

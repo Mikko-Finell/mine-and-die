@@ -482,7 +482,12 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Add hub keyframe request coverage that proves obstacle slices are deep-cloned so client mutations cannot affect the journal state.
 - [x] Add hub keyframe lookup coverage that proves obstacle slices are deep-cloned so snapshots cannot mutate the journal state.
 - [x] Add hub keyframe request coverage that proves world config metadata is copied before responding so client mutations cannot affect the journal state.
-- [ ] Add hub keyframe lookup coverage that proves world config metadata is copied before returning so snapshots cannot mutate the journal state.
+- [x] Add hub keyframe lookup coverage that proves world config metadata is copied before returning so snapshots cannot mutate the journal state.
+- [x] Add adapter keyframe lookup coverage that proves `sim.Engine.KeyframeBySequence` copies world config metadata before returning so hub callers cannot mutate the journal state.
+- [x] Add adapter keyframe recording coverage that proves `sim.Engine.RecordKeyframe` copies world config metadata before appending so journal state cannot be mutated by callers.
+- [x] Add journal keyframe lookup coverage that proves `internal/journal.Journal.KeyframeBySequence` returns cloned world config metadata so downstream adapters cannot mutate stored frames.
+- [x] Add journal keyframe recording coverage that proves `internal/journal.Journal.RecordKeyframe` stores cloned world config metadata so subsequent lookups cannot mutate prior entries.
+- [ ] Add determinism regression coverage that stages keyframe config mutations mid-simulation to ensure the golden checksum guards against config clone regressions.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**
