@@ -452,8 +452,14 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Update `internal/items/simpayloads` inventory and equipment payload cloning to reuse the shared snapshot builders so patch conversions drop their bespoke slice copy logic.
 - [x] Add dedicated `internal/items/simsnapshots` helpers that assemble `sim.Inventory` and `sim.Equipment` snapshots from `[]sim` slots and update the `sim/patches`, `simutil`, and `items/simpayloads` callers to use them so identity mapper closures disappear.
 - [x] Promote the slot→snapshot helpers to `internal/items` and update the existing call sites so snapshot assembly lives alongside the shared item clones without changing schemas.
-- [ ] Expose slot clone helpers from `internal/items` (for example `CloneInventorySlots` and `CloneEquippedItems`) and update `simutil` and `items/simpayloads` to call them directly so the struct assemblers no longer reach into `.Slots` for cloning.
-- [ ] Route the `sim_engine_adapter` inventory and equipment conversions through the promoted helpers so adapter cloning reuses the shared snapshot assembly.
+- [x] Expose slot clone helpers from `internal/items` (for example `CloneInventorySlots` and `CloneEquippedItems`) and update `simutil` and `items/simpayloads` to call them directly so the struct assemblers no longer reach into `.Slots` for cloning.
+- [x] Route the `sim_engine_adapter` inventory and equipment conversions through the promoted helpers so adapter cloning reuses the shared snapshot assembly.
+- [x] Promote the slot conversion reflect helpers (`SimInventorySlotsFromAny` / `SimEquippedItemsFromAny`) into `internal/items` and delegate the `items/simpayloads` wrappers to them so slice normalization lives with the shared clone utilities.
+- [x] Update remaining call sites to reference `items.SimInventorySlotsFromAny` / `items.SimEquippedItemsFromAny` directly and delete the pass-through wrappers from `items/simpayloads` once no external callers remain.
+- [x] Update `items/simpayloads` clone helpers to call `items.CloneInventorySlots` / `items.CloneEquippedItems` directly at call sites and remove the wrappers once unused.
+- [x] Remove `internal/items/simpayloads` now that patch conversions rely on the shared item helpers and add adapter coverage for the pointer-based payload cases.
+- [x] Move the legacy inventory and equipment payload assembly helpers from `sim_engine_adapter.go` into `internal/items` so patch and snapshot conversions share the same adapters.
+- [ ] Move the legacy inventory and equipment slot conversion closures (`inventorySlotFromSim` / `equippedItemFromSim`) into `internal/items` so adapter and payload assembly callers reuse shared mapping helpers.
 - Keep each subsystem small, try not to make any file a lot longer than 300 LOC. Not a hard requirement.
 
 **Definition of done:**

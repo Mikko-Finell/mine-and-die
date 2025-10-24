@@ -5,7 +5,7 @@ import "mine-and-die/server/internal/sim"
 // InventoryFromSimSlots clones the provided simulation inventory slots and assembles
 // a `sim.Inventory` snapshot.
 func InventoryFromSimSlots(slots []sim.InventorySlot) sim.Inventory {
-	cloned := cloneSimInventorySlots(slots)
+	cloned := CloneInventorySlots(slots)
 	if len(cloned) == 0 {
 		return sim.Inventory{}
 	}
@@ -15,14 +15,15 @@ func InventoryFromSimSlots(slots []sim.InventorySlot) sim.Inventory {
 // EquipmentFromSimSlots clones the provided simulation equipment slots and assembles
 // a `sim.Equipment` snapshot.
 func EquipmentFromSimSlots(slots []sim.EquippedItem) sim.Equipment {
-	cloned := cloneSimEquippedItems(slots)
+	cloned := CloneEquippedItems(slots)
 	if len(cloned) == 0 {
 		return sim.Equipment{}
 	}
 	return sim.Equipment{Slots: cloned}
 }
 
-func cloneSimInventorySlots(slots []sim.InventorySlot) []sim.InventorySlot {
+// CloneInventorySlots returns a deep copy of the provided inventory slot slice.
+func CloneInventorySlots(slots []sim.InventorySlot) []sim.InventorySlot {
 	if len(slots) == 0 {
 		return nil
 	}
@@ -31,7 +32,8 @@ func cloneSimInventorySlots(slots []sim.InventorySlot) []sim.InventorySlot {
 	return cloned
 }
 
-func cloneSimEquippedItems(slots []sim.EquippedItem) []sim.EquippedItem {
+// CloneEquippedItems returns a deep copy of the provided equipped item slice.
+func CloneEquippedItems(slots []sim.EquippedItem) []sim.EquippedItem {
 	if len(slots) == 0 {
 		return nil
 	}

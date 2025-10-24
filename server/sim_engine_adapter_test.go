@@ -216,6 +216,66 @@ func TestSimPatchConversionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestConvertPatchPayloadToSimInventoryPointerNil(t *testing.T) {
+	if converted := convertPatchPayloadToSim((*InventoryPayload)(nil)); converted != nil {
+		t.Fatalf("expected nil result for nil inventory payload pointer, got %T", converted)
+	}
+}
+
+func TestConvertPatchPayloadToSimInventoryPointerClones(t *testing.T) {
+	slots := []InventorySlot{{
+		Slot: 4,
+		Item: ItemStack{Type: ItemType("arrow"), FungibilityKey: "stack", Quantity: 3},
+	}}
+
+	payload := &InventoryPayload{Slots: slots}
+	converted, ok := convertPatchPayloadToSim(payload).(sim.InventoryPayload)
+	if !ok {
+		t.Fatalf("expected sim.InventoryPayload, got %T", convertPatchPayloadToSim(payload))
+	}
+	if len(converted.Slots) != 1 {
+		t.Fatalf("expected 1 inventory slot, got %d", len(converted.Slots))
+	}
+	if converted.Slots[0].Item.Quantity != 3 {
+		t.Fatalf("expected quantity 3, got %d", converted.Slots[0].Item.Quantity)
+	}
+
+	slots[0].Item.Quantity = 9
+	if converted.Slots[0].Item.Quantity != 3 {
+		t.Fatalf("expected converted payload to remain unchanged, got %d", converted.Slots[0].Item.Quantity)
+	}
+}
+
+func TestConvertPatchPayloadToSimEquipmentPointerNil(t *testing.T) {
+	if converted := convertPatchPayloadToSim((*EquipmentPayload)(nil)); converted != nil {
+		t.Fatalf("expected nil result for nil equipment payload pointer, got %T", converted)
+	}
+}
+
+func TestConvertPatchPayloadToSimEquipmentPointerClones(t *testing.T) {
+	slots := []EquippedItem{{
+		Slot: EquipSlotMainHand,
+		Item: ItemStack{Type: ItemType("sword"), FungibilityKey: "unique", Quantity: 1},
+	}}
+
+	payload := &EquipmentPayload{Slots: slots}
+	converted, ok := convertPatchPayloadToSim(payload).(sim.EquipmentPayload)
+	if !ok {
+		t.Fatalf("expected sim.EquipmentPayload, got %T", convertPatchPayloadToSim(payload))
+	}
+	if len(converted.Slots) != 1 {
+		t.Fatalf("expected 1 equipment slot, got %d", len(converted.Slots))
+	}
+	if converted.Slots[0].Item.FungibilityKey != "unique" {
+		t.Fatalf("expected fungibility key unique, got %q", converted.Slots[0].Item.FungibilityKey)
+	}
+
+	slots[0].Item.FungibilityKey = "mutated"
+	if converted.Slots[0].Item.FungibilityKey != "unique" {
+		t.Fatalf("expected converted payload to remain unchanged, got %q", converted.Slots[0].Item.FungibilityKey)
+	}
+}
+
 func TestSimKeyframeConversionRoundTripPreservesSequencing(t *testing.T) {
 	recorded := time.Unix(1700000000, 0).UTC()
 	legacy := keyframe{
