@@ -5,19 +5,22 @@ import (
 	"io"
 	"log"
 	nethttp "net/http"
+	"net/http/pprof"
 	"time"
 
 	"mine-and-die/server"
 	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/net/ws"
+	"mine-and-die/server/internal/observability"
 	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/internal/telemetry"
 )
 
 type HTTPHandlerConfig struct {
-	ClientDir string
-	Logger    telemetry.Logger
+	ClientDir     string
+	Logger        telemetry.Logger
+	Observability observability.Config
 }
 
 func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
@@ -27,6 +30,8 @@ func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
 	}
 
 	mux := nethttp.NewServeMux()
+
+	registerPprofHandlers(mux, cfg.Observability.EnablePprofTrace)
 
 	mux.HandleFunc("/health", func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -266,4 +271,32 @@ func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
 
 func httpError(w nethttp.ResponseWriter, msg string, code int) {
 	nethttp.Error(w, msg, code)
+}
+
+func registerPprofHandlers(mux *nethttp.ServeMux, enableTrace bool) {
+	mux.HandleFunc("/debug/pprof/", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		if r.URL.Path != "/debug/pprof/" {
+			nethttp.NotFound(w, r)
+			return
+		}
+		pprof.Index(w, r)
+	})
+
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+
+	profiles := []string{"allocs", "block", "goroutine", "heap", "mutex", "threadcreate"}
+	for _, name := range profiles {
+		mux.Handle("/debug/pprof/"+name, pprof.Handler(name))
+	}
+
+	if enableTrace {
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		return
+	}
+
+	mux.HandleFunc("/debug/pprof/trace", func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		httpError(w, "pprof trace disabled", nethttp.StatusNotFound)
+	})
 }

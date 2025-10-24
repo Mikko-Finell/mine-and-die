@@ -385,11 +385,19 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ### Next task
 
-- [ ] Document the next logical follow-up step for Phase 5, outlining how the observability tooling will be staged alongside new `/debug/pprof/` endpoints.
+- [x] Document the next logical follow-up step for Phase 5, outlining how the observability tooling will be staged alongside new `/debug/pprof/` endpoints.
+  - Centralize the debug HTTP wiring inside `internal/net` so `/debug/pprof/` registration stays co-located with the REST surface while gating the expensive trace handler behind a dedicated toggle.
+  - Follow up by shaping an `ObservabilityConfig` wrapper on `app.Config` so future tooling (trace exporters, metrics scrapers) can reuse the same seam without revisiting every call site.
 
-- [ ] Integrate `pprof` and optional tracing endpoints under `/debug/pprof/`.
+- [x] Integrate `pprof` and optional tracing endpoints under `/debug/pprof/`.
+  - Register the standard profile handlers in `internal/net` and expose `/debug/pprof/trace` only when `EnablePprofTrace` (or the `ENABLE_PPROF_TRACE` env var) opts in, keeping the expensive recorder disabled by default.
+  - Cover the new routes with handler tests so the default (disabled) and opt-in cases stay locked as we tune observability.
+
+- [x] Promote the `EnablePprofTrace` flag into a reusable `ObservabilityConfig` struct so upcoming observability hooks can share the same injection point without bloating `HTTPHandlerConfig`.
 - [ ] Add `make deps-check` to enforce import boundaries (`net/*` must not import `sim/*` internals).
+- [x] Add `make deps-check` to enforce import boundaries (`net/*` must not import `sim/*` internals).
 - [ ] Configure `golangci-lint` with cyclomatic limits and forbid package cycles.
+  - Introduce a `make lint` entry that runs `golangci-lint` with `gocyclo` thresholds for Go code and a `depguard` rule that blocks `internal/sim/internal` imports from networking packages before wiring it into CI.
 - [ ] Add CI race detection (`go test -race ./...`).
 - [ ] Commit a concise `ARCHITECTURE.md` and `STYLE.md` next to the code, not only in docs.
 - [ ] Document dependency rules and testing expectations.

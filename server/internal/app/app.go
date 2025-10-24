@@ -11,13 +11,15 @@ import (
 
 	server "mine-and-die/server"
 	servernet "mine-and-die/server/internal/net"
+	"mine-and-die/server/internal/observability"
 	"mine-and-die/server/internal/telemetry"
 	"mine-and-die/server/logging"
 	loggingSinks "mine-and-die/server/logging/sinks"
 )
 
 type Config struct {
-	Logger telemetry.Logger
+	Logger        telemetry.Logger
+	Observability observability.Config
 }
 
 func Run(ctx context.Context, cfg Config) error {
@@ -59,6 +61,15 @@ func Run(ctx context.Context, cfg Config) error {
 
 	hubCfg.Logger = telemetryLogger
 
+	observabilityCfg := cfg.Observability
+	if raw := os.Getenv("ENABLE_PPROF_TRACE"); raw != "" {
+		if value, err := strconv.ParseBool(raw); err == nil {
+			observabilityCfg.EnablePprofTrace = value
+		} else {
+			telemetryLogger.Printf("invalid ENABLE_PPROF_TRACE=%q: %v", raw, err)
+		}
+	}
+
 	hub := server.NewHubWithConfig(hubCfg, router)
 	stop := make(chan struct{})
 	go hub.RunSimulation(stop)
@@ -66,8 +77,9 @@ func Run(ctx context.Context, cfg Config) error {
 
 	clientDir := filepath.Clean(filepath.Join("..", "client"))
 	handler := servernet.NewHTTPHandler(hub, servernet.HTTPHandlerConfig{
-		ClientDir: clientDir,
-		Logger:    telemetryLogger,
+		ClientDir:     clientDir,
+		Logger:        telemetryLogger,
+		Observability: observabilityCfg,
 	})
 
 	srv := &http.Server{Addr: ":8080", Handler: handler}
