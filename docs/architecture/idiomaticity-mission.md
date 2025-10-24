@@ -101,7 +101,7 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## [IN PROGRESS] Phase 2 — Simulation Decomposition
+## [DONE] Phase 2 — Simulation Decomposition
 
 - [ ] Objective: Split the monolithic simulation into smaller packages with explicit ownership.
 
@@ -319,9 +319,9 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 **Definition of done:**
 
-- [ ] Ensure the engine depends downward (`engine → world → journal`).
-- [ ] Keep subpackages acyclic.
-- [ ] Keep the golden determinism test passing.
+- [x] Ensure the engine depends downward (`engine → world → journal`).
+- [x] Keep subpackages acyclic.
+- [x] Keep the golden determinism test passing.
 
 ---
 
