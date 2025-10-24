@@ -12,6 +12,7 @@ import (
 
 	"mine-and-die/server"
 	"mine-and-die/server/internal/net/proto"
+	"mine-and-die/server/internal/observability"
 )
 
 func TestHTTPResubscribeReturnsStateSnapshot(t *testing.T) {
@@ -259,6 +260,62 @@ func TestDiagnosticsReportsSubscriberQueueOverflow(t *testing.T) {
 	}
 	if maxDepth == 0 {
 		t.Fatalf("expected diagnostics telemetry maxDepth to be non-zero, payload=%v", queuesValue)
+	}
+}
+
+func TestHTTPHandlerRegistersPprofEndpoints(t *testing.T) {
+	hub := server.NewHubWithConfig(server.DefaultHubConfig())
+
+	handler := NewHTTPHandler(hub, HTTPHandlerConfig{})
+
+	mux, ok := handler.(*http.ServeMux)
+	if !ok {
+		t.Fatalf("expected ServeMux handler, got %T", handler)
+	}
+
+	testCases := map[string]string{
+		"/debug/pprof/":        "/debug/pprof/",
+		"/debug/pprof/profile": "/debug/pprof/profile",
+		"/debug/pprof/heap":    "/debug/pprof/heap",
+	}
+
+	for path, wantPattern := range testCases {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		_, pattern := mux.Handler(req)
+		if pattern != wantPattern {
+			t.Fatalf("expected pattern %q for %s, got %q", wantPattern, path, pattern)
+		}
+	}
+}
+
+func TestHTTPHandlerDisablesTraceByDefault(t *testing.T) {
+	hub := server.NewHubWithConfig(server.DefaultHubConfig())
+
+	handler := NewHTTPHandler(hub, HTTPHandlerConfig{})
+
+	req := httptest.NewRequest(http.MethodGet, "/debug/pprof/trace", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404 when trace disabled, got %d", resp.Code)
+	}
+}
+
+func TestHTTPHandlerEnablesTraceWhenConfigured(t *testing.T) {
+	hub := server.NewHubWithConfig(server.DefaultHubConfig())
+
+	handler := NewHTTPHandler(hub, HTTPHandlerConfig{Observability: observability.Config{EnablePprofTrace: true}})
+
+	req := httptest.NewRequest(http.MethodGet, "/debug/pprof/trace?seconds=0.01", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200 when trace enabled, got %d", resp.Code)
+	}
+	if resp.Body.Len() == 0 {
+		t.Fatalf("expected trace handler to write response body")
 	}
 }
 

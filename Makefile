@@ -1,4 +1,4 @@
-.PHONY: build run sync stop cleanbranches test
+.PHONY: build run sync stop cleanbranches test deps-check
 
 build:
 	@npm install
@@ -24,3 +24,6 @@ cleanbranches:
 test:
 	npm test
 	(cd server && go test ./...)
+
+deps-check:
+	(cd server && go run ./tools/depscheck)
