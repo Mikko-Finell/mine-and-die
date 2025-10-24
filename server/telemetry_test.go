@@ -148,6 +148,10 @@ func TestTelemetryTickBudgetOverrunMetrics(t *testing.T) {
 func TestTelemetrySubscriberQueueSnapshot(t *testing.T) {
 	counters := newTelemetryCounters(nil)
 
+	for i := 0; i < tickRate; i++ {
+		counters.RecordTickDuration(time.Second / time.Duration(tickRate))
+	}
+
 	counters.RecordSubscriberQueueDepth(3)
 	counters.RecordSubscriberQueueDepth(7)
 	counters.RecordSubscriberQueueDrop(7)
@@ -163,6 +167,9 @@ func TestTelemetrySubscriberQueueSnapshot(t *testing.T) {
 	}
 	if queues.Drops != 1 {
 		t.Fatalf("expected drops 1, got %d", queues.Drops)
+	}
+	if math.Abs(queues.DropRatePerSecond-1.0) > 1e-9 {
+		t.Fatalf("expected drop rate 1.0, got %.6f", queues.DropRatePerSecond)
 	}
 }
 
@@ -211,6 +218,8 @@ func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
 	counters.RecordCommandDropped("", "")
 	counters.RecordSubscriberQueueDepth(4)
 	counters.RecordSubscriberQueueDrop(4)
+	counters.RecordBroadcastQueueDepth(7)
+	counters.RecordBroadcastQueueDrop(7)
 
 	snapshot := metrics.Snapshot()
 	if got := snapshot[metricKeyBroadcastTotal]; got != 1 {
@@ -352,4 +361,42 @@ func TestTelemetryMetricsAdapterRecordsMetrics(t *testing.T) {
 	if got := snapshot[metricKeySubscriberQueueDropsTotal]; got != 1 {
 		t.Fatalf("expected subscriber queue drops 1, got %d", got)
 	}
+	if got := snapshot[metricKeyBroadcastQueueDepth]; got != 7 {
+		t.Fatalf("expected broadcast queue depth 7, got %d", got)
+	}
+	if got := snapshot[metricKeyBroadcastQueueMaxDepth]; got != 7 {
+		t.Fatalf("expected broadcast queue max depth 7, got %d", got)
+	}
+	if got := snapshot[metricKeyBroadcastQueueDropsTotal]; got != 1 {
+		t.Fatalf("expected broadcast queue drops 1, got %d", got)
+	}
+
+	snapshotState := counters.Snapshot()
+	queues := snapshotState.SubscriberQueues
+	if queues.Depth != 4 {
+		t.Fatalf("expected subscriber queue depth 4, got %d", queues.Depth)
+	}
+	if queues.MaxDepth != 4 {
+		t.Fatalf("expected subscriber queue max depth 4, got %d", queues.MaxDepth)
+	}
+	if queues.Drops != 1 {
+		t.Fatalf("expected subscriber queue drops 1, got %d", queues.Drops)
+	}
+	if math.Abs(queues.DropRatePerSecond-float64(tickRate)) > 0.0001 {
+		t.Fatalf("expected subscriber drop rate %d, got %.4f", tickRate, queues.DropRatePerSecond)
+	}
+	broadcast := snapshotState.BroadcastQueue
+	if broadcast.Depth != 7 {
+		t.Fatalf("expected broadcast queue depth 7, got %d", broadcast.Depth)
+	}
+	if broadcast.MaxDepth != 7 {
+		t.Fatalf("expected broadcast queue max depth 7, got %d", broadcast.MaxDepth)
+	}
+	if broadcast.Drops != 1 {
+		t.Fatalf("expected broadcast queue drops 1, got %d", broadcast.Drops)
+	}
+	if math.Abs(broadcast.DropRatePerSecond-float64(tickRate)) > 0.0001 {
+		t.Fatalf("expected broadcast drop rate %d, got %.4f", tickRate, broadcast.DropRatePerSecond)
+	}
+	return
 }

@@ -107,7 +107,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 		players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 		if players != nil {
 			h.hub.ForceKeyframe()
-			go h.hub.BroadcastState(players, npcs, nil, nil)
+			h.hub.BroadcastState(players, npcs, nil, nil)
 		}
 		return
 	}
@@ -116,7 +116,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 		players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 		if players != nil {
 			h.hub.ForceKeyframe()
-			go h.hub.BroadcastState(players, npcs, nil, nil)
+			h.hub.BroadcastState(players, npcs, nil, nil)
 		}
 		return
 	}
@@ -135,7 +135,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 			players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 			if players != nil {
 				h.hub.ForceKeyframe()
-				go h.hub.BroadcastState(players, npcs, nil, nil)
+				h.hub.BroadcastState(players, npcs, nil, nil)
 			}
 			return
 		}
@@ -164,7 +164,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 				if players != nil {
 					h.hub.ForceKeyframe()
-					go h.hub.BroadcastState(players, npcs, nil, nil)
+					h.hub.BroadcastState(players, npcs, nil, nil)
 				}
 				return false
 			}
@@ -300,7 +300,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 					players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 					if players != nil {
 						h.hub.ForceKeyframe()
-						go h.hub.BroadcastState(players, npcs, nil, nil)
+						h.hub.BroadcastState(players, npcs, nil, nil)
 					}
 					return
 				}
@@ -315,7 +315,7 @@ func (h *Handler) Handle(w nethttp.ResponseWriter, r *nethttp.Request) {
 				players, npcs := h.hub.DisconnectSubscriber(playerID, sub)
 				if players != nil {
 					h.hub.ForceKeyframe()
-					go h.hub.BroadcastState(players, npcs, nil, nil)
+					h.hub.BroadcastState(players, npcs, nil, nil)
 				}
 				return
 			}

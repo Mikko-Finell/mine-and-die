@@ -144,7 +144,7 @@ func NewHTTPHandler(hub *server.Hub, cfg HTTPHandlerConfig) nethttp.Handler {
 
 		players, npcs := hub.ResetWorld(cfg)
 		hub.ForceKeyframe()
-		go hub.BroadcastState(players, npcs, nil, nil)
+		hub.BroadcastState(players, npcs, nil, nil)
 
 		response := struct {
 			Status string `json:"status"`

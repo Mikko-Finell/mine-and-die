@@ -3,9 +3,12 @@ package net
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"mine-and-die/server"
 	"mine-and-die/server/internal/net/proto"
@@ -125,5 +128,177 @@ func TestHTTPResubscribeRejectsWrongMethod(t *testing.T) {
 
 	if resp.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status 405 Method Not Allowed, got %d", resp.Code)
+	}
+}
+
+func TestDiagnosticsIncludesSubscriberQueueTelemetry(t *testing.T) {
+	hub := server.NewHubWithConfig(server.DefaultHubConfig())
+	handler := NewHTTPHandler(hub, HTTPHandlerConfig{})
+
+	req := httptest.NewRequest(http.MethodGet, "/diagnostics", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200 OK, got %d", resp.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode diagnostics payload: %v", err)
+	}
+
+	telemetryValue, ok := payload["telemetry"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected telemetry object in diagnostics payload, got %T", payload["telemetry"])
+	}
+
+	queuesValue, ok := telemetryValue["subscriberQueues"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected subscriberQueues object in telemetry payload, got %T", telemetryValue["subscriberQueues"])
+	}
+
+	if _, ok := queuesValue["depth"].(float64); !ok {
+		t.Fatalf("expected queue depth field in diagnostics telemetry, payload=%v", queuesValue)
+	}
+	if _, ok := queuesValue["maxDepth"].(float64); !ok {
+		t.Fatalf("expected queue maxDepth field in diagnostics telemetry, payload=%v", queuesValue)
+	}
+	if _, ok := queuesValue["drops"].(float64); !ok {
+		t.Fatalf("expected queue drops field in diagnostics telemetry, payload=%v", queuesValue)
+	}
+	if _, ok := queuesValue["dropRatePerSecond"].(float64); !ok {
+		t.Fatalf("expected dropRatePerSecond field in diagnostics telemetry, payload=%v", queuesValue)
+	}
+
+	broadcastValue, ok := telemetryValue["broadcastQueue"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected broadcastQueue object in telemetry payload, got %T", telemetryValue["broadcastQueue"])
+	}
+	if _, ok := broadcastValue["depth"].(float64); !ok {
+		t.Fatalf("expected broadcast queue depth field in diagnostics telemetry, payload=%v", broadcastValue)
+	}
+	if _, ok := broadcastValue["maxDepth"].(float64); !ok {
+		t.Fatalf("expected broadcast queue maxDepth field in diagnostics telemetry, payload=%v", broadcastValue)
+	}
+	if _, ok := broadcastValue["drops"].(float64); !ok {
+		t.Fatalf("expected broadcast queue drops field in diagnostics telemetry, payload=%v", broadcastValue)
+	}
+	if _, ok := broadcastValue["dropRatePerSecond"].(float64); !ok {
+		t.Fatalf("expected broadcast dropRatePerSecond field in diagnostics telemetry, payload=%v", broadcastValue)
+	}
+}
+
+func TestDiagnosticsReportsSubscriberQueueOverflow(t *testing.T) {
+	hub := server.NewHubWithConfig(server.DefaultHubConfig())
+	join := hub.Join()
+
+	conn := newDiagnosticsBlockingSubscriberConn()
+	sub, _, _, _, ok := hub.Subscribe(join.ID, conn)
+	if !ok {
+		t.Fatalf("expected subscribe to succeed for %s", join.ID)
+	}
+	t.Cleanup(func() {
+		sub.Close()
+		conn.Close()
+	})
+
+	for i := 0; i < 128; i++ {
+		hub.BroadcastState(nil, nil, nil, nil)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		snapshot := hub.TelemetrySnapshot()
+		if snapshot.SubscriberQueues.Drops > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if snapshot := hub.TelemetrySnapshot(); snapshot.SubscriberQueues.Drops == 0 {
+		t.Fatalf("expected telemetry snapshot to record subscriber queue drops")
+	}
+
+	handler := NewHTTPHandler(hub, HTTPHandlerConfig{})
+
+	req := httptest.NewRequest(http.MethodGet, "/diagnostics", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200 OK, got %d", resp.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode diagnostics payload: %v", err)
+	}
+
+	telemetryValue, ok := payload["telemetry"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected telemetry object in diagnostics payload, got %T", payload["telemetry"])
+	}
+
+	queuesValue, ok := telemetryValue["subscriberQueues"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected subscriberQueues object in telemetry payload, got %T", telemetryValue["subscriberQueues"])
+	}
+
+	drops, ok := queuesValue["drops"].(float64)
+	if !ok {
+		t.Fatalf("expected drops field in diagnostics telemetry, payload=%v", queuesValue)
+	}
+	if drops == 0 {
+		t.Fatalf("expected diagnostics telemetry drops to be non-zero, payload=%v", queuesValue)
+	}
+
+	maxDepth, ok := queuesValue["maxDepth"].(float64)
+	if !ok {
+		t.Fatalf("expected maxDepth field in diagnostics telemetry, payload=%v", queuesValue)
+	}
+	if maxDepth == 0 {
+		t.Fatalf("expected diagnostics telemetry maxDepth to be non-zero, payload=%v", queuesValue)
+	}
+}
+
+type diagnosticsBlockingSubscriberConn struct {
+	tokens    chan struct{}
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+func newDiagnosticsBlockingSubscriberConn() *diagnosticsBlockingSubscriberConn {
+	return &diagnosticsBlockingSubscriberConn{
+		tokens: make(chan struct{}, 1024),
+		closed: make(chan struct{}),
+	}
+}
+
+func (c *diagnosticsBlockingSubscriberConn) Write([]byte) error {
+	select {
+	case <-c.closed:
+		return io.ErrClosedPipe
+	case <-c.tokens:
+		return nil
+	}
+}
+
+func (c *diagnosticsBlockingSubscriberConn) SetWriteDeadline(time.Time) error { return nil }
+
+func (c *diagnosticsBlockingSubscriberConn) Close() error {
+	c.closeOnce.Do(func() {
+		close(c.closed)
+	})
+	return nil
+}
+
+func (c *diagnosticsBlockingSubscriberConn) allow(tokens int) {
+	for i := 0; i < tokens; i++ {
+		select {
+		case c.tokens <- struct{}{}:
+		case <-c.closed:
+			return
+		}
 	}
 }

@@ -30,14 +30,15 @@ import (
 
 // Hub coordinates subscribers and orchestrates the deterministic world simulation.
 type Hub struct {
-	mu          sync.Mutex
-	world       *World
-	engine      sim.Engine
-	adapter     *legacyEngineAdapter
-	subscribers map[string]*subscriber
-	config      worldConfig
-	publisher   logging.Publisher
-	telemetry   *telemetryCounters
+	mu              sync.Mutex
+	world           *World
+	engine          sim.Engine
+	adapter         *legacyEngineAdapter
+	subscribers     map[string]*subscriber
+	config          worldConfig
+	publisher       logging.Publisher
+	telemetry       *telemetryCounters
+	broadcastFanout *broadcastFanout
 
 	resubscribeBaselines map[string]simpaches.PlayerView
 
@@ -136,6 +137,11 @@ type subscriberQueueTelemetry interface {
 	RecordSubscriberQueueDrop(depth int)
 }
 
+type broadcastQueueTelemetry interface {
+	RecordBroadcastQueueDepth(depth int)
+	RecordBroadcastQueueDrop(depth int)
+}
+
 type subscriber struct {
 	conn           subscriberConn
 	lastAck        atomic.Uint64
@@ -154,6 +160,75 @@ type sendRequest struct {
 	data     []byte
 	deadline time.Time
 	result   chan error
+}
+
+type broadcastRequest struct {
+	players     []Player
+	npcs        []NPC
+	triggers    []EffectTrigger
+	groundItems []itemspkg.GroundItem
+}
+
+type broadcastFanout struct {
+	queue     chan broadcastRequest
+	telemetry broadcastQueueTelemetry
+}
+
+func newBroadcastFanout(size int, telemetry broadcastQueueTelemetry) *broadcastFanout {
+	if size <= 0 {
+		size = 1
+	}
+	f := &broadcastFanout{
+		queue:     make(chan broadcastRequest, size),
+		telemetry: telemetry,
+	}
+	f.recordDepth()
+	return f
+}
+
+func (f *broadcastFanout) enqueue(req broadcastRequest) bool {
+	if f == nil {
+		return false
+	}
+	select {
+	case f.queue <- req:
+		f.recordDepth()
+		return true
+	default:
+		f.recordDrop()
+		return false
+	}
+}
+
+func (f *broadcastFanout) run(handler func(broadcastRequest)) {
+	if f == nil {
+		return
+	}
+	for req := range f.queue {
+		handler(req)
+		f.recordDepth()
+	}
+}
+
+func (f *broadcastFanout) depth() int {
+	if f == nil {
+		return 0
+	}
+	return len(f.queue)
+}
+
+func (f *broadcastFanout) recordDepth() {
+	if f == nil || f.telemetry == nil {
+		return
+	}
+	f.telemetry.RecordBroadcastQueueDepth(len(f.queue))
+}
+
+func (f *broadcastFanout) recordDrop() {
+	if f == nil || f.telemetry == nil {
+		return
+	}
+	f.telemetry.RecordBroadcastQueueDrop(len(f.queue))
 }
 
 var (
@@ -351,6 +426,7 @@ const (
 	commandQueuePerActorLimit = 32
 	commandBufferCapacity     = 1024
 	subscriberSendQueueSize   = 64
+	broadcastFanoutQueueSize  = 128
 
 	tickBudgetCatchupMaxTicks = 2
 	tickBudgetAlarmMinStreak  = 3
@@ -527,6 +603,10 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 	hub.keyframeInterval.Store(int64(interval))
 	hub.forceKeyframe()
 	hub.attachTelemetryMetrics()
+	hub.broadcastFanout = newBroadcastFanout(broadcastFanoutQueueSize, hub.telemetry)
+	go hub.broadcastFanout.run(func(req broadcastRequest) {
+		hub.executeBroadcast(req.players, req.npcs, req.triggers, req.groundItems)
+	})
 	return hub
 }
 
@@ -749,7 +829,7 @@ func (h *Hub) Join() joinResponse {
 	)
 
 	h.forceKeyframe()
-	go h.broadcastState(players, npcs, nil, groundItems)
+	h.broadcastState(players, npcs, nil, groundItems)
 
 	return joinResponse{
 		Ver:               ProtocolVersion,
@@ -1044,7 +1124,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 				ack.StackID = result.StackID
 			}
 		}
-		go h.broadcastState(nil, nil, nil, groundItems)
+		h.broadcastState(nil, nil, nil, groundItems)
 		return ack, true
 	case "equip_slot":
 		if qty < 0 {
@@ -1068,7 +1148,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 		}
 		ack.Status = "ok"
 		ack.Slot = string(slot)
-		go h.broadcastState(nil, nil, nil, nil)
+		h.broadcastState(nil, nil, nil, nil)
 		return ack, true
 	case "unequip_slot":
 		slot, ok := equipSlotFromOrdinal(qty)
@@ -1094,7 +1174,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 		ack.Status = "ok"
 		ack.Slot = string(slot)
 		ack.Qty = item.Quantity
-		go h.broadcastState(nil, nil, nil, nil)
+		h.broadcastState(nil, nil, nil, nil)
 		return ack, true
 	case "pickup_gold":
 		h.mu.Lock()
@@ -1174,7 +1254,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 		ack.Status = "ok"
 		ack.Qty = qty
 		ack.StackID = stackID
-		go h.broadcastState(nil, nil, nil, groundItems)
+		h.broadcastState(nil, nil, nil, groundItems)
 		return ack, true
 	default:
 		ack.Status = "error"
@@ -1894,8 +1974,35 @@ func (h *Hub) HandleKeyframeRequest(playerID string, sub *subscriber, sequence u
 	}
 }
 
-// broadcastState sends the latest world snapshot to every subscriber.
 func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []itemspkg.GroundItem) {
+	if h == nil {
+		return
+	}
+	req := broadcastRequest{
+		players:     players,
+		npcs:        npcs,
+		triggers:    triggers,
+		groundItems: groundItems,
+	}
+	if h.broadcastFanout == nil {
+		h.executeBroadcast(req.players, req.npcs, req.triggers, req.groundItems)
+		return
+	}
+	if ok := h.broadcastFanout.enqueue(req); ok {
+		return
+	}
+	depth := 0
+	if h.broadcastFanout != nil {
+		depth = h.broadcastFanout.depth()
+	}
+	h.logf("[broadcast] fan-out queue saturated (depth=%d); executing inline", depth)
+	h.executeBroadcast(req.players, req.npcs, req.triggers, req.groundItems)
+	if h.broadcastFanout != nil {
+		h.broadcastFanout.recordDepth()
+	}
+}
+
+func (h *Hub) executeBroadcast(players []Player, npcs []NPC, triggers []EffectTrigger, groundItems []itemspkg.GroundItem) {
 	h.scheduleResyncIfNeeded()
 	includeSnapshot := h.shouldIncludeSnapshot()
 	simPlayers := simPlayersFromLegacy(players)
@@ -1953,7 +2060,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 			players, npcs := h.Disconnect(id)
 			if players != nil {
 				h.forceKeyframe()
-				go h.broadcastState(players, npcs, nil, nil)
+				h.broadcastState(players, npcs, nil, nil)
 			}
 		}
 	}
