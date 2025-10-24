@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"mine-and-die/server/internal/journal"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 )
 
 func mustBuildGroundDropDelegates(t *testing.T, cfg GroundDropConfig) GroundDropDelegates {
@@ -35,7 +35,7 @@ func TestBuildGroundDropDelegatesRequiresAppendPatch(t *testing.T) {
 		t.Fatalf("expected build to fail when appendPatch missing")
 	}
 
-	cfg.AppendPatch = func(journal.Patch) {}
+	cfg.AppendPatch = func(simpatches.Patch) {}
 
 	if _, ok := BuildGroundDropDelegates(cfg); !ok {
 		t.Fatalf("expected build to succeed once appendPatch provided")
@@ -166,8 +166,8 @@ func TestSetGroundItemQuantityNilPointer(t *testing.T) {
 }
 
 func TestGroundItemQuantityJournalSetterRecordsPatch(t *testing.T) {
-	var patches []journal.Patch
-	setter := GroundItemQuantityJournalSetter(func(p journal.Patch) {
+	var patches []simpatches.Patch
+	setter := GroundItemQuantityJournalSetter(func(p simpatches.Patch) {
 		patches = append(patches, p)
 	})
 
@@ -185,10 +185,10 @@ func TestGroundItemQuantityJournalSetterRecordsPatch(t *testing.T) {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
 	patch := patches[0]
-	if patch.Kind != journal.PatchGroundItemQty {
-		t.Fatalf("expected patch kind %q, got %q", journal.PatchGroundItemQty, patch.Kind)
+	if patch.Kind != simpatches.PatchGroundItemQty {
+		t.Fatalf("expected patch kind %q, got %q", simpatches.PatchGroundItemQty, patch.Kind)
 	}
-	payload, ok := patch.Payload.(journal.GroundItemQtyPayload)
+	payload, ok := patch.Payload.(simpatches.GroundItemQtyPayload)
 	if !ok {
 		t.Fatalf("expected payload type GroundItemQtyPayload, got %T", patch.Payload)
 	}
@@ -207,8 +207,8 @@ func TestGroundItemQuantityJournalSetterRecordsPatch(t *testing.T) {
 }
 
 func TestGroundItemPositionJournalSetterRecordsPatch(t *testing.T) {
-	var patches []journal.Patch
-	setter := GroundItemPositionJournalSetter(func(p journal.Patch) {
+	var patches []simpatches.Patch
+	setter := GroundItemPositionJournalSetter(func(p simpatches.Patch) {
 		patches = append(patches, p)
 	})
 
@@ -226,10 +226,10 @@ func TestGroundItemPositionJournalSetterRecordsPatch(t *testing.T) {
 		t.Fatalf("expected 1 patch, got %d", len(patches))
 	}
 	patch := patches[0]
-	if patch.Kind != journal.PatchGroundItemPos {
-		t.Fatalf("expected patch kind %q, got %q", journal.PatchGroundItemPos, patch.Kind)
+	if patch.Kind != simpatches.PatchGroundItemPos {
+		t.Fatalf("expected patch kind %q, got %q", simpatches.PatchGroundItemPos, patch.Kind)
 	}
-	payload, ok := patch.Payload.(journal.GroundItemPosPayload)
+	payload, ok := patch.Payload.(simpatches.GroundItemPosPayload)
 	if !ok {
 		t.Fatalf("expected payload type GroundItemPosPayload, got %T", patch.Payload)
 	}
@@ -381,7 +381,7 @@ func TestUpsertGroundItemJournalSettersRecordPatches(t *testing.T) {
 	stack := ItemStack{Type: "gold", FungibilityKey: "gold-key", Quantity: 2}
 	cfg := ScatterConfig{TileSize: 10, MinDistance: 0, MaxDistance: 0, Padding: 0}
 
-	var patches []journal.Patch
+	var patches []simpatches.Patch
 	merged := UpsertGroundItem(
 		items,
 		byTile,
@@ -393,10 +393,10 @@ func TestUpsertGroundItemJournalSettersRecordPatches(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		GroundItemQuantityJournalSetter(func(p journal.Patch) {
+		GroundItemQuantityJournalSetter(func(p simpatches.Patch) {
 			patches = append(patches, p)
 		}),
-		GroundItemPositionJournalSetter(func(p journal.Patch) {
+		GroundItemPositionJournalSetter(func(p simpatches.Patch) {
 			patches = append(patches, p)
 		}),
 		nil,
@@ -417,17 +417,17 @@ func TestUpsertGroundItemJournalSettersRecordPatches(t *testing.T) {
 	if len(patches) != 2 {
 		t.Fatalf("expected patches for quantity and position, got %d", len(patches))
 	}
-	if patches[0].Kind != journal.PatchGroundItemQty {
-		t.Fatalf("expected first patch kind %q, got %q", journal.PatchGroundItemQty, patches[0].Kind)
+	if patches[0].Kind != simpatches.PatchGroundItemQty {
+		t.Fatalf("expected first patch kind %q, got %q", simpatches.PatchGroundItemQty, patches[0].Kind)
 	}
-	qtyPayload, ok := patches[0].Payload.(journal.GroundItemQtyPayload)
+	qtyPayload, ok := patches[0].Payload.(simpatches.GroundItemQtyPayload)
 	if !ok || qtyPayload.Qty != 6 {
 		t.Fatalf("expected quantity payload 6, got %#v", patches[0].Payload)
 	}
-	if patches[1].Kind != journal.PatchGroundItemPos {
-		t.Fatalf("expected second patch kind %q, got %q", journal.PatchGroundItemPos, patches[1].Kind)
+	if patches[1].Kind != simpatches.PatchGroundItemPos {
+		t.Fatalf("expected second patch kind %q, got %q", simpatches.PatchGroundItemPos, patches[1].Kind)
 	}
-	posPayload, ok := patches[1].Payload.(journal.GroundItemPosPayload)
+	posPayload, ok := patches[1].Payload.(simpatches.GroundItemPosPayload)
 	if !ok || posPayload.X != actor.X || posPayload.Y != actor.Y {
 		t.Fatalf("expected position payload (%.2f, %.2f), got %#v", actor.X, actor.Y, patches[1].Payload)
 	}
@@ -482,7 +482,7 @@ func TestRemoveGroundItemClearsStoreAndTile(t *testing.T) {
 	items := map[string]*GroundItemState{item.ID: item}
 	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {"gold-key": item}}
 
-	RemoveGroundItem(items, byTile, item, func(journal.Patch) {})
+	RemoveGroundItem(items, byTile, item, func(simpatches.Patch) {})
 
 	if len(items) != 0 {
 		t.Fatalf("expected items map to be empty after removal")
@@ -522,12 +522,12 @@ func TestRemoveGroundItemJournalSetterRecordsPatch(t *testing.T) {
 	items := map[string]*GroundItemState{item.ID: item}
 	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {"gold-key": item}}
 
-	var patches []journal.Patch
+	var patches []simpatches.Patch
 	RemoveGroundItem(
 		items,
 		byTile,
 		item,
-		func(p journal.Patch) {
+		func(p simpatches.Patch) {
 			patches = append(patches, p)
 		},
 	)
@@ -539,10 +539,10 @@ func TestRemoveGroundItemJournalSetterRecordsPatch(t *testing.T) {
 		t.Fatalf("expected removal to record 1 patch, got %d", len(patches))
 	}
 	patch := patches[0]
-	if patch.Kind != journal.PatchGroundItemQty {
-		t.Fatalf("expected removal patch kind %q, got %q", journal.PatchGroundItemQty, patch.Kind)
+	if patch.Kind != simpatches.PatchGroundItemQty {
+		t.Fatalf("expected removal patch kind %q, got %q", simpatches.PatchGroundItemQty, patch.Kind)
 	}
-	payload, ok := patch.Payload.(journal.GroundItemQtyPayload)
+	payload, ok := patch.Payload.(simpatches.GroundItemQtyPayload)
 	if !ok {
 		t.Fatalf("expected payload type GroundItemQtyPayload, got %T", patch.Payload)
 	}
@@ -605,7 +605,7 @@ func TestDropAllItemsOfTypePlacesStacksOnGround(t *testing.T) {
 			}
 			return true
 		},
-		AppendPatch: func(journal.Patch) {},
+		AppendPatch: func(simpatches.Patch) {},
 	})
 
 	total := DropAllItemsOfType(
@@ -674,7 +674,7 @@ func TestDropAllInventoryDropsCombinedStacks(t *testing.T) {
 			}
 			return true
 		},
-		AppendPatch: func(journal.Patch) {},
+		AppendPatch: func(simpatches.Patch) {},
 		LogDrop: func(_ *Actor, stack ItemStack, reason, stackID string) {
 			logCalls++
 			if reason != "death" {
@@ -739,7 +739,7 @@ func TestDropAllGoldUsesGoldItemType(t *testing.T) {
 			}
 			return true
 		},
-		AppendPatch: func(journal.Patch) {},
+		AppendPatch: func(simpatches.Patch) {},
 	})
 
 	total := DropAllGold(
@@ -790,7 +790,7 @@ func TestDropGoldQuantityPlacesStack(t *testing.T) {
 			}
 			return true
 		},
-		AppendPatch: func(journal.Patch) {},
+		AppendPatch: func(simpatches.Patch) {},
 		LogDrop:     func(*Actor, ItemStack, string, string) { logged = true },
 	})
 
@@ -854,7 +854,7 @@ func TestDropGoldQuantityInsufficientGold(t *testing.T) {
 		Actor:       actor,
 		Scatter:     cfg,
 		EnsureKey:   func(*ItemStack) bool { return true },
-		AppendPatch: func(journal.Patch) {},
+		AppendPatch: func(simpatches.Patch) {},
 	})
 
 	result, failure := DropGoldQuantity(
@@ -897,7 +897,7 @@ func TestDropGoldQuantityInventoryError(t *testing.T) {
 		Actor:       actor,
 		Scatter:     cfg,
 		EnsureKey:   func(*ItemStack) bool { return true },
-		AppendPatch: func(journal.Patch) {},
+		AppendPatch: func(simpatches.Patch) {},
 	})
 
 	result, failure := DropGoldQuantity(
@@ -935,7 +935,7 @@ func TestPickupNearestItemTransfersStack(t *testing.T) {
 	actor := &Actor{ID: "player-1", X: 0, Y: 0}
 
 	added := false
-	var patches []journal.Patch
+	var patches []simpatches.Patch
 
 	result, failure := PickupNearestItem(
 		items,
@@ -950,7 +950,7 @@ func TestPickupNearestItemTransfersStack(t *testing.T) {
 			added = true
 			return nil
 		},
-		func(p journal.Patch) {
+		func(p simpatches.Patch) {
 			patches = append(patches, p)
 		},
 	)
@@ -991,7 +991,7 @@ func TestPickupNearestItemOutOfRange(t *testing.T) {
 
 	addCalled := false
 	removeCalled := false
-	var patches []journal.Patch
+	var patches []simpatches.Patch
 
 	result, failure := PickupNearestItem(
 		items,
@@ -1003,7 +1003,7 @@ func TestPickupNearestItemOutOfRange(t *testing.T) {
 			addCalled = true
 			return nil
 		},
-		func(p journal.Patch) {
+		func(p simpatches.Patch) {
 			removeCalled = true
 			patches = append(patches, p)
 		},
@@ -1045,7 +1045,7 @@ func TestPickupNearestItemHandlesEmptyStacks(t *testing.T) {
 	byTile := map[GroundTileKey]map[string]*GroundItemState{tile: {item.FungibilityKey: item}}
 	actor := &Actor{ID: "player-3", X: 0, Y: 0}
 
-	var patches []journal.Patch
+	var patches []simpatches.Patch
 
 	result, failure := PickupNearestItem(
 		items,
@@ -1057,7 +1057,7 @@ func TestPickupNearestItemHandlesEmptyStacks(t *testing.T) {
 			t.Fatalf("did not expect inventory mutation for empty stack")
 			return nil
 		},
-		func(p journal.Patch) {
+		func(p simpatches.Patch) {
 			patches = append(patches, p)
 		},
 	)
@@ -1091,7 +1091,7 @@ func TestPickupNearestItemInventoryError(t *testing.T) {
 
 	invErr := errors.New("inventory full")
 	removeCalled := false
-	var patches []journal.Patch
+	var patches []simpatches.Patch
 
 	result, failure := PickupNearestItem(
 		items,
@@ -1100,7 +1100,7 @@ func TestPickupNearestItemInventoryError(t *testing.T) {
 		"gold",
 		5,
 		func(ItemStack) error { return invErr },
-		func(p journal.Patch) {
+		func(p simpatches.Patch) {
 			removeCalled = true
 			patches = append(patches, p)
 		},

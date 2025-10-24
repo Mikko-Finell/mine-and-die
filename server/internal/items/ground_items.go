@@ -5,7 +5,7 @@ import (
 	"math"
 	"sort"
 
-	"mine-and-die/server/internal/journal"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 )
 
 const positionEpsilon = 1e-6
@@ -191,7 +191,7 @@ func RemoveGroundItem(
 	items map[string]*GroundItemState,
 	itemsByTile map[GroundTileKey]map[string]*GroundItemState,
 	item *GroundItemState,
-	appendPatch func(journal.Patch),
+	appendPatch func(simpatches.Patch),
 ) {
 	if items == nil || item == nil || appendPatch == nil {
 		return
@@ -375,7 +375,7 @@ func PickupNearestItem(
 	itemType string,
 	maxDistance float64,
 	addToInventory func(ItemStack) error,
-	appendPatch func(journal.Patch),
+	appendPatch func(simpatches.Patch),
 ) (*PickupResult, *PickupFailure) {
 	if len(items) == 0 || actor == nil || itemType == "" || addToInventory == nil || appendPatch == nil {
 		return nil, &PickupFailure{Reason: PickupFailureReasonNotFound}
@@ -453,7 +453,7 @@ type GroundDropConfig struct {
 	RandomAngle    func() float64
 	RandomDistance func(min, max float64) float64
 	EnsureKey      func(*ItemStack) bool
-	AppendPatch    func(journal.Patch)
+	AppendPatch    func(simpatches.Patch)
 	LogDrop        func(*Actor, ItemStack, string, string)
 }
 
@@ -473,7 +473,7 @@ type GroundDropDelegates struct {
 
 // GroundItemQuantityJournalSetter returns a setter that updates the stack quantity and
 // records a journal patch when the value changes.
-func GroundItemQuantityJournalSetter(appendPatch func(journal.Patch)) func(*GroundItemState, int) {
+func GroundItemQuantityJournalSetter(appendPatch func(simpatches.Patch)) func(*GroundItemState, int) {
 	return func(item *GroundItemState, qty int) {
 		if item == nil {
 			return
@@ -485,17 +485,17 @@ func GroundItemQuantityJournalSetter(appendPatch func(journal.Patch)) func(*Grou
 		if appendPatch == nil {
 			return
 		}
-		appendPatch(journal.Patch{
-			Kind:     journal.PatchGroundItemQty,
+		appendPatch(simpatches.Patch{
+			Kind:     simpatches.PatchGroundItemQty,
 			EntityID: item.ID,
-			Payload:  journal.GroundItemQtyPayload{Qty: item.Qty},
+			Payload:  simpatches.GroundItemQtyPayload{Qty: item.Qty},
 		})
 	}
 }
 
 // GroundItemPositionJournalSetter returns a setter that updates the stack coordinates and
 // records a journal patch when the value changes.
-func GroundItemPositionJournalSetter(appendPatch func(journal.Patch)) func(*GroundItemState, float64, float64) {
+func GroundItemPositionJournalSetter(appendPatch func(simpatches.Patch)) func(*GroundItemState, float64, float64) {
 	return func(item *GroundItemState, x, y float64) {
 		if item == nil {
 			return
@@ -507,10 +507,10 @@ func GroundItemPositionJournalSetter(appendPatch func(journal.Patch)) func(*Grou
 		if appendPatch == nil {
 			return
 		}
-		appendPatch(journal.Patch{
-			Kind:     journal.PatchGroundItemPos,
+		appendPatch(simpatches.Patch{
+			Kind:     simpatches.PatchGroundItemPos,
 			EntityID: item.ID,
-			Payload:  journal.GroundItemPosPayload{X: item.X, Y: item.Y},
+			Payload:  simpatches.GroundItemPosPayload{X: item.X, Y: item.Y},
 		})
 	}
 }

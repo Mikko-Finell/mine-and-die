@@ -18,6 +18,7 @@ import (
 	"mine-and-die/server/internal/net/proto"
 	"mine-and-die/server/internal/sim"
 	simpaches "mine-and-die/server/internal/sim/patches"
+	simtyped "mine-and-die/server/internal/sim/patches/typed"
 	"mine-and-die/server/internal/simutil"
 	"mine-and-die/server/internal/telemetry"
 	worldpkg "mine-and-die/server/internal/world"
@@ -1727,7 +1728,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 		} else {
 			simEffectBatch = engine.SnapshotEffectEvents()
 		}
-		effectBatch = internaleffects.LegacyEffectEventBatchFromSim(simEffectBatch)
+		effectBatch = EffectEventBatch(internaleffects.TypedEffectEventBatchFromSim(simEffectBatch))
 	}
 
 	if patches == nil {
@@ -1849,7 +1850,7 @@ func (h *Hub) scheduleResyncIfNeeded() (bool, resyncSignal) {
 	if !ok {
 		return false, resyncSignal{}
 	}
-	signal := internaleffects.LegacyEffectResyncSignalFromSim(simSignal)
+	signal := resyncSignalFromTyped(internaleffects.TypedEffectResyncSignalFromSim(simSignal))
 
 	h.forceKeyframe()
 	h.resyncNext.Store(true)
@@ -2087,6 +2088,23 @@ func (h *Hub) TelemetrySnapshot() telemetrySnapshot {
 		return telemetrySnapshot{}
 	}
 	return h.telemetry.Snapshot()
+}
+
+func resyncSignalFromTyped(signal simtyped.EffectResyncSignal) resyncSignal {
+	converted := resyncSignal{
+		LostSpawns:  signal.LostSpawns,
+		TotalEvents: signal.TotalEvents,
+	}
+	if len(signal.Reasons) > 0 {
+		converted.Reasons = make([]resyncReason, len(signal.Reasons))
+		for i, reason := range signal.Reasons {
+			converted.Reasons[i] = resyncReason{
+				Kind:     reason.Kind,
+				EffectID: reason.EffectID,
+			}
+		}
+	}
+	return converted
 }
 
 func filterPlayerPatches(patches []sim.Patch) []sim.Patch {
