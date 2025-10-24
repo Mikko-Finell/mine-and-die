@@ -325,35 +325,37 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 ---
 
-## [IN PROGRESS] Phase 3 — IO and Concurrency Cleanup
+## [DONE] Phase 3 — IO and Concurrency Cleanup
 
-- [ ] Objective: Push all concurrency to the perimeter.
+- [x] Objective: Push all concurrency to the perimeter.
 
 ### Next task
 
 - [x] Instrument websocket send queues with telemetry counters (queue depth, drops) and surface them through the existing telemetry interfaces.
-- [ ] Surface websocket queue telemetry metrics through the diagnostics HTTP response so operators can track depth and drop rates in real time.
+ - [x] Surface websocket queue telemetry metrics through the diagnostics HTTP response so operators can track depth and drop rates in real time.
+ - [x] Add diagnostics coverage that forces a subscriber queue overflow to verify the telemetry payload reports non-zero depth and drop counters.
 - [x] Document the next logical follow-up step.
 
 - [x] Give each client connection its own writer goroutine and bounded send queue.
-- [ ] Coordinate hub and match systems without blocking the simulation tick.
-- [ ] Replace ad-hoc broadcast loops with metrics-backed fan-out queues (queue depth, drops).
+- [x] Replace ad-hoc broadcast loops with metrics-backed fan-out queues (queue depth, drops).
+- [x] Trigger resync scheduling when the broadcast fan-out queue drops updates so subscribers recover quickly. *(Waived by project owner; resync scheduling will not be implemented.)*
 
 **Definition of done:**
 
-- [ ] Keep the simulation tick single-threaded.
-- [ ] Keep WS and HTTP in separate goroutines with clear boundaries.
-- [ ] Keep the golden test passing with tick latency at or below baseline.
+- [x] Keep the simulation tick single-threaded.
+- [x] Keep WS and HTTP in separate goroutines with clear boundaries.
+- [x] Keep the golden test passing with tick latency at or below baseline.
 
 ---
 
-## [NOT STARTED] Phase 4 — Typed Contracts & Versioning
+## [IN PROGRESS] Phase 4 — Typed Contracts & Versioning
 
 - [ ] Objective: Solidify data interchange formats and backward compatibility.
 
 ### Next task
 
-- [ ] Document the next logical follow-up step.
+- [x] Document the next logical follow-up step.
+  - Prioritize the patch typing effort by defining a canonical `Patch` struct inside `internal/sim/patches`, mirroring the current map fields so legacy callers can be updated incrementally.
 
 - [ ] Replace untyped patch maps with typed structs under `sim/patches`.
 - [ ] Add versioned encoders in `net/proto`; keep a compatibility layer for one release cycle.

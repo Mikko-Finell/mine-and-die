@@ -371,7 +371,17 @@ func TestBroadcastLoggingRedactsPayload(t *testing.T) {
 
 	hub.broadcastState(nil, nil, nil, groundItems)
 
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if buf.Len() > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	logOutput := buf.String()
+	if logOutput == "" {
+		t.Fatalf("expected broadcast log output")
+	}
 	if !strings.Contains(logOutput, "fireball") {
 		t.Fatalf("expected broadcast log to mention fireball marker, got %q", logOutput)
 	}

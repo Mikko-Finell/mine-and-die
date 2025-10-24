@@ -53,6 +53,9 @@ const (
 	metricKeySubscriberQueueDepth              = "telemetry_ws_queue_depth"
 	metricKeySubscriberQueueMaxDepth           = "telemetry_ws_queue_max_depth"
 	metricKeySubscriberQueueDropsTotal         = "telemetry_ws_queue_drops_total"
+	metricKeyBroadcastQueueDepth               = "telemetry_broadcast_queue_depth"
+	metricKeyBroadcastQueueMaxDepth            = "telemetry_broadcast_queue_max_depth"
+	metricKeyBroadcastQueueDropsTotal          = "telemetry_broadcast_queue_drops_total"
 )
 
 type telemetryMetricsAdapter struct {
@@ -250,6 +253,24 @@ func (a *telemetryMetricsAdapter) RecordSubscriberQueueMaxDepth(depth uint64) {
 
 func (a *telemetryMetricsAdapter) IncrementSubscriberQueueDrops() {
 	a.add(metricKeySubscriberQueueDropsTotal, 1)
+}
+
+func (a *telemetryMetricsAdapter) RecordBroadcastQueueDepth(depth uint64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	a.metrics.Store(metricKeyBroadcastQueueDepth, depth)
+}
+
+func (a *telemetryMetricsAdapter) RecordBroadcastQueueMaxDepth(depth uint64) {
+	if a == nil || a.metrics == nil {
+		return
+	}
+	a.metrics.Store(metricKeyBroadcastQueueMaxDepth, depth)
+}
+
+func (a *telemetryMetricsAdapter) IncrementBroadcastQueueDrops() {
+	a.add(metricKeyBroadcastQueueDropsTotal, 1)
 }
 
 func (a *telemetryMetricsAdapter) RecordEffectParity(summary effectParitySummary) {
@@ -557,6 +578,10 @@ type telemetryCounters struct {
 	subscriberQueueDepth    atomic.Int64
 	subscriberQueueMaxDepth atomic.Int64
 	subscriberQueueDrops    atomic.Uint64
+
+	broadcastQueueDepth    atomic.Int64
+	broadcastQueueMaxDepth atomic.Int64
+	broadcastQueueDrops    atomic.Uint64
 }
 
 type telemetrySnapshot struct {
@@ -575,6 +600,7 @@ type telemetrySnapshot struct {
 	JournalDrops             map[string]uint64                `json:"journalDrops,omitempty"`
 	CommandDrops             map[string]map[string]uint64     `json:"commandDrops,omitempty"`
 	SubscriberQueues         telemetrySubscriberQueueSnapshot `json:"subscriberQueues"`
+	BroadcastQueue           telemetryBroadcastQueueSnapshot  `json:"broadcastQueue"`
 	EffectParity             telemetryEffectParitySnapshot    `json:"effectParity"`
 	TickBudget               telemetryTickBudgetSnapshot      `json:"tickBudget"`
 }
@@ -592,9 +618,17 @@ type telemetryEffectTriggersSnapshot struct {
 }
 
 type telemetrySubscriberQueueSnapshot struct {
-	Depth    int64  `json:"depth"`
-	MaxDepth int64  `json:"maxDepth"`
-	Drops    uint64 `json:"drops"`
+	Depth             int64   `json:"depth"`
+	MaxDepth          int64   `json:"maxDepth"`
+	Drops             uint64  `json:"drops"`
+	DropRatePerSecond float64 `json:"dropRatePerSecond"`
+}
+
+type telemetryBroadcastQueueSnapshot struct {
+	Depth             int64   `json:"depth"`
+	MaxDepth          int64   `json:"maxDepth"`
+	Drops             uint64  `json:"drops"`
+	DropRatePerSecond float64 `json:"dropRatePerSecond"`
 }
 
 type telemetryEffectParitySnapshot struct {
@@ -875,6 +909,41 @@ func (t *telemetryCounters) RecordSubscriberQueueDrop(depth int) {
 	t.metricsAdapter.IncrementSubscriberQueueDrops()
 }
 
+func (t *telemetryCounters) RecordBroadcastQueueDepth(depth int) {
+	if t == nil {
+		return
+	}
+	if depth < 0 {
+		depth = 0
+	}
+	depth64 := int64(depth)
+	t.broadcastQueueDepth.Store(depth64)
+	for {
+		current := t.broadcastQueueMaxDepth.Load()
+		if depth64 <= current {
+			break
+		}
+		if t.broadcastQueueMaxDepth.CompareAndSwap(current, depth64) {
+			break
+		}
+	}
+	t.metricsAdapter.RecordBroadcastQueueDepth(uint64(depth))
+	maxDepth := t.broadcastQueueMaxDepth.Load()
+	if maxDepth < 0 {
+		maxDepth = 0
+	}
+	t.metricsAdapter.RecordBroadcastQueueMaxDepth(uint64(maxDepth))
+}
+
+func (t *telemetryCounters) RecordBroadcastQueueDrop(depth int) {
+	if t == nil {
+		return
+	}
+	t.RecordBroadcastQueueDepth(depth)
+	t.broadcastQueueDrops.Add(1)
+	t.metricsAdapter.IncrementBroadcastQueueDrops()
+}
+
 func (t *telemetryCounters) RecordEffectParity(summary effectParitySummary) {
 	if t == nil {
 		return
@@ -890,6 +959,18 @@ func (t *telemetryCounters) DebugEnabled() bool {
 func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 	totalTicks := t.totalTicks.Load()
 	tickBudget := time.Second / time.Duration(tickRate)
+	depth := t.subscriberQueueDepth.Load()
+	maxDepth := t.subscriberQueueMaxDepth.Load()
+	drops := t.subscriberQueueDrops.Load()
+	broadcastDepth := t.broadcastQueueDepth.Load()
+	broadcastMaxDepth := t.broadcastQueueMaxDepth.Load()
+	broadcastDrops := t.broadcastQueueDrops.Load()
+	var dropRate float64
+	var broadcastDropRate float64
+	if totalTicks > 0 {
+		dropRate = float64(drops) * float64(tickRate) / float64(totalTicks)
+		broadcastDropRate = float64(broadcastDrops) * float64(tickRate) / float64(totalTicks)
+	}
 	snapshot := telemetrySnapshot{
 		BytesSent:                t.bytesSent.Load(),
 		EntitiesSent:             t.entitiesSent.Load(),
@@ -914,9 +995,16 @@ func (t *telemetryCounters) Snapshot() telemetrySnapshot {
 		JournalDrops: t.journalDrops.snapshot(),
 		CommandDrops: t.commandDrops.snapshot(),
 		SubscriberQueues: telemetrySubscriberQueueSnapshot{
-			Depth:    t.subscriberQueueDepth.Load(),
-			MaxDepth: t.subscriberQueueMaxDepth.Load(),
-			Drops:    t.subscriberQueueDrops.Load(),
+			Depth:             depth,
+			MaxDepth:          maxDepth,
+			Drops:             drops,
+			DropRatePerSecond: dropRate,
+		},
+		BroadcastQueue: telemetryBroadcastQueueSnapshot{
+			Depth:             broadcastDepth,
+			MaxDepth:          broadcastMaxDepth,
+			Drops:             broadcastDrops,
+			DropRatePerSecond: broadcastDropRate,
 		},
 		EffectParity: telemetryEffectParitySnapshot{
 			TotalTicks: totalTicks,
