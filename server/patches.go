@@ -85,7 +85,7 @@ type EffectParamsPayload = simpatches.EffectParamsPayload
 
 type GroundItemQtyPayload = simpatches.GroundItemQtyPayload
 
-type EffectEventBatch = journal.EffectEventBatch
+type EffectEventBatch = simpatches.EffectEventBatch
 
 type Journal = journal.Journal
 
@@ -97,9 +97,9 @@ type keyframeRecordResult = journal.KeyframeRecordResult
 
 type resyncPolicy = journal.Policy
 
-type resyncSignal = journal.ResyncSignal
+type resyncSignal = simpatches.EffectResyncSignal
 
-type resyncReason = journal.ResyncReason
+type resyncReason = simpatches.EffectResyncReason
 
 const (
 	metricJournalNonMonotonicSeq = "journal_nonmonotonic_seq"

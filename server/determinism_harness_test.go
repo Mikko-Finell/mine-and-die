@@ -10,6 +10,7 @@ import (
 	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
+	simpatches "mine-and-die/server/internal/sim/patches/typed"
 	worldpkg "mine-and-die/server/internal/world"
 )
 
@@ -146,7 +147,8 @@ func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptio
 		patchHasher.Write(patchBytes)
 		totalPatches += len(patches)
 
-		effectBatch := hub.world.journal.DrainEffectEvents()
+		journalBatch := hub.world.journal.DrainEffectEvents()
+		effectBatch := simpatches.EffectEventBatch(journalBatch)
 		journalEnvelope := struct {
 			Tick  int              `json:"tick"`
 			Batch EffectEventBatch `json:"batch"`
