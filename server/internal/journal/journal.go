@@ -1,10 +1,11 @@
 package journal
 
 import (
-        "sync"
-        "time"
+	"sync"
+	"time"
 
-        effectcontract "mine-and-die/server/effects/contract"
+	effectcontract "mine-and-die/server/effects/contract"
+	simpaches "mine-and-die/server/internal/sim/patches/typed"
 )
 
 // Telemetry captures the metrics adapter used by the journal to report drops.
@@ -13,131 +14,108 @@ type Telemetry interface {
 }
 
 // PatchKind identifies the type of diff entry.
-type PatchKind string
+type PatchKind = simpaches.PatchKind
 
 const (
 	// PatchPlayerPos updates a player's position.
-	PatchPlayerPos PatchKind = "player_pos"
+	PatchPlayerPos = simpaches.PatchPlayerPos
 	// PatchPlayerFacing updates a player's facing direction.
-	PatchPlayerFacing PatchKind = "player_facing"
+	PatchPlayerFacing = simpaches.PatchPlayerFacing
 	// PatchPlayerIntent updates a player's movement intent vector.
-	PatchPlayerIntent PatchKind = "player_intent"
+	PatchPlayerIntent = simpaches.PatchPlayerIntent
 	// PatchPlayerHealth updates a player's health pool.
-	PatchPlayerHealth PatchKind = "player_health"
+	PatchPlayerHealth = simpaches.PatchPlayerHealth
 	// PatchPlayerInventory updates a player's inventory slots.
-	PatchPlayerInventory PatchKind = "player_inventory"
+	PatchPlayerInventory = simpaches.PatchPlayerInventory
 	// PatchPlayerEquipment updates a player's equipment loadout.
-	PatchPlayerEquipment PatchKind = "player_equipment"
+	PatchPlayerEquipment = simpaches.PatchPlayerEquipment
 	// PatchPlayerRemoved signals that a player has been removed from the world.
-	PatchPlayerRemoved PatchKind = "player_removed"
+	PatchPlayerRemoved = simpaches.PatchPlayerRemoved
 
 	// PatchNPCPos updates an NPC's position.
-	PatchNPCPos PatchKind = "npc_pos"
+	PatchNPCPos = simpaches.PatchNPCPos
 	// PatchNPCFacing updates an NPC's facing direction.
-	PatchNPCFacing PatchKind = "npc_facing"
+	PatchNPCFacing = simpaches.PatchNPCFacing
 	// PatchNPCHealth updates an NPC's health pool.
-	PatchNPCHealth PatchKind = "npc_health"
+	PatchNPCHealth = simpaches.PatchNPCHealth
 	// PatchNPCInventory updates an NPC's inventory slots.
-	PatchNPCInventory PatchKind = "npc_inventory"
+	PatchNPCInventory = simpaches.PatchNPCInventory
 	// PatchNPCEquipment updates an NPC's equipment loadout.
-	PatchNPCEquipment PatchKind = "npc_equipment"
+	PatchNPCEquipment = simpaches.PatchNPCEquipment
 
 	// PatchEffectPos updates an effect's position.
-	PatchEffectPos PatchKind = "effect_pos"
+	PatchEffectPos = simpaches.PatchEffectPos
 	// PatchEffectParams updates an effect's parameter map.
-	PatchEffectParams PatchKind = "effect_params"
+	PatchEffectParams = simpaches.PatchEffectParams
 
 	// PatchGroundItemPos updates a ground item's position.
-	PatchGroundItemPos PatchKind = "ground_item_pos"
+	PatchGroundItemPos = simpaches.PatchGroundItemPos
 	// PatchGroundItemQty updates a ground item's quantity.
-	PatchGroundItemQty PatchKind = "ground_item_qty"
+	PatchGroundItemQty = simpaches.PatchGroundItemQty
 )
 
 // Patch represents a diff entry that can be applied to the client state.
-type Patch struct {
-	Kind     PatchKind `json:"kind"`
-	EntityID string    `json:"entityId"`
-	Payload  any       `json:"payload,omitempty"`
-}
+type Patch = simpaches.Patch
 
 // PositionPayload captures the coordinates for an entity position patch.
-type PositionPayload struct {
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
-}
+type PositionPayload = simpaches.PositionPayload
 
 // PlayerPosPayload captures the coordinates for a player position patch.
-type PlayerPosPayload = PositionPayload
+type PlayerPosPayload = simpaches.PlayerPosPayload
 
 // NPCPosPayload captures the coordinates for an NPC position patch.
-type NPCPosPayload = PositionPayload
+type NPCPosPayload = simpaches.NPCPosPayload
 
 // EffectPosPayload captures the coordinates for an effect position patch.
-type EffectPosPayload = PositionPayload
+type EffectPosPayload = simpaches.EffectPosPayload
 
 // GroundItemPosPayload captures the coordinates for a ground item position patch.
-type GroundItemPosPayload = PositionPayload
+type GroundItemPosPayload = simpaches.GroundItemPosPayload
 
 // FacingPayload captures the facing for an entity patch.
-type FacingPayload struct {
-        Facing any `json:"facing"`
-}
+type FacingPayload = simpaches.FacingPayload
 
 // PlayerFacingPayload captures the facing for a player patch.
-type PlayerFacingPayload = FacingPayload
+type PlayerFacingPayload = simpaches.PlayerFacingPayload
 
 // NPCFacingPayload captures the facing for an NPC patch.
-type NPCFacingPayload = FacingPayload
+type NPCFacingPayload = simpaches.NPCFacingPayload
 
 // PlayerIntentPayload captures the movement intent vector for a player patch.
-type PlayerIntentPayload struct {
-	DX float64 `json:"dx"`
-	DY float64 `json:"dy"`
-}
+type PlayerIntentPayload = simpaches.PlayerIntentPayload
 
 // HealthPayload captures the health for an entity patch.
-type HealthPayload struct {
-	Health    float64 `json:"health"`
-	MaxHealth float64 `json:"maxHealth,omitempty"`
-}
+type HealthPayload = simpaches.HealthPayload
 
 // PlayerHealthPayload captures the health for a player patch.
-type PlayerHealthPayload = HealthPayload
+type PlayerHealthPayload = simpaches.PlayerHealthPayload
 
 // NPCHealthPayload captures the health for an NPC patch.
-type NPCHealthPayload = HealthPayload
+type NPCHealthPayload = simpaches.NPCHealthPayload
 
 // InventoryPayload captures the inventory slots for an entity patch.
-type InventoryPayload struct {
-        Slots any `json:"slots"`
-}
+type InventoryPayload = simpaches.InventoryPayload
 
 // PlayerInventoryPayload captures the inventory slots for a player patch.
-type PlayerInventoryPayload = InventoryPayload
+type PlayerInventoryPayload = simpaches.PlayerInventoryPayload
 
 // NPCInventoryPayload captures the inventory slots for an NPC patch.
-type NPCInventoryPayload = InventoryPayload
+type NPCInventoryPayload = simpaches.NPCInventoryPayload
 
 // EquipmentPayload captures the equipped items for an entity patch.
-type EquipmentPayload struct {
-        Slots any `json:"slots"`
-}
+type EquipmentPayload = simpaches.EquipmentPayload
 
 // PlayerEquipmentPayload captures the equipped items for a player patch.
-type PlayerEquipmentPayload = EquipmentPayload
+type PlayerEquipmentPayload = simpaches.PlayerEquipmentPayload
 
 // NPCEquipmentPayload captures the equipped items for an NPC patch.
-type NPCEquipmentPayload = EquipmentPayload
+type NPCEquipmentPayload = simpaches.NPCEquipmentPayload
 
 // EffectParamsPayload captures the mutable parameters for an effect patch.
-type EffectParamsPayload struct {
-	Params map[string]float64 `json:"params"`
-}
+type EffectParamsPayload = simpaches.EffectParamsPayload
 
 // GroundItemQtyPayload captures the quantity for a ground item patch.
-type GroundItemQtyPayload struct {
-	Qty int `json:"qty"`
-}
+type GroundItemQtyPayload = simpaches.GroundItemQtyPayload
 
 // Journal accumulates patches generated during a tick and keeps a rolling
 // buffer of recent keyframes so future diff recovery can rehydrate state.

@@ -5,6 +5,7 @@ import (
 
 	internaleffects "mine-and-die/server/internal/effects"
 	items "mine-and-die/server/internal/items"
+	"mine-and-die/server/internal/sim"
 	worldpkg "mine-and-die/server/internal/world"
 	stats "mine-and-die/server/stats"
 )
@@ -64,7 +65,7 @@ func (w *World) setActorFacing(actor *actorState, version *uint64, entityID stri
 	actor.Facing = facing
 	incrementVersion(version)
 
-	w.appendPatch(kind, entityID, FacingPayload{Facing: facing})
+	w.appendPatch(kind, entityID, FacingPayload{Facing: toSimFacing(facing)})
 }
 
 func (w *World) setActorIntent(actor *actorState, version *uint64, entityID string, dx, dy float64) {
@@ -112,7 +113,8 @@ func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityI
 		func(inv Inventory) Inventory { return inv.Clone() },
 		inventoriesEqual,
 		func(inv Inventory) {
-			w.appendPatch(kind, entityID, items.InventoryPayloadFromSlots[InventorySlot, InventoryPayload](cloneInventorySlots(inv.Slots)))
+			slots := items.SimInventorySlotsFromAny(cloneInventorySlots(inv.Slots))
+			w.appendPatch(kind, entityID, items.SimInventoryPayloadFromSlots[sim.InventorySlot, InventoryPayload](slots))
 		},
 	)
 }
@@ -129,7 +131,8 @@ func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityI
 		func(eq Equipment) Equipment { return eq.Clone() },
 		equipmentsEqual,
 		func(eq Equipment) {
-			w.appendPatch(kind, entityID, items.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload](cloneEquipmentSlots(eq.Slots)))
+			slots := items.SimEquippedItemsFromAny(cloneEquipmentSlots(eq.Slots))
+			w.appendPatch(kind, entityID, items.SimEquipmentPayloadFromSlots[sim.EquippedItem, EquipmentPayload](slots))
 		},
 	)
 }

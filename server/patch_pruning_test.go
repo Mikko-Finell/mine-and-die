@@ -86,7 +86,7 @@ func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 	hub.world.AddPlayer(player)
 	hub.world.appendPatch(PatchPlayerPos, player.ID, PlayerPosPayload{X: 3, Y: 4})
 	hub.world.appendPatch(PatchNPCHealth, "npc-phantom", NPCHealthPayload{Health: 0, MaxHealth: baselinePlayerMaxHealth})
-	hub.world.appendPatch(PatchPlayerFacing, player.ID, PlayerFacingPayload{Facing: FacingUp})
+	hub.world.appendPatch(PatchPlayerFacing, player.ID, PlayerFacingPayload{Facing: sim.FacingDirection(FacingUp)})
 	hub.mu.Unlock()
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, true, true)

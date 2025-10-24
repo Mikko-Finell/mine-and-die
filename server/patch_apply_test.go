@@ -217,19 +217,23 @@ func TestApplyPatchesDuplicatePatchesLastWriteWins(t *testing.T) {
 		{Kind: PatchPlayerIntent, EntityID: "player-1", Payload: PlayerIntentPayload{DX: -1, DY: 1}},
 		{Kind: PatchPlayerHealth, EntityID: "player-1", Payload: PlayerHealthPayload{Health: 15, MaxHealth: 30}},
 		{Kind: PatchPlayerHealth, EntityID: "player-1", Payload: PlayerHealthPayload{Health: 8}},
-		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: itemspkg.InventoryPayloadFromSlots[InventorySlot, PlayerInventoryPayload]([]InventorySlot{{
-			Slot: 0,
-			Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
-		}})},
-		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: itemspkg.InventoryPayloadFromSlots[InventorySlot, PlayerInventoryPayload]([]InventorySlot{{
-			Slot: 0,
-			Item: ItemStack{Type: ItemTypeHealthPotion, Quantity: 1},
-		}, {
-			Slot: 1,
-			Item: ItemStack{Type: ItemTypeGold, Quantity: 4},
-		}})},
-		{Kind: PatchPlayerFacing, EntityID: "player-1", Payload: PlayerFacingPayload{Facing: FacingLeft}},
-		{Kind: PatchPlayerFacing, EntityID: "player-1", Payload: PlayerFacingPayload{Facing: FacingUp}},
+		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, PlayerInventoryPayload](
+			itemspkg.SimInventorySlotsFromAny([]InventorySlot{{
+				Slot: 0,
+				Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
+			}}),
+		)},
+		{Kind: PatchPlayerInventory, EntityID: "player-1", Payload: itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, PlayerInventoryPayload](
+			itemspkg.SimInventorySlotsFromAny([]InventorySlot{{
+				Slot: 0,
+				Item: ItemStack{Type: ItemTypeHealthPotion, Quantity: 1},
+			}, {
+				Slot: 1,
+				Item: ItemStack{Type: ItemTypeGold, Quantity: 4},
+			}}),
+		)},
+		{Kind: PatchPlayerFacing, EntityID: "player-1", Payload: PlayerFacingPayload{Facing: sim.FacingDirection(FacingLeft)}},
+		{Kind: PatchPlayerFacing, EntityID: "player-1", Payload: PlayerFacingPayload{Facing: sim.FacingDirection(FacingUp)}},
 	}
 
 	replayed, err := ApplyPatches(base, patches)
@@ -281,10 +285,15 @@ func TestApplyPatchesUpdatesEquipment(t *testing.T) {
 	patches := []Patch{{
 		Kind:     PatchPlayerEquipment,
 		EntityID: "player-1",
-		Payload: itemspkg.EquipmentPayloadFromSlots[EquippedItem, EquipmentPayload]([]EquippedItem{
-			{Slot: EquipSlotBody, Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1}},
-			{Slot: EquipSlotMainHand, Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1}},
-		}),
+		Payload: itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, EquipmentPayload](
+			itemspkg.SimEquippedItemsFromAny([]EquippedItem{{
+				Slot: EquipSlotBody,
+				Item: ItemStack{Type: ItemTypeLeatherJerkin, Quantity: 1},
+			}, {
+				Slot: EquipSlotMainHand,
+				Item: ItemStack{Type: ItemTypeIronDagger, Quantity: 1},
+			}}),
+		),
 	}}
 
 	frozen := clonePlayerViews(base)

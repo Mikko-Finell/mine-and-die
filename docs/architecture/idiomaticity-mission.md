@@ -357,7 +357,8 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 - [x] Document the next logical follow-up step.
   - Prioritize the patch typing effort by defining a canonical `Patch` struct inside `internal/sim/patches`, mirroring the current map fields so legacy callers can be updated incrementally.
 
-- [ ] Replace untyped patch maps with typed structs under `sim/patches`.
+- [x] Replace untyped patch maps with typed structs under `sim/patches`.
+- [ ] Update `server/patches.go` re-exports to source from `sim/patches` instead of `internal/journal` so callers adopt the canonical patch definitions.
 - [ ] Add versioned encoders in `net/proto`; keep a compatibility layer for one release cycle.
 - [ ] Freeze serialization format and validate via property tests (decode→encode→decode).
 - [ ] Introduce `Version` field in client protocol messages.

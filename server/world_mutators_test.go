@@ -3,28 +3,44 @@ package server
 import (
 	"errors"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
 	itemspkg "mine-and-die/server/internal/items"
+	"mine-and-die/server/internal/sim"
 	"mine-and-die/server/logging"
 	stats "mine-and-die/server/stats"
 )
 
-func requireInventorySlots(t *testing.T, slots any) []InventorySlot {
+func requireInventorySlots(t *testing.T, slots any) []sim.InventorySlot {
 	t.Helper()
-	converted, ok := slots.([]InventorySlot)
-	if !ok {
-		t.Fatalf("expected inventory slots to be []InventorySlot, got %T", slots)
+	converted := itemspkg.SimInventorySlotsFromAny(slots)
+	if converted == nil {
+		if slots == nil {
+			return nil
+		}
+		value := reflect.ValueOf(slots)
+		if value.IsValid() && value.Kind() == reflect.Slice && value.Len() == 0 {
+			return nil
+		}
+		t.Fatalf("expected inventory slots to be convertible, got %T", slots)
 	}
 	return converted
 }
 
-func requireEquipmentSlots(t *testing.T, slots any) []EquippedItem {
+func requireEquipmentSlots(t *testing.T, slots any) []sim.EquippedItem {
 	t.Helper()
-	converted, ok := slots.([]EquippedItem)
-	if !ok {
-		t.Fatalf("expected equipment slots to be []EquippedItem, got %T", slots)
+	converted := itemspkg.SimEquippedItemsFromAny(slots)
+	if converted == nil {
+		if slots == nil {
+			return nil
+		}
+		value := reflect.ValueOf(slots)
+		if value.IsValid() && value.Kind() == reflect.Slice && value.Len() == 0 {
+			return nil
+		}
+		t.Fatalf("expected equipment slots to be convertible, got %T", slots)
 	}
 	return converted
 }
@@ -70,10 +86,12 @@ func TestMutateEquipmentRecordsPlayerPatch(t *testing.T) {
 		t.Fatalf("expected payload to be PlayerEquipmentPayload, got %T", patch.Payload)
 	}
 
-	expected := itemspkg.EquipmentPayloadFromSlots[EquippedItem, PlayerEquipmentPayload]([]EquippedItem{{
-		Slot: EquipSlotMainHand,
-		Item: stack,
-	}})
+	expected := itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, PlayerEquipmentPayload](
+		itemspkg.SimEquippedItemsFromAny([]EquippedItem{{
+			Slot: EquipSlotMainHand,
+			Item: stack,
+		}}),
+	)
 
 	expectedSlots := requireEquipmentSlots(t, expected.Slots)
 	slots := requireEquipmentSlots(t, payload.Slots)
@@ -127,20 +145,22 @@ func TestMutateEquipmentEmitsSortedSlots(t *testing.T) {
 		t.Fatalf("expected payload to contain 2 slots, got %d", len(slots))
 	}
 
-	if slots[0].Slot != EquipSlotMainHand {
+	if slots[0].Slot != sim.EquipSlot(EquipSlotMainHand) {
 		t.Fatalf("expected main hand to appear first, got %q", slots[0].Slot)
 	}
-	if slots[1].Slot != EquipSlotAccessory {
+	if slots[1].Slot != sim.EquipSlot(EquipSlotAccessory) {
 		t.Fatalf("expected accessory to appear second, got %q", slots[1].Slot)
 	}
 
-	expected := itemspkg.EquipmentPayloadFromSlots[EquippedItem, PlayerEquipmentPayload]([]EquippedItem{{
-		Slot: EquipSlotMainHand,
-		Item: ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::sorted", Quantity: 1},
-	}, {
-		Slot: EquipSlotAccessory,
-		Item: ItemStack{Type: ItemTypeTravelerCharm, Quantity: 1},
-	}})
+	expected := itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, PlayerEquipmentPayload](
+		itemspkg.SimEquippedItemsFromAny([]EquippedItem{{
+			Slot: EquipSlotMainHand,
+			Item: ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::sorted", Quantity: 1},
+		}, {
+			Slot: EquipSlotAccessory,
+			Item: ItemStack{Type: ItemTypeTravelerCharm, Quantity: 1},
+		}}),
+	)
 
 	expectedSlots := requireEquipmentSlots(t, expected.Slots)
 	for idx := range slots {
@@ -240,10 +260,12 @@ func TestMutateEquipmentUpdatesPlayerSlot(t *testing.T) {
 		t.Fatalf("expected payload to be PlayerEquipmentPayload, got %T", patch.Payload)
 	}
 
-	expected := itemspkg.EquipmentPayloadFromSlots[EquippedItem, PlayerEquipmentPayload]([]EquippedItem{{
-		Slot: EquipSlotMainHand,
-		Item: upgraded,
-	}})
+	expected := itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, PlayerEquipmentPayload](
+		itemspkg.SimEquippedItemsFromAny([]EquippedItem{{
+			Slot: EquipSlotMainHand,
+			Item: upgraded,
+		}}),
+	)
 
 	expectedSlots := requireEquipmentSlots(t, expected.Slots)
 	slots := requireEquipmentSlots(t, payload.Slots)
@@ -429,10 +451,12 @@ func TestMutateEquipmentRecordsNPCPatch(t *testing.T) {
 		t.Fatalf("expected payload to be NPCEquipmentPayload, got %T", patch.Payload)
 	}
 
-	expected := itemspkg.EquipmentPayloadFromSlots[EquippedItem, NPCEquipmentPayload]([]EquippedItem{{
-		Slot: EquipSlotOffHand,
-		Item: stack,
-	}})
+	expected := itemspkg.SimEquipmentPayloadFromSlots[sim.EquippedItem, NPCEquipmentPayload](
+		itemspkg.SimEquippedItemsFromAny([]EquippedItem{{
+			Slot: EquipSlotOffHand,
+			Item: stack,
+		}}),
+	)
 
 	expectedSlots := requireEquipmentSlots(t, expected.Slots)
 	slots := requireEquipmentSlots(t, payload.Slots)
@@ -632,7 +656,7 @@ func TestSetFacingRecordsPatch(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected payload to be PlayerFacingPayload, got %T", patch.Payload)
 	}
-	if payload.Facing != FacingLeft {
+	if payload.Facing != sim.FacingDirection(FacingLeft) {
 		t.Fatalf("expected payload facing %q, got %q", FacingLeft, payload.Facing)
 	}
 
@@ -895,10 +919,12 @@ func TestMutateInventoryRecordsPatch(t *testing.T) {
 		t.Fatalf("expected payload to be PlayerInventoryPayload, got %T", patch.Payload)
 	}
 
-	expected := itemspkg.InventoryPayloadFromSlots[InventorySlot, PlayerInventoryPayload]([]InventorySlot{{
-		Slot: 0,
-		Item: ItemStack{Type: ItemTypeGold, Quantity: 3},
-	}})
+	expected := itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, PlayerInventoryPayload](
+		itemspkg.SimInventorySlotsFromAny([]InventorySlot{{
+			Slot: 0,
+			Item: ItemStack{Type: ItemTypeGold, Quantity: 3},
+		}}),
+	)
 
 	expectedSlots := requireInventorySlots(t, expected.Slots)
 	slots := requireInventorySlots(t, payload.Slots)
@@ -973,10 +999,12 @@ func TestMutateInventoryEmitsPatchWhenFungibilityChanges(t *testing.T) {
 		t.Fatalf("expected payload to be PlayerInventoryPayload, got %T", patch.Payload)
 	}
 
-	expected := itemspkg.InventoryPayloadFromSlots[InventorySlot, PlayerInventoryPayload]([]InventorySlot{{
-		Slot: 0,
-		Item: ItemStack{Type: ItemTypeIronDagger, FungibilityKey: newKey, Quantity: 1},
-	}})
+	expected := itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, PlayerInventoryPayload](
+		itemspkg.SimInventorySlotsFromAny([]InventorySlot{{
+			Slot: 0,
+			Item: ItemStack{Type: ItemTypeIronDagger, FungibilityKey: newKey, Quantity: 1},
+		}}),
+	)
 
 	expectedSlots := requireInventorySlots(t, expected.Slots)
 	slots := requireInventorySlots(t, payload.Slots)
@@ -1085,7 +1113,7 @@ func TestSetNPCFacingRecordsPatch(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected payload to be NPCFacingPayload, got %T", patch.Payload)
 	}
-	if payload.Facing != FacingLeft {
+	if payload.Facing != sim.FacingDirection(FacingLeft) {
 		t.Fatalf("expected payload facing %q, got %q", FacingLeft, payload.Facing)
 	}
 }
@@ -1150,10 +1178,12 @@ func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
 		t.Fatalf("expected payload to be NPCInventoryPayload, got %T", patch.Payload)
 	}
 
-	expected := itemspkg.InventoryPayloadFromSlots[InventorySlot, NPCInventoryPayload]([]InventorySlot{{
-		Slot: 0,
-		Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
-	}})
+	expected := itemspkg.SimInventoryPayloadFromSlots[sim.InventorySlot, NPCInventoryPayload](
+		itemspkg.SimInventorySlotsFromAny([]InventorySlot{{
+			Slot: 0,
+			Item: ItemStack{Type: ItemTypeGold, Quantity: 2},
+		}}),
+	)
 
 	expectedSlots := requireInventorySlots(t, expected.Slots)
 	slots := requireInventorySlots(t, payload.Slots)
