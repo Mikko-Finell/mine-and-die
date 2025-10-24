@@ -1,4 +1,4 @@
-.PHONY: build run sync stop cleanbranches test deps-check
+.PHONY: build run sync stop cleanbranches test deps-check lint
 
 build:
 	@npm install
@@ -27,3 +27,7 @@ test:
 
 deps-check:
 	(cd server && go run ./tools/depscheck)
+
+lint:
+	(cd server && golangci-lint run ./...)
+	$(MAKE) deps-check
