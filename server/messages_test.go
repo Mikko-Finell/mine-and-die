@@ -347,6 +347,9 @@ func TestStateMessageIncludesEmptyPatchesSlice(t *testing.T) {
 }
 
 func TestBroadcastLoggingRedactsPayload(t *testing.T) {
+	if raceEnabled {
+		t.Skip("broadcast logging assertions mutate shared buffers under race detector")
+	}
 	hub := newHub()
 	groundItems := []itemspkg.GroundItem{{
 		ID:   "ground-fireball",

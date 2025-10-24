@@ -395,11 +395,11 @@ This plan guides the refactoring of the Mine & Die server codebase toward a more
 
 - [x] Promote the `EnablePprofTrace` flag into a reusable `ObservabilityConfig` struct so upcoming observability hooks can share the same injection point without bloating `HTTPHandlerConfig`.
 - [x] Add `make deps-check` to enforce import boundaries (`net/*` must not import `sim/*` internals).
-- [ ] Configure `golangci-lint` with cyclomatic limits and forbid package cycles.
-  - Introduce a `make lint` entry that runs `golangci-lint` with `gocyclo` thresholds for Go code and a `depguard` rule that blocks `internal/sim/internal` imports from networking packages before wiring it into CI.
-- [ ] Add CI race detection (`go test -race ./...`).
 - [x] Commit a concise `ARCHITECTURE.md` and `STYLE.md` next to the code, not only in docs.
 - [x] Document dependency rules and testing expectations.
+- [x] Configure `golangci-lint` with cyclomatic limits and forbid package cycles.
+  - Introduce a `make lint` entry that runs `golangci-lint` with `gocyclo` thresholds for Go code and then chains the existing `deps-check` gate so networking packages continue to reject `internal/sim/internal` imports before wiring it into CI.
+- [x] Add CI race detection (`go test -race ./...`).
 
 **Definition of done:**
 
