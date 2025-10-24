@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -116,6 +117,80 @@ func (c *recordingSubscriberConn) waitWrites(t *testing.T, expected int) {
 	t.Fatalf("expected %d writes, got %d", expected, writes)
 }
 
+type recordingQueueTelemetry struct {
+	mu     sync.Mutex
+	depths []int
+	drops  []int
+}
+
+func (t *recordingQueueTelemetry) RecordSubscriberQueueDepth(depth int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.depths = append(t.depths, depth)
+}
+
+func (t *recordingQueueTelemetry) RecordSubscriberQueueDrop(depth int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.drops = append(t.drops, depth)
+}
+
+func (t *recordingQueueTelemetry) snapshot() ([]int, []int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	depths := make([]int, len(t.depths))
+	copy(depths, t.depths)
+	drops := make([]int, len(t.drops))
+	copy(drops, t.drops)
+	return depths, drops
+}
+
+type blockingSubscriberConn struct {
+	mu     sync.Mutex
+	writes int
+	block  chan struct{}
+}
+
+func newBlockingSubscriberConn() *blockingSubscriberConn {
+	return &blockingSubscriberConn{block: make(chan struct{}, subscriberSendQueueSize*2)}
+}
+
+func (c *blockingSubscriberConn) Write([]byte) error {
+	<-c.block
+	c.mu.Lock()
+	c.writes++
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *blockingSubscriberConn) SetWriteDeadline(time.Time) error { return nil }
+
+func (c *blockingSubscriberConn) Close() error { return nil }
+
+func (c *blockingSubscriberConn) allow(count int) {
+	for i := 0; i < count; i++ {
+		c.block <- struct{}{}
+	}
+}
+
+func (c *blockingSubscriberConn) waitWrites(t *testing.T, expected int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		c.mu.Lock()
+		writes := c.writes
+		c.mu.Unlock()
+		if writes >= expected {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	c.mu.Lock()
+	writes := c.writes
+	c.mu.Unlock()
+	t.Fatalf("expected %d writes, got %d", expected, writes)
+}
+
 func TestBroadcastStateRefreshesDeadlinesPerSubscriber(t *testing.T) {
 	base := time.Unix(1_700_000_000, 0).UTC()
 	clock := newStubClock([]time.Time{
@@ -135,7 +210,7 @@ func TestBroadcastStateRefreshesDeadlinesPerSubscriber(t *testing.T) {
 	for _, id := range subscriberIDs {
 		conn := &recordingSubscriberConn{}
 		connections[id] = conn
-		sub := newSubscriber(conn)
+		sub := newSubscriber(conn, nil)
 		hub.subscribers[id] = sub
 		t.Cleanup(sub.Close)
 	}
@@ -180,5 +255,65 @@ func TestBroadcastStateRefreshesDeadlinesPerSubscriber(t *testing.T) {
 
 	if len(remaining) != 0 {
 		t.Fatalf("unmatched clock observations remained: %v", remaining)
+	}
+}
+
+func TestSubscriberRecordsQueueTelemetry(t *testing.T) {
+	telemetry := &recordingQueueTelemetry{}
+	conn := newBlockingSubscriberConn()
+	sub := newSubscriber(conn, telemetry)
+	t.Cleanup(sub.Close)
+
+	conn.allow(1)
+	if err := sub.Write([]byte("initial")); err != nil {
+		t.Fatalf("expected initial write to succeed, got %v", err)
+	}
+	conn.waitWrites(t, 1)
+
+	for i := 0; i < subscriberSendQueueSize; i++ {
+		if err := sub.EnqueueBroadcast(time.Now(), []byte("payload")); err != nil {
+			t.Fatalf("unexpected enqueue error at %d: %v", i, err)
+		}
+	}
+
+	if err := sub.EnqueueBroadcast(time.Now(), []byte("filler")); err != nil {
+		t.Fatalf("expected final queue slot to accept, got %v", err)
+	}
+
+	err := sub.EnqueueBroadcast(time.Now(), []byte("overflow"))
+	if !errors.Is(err, errSubscriberQueueFull) {
+		t.Fatalf("expected subscriber queue full error, got %v", err)
+	}
+
+	conn.allow(subscriberSendQueueSize + 1)
+	conn.waitWrites(t, subscriberSendQueueSize+2)
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		depths, _ := telemetry.snapshot()
+		if len(depths) > 0 && depths[len(depths)-1] == 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	depths, drops := telemetry.snapshot()
+	if len(depths) == 0 || depths[len(depths)-1] != 0 {
+		t.Fatalf("expected final queue depth to be 0, got %v", depths)
+	}
+	maxDepth := 0
+	for _, depth := range depths {
+		if depth > maxDepth {
+			maxDepth = depth
+		}
+	}
+	if maxDepth != subscriberSendQueueSize {
+		t.Fatalf("expected max queue depth %d, got %d", subscriberSendQueueSize, maxDepth)
+	}
+	if len(drops) != 1 {
+		t.Fatalf("expected exactly one drop, got %d", len(drops))
+	}
+	if drops[0] != subscriberSendQueueSize {
+		t.Fatalf("expected drop depth %d, got %d", subscriberSendQueueSize, drops[0])
 	}
 }

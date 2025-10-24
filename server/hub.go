@@ -131,6 +131,11 @@ type subscriberConn interface {
 	Close() error
 }
 
+type subscriberQueueTelemetry interface {
+	RecordSubscriberQueueDepth(depth int)
+	RecordSubscriberQueueDrop(depth int)
+}
+
 type subscriber struct {
 	conn           subscriberConn
 	lastAck        atomic.Uint64
@@ -141,6 +146,8 @@ type subscriber struct {
 	closed    chan struct{}
 	closeOnce sync.Once
 	closeErr  atomic.Value
+
+	telemetry subscriberQueueTelemetry
 }
 
 type sendRequest struct {
@@ -187,13 +194,15 @@ func (s *subscriber) StoreLastCommandSeq(seq uint64) {
 	s.lastCommandSeq.Store(seq)
 }
 
-func newSubscriber(conn subscriberConn) *subscriber {
+func newSubscriber(conn subscriberConn, telemetry subscriberQueueTelemetry) *subscriber {
 	sub := &subscriber{
 		conn:      conn,
 		limiter:   newKeyframeRateLimiter(keyframeLimiterCapacity, keyframeLimiterRefillPer),
 		sendQueue: make(chan sendRequest, subscriberSendQueueSize),
 		closed:    make(chan struct{}),
+		telemetry: telemetry,
 	}
+	sub.recordQueueDepth(0)
 	go sub.runWriter()
 	return sub
 }
@@ -240,14 +249,17 @@ func (s *subscriber) runWriter() {
 		select {
 		case <-s.closed:
 			s.drainPending(s.closeError())
+			s.recordQueueDepth(len(s.sendQueue))
 			return
 		case req := <-s.sendQueue:
 			err := s.send(req)
 			s.finishRequest(req, err)
+			s.recordQueueDepth(len(s.sendQueue))
 			if err != nil {
 				s.recordCloseError(err)
 				s.Close()
 				s.drainPending(err)
+				s.recordQueueDepth(len(s.sendQueue))
 				return
 			}
 		}
@@ -281,6 +293,7 @@ func (s *subscriber) drainPending(err error) {
 		case req := <-s.sendQueue:
 			s.finishRequest(req, err)
 		default:
+			s.recordQueueDepth(len(s.sendQueue))
 			return
 		}
 	}
@@ -295,6 +308,7 @@ func (s *subscriber) enqueue(req sendRequest, wait bool) error {
 		case <-s.closed:
 			return s.closeError()
 		case s.sendQueue <- req:
+			s.recordQueueDepth(len(s.sendQueue))
 		}
 		return <-req.result
 	}
@@ -302,8 +316,10 @@ func (s *subscriber) enqueue(req sendRequest, wait bool) error {
 	case <-s.closed:
 		return s.closeError()
 	case s.sendQueue <- req:
+		s.recordQueueDepth(len(s.sendQueue))
 		return nil
 	default:
+		s.recordQueueDrop(len(s.sendQueue))
 		return errSubscriberQueueFull
 	}
 }
@@ -311,6 +327,20 @@ func (s *subscriber) enqueue(req sendRequest, wait bool) error {
 func (s *subscriber) EnqueueBroadcast(base time.Time, data []byte) error {
 	req := sendRequest{data: data, deadline: base.Add(writeWait)}
 	return s.enqueue(req, false)
+}
+
+func (s *subscriber) recordQueueDepth(depth int) {
+	if s == nil || s.telemetry == nil {
+		return
+	}
+	s.telemetry.RecordSubscriberQueueDepth(depth)
+}
+
+func (s *subscriber) recordQueueDrop(depth int) {
+	if s == nil || s.telemetry == nil {
+		return
+	}
+	s.telemetry.RecordSubscriberQueueDrop(depth)
 }
 
 const (
@@ -804,7 +834,7 @@ func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []si
 		existing.Close()
 	}
 
-	sub := newSubscriber(conn)
+	sub := newSubscriber(conn, h.telemetry)
 	h.subscribers[playerID] = sub
 	snapshot := h.simSnapshotLocked(true, false)
 	return sub, snapshot.Players, snapshot.NPCs, snapshot.GroundItems, true
@@ -845,8 +875,26 @@ func (h *Hub) RecordAck(playerID string, ack uint64) {
 
 // Disconnect removes a player and closes any active subscriber connection.
 func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
+	return h.disconnect(playerID, nil)
+}
+
+// DisconnectSubscriber removes the player if the provided subscriber matches the active entry.
+func (h *Hub) DisconnectSubscriber(playerID string, sub *subscriber) ([]Player, []NPC) {
+	if sub == nil {
+		return h.Disconnect(playerID)
+	}
+	return h.disconnect(playerID, sub)
+}
+
+func (h *Hub) disconnect(playerID string, target *subscriber) ([]Player, []NPC) {
 	h.mu.Lock()
 	sub, subOK := h.subscribers[playerID]
+	if target != nil {
+		if !subOK || sub != target {
+			h.mu.Unlock()
+			return nil, nil
+		}
+	}
 	if subOK {
 		delete(h.subscribers, playerID)
 	}
