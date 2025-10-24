@@ -133,11 +133,26 @@ type subscriberConn interface {
 
 type subscriber struct {
 	conn           subscriberConn
-	mu             sync.Mutex
 	lastAck        atomic.Uint64
 	lastCommandSeq atomic.Uint64
 	limiter        keyframeRateLimiter
+
+	sendQueue chan sendRequest
+	closed    chan struct{}
+	closeOnce sync.Once
+	closeErr  atomic.Value
 }
+
+type sendRequest struct {
+	data     []byte
+	deadline time.Time
+	result   chan error
+}
+
+var (
+	errSubscriberClosed    = errors.New("subscriber closed")
+	errSubscriberQueueFull = errors.New("subscriber send queue full")
+)
 
 // Write sends a websocket message guarded by the subscriber's mutex and write deadline.
 func (s *subscriber) Write(data []byte) error {
@@ -145,15 +160,15 @@ func (s *subscriber) Write(data []byte) error {
 }
 
 func (s *subscriber) writeWithDeadline(base time.Time, data []byte) error {
-	if s == nil || s.conn == nil {
-		return errors.New("subscriber closed")
+	if s == nil {
+		return errSubscriberClosed
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.conn.SetWriteDeadline(base.Add(writeWait)); err != nil {
-		return err
+	req := sendRequest{
+		data:     data,
+		deadline: base.Add(writeWait),
+		result:   make(chan error, 1),
 	}
-	return s.conn.Write(data)
+	return s.enqueue(req, true)
 }
 
 // LastCommandSeq returns the last command sequence acknowledged by the subscriber.
@@ -172,6 +187,132 @@ func (s *subscriber) StoreLastCommandSeq(seq uint64) {
 	s.lastCommandSeq.Store(seq)
 }
 
+func newSubscriber(conn subscriberConn) *subscriber {
+	sub := &subscriber{
+		conn:      conn,
+		limiter:   newKeyframeRateLimiter(keyframeLimiterCapacity, keyframeLimiterRefillPer),
+		sendQueue: make(chan sendRequest, subscriberSendQueueSize),
+		closed:    make(chan struct{}),
+	}
+	go sub.runWriter()
+	return sub
+}
+
+func (s *subscriber) Close() {
+	if s == nil {
+		return
+	}
+	s.recordCloseError(errSubscriberClosed)
+	s.closeOnce.Do(func() {
+		close(s.closed)
+		if s.conn != nil {
+			_ = s.conn.Close()
+		}
+	})
+}
+
+func (s *subscriber) recordCloseError(err error) {
+	if s == nil {
+		return
+	}
+	if err == nil {
+		err = errSubscriberClosed
+	}
+	if current := s.closeErr.Load(); current == nil {
+		s.closeErr.Store(err)
+	}
+}
+
+func (s *subscriber) closeError() error {
+	if s == nil {
+		return errSubscriberClosed
+	}
+	if value := s.closeErr.Load(); value != nil {
+		if err, ok := value.(error); ok && err != nil {
+			return err
+		}
+	}
+	return errSubscriberClosed
+}
+
+func (s *subscriber) runWriter() {
+	for {
+		select {
+		case <-s.closed:
+			s.drainPending(s.closeError())
+			return
+		case req := <-s.sendQueue:
+			err := s.send(req)
+			s.finishRequest(req, err)
+			if err != nil {
+				s.recordCloseError(err)
+				s.Close()
+				s.drainPending(err)
+				return
+			}
+		}
+	}
+}
+
+func (s *subscriber) send(req sendRequest) error {
+	if s == nil || s.conn == nil {
+		return errSubscriberClosed
+	}
+	if err := s.conn.SetWriteDeadline(req.deadline); err != nil {
+		return err
+	}
+	return s.conn.Write(req.data)
+}
+
+func (s *subscriber) finishRequest(req sendRequest, err error) {
+	if req.result == nil {
+		return
+	}
+	req.result <- err
+	close(req.result)
+}
+
+func (s *subscriber) drainPending(err error) {
+	if err == nil {
+		err = s.closeError()
+	}
+	for {
+		select {
+		case req := <-s.sendQueue:
+			s.finishRequest(req, err)
+		default:
+			return
+		}
+	}
+}
+
+func (s *subscriber) enqueue(req sendRequest, wait bool) error {
+	if s == nil {
+		return errSubscriberClosed
+	}
+	if wait {
+		select {
+		case <-s.closed:
+			return s.closeError()
+		case s.sendQueue <- req:
+		}
+		return <-req.result
+	}
+	select {
+	case <-s.closed:
+		return s.closeError()
+	case s.sendQueue <- req:
+		return nil
+	default:
+		return errSubscriberQueueFull
+	}
+}
+
+func (s *subscriber) EnqueueBroadcast(base time.Time, data []byte) error {
+	req := sendRequest{data: data, deadline: base.Add(writeWait)}
+	return s.enqueue(req, false)
+}
+
 const (
 	keyframeLimiterCapacity  = 3
 	keyframeLimiterRefillPer = 2.0 // tokens per second
@@ -179,6 +320,7 @@ const (
 	commandQueueWarningStep   = 256
 	commandQueuePerActorLimit = 32
 	commandBufferCapacity     = 1024
+	subscriberSendQueueSize   = 64
 
 	tickBudgetCatchupMaxTicks = 2
 	tickBudgetAlarmMinStreak  = 3
@@ -659,10 +801,10 @@ func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []si
 	state.lastHeartbeat = h.now()
 
 	if existing, ok := h.subscribers[playerID]; ok {
-		existing.conn.Close()
+		existing.Close()
 	}
 
-	sub := &subscriber{conn: conn, limiter: newKeyframeRateLimiter(keyframeLimiterCapacity, keyframeLimiterRefillPer)}
+	sub := newSubscriber(conn)
 	h.subscribers[playerID] = sub
 	snapshot := h.simSnapshotLocked(true, false)
 	return sub, snapshot.Players, snapshot.NPCs, snapshot.GroundItems, true
@@ -724,7 +866,7 @@ func (h *Hub) Disconnect(playerID string) ([]Player, []NPC) {
 	h.mu.Unlock()
 
 	if subOK {
-		sub.conn.Close()
+		sub.Close()
 	}
 
 	if !removed {
@@ -1089,7 +1231,7 @@ func (h *Hub) advance(now time.Time, dt float64) ([]Player, []NPC, []EffectTrigg
 func (h *Hub) handleLoopStep(result sim.LoopStepResult) {
 	players, npcs, triggers, groundItems, toClose := h.processLoopStep(result)
 	for _, sub := range toClose {
-		sub.conn.Close()
+		sub.Close()
 	}
 	h.broadcastState(players, npcs, triggers, groundItems)
 	duration := result.Duration
@@ -1757,7 +1899,7 @@ func (h *Hub) broadcastState(players []Player, npcs []NPC, triggers []EffectTrig
 	h.mu.Unlock()
 
 	for id, sub := range subs {
-		err := sub.writeWithDeadline(h.now(), data)
+		err := sub.EnqueueBroadcast(h.now(), data)
 		if err != nil {
 			h.logf("failed to send update to %s: %v", id, err)
 			players, npcs := h.Disconnect(id)
