@@ -14,37 +14,6 @@ import (
 	loggingstatuseffects "mine-and-die/server/logging/status_effects"
 )
 
-type StatusEffectType = internaleffects.StatusEffectType
-
-type statusEffectInstance struct {
-	Definition     *worldpkg.StatusEffectDefinition
-	SourceID       string
-	AppliedAt      time.Time
-	ExpiresAt      time.Time
-	NextTick       time.Time
-	LastTick       time.Time
-	attachedEffect *effectState
-	actor          *actorState
-}
-
-func (inst *statusEffectInstance) AttachEffect(value any) {
-	if inst == nil {
-		return
-	}
-	eff, ok := value.(*effectState)
-	if !ok || eff == nil {
-		return
-	}
-	inst.attachedEffect = eff
-}
-
-func (inst *statusEffectInstance) DefinitionType() string {
-	if inst == nil || inst.Definition == nil {
-		return ""
-	}
-	return inst.Definition.Type
-}
-
 var _ worldpkg.StatusEffectInstance = (*statusEffectInstance)(nil)
 
 const (
@@ -313,16 +282,18 @@ func (w *World) statusEffectsAdvanceConfig(actor *actorState) worldpkg.AdvanceAc
 				ExpiresAt: func() time.Time { return inst.ExpiresAt },
 			}
 
-			if def.OnTick != nil {
-				cfg.Definition.OnTick = func(tickAt time.Time) {
-					handle := newStatusEffectInstanceHandle(inst, actor)
-					def.OnTick(worldpkg.StatusEffectTickRuntime{Handle: handle, Now: tickAt})
+			if raw, _ := def.Runtime.(*worldpkg.StatusEffectDefinition); raw != nil {
+				if raw.OnTick != nil {
+					cfg.Definition.OnTick = func(tickAt time.Time) {
+						handle := newStatusEffectInstanceHandle(inst, actor)
+						raw.OnTick(worldpkg.StatusEffectTickRuntime{Handle: handle, Now: tickAt})
+					}
 				}
-			}
-			if def.OnExpire != nil {
-				cfg.Definition.OnExpire = func(expireAt time.Time) {
-					handle := newStatusEffectInstanceHandle(inst, actor)
-					def.OnExpire(worldpkg.StatusEffectExpireRuntime{Handle: handle, Now: expireAt})
+				if raw.OnExpire != nil {
+					cfg.Definition.OnExpire = func(expireAt time.Time) {
+						handle := newStatusEffectInstanceHandle(inst, actor)
+						raw.OnExpire(worldpkg.StatusEffectExpireRuntime{Handle: handle, Now: expireAt})
+					}
 				}
 			}
 
@@ -528,7 +499,7 @@ func (w *World) attachStatusEffectVisual(handle worldpkg.StatusEffectInstanceHan
 
 func newStatusEffectInstanceHandle(inst *statusEffectInstance, actor *actorState) worldpkg.StatusEffectInstanceHandle {
 	if inst != nil {
-		inst.actor = actor
+		inst.Actor = actor
 	}
 
 	return worldpkg.StatusEffectInstanceHandle{
@@ -541,20 +512,24 @@ func newStatusEffectInstanceHandle(inst *statusEffectInstance, actor *actorState
 				return
 			}
 			def, _ := value.(*worldpkg.StatusEffectDefinition)
-			inst.Definition = def
+			if def == nil {
+				inst.Definition = nil
+				return
+			}
+			inst.Definition = &StatusEffectDefinition{Type: def.Type, TickInterval: def.TickInterval, Runtime: def}
 		},
 		SetActor: func(value any) {
 			if inst == nil {
 				return
 			}
 			cast, _ := value.(*actorState)
-			inst.actor = cast
+			inst.Actor = cast
 		},
 		Actor: func() any {
 			if inst == nil {
 				return nil
 			}
-			return inst.actor
+			return inst.Actor
 		},
 		SetSourceID: func(value string) {
 			if inst == nil {
@@ -606,29 +581,42 @@ func newStatusEffectInstanceHandle(inst *statusEffectInstance, actor *actorState
 		},
 		Attachment: worldpkg.StatusEffectInstanceAttachment{
 			SetStatus: func(effectType string) {
-				if inst == nil || inst.attachedEffect == nil || effectType == "" {
+				if inst == nil || effectType == "" {
 					return
 				}
-				inst.attachedEffect.StatusEffect = StatusEffectType(effectType)
+				eff, _ := inst.AttachedEffect.(*effectState)
+				if eff == nil {
+					return
+				}
+				eff.StatusEffect = StatusEffectType(effectType)
 			},
 			Extend: func(expiresAt time.Time) {
-				if inst == nil || inst.attachedEffect == nil {
+				if inst == nil {
 					return
 				}
-				worldpkg.ExtendStatusEffectAttachment(statusEffectAttachmentFields(inst.attachedEffect), expiresAt)
+				eff, _ := inst.AttachedEffect.(*effectState)
+				if eff == nil {
+					return
+				}
+				worldpkg.ExtendStatusEffectAttachment(statusEffectAttachmentFields(eff), expiresAt)
 			},
 			Expire: func(at time.Time) (any, bool) {
-				if inst == nil || inst.attachedEffect == nil {
+				if inst == nil {
 					return nil, false
 				}
-				shouldRecord := worldpkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(inst.attachedEffect), at)
-				return inst.attachedEffect, shouldRecord
+				eff, _ := inst.AttachedEffect.(*effectState)
+				if eff == nil {
+					return nil, false
+				}
+				shouldRecord := worldpkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(eff), at)
+				inst.AttachedEffect = nil
+				return eff, shouldRecord
 			},
 			Clear: func() {
 				if inst == nil {
 					return
 				}
-				inst.attachedEffect = nil
+				inst.AttachedEffect = nil
 			},
 		},
 	}

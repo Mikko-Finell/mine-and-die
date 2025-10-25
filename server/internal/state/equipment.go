@@ -1,4 +1,4 @@
-package server
+package state
 
 import (
 	"fmt"
@@ -100,7 +100,7 @@ func (e *Equipment) sortSlots() {
 	})
 }
 
-func equipmentsEqual(a, b Equipment) bool {
+func EquipmentsEqual(a, b Equipment) bool {
 	if len(a.Slots) != len(b.Slots) {
 		return false
 	}
@@ -115,7 +115,7 @@ func equipmentsEqual(a, b Equipment) bool {
 	return true
 }
 
-func cloneEquipmentSlots(slots []EquippedItem) []EquippedItem {
+func CloneEquipmentSlots(slots []EquippedItem) []EquippedItem {
 	if len(slots) == 0 {
 		return nil
 	}
@@ -149,14 +149,14 @@ func equipSlotRank(slot EquipSlot) int {
 	return len(orderedEquipSlots)
 }
 
-func equipSlotFromOrdinal(idx int) (EquipSlot, bool) {
+func EquipSlotFromOrdinal(idx int) (EquipSlot, bool) {
 	if idx < 0 || idx >= len(orderedEquipSlots) {
 		return "", false
 	}
 	return orderedEquipSlots[idx], true
 }
 
-func equipmentDeltaForDefinition(def ItemDefinition) (stats.StatDelta, error) {
+func EquipmentDeltaForDefinition(def ItemDefinition) (stats.StatDelta, error) {
 	if def.ID == "" {
 		return stats.NewStatDelta(), fmt.Errorf("item definition missing id")
 	}

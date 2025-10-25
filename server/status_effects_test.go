@@ -127,7 +127,7 @@ func TestApplyStatusEffectAttachesFallbackVisualWhenManagerMissing(t *testing.T)
 		t.Fatalf("expected status effect instance to be stored")
 	}
 
-	effect := inst.attachedEffect
+	effect, _ := inst.AttachedEffect.(*effectState)
 	if effect == nil {
 		t.Fatalf("expected fallback visual effect to be attached")
 	}
@@ -171,7 +171,8 @@ func TestAttachStatusEffectVisualResolvesActorFromHandle(t *testing.T) {
 		t.Fatalf("expected fallback visual effect to be constructed")
 	}
 
-	if inst.attachedEffect != effect {
+	attached, _ := inst.AttachedEffect.(*effectState)
+	if attached != effect {
 		t.Fatalf("expected status effect instance to hold attached effect")
 	}
 	if effect.Owner != actorID {
