@@ -16,7 +16,7 @@ func (w *World) appendPatch(kind PatchKind, entityID string, payload any) {
 	if w == nil || entityID == "" {
 		return
 	}
-	w.journal.AppendPatch(Patch{Kind: kind, EntityID: entityID, Payload: payload})
+	w.AppendPatch(Patch{Kind: kind, EntityID: entityID, Payload: payload})
 }
 
 func incrementVersion(version *uint64) {
@@ -30,7 +30,7 @@ func (w *World) purgeEntityPatches(entityID string) {
 	if w == nil || entityID == "" {
 		return
 	}
-	w.journal.PurgeEntity(entityID)
+	w.PurgeEntity(entityID)
 }
 
 func (w *World) setActorPosition(actor *actorState, version *uint64, entityID string, kind PatchKind, x, y float64) {

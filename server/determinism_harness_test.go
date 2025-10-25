@@ -147,7 +147,7 @@ func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptio
 		patchHasher.Write(patchBytes)
 		totalPatches += len(patches)
 
-		journalBatch := hub.world.journal.DrainEffectEvents()
+		journalBatch := hub.world.DrainEffectEvents()
 		effectBatch := simpatches.EffectEventBatch(journalBatch)
 		journalEnvelope := struct {
 			Tick  int              `json:"tick"`

@@ -348,13 +348,13 @@ func (w *World) flushEffectTriggersLocked() []EffectTrigger {
 // drainPatchesLocked returns any accumulated patches for the current tick and
 // clears the journal. Callers must hold the world mutex.
 func (w *World) drainPatchesLocked() []Patch {
-	return w.journal.DrainPatches()
+	return w.DrainPatches()
 }
 
 // snapshotPatchesLocked returns a copy of any staged patches without clearing
 // the journal. Callers must hold the world mutex.
 func (w *World) snapshotPatchesLocked() []Patch {
-	return w.journal.SnapshotPatches()
+	return w.SnapshotPatches()
 }
 
 func (w *World) recordEffectLifecycleEvent(event effectcontract.EffectLifecycleEvent) {
@@ -366,11 +366,11 @@ func (w *World) recordEffectLifecycleEvent(event effectcontract.EffectLifecycleE
 		if producer := contractSpawnProducer(e.Instance.DefinitionID); producer != "" {
 			w.recordEffectSpawn(e.Instance.DefinitionID, producer)
 		}
-		w.journal.RecordEffectSpawn(e)
+		w.RecordEffectSpawn(e)
 	case effectcontract.EffectUpdateEvent:
-		w.journal.RecordEffectUpdate(e)
+		w.RecordEffectUpdate(e)
 	case effectcontract.EffectEndEvent:
-		w.journal.RecordEffectEnd(e)
+		w.RecordEffectEnd(e)
 	}
 }
 

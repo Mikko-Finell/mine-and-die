@@ -1262,7 +1262,7 @@ func TestSetGroundItemQuantityRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	item := &itemspkg.GroundItemState{GroundItem: itemspkg.GroundItem{ID: "ground-1", Qty: 1, X: 0, Y: 0}}
 
-	setter := itemspkg.GroundItemQuantityJournalSetter(w.journal.AppendPatch)
+	setter := itemspkg.GroundItemQuantityJournalSetter(w.AppendPatch)
 
 	setter(item, 5)
 

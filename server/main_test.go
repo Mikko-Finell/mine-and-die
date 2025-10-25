@@ -743,7 +743,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	runAdvance(hub, 1.0/float64(tickRate))
 
 	hub.mu.Lock()
-	batch := hub.world.journal.SnapshotEffectEvents()
+	batch := hub.world.SnapshotEffectEvents()
 	if len(batch.Spawns) != 1 {
 		hub.mu.Unlock()
 		t.Fatalf("expected exactly one effect spawn after first attack, got %d", len(batch.Spawns))
@@ -763,7 +763,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	_, _, _ = hub.HandleAction(attackerID, effectTypeAttack)
 	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
-	batch = hub.world.journal.SnapshotEffectEvents()
+	batch = hub.world.SnapshotEffectEvents()
 	if len(batch.Spawns) != 1 {
 		hub.mu.Unlock()
 		t.Fatalf("expected cooldown to prevent new spawn, have %d", len(batch.Spawns))
@@ -774,7 +774,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	_, _, _ = hub.HandleAction(attackerID, effectTypeAttack)
 	runAdvance(hub, 1.0/float64(tickRate))
 	hub.mu.Lock()
-	batch = hub.world.journal.SnapshotEffectEvents()
+	batch = hub.world.SnapshotEffectEvents()
 	if len(batch.Spawns) != 2 {
 		hub.mu.Unlock()
 		t.Fatalf("expected second spawn after cooldown reset, have %d", len(batch.Spawns))
@@ -942,8 +942,8 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 	hub.world.npcs[goblin.ID] = goblin
 	hub.mu.Unlock()
 
-	hub.world.journal.DrainPatches()
-	_ = hub.world.journal.DrainEffectEvents()
+	hub.world.DrainPatches()
+	_ = hub.world.DrainEffectEvents()
 
 	if _, ok, _ := hub.HandleAction(playerID, effectTypeAttack); !ok {
 		t.Fatalf("expected melee attack command to be accepted")
@@ -1348,7 +1348,7 @@ func TestContractMeleeSpawnPopulatesMotionCenter(t *testing.T) {
 
 	world.Step(1, now, 1.0/float64(tickRate), commands, nil)
 
-	batch := world.journal.SnapshotEffectEvents()
+	batch := world.SnapshotEffectEvents()
 	if len(batch.Spawns) != 1 {
 		t.Fatalf("expected exactly one effect spawn, got %d", len(batch.Spawns))
 	}
@@ -1455,7 +1455,7 @@ func TestContractProjectileSpawnPopulatesMotionCenter(t *testing.T) {
 
 	world.Step(1, now, 1.0/float64(tickRate), commands, nil)
 
-	batch := world.journal.SnapshotEffectEvents()
+	batch := world.SnapshotEffectEvents()
 	if len(batch.Spawns) == 0 {
 		t.Fatal("expected projectile spawn event")
 	}
