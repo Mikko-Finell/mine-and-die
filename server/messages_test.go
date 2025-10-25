@@ -258,12 +258,12 @@ func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
 			Replication:   effectcontract.ReplicationSpec{SendSpawn: true, SendEnd: true},
 		},
 	}
-	spawn = hub.world.journal.RecordEffectSpawn(spawn)
+	spawn = hub.world.RecordEffectSpawn(spawn)
 	if spawn.Instance.ID == "" {
 		t.Fatalf("expected spawn event to record effect instance")
 	}
 
-	hub.world.journal.RecordEffectEnd(effectcontract.EffectEndEvent{Tick: effectcontract.Tick(hub.tick.Load()), ID: spawn.Instance.ID, Reason: effectcontract.EndReasonExpired})
+	hub.world.RecordEffectEnd(effectcontract.EffectEndEvent{Tick: effectcontract.Tick(hub.tick.Load()), ID: spawn.Instance.ID, Reason: effectcontract.EndReasonExpired})
 	hub.mu.Unlock()
 
 	if _, _, err := hub.marshalState(nil, nil, nil, nil, true, true); err == nil {
@@ -271,8 +271,8 @@ func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
 	}
 
 	hub.mu.Lock()
-	patches := hub.world.journal.SnapshotPatches()
-	effects := hub.world.journal.SnapshotEffectEvents()
+	patches := hub.world.SnapshotPatches()
+	effects := hub.world.SnapshotEffectEvents()
 	hub.mu.Unlock()
 
 	if len(patches) != 1 {
@@ -294,7 +294,7 @@ func TestMarshalStateRestoresBuffersOnError(t *testing.T) {
 	if _, ok := effects.LastSeqByID[spawn.Instance.ID]; !ok {
 		t.Fatalf("expected effect sequence cursor for %s to be restored", spawn.Instance.ID)
 	}
-	drained := hub.world.journal.DrainEffectEvents()
+	drained := hub.world.DrainEffectEvents()
 	if len(drained.Spawns) != 1 {
 		t.Fatalf("expected drained spawn event to remain staged, got %d", len(drained.Spawns))
 	}
@@ -785,10 +785,10 @@ func TestHubSchedulesResyncAfterJournalHint(t *testing.T) {
 	legacy.SetKeyframeInterval(5)
 
 	legacy.mu.Lock()
-	legacy.world.journal.RecordEffectUpdate(event)
+	legacy.world.RecordEffectUpdate(event)
 	legacy.mu.Unlock()
 
-	expectedLegacy, ok := legacy.world.journal.ConsumeResyncHint()
+	expectedLegacy, ok := legacy.world.ConsumeResyncHint()
 	if !ok {
 		t.Fatalf("expected legacy journal to produce resync hint")
 	}
@@ -798,7 +798,7 @@ func TestHubSchedulesResyncAfterJournalHint(t *testing.T) {
 	hub.SetKeyframeInterval(5)
 
 	hub.mu.Lock()
-	hub.world.journal.RecordEffectUpdate(event)
+	hub.world.RecordEffectUpdate(event)
 	hub.mu.Unlock()
 
 	scheduled, signal := hub.scheduleResyncIfNeeded()
@@ -851,7 +851,7 @@ func TestMarshalStateSnapshotDoesNotDrainPatches(t *testing.T) {
 	hub.SetKeyframeInterval(1)
 
 	hub.mu.Lock()
-	hub.world.journal.AppendPatch(Patch{Kind: PatchPlayerPos, EntityID: "player-1"})
+	hub.world.AppendPatch(Patch{Kind: PatchPlayerPos, EntityID: "player-1"})
 	hub.mu.Unlock()
 
 	if _, _, err := hub.marshalState(nil, nil, nil, nil, false, true); err != nil {
@@ -1057,7 +1057,7 @@ func TestHandleKeyframeRequestClonesGroundItems(t *testing.T) {
 		t.Fatalf("expected keyframe request to clone ground item slices on each call")
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1204,7 +1204,7 @@ func TestHandleKeyframeRequestClonesActors(t *testing.T) {
 		t.Fatalf("expected keyframe request to clone NPC slices on each call")
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1296,7 +1296,7 @@ func TestHandleKeyframeRequestClonesObstacles(t *testing.T) {
 		t.Fatalf("expected keyframe request to clone obstacle slices on each call")
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1368,7 +1368,7 @@ func TestHubKeyframeCopiesConfig(t *testing.T) {
 		t.Fatalf("expected keyframe config to remain unchanged, got %#v want %#v", again.Config, expected)
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1447,7 +1447,7 @@ func TestHandleKeyframeRequestCopiesConfig(t *testing.T) {
 		t.Fatalf("expected keyframe config to remain unchanged, got %#v want %#v", again.Config, expected)
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}

@@ -46,7 +46,7 @@ func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
 		t.Fatalf("expected command queue to be drained after advance, got %d", hub.engine.Pending())
 	}
 
-	stagedEvents := hub.world.journal.SnapshotEffectEvents()
+	stagedEvents := hub.world.SnapshotEffectEvents()
 	if len(stagedEvents.Spawns) != 1 {
 		t.Fatalf("expected exactly one staged spawn event, got %d", len(stagedEvents.Spawns))
 	}
@@ -133,7 +133,7 @@ func TestMeleeAttackCommandPipelineProducesAttackEffect(t *testing.T) {
 		t.Fatalf("expected effect_seq_cursors to decode as object, got %T", rawCursors)
 	}
 
-	drained := hub.world.journal.SnapshotEffectEvents()
+	drained := hub.world.SnapshotEffectEvents()
 	if len(drained.Spawns) != 0 || len(drained.Updates) != 0 || len(drained.Ends) != 0 {
 		t.Fatalf(
 			"expected journal to be drained after marshal, got spawns=%d updates=%d ends=%d",

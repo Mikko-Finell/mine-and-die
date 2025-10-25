@@ -127,8 +127,8 @@ func (w *World) upsertGroundItem(actor *actorState, stack ItemStack, reason stri
 			}
 			return false
 		},
-		itemspkg.GroundItemQuantityJournalSetter(w.journal.AppendPatch),
-		itemspkg.GroundItemPositionJournalSetter(w.journal.AppendPatch),
+		itemspkg.GroundItemQuantityJournalSetter(w.AppendPatch),
+		itemspkg.GroundItemPositionJournalSetter(w.AppendPatch),
 		func(_ *itemspkg.Actor, stack itemspkg.ItemStack, reason, stackID string) {
 			w.logGoldDrop(actor, fromWorldItemStack(stack), reason, stackID)
 		},
@@ -183,7 +183,7 @@ func (w *World) pickupNearestGold(actor *actorState) (*itemspkg.PickupResult, *i
 				return addErr
 			})
 		},
-		w.journal.AppendPatch,
+		w.AppendPatch,
 	)
 }
 
@@ -262,7 +262,7 @@ func (w *World) groundDropConfig(actor *actorState) (itemspkg.GroundDropConfig, 
 		RandomAngle:    angleFn,
 		RandomDistance: distanceFn,
 		EnsureKey:      ensureKey,
-		AppendPatch:    w.journal.AppendPatch,
+		AppendPatch:    w.AppendPatch,
 		LogDrop: func(_ *itemspkg.Actor, stack itemspkg.ItemStack, dropReason, stackID string) {
 			w.logGoldDrop(actor, fromWorldItemStack(stack), dropReason, stackID)
 		},

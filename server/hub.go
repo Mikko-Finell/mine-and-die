@@ -600,7 +600,7 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 	hub.engine = sim.NewLoop(engineAdapter, loopCfg, loopHooks)
 
 	hub.world.attachTelemetry(hub.telemetry)
-	hub.world.journal.AttachTelemetry(hub.telemetry)
+	hub.world.AttachJournalTelemetry(hub.telemetry)
 	hub.keyframeInterval.Store(int64(interval))
 	hub.forceKeyframe()
 	hub.attachTelemetryMetrics()
@@ -864,7 +864,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 	newW := requireLegacyWorld(worldpkg.ConstructLegacy(cfg, h.publisher))
 	cfg = newW.config
 	newW.attachTelemetry(h.telemetry)
-	newW.journal.AttachTelemetry(h.telemetry)
+	newW.AttachJournalTelemetry(h.telemetry)
 	for _, id := range playerIDs {
 		newW.AddPlayer(h.seedPlayerState(id, now))
 	}
@@ -1759,7 +1759,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 				GroundItems: itemspkg.CloneGroundItems(groundItems),
 				Config:      cfg,
 			}
-			legacyRecord := h.world.journal.RecordKeyframe(legacyFrame)
+			legacyRecord := h.world.RecordKeyframe(legacyFrame)
 			record = simKeyframeRecordResultFromLegacy(legacyRecord)
 		}
 		h.lastKeyframeSeq.Store(seq)
@@ -1821,7 +1821,7 @@ func (h *Hub) marshalState(players []sim.Player, npcs []sim.NPC, triggers []sim.
 					engine.RestorePatches(restorableSimPatches)
 				}
 			} else if len(restorableLegacyPatches) > 0 {
-				h.world.journal.RestorePatches(restorableLegacyPatches)
+				h.world.RestorePatches(restorableLegacyPatches)
 			}
 			if effectTransportEnabled {
 				engine.RestoreEffectEvents(simEffectBatch)

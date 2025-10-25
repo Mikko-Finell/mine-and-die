@@ -144,14 +144,14 @@ func (a *legacyEngineAdapter) RestorePatches(patches []sim.Patch) {
 		return
 	}
 	legacy := legacyPatchesFromSim(patches)
-	a.world.journal.RestorePatches(legacy)
+	a.world.RestorePatches(legacy)
 }
 
 func (a *legacyEngineAdapter) DrainEffectEvents() sim.EffectEventBatch {
 	if a == nil || a.world == nil {
 		return sim.EffectEventBatch{}
 	}
-	batch := a.world.journal.DrainEffectEvents()
+	batch := a.world.DrainEffectEvents()
 	return internaleffects.SimEffectEventBatchFromTyped(simpatches.EffectEventBatch(batch))
 }
 
@@ -159,7 +159,7 @@ func (a *legacyEngineAdapter) SnapshotEffectEvents() sim.EffectEventBatch {
 	if a == nil || a.world == nil {
 		return sim.EffectEventBatch{}
 	}
-	batch := a.world.journal.SnapshotEffectEvents()
+	batch := a.world.SnapshotEffectEvents()
 	return internaleffects.SimEffectEventBatchFromTyped(simpatches.EffectEventBatch(batch))
 }
 
@@ -168,14 +168,14 @@ func (a *legacyEngineAdapter) RestoreEffectEvents(batch sim.EffectEventBatch) {
 		return
 	}
 	typed := internaleffects.TypedEffectEventBatchFromSim(batch)
-	a.world.journal.RestoreEffectEvents(journal.EffectEventBatch(typed))
+	a.world.RestoreEffectEvents(journal.EffectEventBatch(typed))
 }
 
 func (a *legacyEngineAdapter) ConsumeEffectResyncHint() (sim.EffectResyncSignal, bool) {
 	if a == nil || a.world == nil {
 		return sim.EffectResyncSignal{}, false
 	}
-	signal, ok := a.world.journal.ConsumeResyncHint()
+	signal, ok := a.world.ConsumeResyncHint()
 	if !ok {
 		return sim.EffectResyncSignal{}, false
 	}
@@ -187,7 +187,7 @@ func (a *legacyEngineAdapter) RecordKeyframe(frame sim.Keyframe) sim.KeyframeRec
 		return sim.KeyframeRecordResult{}
 	}
 	legacy := legacyKeyframeFromSim(frame)
-	record := a.world.journal.RecordKeyframe(legacy)
+	record := a.world.RecordKeyframe(legacy)
 	return simKeyframeRecordResultFromLegacy(record)
 }
 
@@ -195,7 +195,7 @@ func (a *legacyEngineAdapter) KeyframeBySequence(sequence uint64) (sim.Keyframe,
 	if a == nil || a.world == nil {
 		return sim.Keyframe{}, false
 	}
-	frame, ok := a.world.journal.KeyframeBySequence(sequence)
+	frame, ok := a.world.KeyframeBySequence(sequence)
 	if !ok {
 		return sim.Keyframe{}, false
 	}
@@ -206,7 +206,7 @@ func (a *legacyEngineAdapter) KeyframeWindow() (int, uint64, uint64) {
 	if a == nil || a.world == nil {
 		return 0, 0, 0
 	}
-	return a.world.journal.KeyframeWindow()
+	return a.world.KeyframeWindow()
 }
 
 func (a *legacyEngineAdapter) RemovedPlayers() []string {

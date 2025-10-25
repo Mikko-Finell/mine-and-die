@@ -34,9 +34,13 @@ Goal: build the world *internally* using the new state package.
   * instantiates state graphs (players/NPCs/inventory/registries)
     - [x] players
     - [x] NPCs
-    - [ ] inventory
-    - [ ] registers
-    - [ ] etc as needed
+    - [x] inventory
+    - [x] registers
+    - [x] journal
+    - [x] expose journal append/drain adapters on the internal world so engine callers can rely on it directly
+    - [x] migrate legacy journal call sites to the new adapters so the field stops leaking through tests
+    - [x] thread journal telemetry through `world.Deps` and attach it during construction
+    - [ ] ensure legacy boot paths supply journal telemetry via `world.Deps` when invoking the internal constructor
   * wires effect registries from `internal/effects/registry`
   * exposes **adapters** needed by `sim` (`AbilityOwnerLookup`, projectile stop, journal accessors) directly
 * [ ] Keep legacy boot alive by having `server` call into `internal/world.New` and then **decorate** with any legacy-only façade needs (no logic divergence).

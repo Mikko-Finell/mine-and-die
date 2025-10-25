@@ -33,7 +33,7 @@ func TestRemoveGroundItemRecordsQuantityPatch(t *testing.T) {
 	w.groundItems[item.ID] = item
 	w.groundItemsByTile[tile] = map[string]*itemspkg.GroundItemState{def.FungibilityKey: item}
 
-	itemspkg.RemoveGroundItem(w.groundItems, w.groundItemsByTile, item, w.journal.AppendPatch)
+	itemspkg.RemoveGroundItem(w.groundItems, w.groundItemsByTile, item, w.AppendPatch)
 
 	if _, exists := w.groundItems[item.ID]; exists {
 		t.Fatalf("expected ground item %q to be removed from world", item.ID)
@@ -85,7 +85,7 @@ func TestMarshalStateKeepsGroundItemRemovalPatch(t *testing.T) {
 	hub.world.groundItems[item.ID] = item
 	hub.world.groundItemsByTile[tile] = map[string]*itemspkg.GroundItemState{def.FungibilityKey: item}
 
-	itemspkg.RemoveGroundItem(hub.world.groundItems, hub.world.groundItemsByTile, item, hub.world.journal.AppendPatch)
+	itemspkg.RemoveGroundItem(hub.world.groundItems, hub.world.groundItemsByTile, item, hub.world.AppendPatch)
 
 	data, _, err := hub.marshalState(nil, nil, nil, nil, true, false)
 	if err != nil {

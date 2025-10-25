@@ -988,7 +988,7 @@ func TestLegacyAdapterRestorePatches(t *testing.T) {
 	}
 
 	baseline := Patch{Kind: PatchNPCPos, EntityID: "npc-1", Payload: PositionPayload{X: 3, Y: 4}}
-	hub.world.journal.AppendPatch(baseline)
+	hub.world.AppendPatch(baseline)
 
 	simPatches := []sim.Patch{
 		{
@@ -1011,7 +1011,7 @@ func TestLegacyAdapterRestorePatches(t *testing.T) {
 	effectPayload.Params["radius"] = 9
 	simPatches[1].Payload = effectPayload
 
-	drained := hub.world.journal.DrainPatches()
+	drained := hub.world.DrainPatches()
 
 	if len(drained) != len(expectedRestored)+1 {
 		t.Fatalf("unexpected drained patch count: want %d got %d", len(expectedRestored)+1, len(drained))
@@ -1136,7 +1136,7 @@ func TestHubAdapterKeyframeRecordingMatchesJournal(t *testing.T) {
 	expected := newJournal(capacity, maxAge)
 
 	hub := newHub()
-	hub.world.journal = newJournal(capacity, maxAge)
+	hub.world.SwapJournal(newJournal(capacity, maxAge))
 
 	adapter := hub.adapter
 	if adapter == nil {
@@ -1192,7 +1192,7 @@ func TestHubAdapterKeyframeRecordingMatchesJournal(t *testing.T) {
 			}
 		}
 
-		size, oldest, newest := hub.world.journal.KeyframeWindow()
+		size, oldest, newest := hub.world.KeyframeWindow()
 		if size != got.Size || oldest != got.OldestSequence || newest != got.NewestSequence {
 			t.Fatalf("unexpected adapter window after seq %d: size=%d oldest=%d newest=%d want size=%d oldest=%d newest=%d", tc.sequence, size, oldest, newest, got.Size, got.OldestSequence, got.NewestSequence)
 		}
@@ -1234,7 +1234,7 @@ func TestLegacyAdapterRecordKeyframeClonesGroundItems(t *testing.T) {
 	frame.GroundItems[0].Qty = 99
 	groundItems[1].Qty = 77
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1305,7 +1305,7 @@ func TestLegacyAdapterRecordKeyframeCopiesConfig(t *testing.T) {
 	frame.Config.Seed = "mutated"
 	config.GoblinCount = 99
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1380,7 +1380,7 @@ func TestLegacyAdapterKeyframeBySequenceClonesGroundItems(t *testing.T) {
 		t.Fatalf("expected adapter keyframe lookup to clone ground item slices on each call")
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1452,7 +1452,7 @@ func TestLegacyAdapterKeyframeBySequenceCopiesConfig(t *testing.T) {
 		t.Fatalf("expected adapter keyframe config to remain unchanged, got %#v want %#v", again.Config, expected)
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1527,7 +1527,7 @@ func TestHubKeyframeClonesGroundItems(t *testing.T) {
 		t.Fatalf("expected hub keyframe lookup to clone ground item slices on each call")
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1668,7 +1668,7 @@ func TestHubKeyframeClonesActors(t *testing.T) {
 		t.Fatalf("expected hub keyframe lookup to clone NPC slices on each call")
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
@@ -1754,7 +1754,7 @@ func TestHubKeyframeClonesObstacles(t *testing.T) {
 		t.Fatalf("expected hub keyframe lookup to clone obstacle slices on each call")
 	}
 
-	recorded, ok := hub.world.journal.KeyframeBySequence(frame.Sequence)
+	recorded, ok := hub.world.KeyframeBySequence(frame.Sequence)
 	if !ok {
 		t.Fatalf("expected journal to contain keyframe %d", frame.Sequence)
 	}
