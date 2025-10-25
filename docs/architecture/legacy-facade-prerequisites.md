@@ -24,7 +24,7 @@ Goal: move the *data* out of `server/*` without moving *behaviour* yet.
 
 ---
 
-### [TODO] PR-1: Make `internal/world.New` real
+### [DONE] PR-1: Make `internal/world.New` real
 
 Goal: build the world *internally* using the new state package.
 
@@ -47,11 +47,13 @@ Goal: build the world *internally* using the new state package.
 * [x] Add tests that boot world via **both** constructors and assert:
 
   * [x] patch/journal **semantics** equal (ordering/content/timing), and
-  * [ ] determinism checksum unchanged.
+  * [x] determinism checksum unchanged.
     (Don’t require byte-for-byte buffer identity.)
   * [x] Extract a shared constructor harness that instantiates both worlds so parity tests and the determinism suite can reuse the same setup.
 
-  *Next task:* extend the determinism harness to exercise both constructors using the shared harness and confirm the recorded checksums remain unchanged before promoting the new path.
+  * [x] extend the determinism harness to exercise both constructors using the shared harness and confirm the recorded checksums remain unchanged before promoting the new path.
+
+  * [x] extend `server/internal/sim` tests to build the engine through the new constructor and compare patch/journal outputs against the current hub-driven harness script.
 
 **Acceptance:** All world creation in tests/tools can use `internal/world.New`; legacy path compiles but is now just a thin forwarder.
 
@@ -60,6 +62,8 @@ Goal: build the world *internally* using the new state package.
 ### [TODO] PR-2: Promote `sim.NewEngine` and rewire the runtime
 
 Goal: cut the hot path off the legacy hub.
+
+*Next task:* sketch the `internal/sim.NewEngine` constructor signature and option surface so follow-up work can begin wiring the production hub through the internal entry point.
 
 * Add `internal/sim.NewEngine(world *world.World, opts …Option) (*Engine, error)` that accepts `sim.Deps`, queue sizes, keyframe/journal hooks.
 * Point `cmd/server`, `internal/app`, and handlers to build via `world.New` + `sim.NewEngine`.
