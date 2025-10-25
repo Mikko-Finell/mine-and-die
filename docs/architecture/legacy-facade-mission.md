@@ -38,6 +38,23 @@ Progress is tracked exclusively through the checklist below. When every unchecke
 
 > **Blocked:** `internal/world` still lacks equivalents for the server façade dependencies (`EffectManager`, ability-gate wiring, status effect handlers). The constructor cannot be moved until those building blocks are promoted or new internal replacements exist.
 
+#### Blocker remediation plan
+
+The remediation work below deliberately mirrors the idiomaticity mandates: each item moves legacy helpers into focussed internal
+packages with explicit constructors, keeps state ownership inside `internal/world`, and deletes façade reach-ins once the
+internal replacements are wired. That keeps the cutover in lockstep with the "small packages, clear ownership, explicit
+dependencies" goals captured in the [idiomaticity mission](./idiomaticity-mission.md).
+
+| Legacy dependency | Why the constructor still reaches it | Replacement we need inside `internal/world` | Idiomaticity alignment |
+| --- | --- | --- | --- |
+| `server/effects_manager.go` (`EffectManager`) | The world constructor still calls into the façade to register core projectile + aura behaviours, and the combat pipeline relies on façade-owned cooldown tracking. | Promote the effect manager implementation that already lives under `server/internal/effects` into `internal/world/effects`, expose a constructor that wires the projectile/aura registries, then inject that concrete type from `internal/world.New`. | Promoting the manager collapses a façade singleton into a package-scoped constructor, giving the world a concrete dependency and removing hidden global wiring. |
+| Ability gating hooks (`server/effects_gate_test.go`, `server/effects_manager.go`) | Ability unlock checks are delegated to façade helpers that query legacy hub state. | Extract the gate calculation (`CanCastAbility`, unlock timers, faction checks) into a pure helper under `internal/world/abilities` fed by world state, then swap the façade calls for direct helpers when building the constructor. | Pulling the logic into `internal/world/abilities` keeps gating colocated with the data it reads, replacing cross-package reach-ins with explicit, testable helpers. |
+| Status effect handlers (`server/status_effects.go`) | Status lifecycle wiring (apply, tick, expire) is still owned by façade helpers so `internal/world` cannot instantiate the registries alone. | Lift the registry definitions into `internal/world/status`, export helpers for registration + lifecycle wiring, and update `internal/world.New` to create the full handler set without touching legacy wiring. | Relocating the registries makes lifecycle wiring a normal dependency of the constructor, eliminating the façade hook and keeping status behaviour inside the world package boundary. |
+
+Once those three replacements exist, the world constructor can build its dependencies without calling back into the façade; the
+checklist items above unblock automatically because the legacy `NewWorld` wrapper becomes a pass-through and we stay within the
+idiomatic ownership rules.
+
 ### 2. Engine Promotion [TODO]
 - [ ] Add an `internal/sim` constructor (e.g. `NewEngine`) that wires the command buffer, loop, and engine core from existing internal pieces.
 - [ ] Surface queue sizing, warnings, journaling/keyframe hooks, and telemetry wiring as options consumed by the new constructor.
