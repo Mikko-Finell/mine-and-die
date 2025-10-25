@@ -116,8 +116,8 @@ func (w *World) handleBurningStatusTick(rt worldpkg.StatusEffectTickRuntime) {
 	}
 
 	interval := burningTickInterval
-	if inst.Definition != nil && inst.Definition.TickInterval > 0 {
-		interval = inst.Definition.TickInterval
+	if def, ok := inst.Definition.(*worldpkg.StatusEffectDefinition); ok && def != nil && def.TickInterval > 0 {
+		interval = def.TickInterval
 	}
 
 	damage := lavaDamagePerSecond * interval.Seconds()
@@ -262,8 +262,8 @@ func (w *World) statusEffectsAdvanceConfig(actor *actorState) worldpkg.AdvanceAc
 			if inst == nil {
 				return worldpkg.StatusEffectInstanceConfig{}, false
 			}
-			def := inst.Definition
-			if def == nil {
+			def, ok := inst.Definition.(*worldpkg.StatusEffectDefinition)
+			if !ok || def == nil {
 				return worldpkg.StatusEffectInstanceConfig{}, false
 			}
 
@@ -343,8 +343,10 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 		owner = actor.ID
 	}
 	statusType := StatusEffectBurning
-	if inst != nil && inst.Definition != nil {
-		statusType = StatusEffectType(inst.Definition.Type)
+	if inst != nil {
+		if def, ok := inst.Definition.(*worldpkg.StatusEffectDefinition); ok && def != nil {
+			statusType = StatusEffectType(def.Type)
+		}
 	}
 	delta := -amount
 	if w.effectManager != nil {
@@ -386,7 +388,7 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 					OwnerActorID: effect.OwnerID,
 					StartTick:    effect.SpawnTick,
 				},
-				StatusEffect:       StatusEffectType(effect.StatusEffect),
+				StatusEffect:       internaleffects.StatusEffectType(effect.StatusEffect),
 				TelemetrySpawnTick: effect.SpawnTick,
 			}
 		},
@@ -578,28 +580,24 @@ func newStatusEffectInstanceHandle(inst *statusEffectInstance, actor *actorState
 				if inst == nil || effectType == "" {
 					return
 				}
-				eff := inst.AttachedEffect()
-				if eff == nil {
-					return
+				if eff, ok := inst.AttachedEffect().(*effectState); ok && eff != nil {
+					eff.StatusEffect = internaleffects.StatusEffectType(effectType)
 				}
-				eff.StatusEffect = StatusEffectType(effectType)
 			},
 			Extend: func(expiresAt time.Time) {
 				if inst == nil {
 					return
 				}
-				eff := inst.AttachedEffect()
-				if eff == nil {
-					return
+				if eff, ok := inst.AttachedEffect().(*effectState); ok && eff != nil {
+					worldpkg.ExtendStatusEffectAttachment(statusEffectAttachmentFields(eff), expiresAt)
 				}
-				worldpkg.ExtendStatusEffectAttachment(statusEffectAttachmentFields(eff), expiresAt)
 			},
 			Expire: func(at time.Time) (any, bool) {
 				if inst == nil {
 					return nil, false
 				}
-				eff := inst.AttachedEffect()
-				if eff == nil {
+				eff, ok := inst.AttachedEffect().(*effectState)
+				if !ok || eff == nil {
 					return nil, false
 				}
 				shouldRecord := worldpkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(eff), at)
@@ -631,7 +629,7 @@ func (a statusEffectVisualStateAdapter) SetStatusEffect(value string) {
 	if a.state == nil {
 		return
 	}
-	a.state.StatusEffect = StatusEffectType(value)
+	a.state.StatusEffect = internaleffects.StatusEffectType(value)
 }
 
 func (a statusEffectVisualStateAdapter) EffectState() any {

@@ -1,24 +1,17 @@
 package world
 
-import "math"
+import (
+	"math"
+
+	state "mine-and-die/server/internal/state"
+)
 
 // DefaultPlayerArriveRadius mirrors the legacy arrival radius used when players
 // reach the end of their navigation path.
 const DefaultPlayerArriveRadius = 12.0
 
-// PlayerPathState tracks the legacy path-following metadata for a single
-// player. Callers should treat the fields as authoritative while migrating the
-// simulation package.
-type PlayerPathState struct {
-	Path             []Vec2
-	PathIndex        int
-	PathTarget       Vec2
-	PathGoal         Vec2
-	PathLastDistance float64
-	PathStallTicks   int
-	PathRecalcTick   uint64
-	ArriveRadius     float64
-}
+// PlayerPathState aliases the shared player path state for legacy helpers.
+type PlayerPathState = state.PlayerPathState
 
 // PlayerPathActor exposes the minimal legacy state required to follow a path.
 type PlayerPathActor struct {

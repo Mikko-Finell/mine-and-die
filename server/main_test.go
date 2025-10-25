@@ -1518,11 +1518,11 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 	if inst == nil {
 		t.Fatalf("expected burning status effect instance to persist")
 	}
-	if inst.AttachedEffect() == nil {
+	effect, ok := inst.AttachedEffect().(*effectState)
+	if !ok || effect == nil {
 		t.Fatalf("expected burning visual to attach to status effect")
 	}
-	effect := inst.AttachedEffect()
-	if effect == nil || !effect.ContractManaged {
+	if !effect.ContractManaged {
 		t.Fatalf("expected burning visual to be contract-managed")
 	}
 	if effect.FollowActorID != target.ID {

@@ -246,7 +246,7 @@ func evaluateCondition(env *runEnv, cfg *CompiledConfig, npc *NPC, transition *c
 		if ability == AbilityNone {
 			return true
 		}
-		next := npc.Blackboard.nextAbilityReady[ability]
+		next := npc.Blackboard.NextAbilityReady[ability]
 		return tick >= next
 	case conditionStuck:
 		var params stuckParams
@@ -409,7 +409,7 @@ func actionUseAbility(env *runEnv, cfg *CompiledConfig, npc *NPC, action compile
 		},
 	})
 	if cooldown := env.cooldownForAbility(ability); cooldown > 0 {
-		npc.Blackboard.nextAbilityReady[ability] = tick + cooldown
+		npc.Blackboard.NextAbilityReady[ability] = tick + cooldown
 	}
 }
 

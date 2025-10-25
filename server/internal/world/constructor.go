@@ -26,8 +26,8 @@ func RegisterLegacyConstructor(fn Constructor) {
 	registeredConstructor = fn
 }
 
-// New constructs a world using the registered legacy constructor.
-func New(cfg Config, publisher logging.Publisher) LegacyWorld {
+// ConstructLegacy builds a world using the registered legacy constructor.
+func ConstructLegacy(cfg Config, publisher logging.Publisher) LegacyWorld {
 	if registeredConstructor == nil {
 		panic("world: legacy constructor not registered")
 	}
