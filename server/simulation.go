@@ -11,6 +11,7 @@ import (
 	ai "mine-and-die/server/internal/ai"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
+	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	internalstats "mine-and-die/server/internal/stats"
 	worldpkg "mine-and-die/server/internal/world"
@@ -165,30 +166,85 @@ func (w *World) syncMaxHealth(actor *actorState, version *uint64, entityID strin
 func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps worldpkg.Deps) *World {
 	normalized := cfg.Normalized()
 
-	if publisher == nil {
-		publisher = logging.NopPublisher{}
+	effectivePublisher := publisher
+	if effectivePublisher == nil {
+		effectivePublisher = logging.NopPublisher{}
 	}
 
-	capacity, maxAge := journalConfig()
+	constructorDeps := worldpkg.Deps{
+		Publisher:        effectivePublisher,
+		RNG:              deps.RNG,
+		JournalRetention: deps.JournalRetention,
+		JournalTelemetry: deps.JournalTelemetry,
+		OnConstructed:    deps.OnConstructed,
+	}
+
+	constructed, err := worldpkg.New(normalized, constructorDeps)
+	if err != nil {
+		panic(fmt.Sprintf("world: internal constructor failed: %v", err))
+	}
+	if constructed == nil {
+		return nil
+	}
+
+	players := constructed.Players()
+	if players == nil {
+		players = make(map[string]*playerState)
+	}
+	npcs := constructed.NPCs()
+	if npcs == nil {
+		npcs = make(map[string]*npcState)
+	}
+	effects := constructed.Effects()
+	if effects == nil {
+		effects = make([]*internalruntime.State, 0)
+	}
+	effectsByID := constructed.EffectsByID()
+	if effectsByID == nil {
+		effectsByID = make(map[string]*internalruntime.State)
+	}
+	index := constructed.EffectsIndex()
+	if index == nil {
+		index = internalruntime.NewSpatialIndex(internaleffects.DefaultSpatialCellSize, internaleffects.DefaultSpatialMaxPerCell)
+	}
+	groundItems := constructed.GroundItems()
+	if groundItems == nil {
+		groundItems = make(map[string]*itemspkg.GroundItemState)
+	}
+	groundItemsByTile := constructed.GroundItemsByTile()
+	if groundItemsByTile == nil {
+		groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
+	}
 
 	w := &World{
-		players:             make(map[string]*playerState),
-		npcs:                make(map[string]*npcState),
-		effects:             make([]*effectState, 0),
-		effectsByID:         make(map[string]*effectState),
-		effectsIndex:        newEffectSpatialIndex(effectSpatialCellSize, effectSpatialMaxPerCell),
+		players:             players,
+		npcs:                npcs,
+		effects:             effects,
+		effectsByID:         effectsByID,
+		effectsIndex:        index,
 		effectTriggers:      make([]EffectTrigger, 0),
 		projectileTemplates: newProjectileTemplates(),
 		aiLibrary:           ai.GlobalLibrary,
-		config:              normalized,
-		rng:                 newDeterministicRNG(normalized.Seed, "world"),
-		seed:                normalized.Seed,
-		publisher:           publisher,
+		config:              constructed.Config(),
+		rng:                 constructed.RNG(),
+		seed:                constructed.Seed(),
+		publisher:           effectivePublisher,
 		telemetry:           nil,
-		groundItems:         make(map[string]*itemspkg.GroundItemState),
-		groundItemsByTile:   make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState),
-		journal:             newJournal(capacity, maxAge),
+		groundItems:         groundItems,
+		groundItemsByTile:   groundItemsByTile,
+		journal:             constructed.JournalState(),
+		nextEffectID:        constructed.NextEffectID(),
 	}
+	if w.config.Seed == "" {
+		w.config.Seed = normalized.Seed
+	}
+	if w.seed == "" {
+		w.seed = normalized.Seed
+	}
+	if w.rng == nil {
+		w.rng = newDeterministicRNG(w.seed, "world")
+	}
+
 	w.statusEffectDefs = newStatusEffectDefinitions(w)
 	w.configureAbilityOwnerAdapters()
 	w.configureEffectHitAdapter()

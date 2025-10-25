@@ -31,6 +31,7 @@ type Deps struct {
 	RNG              RNGFactory
 	JournalRetention func() (int, time.Duration)
 	JournalTelemetry journalpkg.Telemetry
+	OnConstructed    func(*World)
 }
 
 // World owns the deterministic RNG root and configuration for the simulation.
@@ -110,7 +111,91 @@ func New(cfg Config, deps Deps) (*World, error) {
 		world.journal.AttachTelemetry(deps.JournalTelemetry)
 	}
 
+	if deps.OnConstructed != nil {
+		deps.OnConstructed(world)
+	}
+
 	return world, nil
+}
+
+// Players returns the map of player state keyed by player ID.
+func (w *World) Players() map[string]*state.PlayerState {
+	if w == nil {
+		return nil
+	}
+	return w.players
+}
+
+// NPCs returns the map of NPC state keyed by NPC ID.
+func (w *World) NPCs() map[string]*state.NPCState {
+	if w == nil {
+		return nil
+	}
+	return w.npcs
+}
+
+// Effects returns the slice of active effect runtime state.
+func (w *World) Effects() []*internalruntime.State {
+	if w == nil {
+		return nil
+	}
+	return w.effects
+}
+
+// EffectsByID returns the lookup map of active effects keyed by ID.
+func (w *World) EffectsByID() map[string]*internalruntime.State {
+	if w == nil {
+		return nil
+	}
+	return w.effectsByID
+}
+
+// EffectsIndex exposes the spatial index backing effect lookups.
+func (w *World) EffectsIndex() *internalruntime.SpatialIndex {
+	if w == nil {
+		return nil
+	}
+	return w.effectsIndex
+}
+
+// GroundItems returns the ground item registry keyed by item ID.
+func (w *World) GroundItems() map[string]*itemspkg.GroundItemState {
+	if w == nil {
+		return nil
+	}
+	return w.groundItems
+}
+
+// GroundItemsByTile returns the ground item registry keyed by tile coordinates.
+func (w *World) GroundItemsByTile() map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState {
+	if w == nil {
+		return nil
+	}
+	return w.groundItemsByTile
+}
+
+// StatusEffectDefinitions exposes the registered status effect definitions.
+func (w *World) StatusEffectDefinitions() map[string]ApplyStatusEffectDefinition {
+	if w == nil {
+		return nil
+	}
+	return w.statusEffectDefinitions
+}
+
+// NextEffectID reports the next effect identifier seed.
+func (w *World) NextEffectID() uint64 {
+	if w == nil {
+		return 0
+	}
+	return w.nextEffectID
+}
+
+// JournalState returns the journal backing the world.
+func (w *World) JournalState() journalpkg.Journal {
+	if w == nil {
+		return journalpkg.Journal{}
+	}
+	return w.journal
 }
 
 // EffectRegistry exposes the world's shared effect registry bindings.

@@ -47,7 +47,7 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
    - [ ] Hoist queue sizing, warning thresholds, journaling/keyframe hooks, and telemetry wiring from `server/hub.go` into options consumed by the new constructor so non-legacy callers can configure the engine without hub glue.
    - [ ] Redirect `server/hub.go` and `server/sim_engine_adapter.go` to invoke the promoted constructor, leaving only thin translation layers until the hub façade is deleted.
 3. Backfill tests proving the promoted constructors produce determinism-equivalent snapshots, journal baselines, and patch streams to the legacy paths.
-   - [ ] Add `server/internal/world/constructor_test.go` that instantiates worlds via both constructors and asserts snapshots/journal state match for representative configs.
+   - [x] Add `server/internal/world/constructor_test.go` that instantiates worlds via both constructors and asserts snapshots/journal state match for representative configs.
    - [ ] Extend `server/internal/sim` tests to build the engine through the new constructor and compare patch/journal outputs against the current hub-driven harness script.
    - [ ] Update `server/determinism_harness_test.go` (or a shared helper) to run against both constructor paths, locking determinism-equivalent checksums before swapping entry points.
 
