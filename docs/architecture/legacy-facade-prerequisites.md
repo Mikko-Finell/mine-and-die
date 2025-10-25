@@ -65,11 +65,11 @@ Goal: cut the hot path off the legacy hub.
 
 *Next task:* sketch the `internal/sim.NewEngine` constructor signature and option surface so follow-up work can begin wiring the production hub through the internal entry point.
 
-* Add `internal/sim.NewEngine(world *world.World, opts …Option) (*Engine, error)` that accepts `sim.Deps`, queue sizes, keyframe/journal hooks.
-* Point `cmd/server`, `internal/app`, and handlers to build via `world.New` + `sim.NewEngine`.
+* [ ] Add `internal/sim.NewEngine(world *world.World, opts …Option) (*Engine, error)` that accepts `sim.Deps`, queue sizes, keyframe/journal hooks.
+* [ ] Point `cmd/server`, `internal/app`, and handlers to build via `world.New` + `sim.NewEngine`.
   Keep `server.Hub` as a **translation façade only** (no engine creation).
-* Kill tick-path converters (`legacyEngineAdapter`) by emitting snapshots/patches natively from `sim`/`world`.
-* Extend determinism/replay suites to run both paths until cutover, then freeze on the new path.
+* [ ] Kill tick-path converters (`legacyEngineAdapter`) by emitting snapshots/patches natively from `sim`/`world`.
+* [ ] Extend determinism/replay suites to run both paths until cutover, then freeze on the new path.
 
 **Acceptance:** Runtime boots with **zero** legacy types on the hot path; determinism & integration tests green.
 
