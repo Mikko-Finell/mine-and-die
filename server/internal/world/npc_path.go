@@ -3,7 +3,7 @@ package world
 import (
 	"math"
 
-	state "mine-and-die/server/internal/state"
+       state "mine-and-die/server/internal/world/state"
 )
 
 // DefaultNPCArriveRadius mirrors the legacy arrival radius fallback for NPC

@@ -13,7 +13,7 @@ import (
 	internalsim "mine-and-die/server/internal/sim"
 	simpatches "mine-and-die/server/internal/sim/patches/typed"
 	simutil "mine-and-die/server/internal/simutil"
-	state "mine-and-die/server/internal/state"
+       state "mine-and-die/server/internal/world/state"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 )

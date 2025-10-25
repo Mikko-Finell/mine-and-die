@@ -10,7 +10,7 @@ import (
 	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
-	state "mine-and-die/server/internal/state"
+       state "mine-and-die/server/internal/world/state"
 )
 
 func TestNewNormalizesConfigAndSeedsRNG(t *testing.T) {

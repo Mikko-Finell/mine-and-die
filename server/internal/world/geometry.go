@@ -1,6 +1,6 @@
 package world
 
-import state "mine-and-die/server/internal/state"
+import state "mine-and-die/server/internal/world/state"
 
 // Vec2 aliases the shared state vector type for world helpers.
 type Vec2 = state.Vec2
