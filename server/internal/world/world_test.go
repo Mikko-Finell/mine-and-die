@@ -7,6 +7,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
 	state "mine-and-die/server/internal/state"
@@ -391,4 +392,105 @@ func (t *recordingJournalTelemetry) recorded(metric string) bool {
 		}
 	}
 	return false
+}
+
+func TestEffectRegistryBindsWorldStorage(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	registry := w.EffectRegistry()
+	if registry.Effects == nil || registry.ByID == nil || registry.Index == nil {
+		t.Fatalf("expected registry pointers to be initialised")
+	}
+
+	effect := &internalruntime.State{ID: "effect-1"}
+	if !internalruntime.RegisterEffect(registry, effect) {
+		t.Fatalf("expected effect registration to succeed")
+	}
+
+	if len(w.effects) != 1 || w.effects[0] != effect {
+		t.Fatalf("expected effect slice to store runtime effect, got %+v", w.effects)
+	}
+
+	if got := w.effectsByID[effect.ID]; got != effect {
+		t.Fatalf("expected effect map to reference runtime effect, got %+v", got)
+	}
+}
+
+func TestAbilityOwnerStateLookupPrefersPlayersAndFallsBackToNPCs(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	player := &state.PlayerState{
+		ActorState: state.ActorState{Actor: state.Actor{ID: "actor-1"}},
+		Cooldowns:  map[string]time.Time{"ability": time.Now()},
+	}
+	npc := &state.NPCState{
+		ActorState: state.ActorState{Actor: state.Actor{ID: "actor-1"}},
+		Cooldowns:  map[string]time.Time{"ability": time.Now()},
+	}
+	w.players[player.ID] = player
+	w.npcs[npc.ID] = npc
+
+	lookup := w.AbilityOwnerStateLookup()
+	if lookup == nil {
+		t.Fatalf("expected ability owner state lookup")
+	}
+
+	statePtr, cooldowns, ok := lookup("actor-1")
+	if !ok || statePtr != &player.ActorState || cooldowns != &player.Cooldowns {
+		t.Fatalf("expected lookup to return player state, got ok=%v state=%p cooldowns=%p", ok, statePtr, cooldowns)
+	}
+
+	delete(w.players, player.ID)
+
+	statePtr, cooldowns, ok = lookup("actor-1")
+	if !ok || statePtr != &npc.ActorState || cooldowns != &npc.Cooldowns {
+		t.Fatalf("expected lookup to fall back to npc state, got ok=%v state=%p cooldowns=%p", ok, statePtr, cooldowns)
+	}
+
+	if _, _, ok := lookup("missing"); ok {
+		t.Fatalf("expected missing actor lookup to fail")
+	}
+}
+
+func TestProjectileStopAdapterRegistersEffects(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	adapter := w.ProjectileStopAdapter(ProjectileStopAdapterOptions{})
+	if adapter.allocateID == nil {
+		t.Fatalf("expected allocateID to be bound")
+	}
+
+	bindings := adapter.StopConfig(&internalruntime.State{}, time.Now())
+	if bindings.AreaEffectSpawn.AllocateID == nil {
+		t.Fatalf("expected AllocateID to be provided")
+	}
+
+	if id := bindings.AreaEffectSpawn.AllocateID(); id != "effect-1" {
+		t.Fatalf("unexpected allocated id: %q", id)
+	}
+
+	if bindings.AreaEffectSpawn.Register == nil {
+		t.Fatalf("expected Register to be provided")
+	}
+
+	spawned := &internalruntime.State{ID: "effect-2"}
+	if !bindings.AreaEffectSpawn.Register(spawned) {
+		t.Fatalf("expected spawned effect registration to succeed")
+	}
+
+	if len(w.effects) != 1 || w.effects[0] != spawned {
+		t.Fatalf("expected spawned effect to be stored, got %+v", w.effects)
+	}
+	if ref := w.effectsByID[spawned.ID]; ref != spawned {
+		t.Fatalf("expected spawned effect to be indexed, got %+v", ref)
+	}
 }

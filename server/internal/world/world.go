@@ -1,12 +1,14 @@
 package world
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
 	state "mine-and-die/server/internal/state"
@@ -42,6 +44,12 @@ type World struct {
 
 	players map[string]*state.PlayerState
 	npcs    map[string]*state.NPCState
+
+	effects         []*internalruntime.State
+	effectsByID     map[string]*internalruntime.State
+	effectsIndex    *internalruntime.SpatialIndex
+	effectsRegistry internalruntime.Registry
+	nextEffectID    uint64
 
 	groundItems       map[string]*itemspkg.GroundItemState
 	groundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
@@ -83,10 +91,19 @@ func New(cfg Config, deps Deps) (*World, error) {
 		rng:                     factory(seed, "world"),
 		players:                 make(map[string]*state.PlayerState),
 		npcs:                    make(map[string]*state.NPCState),
+		effects:                 make([]*internalruntime.State, 0),
+		effectsByID:             make(map[string]*internalruntime.State),
+		effectsIndex:            internalruntime.NewSpatialIndex(internalruntime.DefaultSpatialCellSize, internalruntime.DefaultSpatialMaxPerCell),
 		groundItems:             make(map[string]*itemspkg.GroundItemState),
 		groundItemsByTile:       make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState),
 		statusEffectDefinitions: make(map[string]ApplyStatusEffectDefinition),
 		journal:                 journalpkg.New(capacity, maxAge),
+	}
+
+	world.effectsRegistry = internalruntime.Registry{
+		Effects: &world.effects,
+		ByID:    &world.effectsByID,
+		Index:   world.effectsIndex,
 	}
 
 	if deps.JournalTelemetry != nil {
@@ -94,6 +111,97 @@ func New(cfg Config, deps Deps) (*World, error) {
 	}
 
 	return world, nil
+}
+
+// EffectRegistry exposes the world's shared effect registry bindings.
+func (w *World) EffectRegistry() internalruntime.Registry {
+	if w == nil {
+		return internalruntime.Registry{}
+	}
+	if w.effectsRegistry.Effects == nil || w.effectsRegistry.Effects != &w.effects {
+		w.effectsRegistry.Effects = &w.effects
+	}
+	if w.effectsRegistry.ByID == nil || w.effectsRegistry.ByID != &w.effectsByID {
+		w.effectsRegistry.ByID = &w.effectsByID
+	}
+	if w.effectsRegistry.Index != w.effectsIndex {
+		w.effectsRegistry.Index = w.effectsIndex
+	}
+	return w.effectsRegistry
+}
+
+// AbilityOwnerStateLookup exposes a state lookup adapter for ability owners.
+func (w *World) AbilityOwnerStateLookup() AbilityOwnerStateLookup[*state.ActorState] {
+	if w == nil {
+		return nil
+	}
+	return NewAbilityOwnerStateLookup(AbilityOwnerStateLookupConfig[*state.ActorState]{
+		FindPlayer: w.playerAbilityOwnerState,
+		FindNPC:    w.npcAbilityOwnerState,
+	})
+}
+
+// ProjectileStopAdapterOptions configures optional callbacks for the projectile stop adapter.
+type ProjectileStopAdapterOptions struct {
+	RecordEffectSpawn func(effectType, category string)
+	CurrentTick       func() effectcontract.Tick
+	SetRemainingRange func(effect any, remaining float64)
+	RecordEffectEnd   func(effect any, reason string)
+}
+
+// ProjectileStopAdapter exposes a projectile stop adapter bound to the world's registry.
+func (w *World) ProjectileStopAdapter(opts ProjectileStopAdapterOptions) ProjectileStopAdapter {
+	if w == nil {
+		return ProjectileStopAdapter{}
+	}
+	cfg := ProjectileStopAdapterConfig{
+		AllocateID:        w.allocateEffectID,
+		RegisterEffect:    w.registerRuntimeEffect,
+		RecordEffectSpawn: opts.RecordEffectSpawn,
+		CurrentTick:       opts.CurrentTick,
+		SetRemainingRange: opts.SetRemainingRange,
+		RecordEffectEnd:   opts.RecordEffectEnd,
+	}
+	return NewProjectileStopAdapter(cfg)
+}
+
+func (w *World) playerAbilityOwnerState(actorID string) (*state.ActorState, *map[string]time.Time, bool) {
+	if w == nil || actorID == "" {
+		return nil, nil, false
+	}
+	player, ok := w.players[actorID]
+	if !ok || player == nil {
+		return nil, nil, false
+	}
+	return &player.ActorState, &player.Cooldowns, true
+}
+
+func (w *World) npcAbilityOwnerState(actorID string) (*state.ActorState, *map[string]time.Time, bool) {
+	if w == nil || actorID == "" {
+		return nil, nil, false
+	}
+	npc, ok := w.npcs[actorID]
+	if !ok || npc == nil {
+		return nil, nil, false
+	}
+	return &npc.ActorState, &npc.Cooldowns, true
+}
+
+func (w *World) allocateEffectID() string {
+	if w == nil {
+		return ""
+	}
+	w.nextEffectID++
+	return fmt.Sprintf("effect-%d", w.nextEffectID)
+}
+
+func (w *World) registerRuntimeEffect(effect any) bool {
+	runtime, _ := effect.(*internalruntime.State)
+	if runtime == nil {
+		return false
+	}
+	registry := w.EffectRegistry()
+	return internalruntime.RegisterEffect(registry, runtime)
 }
 
 // Config returns the normalized configuration captured at construction time.

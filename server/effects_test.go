@@ -162,7 +162,7 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 }
 
 func TestWorldAttachTelemetryConfiguresEffectRegistryOverflow(t *testing.T) {
-	w := legacyConstructWorld(worldpkg.DefaultConfig(), logging.NopPublisher{})
+	w := legacyConstructWorld(worldpkg.DefaultConfig(), logging.NopPublisher{}, worldpkg.Deps{Publisher: logging.NopPublisher{}})
 	if w == nil {
 		t.Fatalf("expected world to construct")
 	}
