@@ -13,6 +13,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 	simpatches "mine-and-die/server/internal/sim/patches/typed"
+	simutil "mine-and-die/server/internal/simutil"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 )
@@ -110,72 +111,12 @@ func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptio
 	hub.mu.Unlock()
 
 	script := buildDeterminismHarnessScript(baseTime)
-	tickDuration := time.Second / time.Duration(tickRate)
-	dtSeconds := tickDuration.Seconds()
-	current := baseTime
+	legacy := runLegacyHubDeterminismHarness(t, hub, script, baseTime, opts)
+	engine := runSimEngineDeterminismHarness(t, cfg, script, baseTime, opts)
 
-	patchHasher := sha256.New()
-	journalHasher := sha256.New()
-	totalPatches := 0
-	totalJournalEvents := 0
+	assertDeterminismHarnessEngineParity(t, legacy, engine)
 
-	for idx, tick := range script {
-		issueAt := current
-		for _, template := range tick.Commands {
-			cmd := cloneHarnessCommand(template)
-			if cmd.ActorID == "" {
-				cmd.ActorID = determinismHarnessPlayerID
-			}
-			cmd.OriginTick = hub.tick.Load()
-			if cmd.IssuedAt.IsZero() {
-				cmd.IssuedAt = issueAt
-			}
-			if ok, reason := hub.engine.Enqueue(cmd); !ok {
-				t.Fatalf("failed to enqueue command for tick %d: %s", idx+1, reason)
-			}
-		}
-
-		current = current.Add(tickDuration)
-		players, npcs, triggers, groundItems, _ := hub.advance(current, dtSeconds)
-
-		if opts.recordKeyframes {
-			simPlayers := simPlayersFromLegacy(players)
-			simNPCs := simNPCsFromLegacy(npcs)
-			simTriggers := internaleffects.SimEffectTriggersFromLegacy(triggers)
-			clonedGroundItems := itemspkg.CloneGroundItems(groundItems)
-			if _, _, err := hub.marshalState(simPlayers, simNPCs, simTriggers, clonedGroundItems, false, true); err != nil {
-				t.Fatalf("failed to record keyframe during determinism harness: %v", err)
-			}
-		}
-
-		patches := hub.engine.DrainPatches()
-		patchEnvelope := struct {
-			Tick    int         `json:"tick"`
-			Patches []sim.Patch `json:"patches,omitempty"`
-		}{Tick: idx + 1, Patches: patches}
-		patchBytes := marshalHarnessPayload(t, patchEnvelope)
-		patchHasher.Write(patchBytes)
-		totalPatches += len(patches)
-
-		journalBatch := hub.world.DrainEffectEvents()
-		effectBatch := simpatches.EffectEventBatch(journalBatch)
-		journalEnvelope := struct {
-			Tick  int              `json:"tick"`
-			Batch EffectEventBatch `json:"batch"`
-		}{Tick: idx + 1, Batch: effectBatch}
-		journalBytes := marshalHarnessPayload(t, journalEnvelope)
-		journalHasher.Write(journalBytes)
-		totalJournalEvents += len(effectBatch.Spawns) + len(effectBatch.Updates) + len(effectBatch.Ends)
-	}
-
-	return determinismBaseline{
-		Seed:               determinismHarnessSeed,
-		Ticks:              len(script),
-		PatchChecksum:      hex.EncodeToString(patchHasher.Sum(nil)),
-		JournalChecksum:    hex.EncodeToString(journalHasher.Sum(nil)),
-		TotalPatches:       totalPatches,
-		TotalJournalEvents: totalJournalEvents,
-	}
+	return legacy
 }
 
 func buildDeterminismHarnessScript(baseTime time.Time) []harnessTick {
@@ -253,6 +194,202 @@ func marshalHarnessPayload(t *testing.T, payload any) []byte {
 		t.Fatalf("failed to marshal harness payload: %v", err)
 	}
 	return data
+}
+
+func runLegacyHubDeterminismHarness(t *testing.T, hub *Hub, script []harnessTick, baseTime time.Time, opts determinismHarnessOptions) determinismBaseline {
+	t.Helper()
+
+	if hub == nil || hub.engine == nil {
+		t.Fatalf("determinism harness: hub not initialised")
+	}
+
+	tickDuration := time.Second / time.Duration(tickRate)
+	dtSeconds := tickDuration.Seconds()
+	current := baseTime
+
+	patchHasher := sha256.New()
+	journalHasher := sha256.New()
+	totalPatches := 0
+	totalJournalEvents := 0
+
+	for idx, tick := range script {
+		issueAt := current
+		for _, template := range tick.Commands {
+			cmd := cloneHarnessCommand(template)
+			if cmd.ActorID == "" {
+				cmd.ActorID = determinismHarnessPlayerID
+			}
+			cmd.OriginTick = hub.tick.Load()
+			if cmd.IssuedAt.IsZero() {
+				cmd.IssuedAt = issueAt
+			}
+			if ok, reason := hub.engine.Enqueue(cmd); !ok {
+				t.Fatalf("failed to enqueue command for tick %d: %s", idx+1, reason)
+			}
+		}
+
+		current = current.Add(tickDuration)
+		players, npcs, triggers, groundItems, _ := hub.advance(current, dtSeconds)
+
+		if opts.recordKeyframes {
+			simPlayers := simPlayersFromLegacy(players)
+			simNPCs := simNPCsFromLegacy(npcs)
+			simTriggers := internaleffects.SimEffectTriggersFromLegacy(triggers)
+			clonedGroundItems := itemspkg.CloneGroundItems(groundItems)
+			if _, _, err := hub.marshalState(simPlayers, simNPCs, simTriggers, clonedGroundItems, false, true); err != nil {
+				t.Fatalf("failed to record keyframe during determinism harness: %v", err)
+			}
+		}
+
+		patches := hub.engine.DrainPatches()
+		patchEnvelope := struct {
+			Tick    int         `json:"tick"`
+			Patches []sim.Patch `json:"patches,omitempty"`
+		}{Tick: idx + 1, Patches: patches}
+		patchBytes := marshalHarnessPayload(t, patchEnvelope)
+		patchHasher.Write(patchBytes)
+		totalPatches += len(patches)
+
+		journalBatch := hub.world.DrainEffectEvents()
+		effectBatch := simpatches.EffectEventBatch(journalBatch)
+		journalEnvelope := struct {
+			Tick  int              `json:"tick"`
+			Batch EffectEventBatch `json:"batch"`
+		}{Tick: idx + 1, Batch: effectBatch}
+		journalBytes := marshalHarnessPayload(t, journalEnvelope)
+		journalHasher.Write(journalBytes)
+		totalJournalEvents += len(effectBatch.Spawns) + len(effectBatch.Updates) + len(effectBatch.Ends)
+	}
+
+	return determinismBaseline{
+		Seed:               determinismHarnessSeed,
+		Ticks:              len(script),
+		PatchChecksum:      hex.EncodeToString(patchHasher.Sum(nil)),
+		JournalChecksum:    hex.EncodeToString(journalHasher.Sum(nil)),
+		TotalPatches:       totalPatches,
+		TotalJournalEvents: totalJournalEvents,
+	}
+}
+
+func runSimEngineDeterminismHarness(t *testing.T, cfg worldpkg.Config, script []harnessTick, baseTime time.Time, opts determinismHarnessOptions) determinismBaseline {
+	t.Helper()
+
+	world := legacyConstructWorld(cfg, logging.NopPublisher{}, worldpkg.Deps{Publisher: logging.NopPublisher{}})
+	if world == nil {
+		t.Fatalf("determinism harness: legacy constructor returned nil world")
+	}
+
+	AddTestPlayer(world, NewTestPlayerState(determinismHarnessPlayerID, baseTime))
+
+	engine, err := sim.NewEngine(
+		world,
+		sim.WithDeps(sim.Deps{}),
+		sim.WithLoopConfig(sim.LoopConfig{
+			TickRate:        tickRate,
+			CatchupMaxTicks: tickBudgetCatchupMaxTicks,
+			CommandCapacity: commandBufferCapacity,
+			PerActorLimit:   commandQueuePerActorLimit,
+			WarningStep:     commandQueueWarningStep,
+		}),
+	)
+	if err != nil {
+		t.Fatalf("determinism harness: failed to construct engine: %v", err)
+	}
+
+	_ = engine.DrainPatches()
+	_ = engine.DrainEffectEvents()
+
+	tickDuration := time.Second / time.Duration(tickRate)
+	dtSeconds := tickDuration.Seconds()
+	current := baseTime
+	tickCounter := uint64(0)
+
+	patchHasher := sha256.New()
+	journalHasher := sha256.New()
+	totalPatches := 0
+	totalJournalEvents := 0
+
+	for idx, tick := range script {
+		issueAt := current
+		for _, template := range tick.Commands {
+			cmd := cloneHarnessCommand(template)
+			if cmd.ActorID == "" {
+				cmd.ActorID = determinismHarnessPlayerID
+			}
+			cmd.OriginTick = tickCounter
+			if cmd.IssuedAt.IsZero() {
+				cmd.IssuedAt = issueAt
+			}
+			if ok, reason := engine.Enqueue(cmd); !ok {
+				t.Fatalf("determinism harness: failed to enqueue command for tick %d: %s", idx+1, reason)
+			}
+		}
+
+		current = current.Add(tickDuration)
+		tickCounter++
+
+		result := engine.Advance(sim.LoopTickContext{Tick: tickCounter, Now: current, Delta: dtSeconds})
+
+		if opts.recordKeyframes {
+			snapshot := result.Snapshot
+			frame := sim.Keyframe{
+				Tick:        tickCounter,
+				Sequence:    tickCounter,
+				Players:     simutil.ClonePlayers(snapshot.Players),
+				NPCs:        simutil.CloneNPCs(snapshot.NPCs),
+				Obstacles:   simutil.CloneObstacles(snapshot.Obstacles),
+				GroundItems: itemspkg.CloneGroundItems(snapshot.GroundItems),
+				Config:      simWorldConfigFromLegacy(world.config),
+				RecordedAt:  current,
+			}
+			engine.RecordKeyframe(frame)
+		}
+
+		patches := engine.DrainPatches()
+		patchEnvelope := struct {
+			Tick    int         `json:"tick"`
+			Patches []sim.Patch `json:"patches,omitempty"`
+		}{Tick: idx + 1, Patches: patches}
+		patchBytes := marshalHarnessPayload(t, patchEnvelope)
+		patchHasher.Write(patchBytes)
+		totalPatches += len(patches)
+
+		batch := engine.DrainEffectEvents()
+		effectBatch := simpatches.EffectEventBatch(batch)
+		journalEnvelope := struct {
+			Tick  int              `json:"tick"`
+			Batch EffectEventBatch `json:"batch"`
+		}{Tick: idx + 1, Batch: effectBatch}
+		journalBytes := marshalHarnessPayload(t, journalEnvelope)
+		journalHasher.Write(journalBytes)
+		totalJournalEvents += len(effectBatch.Spawns) + len(effectBatch.Updates) + len(effectBatch.Ends)
+	}
+
+	return determinismBaseline{
+		Seed:               determinismHarnessSeed,
+		Ticks:              len(script),
+		PatchChecksum:      hex.EncodeToString(patchHasher.Sum(nil)),
+		JournalChecksum:    hex.EncodeToString(journalHasher.Sum(nil)),
+		TotalPatches:       totalPatches,
+		TotalJournalEvents: totalJournalEvents,
+	}
+}
+
+func assertDeterminismHarnessEngineParity(t *testing.T, legacy, engine determinismBaseline) {
+	t.Helper()
+
+	if engine.PatchChecksum != legacy.PatchChecksum {
+		t.Fatalf("determinism harness: sim.NewEngine patch checksum mismatch: legacy=%s new=%s", legacy.PatchChecksum, engine.PatchChecksum)
+	}
+	if engine.JournalChecksum != legacy.JournalChecksum {
+		t.Fatalf("determinism harness: sim.NewEngine journal checksum mismatch: legacy=%s new=%s", legacy.JournalChecksum, engine.JournalChecksum)
+	}
+	if engine.TotalPatches != legacy.TotalPatches {
+		t.Fatalf("determinism harness: sim.NewEngine patch count mismatch: legacy=%d new=%d", legacy.TotalPatches, engine.TotalPatches)
+	}
+	if engine.TotalJournalEvents != legacy.TotalJournalEvents {
+		t.Fatalf("determinism harness: sim.NewEngine journal count mismatch: legacy=%d new=%d", legacy.TotalJournalEvents, engine.TotalJournalEvents)
+	}
 }
 
 type constructorHarnessPair struct {
