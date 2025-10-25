@@ -7,11 +7,13 @@ import (
 	"strconv"
 	"time"
 
+	effectcatalog "mine-and-die/server/effects/catalog"
 	effectcontract "mine-and-die/server/effects/contract"
 	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
-       state "mine-and-die/server/internal/world/state"
+	worldeffects "mine-and-die/server/internal/world/effects"
+	state "mine-and-die/server/internal/world/state"
 	"mine-and-die/server/logging"
 )
 
@@ -50,6 +52,7 @@ type World struct {
 	effectsByID     map[string]*internalruntime.State
 	effectsIndex    *internalruntime.SpatialIndex
 	effectsRegistry internalruntime.Registry
+	effectManager   *worldeffects.Manager
 	nextEffectID    uint64
 
 	groundItems       map[string]*itemspkg.GroundItemState
@@ -106,6 +109,8 @@ func New(cfg Config, deps Deps) (*World, error) {
 		ByID:    &world.effectsByID,
 		Index:   world.effectsIndex,
 	}
+
+	world.effectManager = world.buildEffectManager()
 
 	if deps.JournalTelemetry != nil {
 		world.journal.AttachTelemetry(deps.JournalTelemetry)
@@ -213,6 +218,62 @@ func (w *World) EffectRegistry() internalruntime.Registry {
 		w.effectsRegistry.Index = w.effectsIndex
 	}
 	return w.effectsRegistry
+}
+
+// EffectManager returns the contract effect manager bound to the world registry.
+func (w *World) EffectManager() *worldeffects.Manager {
+	if w == nil {
+		return nil
+	}
+	return w.effectManager
+}
+
+func (w *World) buildEffectManager() *worldeffects.Manager {
+	if w == nil {
+		return nil
+	}
+
+	definitions := effectcontract.BuiltInDefinitions()
+
+	var resolver *effectcatalog.Resolver
+	if loaded, err := effectcatalog.Load(effectcontract.BuiltInRegistry, effectcatalog.DefaultPaths()...); err == nil {
+		if defs := loaded.DefinitionsByContractID(); len(defs) > 0 {
+			for id, def := range defs {
+				if _, exists := definitions[id]; exists {
+					continue
+				}
+				definitions[id] = def
+			}
+		}
+		resolver = loaded
+	}
+
+	registryProvider := func() worldeffects.Registry {
+		registry := w.EffectRegistry()
+		return worldeffects.Registry(registry)
+	}
+
+	return worldeffects.NewManager(worldeffects.ManagerConfig{
+		Definitions: definitions,
+		Catalog:     resolver,
+		OwnerMissing: func(actorID string) bool {
+			return w.effectOwnerMissing(actorID)
+		},
+		Registry: registryProvider,
+	})
+}
+
+func (w *World) effectOwnerMissing(actorID string) bool {
+	if w == nil || actorID == "" {
+		return false
+	}
+	if _, ok := w.players[actorID]; ok {
+		return false
+	}
+	if _, ok := w.npcs[actorID]; ok {
+		return false
+	}
+	return true
 }
 
 // AbilityOwnerStateLookup exposes a state lookup adapter for ability owners.
