@@ -30,9 +30,14 @@ Goal: build the world *internally* using the new state package.
 
 * Implement `internal/world.New(cfg, deps) (*World, error)` that:
 
-  * instantiates state graphs (players/NPCs/inventory/registries)
-  * wires effect registries from `internal/effects/registry`
   * seeds RNG, sets defaults (copied from legacy)
+  * instantiates state graphs (players/NPCs/inventory/registries)
+   - [ ] players
+   - [ ] NPCs
+   - [ ] inventory
+   - [ ] registers
+   - [ ] etc as needed
+  * wires effect registries from `internal/effects/registry`
   * exposes **adapters** needed by `sim` (`AbilityOwnerLookup`, projectile stop, journal accessors) directly
 * Keep legacy boot alive by having `server` call into `internal/world.New` and then **decorate** with any legacy-only façade needs (no logic divergence).
 * Add tests that boot world via **both** constructors and assert:
