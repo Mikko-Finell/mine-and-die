@@ -41,7 +41,7 @@ Progress is tracked exclusively through the checklist below. When every unchecke
 - [x] Extend `server/internal/sim` tests to compare engine output between constructors.
 - [x] Update `server/determinism_harness_test.go` (and helpers) so both constructors lock the same checksums.
 - [x] Refactor determinism helpers to a single `RunDeterminismHarness` entry point.
-- [ ] Rename the internal helper `runDeterminismHarnessLockstep` to `runDeterminismHarness` to finish the consolidation.
+- [x] Rename the internal helper `runDeterminismHarnessLockstep` to `runDeterminismHarness` to finish the consolidation.
 
 ### 4. Runtime Cutover (Phase 1)
 - [ ] Update `cmd/server` startup and dev harnesses to compose `internal/app`, `internal/world`, and `internal/sim` directly (no hubs).
