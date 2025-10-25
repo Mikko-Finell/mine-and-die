@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"mine-and-die/server"
-	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/sim"
 	simpatches "mine-and-die/server/internal/sim/patches/typed"
 	worldpkg "mine-and-die/server/internal/world"
@@ -55,19 +54,13 @@ func runManualConstructorHarness(t *testing.T) harnessResult {
 	playerID := server.DeterminismHarnessPlayerID
 	server.AddTestPlayer(world, server.NewTestPlayerState(playerID, baseTime))
 
-	adapter := server.NewTestLegacyEngineAdapter(world, sim.Deps{})
-	hooks := sim.LoopHooks{}
-	if prep, ok := adapter.(interface {
-		PrepareStep(uint64, time.Time, float64, func(effectcontract.EffectLifecycleEvent))
-	}); ok {
-		hooks.Prepare = func(ctx sim.LoopTickContext) {
-			prep.PrepareStep(ctx.Tick, ctx.Now, ctx.Delta, nil)
-		}
-	}
-
-	engine := sim.NewLoop(adapter, server.TestLoopConfig(), hooks)
-	if engine == nil {
-		t.Fatalf("failed to construct loop engine")
+	engine, err := sim.NewEngine(
+		world,
+		sim.WithDeps(sim.Deps{}),
+		sim.WithLoopConfig(server.TestLoopConfig()),
+	)
+	if err != nil {
+		t.Fatalf("failed to construct engine: %v", err)
 	}
 
 	// Clear any patches or effect events emitted during initialisation.
