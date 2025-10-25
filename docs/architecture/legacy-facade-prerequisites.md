@@ -66,7 +66,14 @@ Goal: cut the hot path off the legacy hub.
 - [x] Next task: sketch the `internal/sim.NewEngine` constructor signature and option surface so follow-up work can begin wiring the production hub through the internal entry point.
 - [x] Next task: implement `internal/sim.NewEngine` by composing the legacy adapter and loop with the new option scaffold so the determinism harness can instantiate engines through both constructors.
 - [x] Next task: update `server/determinism_harness_test.go` to instantiate engines through `sim.NewEngine` alongside the hub baseline so both constructors stay checksum-aligned.
-- [ ] Next task: extend `server/test_exports.go` so `RunDeterminismHarnessBaseline` runs the hub and `sim.NewEngine` constructors in lockstep, keeping downstream parity checks aligned.
+- [x] Next task: extend `server/test_exports.go` so `RunDeterminismHarnessBaseline` runs the hub and `sim.NewEngine` constructors in lockstep, keeping downstream parity checks aligned.
+- [x] Next task: refactor `server/internal/sim/engine_constructor_test.go` to reuse the shared lockstep baseline so the manual harness duplication can be removed.
+- [x] Next task: collapse the duplicated harness loop in `server/determinism_harness_test.go` by driving its engine parity checks through `RunDeterminismHarnessLockstep`.
+- [x] Next task: refactor `server/determinism_harness_test.go` to assert the golden checksum directly against `DeterminismHarnessRecord` so the baseline wrapper can be dropped.
+- [x] Next task: remove `RunDeterminismHarnessBaseline` by pointing the remaining callers at `RunDeterminismHarnessLockstepWithOptions` so only the shared helper remains.
+- [x] Next task: collapse `RunDeterminismHarnessLockstep` into `RunDeterminismHarnessLockstepWithOptions` by updating callers to pass an empty options struct so the determinism helpers share a single entry point.
+- [x] Next task: rename `RunDeterminismHarnessLockstepWithOptions` to `RunDeterminismHarness` and update callers so the shared helper name reflects the consolidated entry point.
+- [ ] Next task: rename `runDeterminismHarnessLockstep` to `runDeterminismHarness` so the internal helper matches the exported harness entry point.
 
 * [ ] Add `internal/sim.NewEngine(world *world.World, opts …Option) (*Engine, error)` that accepts `sim.Deps`, queue sizes, keyframe/journal hooks.
 * [ ] Point `cmd/server`, `internal/app`, and handlers to build via `world.New` + `sim.NewEngine`.

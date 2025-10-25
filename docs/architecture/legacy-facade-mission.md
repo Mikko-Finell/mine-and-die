@@ -48,8 +48,13 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
    - [ ] Redirect `server/hub.go` and `server/sim_engine_adapter.go` to invoke the promoted constructor, leaving only thin translation layers until the hub façade is deleted.
 3. Backfill tests proving the promoted constructors produce determinism-equivalent snapshots, journal baselines, and patch streams to the legacy paths.
    - [x] Add `server/internal/world/constructor_test.go` that instantiates worlds via both constructors and asserts snapshots/journal state match for representative configs.
-   - [ ] Extend `server/internal/sim` tests to build the engine through the new constructor and compare patch/journal outputs against the current hub-driven harness script.
-   - [ ] Update `server/determinism_harness_test.go` (or a shared helper) to run against both constructor paths, locking determinism-equivalent checksums before swapping entry points.
+   - [x] Extend `server/internal/sim` tests to build the engine through the new constructor and compare patch/journal outputs against the current hub-driven harness script.
+   - [x] Update `server/determinism_harness_test.go` (or a shared helper) to run against both constructor paths, locking determinism-equivalent checksums before swapping entry points.
+   - [x] Next task: refactor `server/determinism_harness_test.go` to assert the golden checksum directly against `DeterminismHarnessRecord` so the legacy baseline wrapper can be deleted.
+  - [x] Next task: remove `RunDeterminismHarnessBaseline` by routing any remaining callers through `RunDeterminismHarnessLockstepWithOptions` so the legacy baseline wrapper disappears entirely.
+  - [x] Next task: collapse `RunDeterminismHarnessLockstep` into `RunDeterminismHarnessLockstepWithOptions` by updating callers to pass `DeterminismHarnessOptions{}` explicitly so only one helper remains.
+  - [x] Next task: rename `RunDeterminismHarnessLockstepWithOptions` to `RunDeterminismHarness` and update callers so the unified helper name reflects the remaining entry point.
+  - [ ] Next task: rename `runDeterminismHarnessLockstep` to `runDeterminismHarness` so the internal helper matches the exported harness entry point.
 
 ### Exit Criteria
 

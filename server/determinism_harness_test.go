@@ -1,62 +1,38 @@
 package server
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"reflect"
 	"testing"
-	"time"
 
-	internaleffects "mine-and-die/server/internal/effects"
 	internalruntime "mine-and-die/server/internal/effects/runtime"
-	itemspkg "mine-and-die/server/internal/items"
-	"mine-and-die/server/internal/sim"
-	simpatches "mine-and-die/server/internal/sim/patches/typed"
-	simutil "mine-and-die/server/internal/simutil"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 )
 
 const (
-	determinismHarnessSeed      = "idiom-phase-0-harness"
-	determinismHarnessPlayerID  = "determinism-player"
-	determinismHarnessTickCount = 6
-
-	determinismHarnessPatchChecksum   = "540fb03fcb225bb93999fd5cf6b39d4be2b8a1177ee21a00f0362be6d4d7c85c"
-	determinismHarnessJournalChecksum = "2c977c21fc8e7253cd5a477e83f2af0224dd409ff9c432bb8916485bedf193e2"
+	expectedDeterminismHarnessSeed               = "idiom-phase-0-harness"
+	expectedDeterminismHarnessTickCount          = 6
+	expectedDeterminismHarnessPatchChecksum      = "540fb03fcb225bb93999fd5cf6b39d4be2b8a1177ee21a00f0362be6d4d7c85c"
+	expectedDeterminismHarnessJournalChecksum    = "2c977c21fc8e7253cd5a477e83f2af0224dd409ff9c432bb8916485bedf193e2"
+	expectedDeterminismHarnessTotalPatches       = 13
+	expectedDeterminismHarnessTotalJournalEvents = 0
 )
 
-var determinismHarnessBaselineRecord = determinismBaseline{
-	Seed:               determinismHarnessSeed,
-	Ticks:              determinismHarnessTickCount,
-	PatchChecksum:      determinismHarnessPatchChecksum,
-	JournalChecksum:    determinismHarnessJournalChecksum,
-	TotalPatches:       13,
-	TotalJournalEvents: 0,
-}
-
-type determinismBaseline struct {
-	Seed               string
-	Ticks              int
-	PatchChecksum      string
-	JournalChecksum    string
-	TotalPatches       int
-	TotalJournalEvents int
-}
-
-type harnessTick struct {
-	Commands []sim.Command
+var expectedDeterminismHarnessRecord = DeterminismHarnessRecord{
+	PatchChecksum:      expectedDeterminismHarnessPatchChecksum,
+	JournalChecksum:    expectedDeterminismHarnessJournalChecksum,
+	TotalPatches:       expectedDeterminismHarnessTotalPatches,
+	TotalJournalEvents: expectedDeterminismHarnessTotalJournalEvents,
 }
 
 func TestDeterminismHarnessGolden(t *testing.T) {
-	baseline := runDeterminismHarness(t)
-	assertDeterminismHarnessBaseline(t, baseline)
+	record := runDeterminismHarnessRecord(t)
+	assertDeterminismHarnessBaseline(t, record)
 }
 
 func TestDeterminismHarnessGoldenWithKeyframes(t *testing.T) {
-	baseline := runDeterminismHarnessWithOptions(t, determinismHarnessOptions{recordKeyframes: true})
-	assertDeterminismHarnessBaseline(t, baseline)
+	record := runDeterminismHarnessRecordWithOptions(t, DeterminismHarnessOptions{RecordKeyframes: true})
+	assertDeterminismHarnessBaseline(t, record)
 }
 
 func assertDeterminismBaselineField[T comparable](t *testing.T, field string, got, want T) {
@@ -66,330 +42,37 @@ func assertDeterminismBaselineField[T comparable](t *testing.T, field string, go
 	}
 }
 
-func assertDeterminismHarnessBaseline(t *testing.T, baseline determinismBaseline) {
+func assertDeterminismHarnessBaseline(t *testing.T, record DeterminismHarnessRecord) {
 	t.Helper()
 
-	assertDeterminismBaselineField(t, "seed", baseline.Seed, determinismHarnessBaselineRecord.Seed)
-	assertDeterminismBaselineField(t, "ticks", baseline.Ticks, determinismHarnessBaselineRecord.Ticks)
-	assertDeterminismBaselineField(t, "patch checksum", baseline.PatchChecksum, determinismHarnessBaselineRecord.PatchChecksum)
-	assertDeterminismBaselineField(t, "journal checksum", baseline.JournalChecksum, determinismHarnessBaselineRecord.JournalChecksum)
-	assertDeterminismBaselineField(t, "total patches", baseline.TotalPatches, determinismHarnessBaselineRecord.TotalPatches)
-	assertDeterminismBaselineField(t, "total journal events", baseline.TotalJournalEvents, determinismHarnessBaselineRecord.TotalJournalEvents)
+	assertDeterminismBaselineField(t, "seed", DeterminismHarnessSeed, expectedDeterminismHarnessSeed)
+	assertDeterminismBaselineField(t, "ticks", DeterminismHarnessTickCount, expectedDeterminismHarnessTickCount)
+	assertDeterminismBaselineField(t, "patch checksum", record.PatchChecksum, expectedDeterminismHarnessRecord.PatchChecksum)
+	assertDeterminismBaselineField(t, "journal checksum", record.JournalChecksum, expectedDeterminismHarnessRecord.JournalChecksum)
+	assertDeterminismBaselineField(t, "total patches", record.TotalPatches, expectedDeterminismHarnessRecord.TotalPatches)
+	assertDeterminismBaselineField(t, "total journal events", record.TotalJournalEvents, expectedDeterminismHarnessRecord.TotalJournalEvents)
 
-	t.Logf("determinism harness baseline: seed=%s patch=%s journal=%s patches=%d journal_events=%d", baseline.Seed, baseline.PatchChecksum, baseline.JournalChecksum, baseline.TotalPatches, baseline.TotalJournalEvents)
+	t.Logf("determinism harness baseline: seed=%s patch=%s journal=%s patches=%d journal_events=%d", DeterminismHarnessSeed, record.PatchChecksum, record.JournalChecksum, record.TotalPatches, record.TotalJournalEvents)
 }
 
-type determinismHarnessOptions struct {
-	recordKeyframes bool
+func runDeterminismHarnessRecord(t *testing.T) DeterminismHarnessRecord {
+	return runDeterminismHarnessRecordWithOptions(t, DeterminismHarnessOptions{})
 }
 
-func runDeterminismHarness(t *testing.T) determinismBaseline {
-	return runDeterminismHarnessWithOptions(t, determinismHarnessOptions{})
-}
-
-func runDeterminismHarnessWithOptions(t *testing.T, opts determinismHarnessOptions) determinismBaseline {
+func runDeterminismHarnessRecordWithOptions(t *testing.T, opts DeterminismHarnessOptions) DeterminismHarnessRecord {
 	t.Helper()
 
 	var harness constructorHarnessPair
 	restore := interceptDeterminismConstructors(t, &harness)
 	t.Cleanup(restore)
 
-	hub := newHub()
 	harness = constructorHarnessPair{}
 
-	cfg := worldpkg.DefaultConfig()
-	cfg.Seed = determinismHarnessSeed
-	hub.ResetWorld(cfg)
+	hubRecord, _ := RunDeterminismHarness(t, opts)
 
 	assertDeterminismConstructorHarnessParity(t, harness)
 
-	baseTime := time.Unix(0, 0).UTC()
-
-	player := hub.seedPlayerState(determinismHarnessPlayerID, baseTime)
-	hub.mu.Lock()
-	hub.world.AddPlayer(player)
-	hub.mu.Unlock()
-
-	script := buildDeterminismHarnessScript(baseTime)
-	legacy := runLegacyHubDeterminismHarness(t, hub, script, baseTime, opts)
-	engine := runSimEngineDeterminismHarness(t, cfg, script, baseTime, opts)
-
-	assertDeterminismHarnessEngineParity(t, legacy, engine)
-
-	return legacy
-}
-
-func buildDeterminismHarnessScript(baseTime time.Time) []harnessTick {
-	script := make([]harnessTick, 0, determinismHarnessTickCount)
-
-	script = append(script,
-		harnessTick{Commands: []sim.Command{
-			{
-				Type: sim.CommandMove,
-				Move: &sim.MoveCommand{DX: 1, DY: 0, Facing: toSimFacing(FacingRight)},
-			},
-		}},
-		harnessTick{Commands: []sim.Command{
-			{
-				Type: sim.CommandMove,
-				Move: &sim.MoveCommand{DX: 0, DY: 1, Facing: toSimFacing(FacingDown)},
-			},
-		}},
-		harnessTick{Commands: []sim.Command{
-			{
-				Type: sim.CommandMove,
-				Move: &sim.MoveCommand{DX: -1, DY: 0, Facing: toSimFacing(FacingLeft)},
-			},
-		}},
-		harnessTick{Commands: []sim.Command{
-			{
-				Type: sim.CommandMove,
-				Move: &sim.MoveCommand{DX: 0, DY: -1, Facing: toSimFacing(FacingUp)},
-			},
-		}},
-		harnessTick{Commands: []sim.Command{
-			{
-				Type: sim.CommandMove,
-				Move: &sim.MoveCommand{DX: 0, DY: 0, Facing: toSimFacing(FacingUp)},
-			},
-		}},
-		harnessTick{Commands: []sim.Command{
-			{
-				Type: sim.CommandHeartbeat,
-				Heartbeat: &sim.HeartbeatCommand{
-					ClientSent: baseTime.UnixMilli(),
-				},
-			},
-		}},
-	)
-
-	return script
-}
-
-func cloneHarnessCommand(cmd sim.Command) sim.Command {
-	cloned := cmd
-	if cmd.Move != nil {
-		copyMove := *cmd.Move
-		cloned.Move = &copyMove
-	}
-	if cmd.Action != nil {
-		copyAction := *cmd.Action
-		cloned.Action = &copyAction
-	}
-	if cmd.Heartbeat != nil {
-		copyHeartbeat := *cmd.Heartbeat
-		cloned.Heartbeat = &copyHeartbeat
-	}
-	if cmd.Path != nil {
-		copyPath := *cmd.Path
-		cloned.Path = &copyPath
-	}
-	return cloned
-}
-
-func marshalHarnessPayload(t *testing.T, payload any) []byte {
-	t.Helper()
-	data, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("failed to marshal harness payload: %v", err)
-	}
-	return data
-}
-
-func runLegacyHubDeterminismHarness(t *testing.T, hub *Hub, script []harnessTick, baseTime time.Time, opts determinismHarnessOptions) determinismBaseline {
-	t.Helper()
-
-	if hub == nil || hub.engine == nil {
-		t.Fatalf("determinism harness: hub not initialised")
-	}
-
-	tickDuration := time.Second / time.Duration(tickRate)
-	dtSeconds := tickDuration.Seconds()
-	current := baseTime
-
-	patchHasher := sha256.New()
-	journalHasher := sha256.New()
-	totalPatches := 0
-	totalJournalEvents := 0
-
-	for idx, tick := range script {
-		issueAt := current
-		for _, template := range tick.Commands {
-			cmd := cloneHarnessCommand(template)
-			if cmd.ActorID == "" {
-				cmd.ActorID = determinismHarnessPlayerID
-			}
-			cmd.OriginTick = hub.tick.Load()
-			if cmd.IssuedAt.IsZero() {
-				cmd.IssuedAt = issueAt
-			}
-			if ok, reason := hub.engine.Enqueue(cmd); !ok {
-				t.Fatalf("failed to enqueue command for tick %d: %s", idx+1, reason)
-			}
-		}
-
-		current = current.Add(tickDuration)
-		players, npcs, triggers, groundItems, _ := hub.advance(current, dtSeconds)
-
-		if opts.recordKeyframes {
-			simPlayers := simPlayersFromLegacy(players)
-			simNPCs := simNPCsFromLegacy(npcs)
-			simTriggers := internaleffects.SimEffectTriggersFromLegacy(triggers)
-			clonedGroundItems := itemspkg.CloneGroundItems(groundItems)
-			if _, _, err := hub.marshalState(simPlayers, simNPCs, simTriggers, clonedGroundItems, false, true); err != nil {
-				t.Fatalf("failed to record keyframe during determinism harness: %v", err)
-			}
-		}
-
-		patches := hub.engine.DrainPatches()
-		patchEnvelope := struct {
-			Tick    int         `json:"tick"`
-			Patches []sim.Patch `json:"patches,omitempty"`
-		}{Tick: idx + 1, Patches: patches}
-		patchBytes := marshalHarnessPayload(t, patchEnvelope)
-		patchHasher.Write(patchBytes)
-		totalPatches += len(patches)
-
-		journalBatch := hub.world.DrainEffectEvents()
-		effectBatch := simpatches.EffectEventBatch(journalBatch)
-		journalEnvelope := struct {
-			Tick  int              `json:"tick"`
-			Batch EffectEventBatch `json:"batch"`
-		}{Tick: idx + 1, Batch: effectBatch}
-		journalBytes := marshalHarnessPayload(t, journalEnvelope)
-		journalHasher.Write(journalBytes)
-		totalJournalEvents += len(effectBatch.Spawns) + len(effectBatch.Updates) + len(effectBatch.Ends)
-	}
-
-	return determinismBaseline{
-		Seed:               determinismHarnessSeed,
-		Ticks:              len(script),
-		PatchChecksum:      hex.EncodeToString(patchHasher.Sum(nil)),
-		JournalChecksum:    hex.EncodeToString(journalHasher.Sum(nil)),
-		TotalPatches:       totalPatches,
-		TotalJournalEvents: totalJournalEvents,
-	}
-}
-
-func runSimEngineDeterminismHarness(t *testing.T, cfg worldpkg.Config, script []harnessTick, baseTime time.Time, opts determinismHarnessOptions) determinismBaseline {
-	t.Helper()
-
-	world := legacyConstructWorld(cfg, logging.NopPublisher{}, worldpkg.Deps{Publisher: logging.NopPublisher{}})
-	if world == nil {
-		t.Fatalf("determinism harness: legacy constructor returned nil world")
-	}
-
-	AddTestPlayer(world, NewTestPlayerState(determinismHarnessPlayerID, baseTime))
-
-	engine, err := sim.NewEngine(
-		world,
-		sim.WithDeps(sim.Deps{}),
-		sim.WithLoopConfig(sim.LoopConfig{
-			TickRate:        tickRate,
-			CatchupMaxTicks: tickBudgetCatchupMaxTicks,
-			CommandCapacity: commandBufferCapacity,
-			PerActorLimit:   commandQueuePerActorLimit,
-			WarningStep:     commandQueueWarningStep,
-		}),
-	)
-	if err != nil {
-		t.Fatalf("determinism harness: failed to construct engine: %v", err)
-	}
-
-	_ = engine.DrainPatches()
-	_ = engine.DrainEffectEvents()
-
-	tickDuration := time.Second / time.Duration(tickRate)
-	dtSeconds := tickDuration.Seconds()
-	current := baseTime
-	tickCounter := uint64(0)
-
-	patchHasher := sha256.New()
-	journalHasher := sha256.New()
-	totalPatches := 0
-	totalJournalEvents := 0
-
-	for idx, tick := range script {
-		issueAt := current
-		for _, template := range tick.Commands {
-			cmd := cloneHarnessCommand(template)
-			if cmd.ActorID == "" {
-				cmd.ActorID = determinismHarnessPlayerID
-			}
-			cmd.OriginTick = tickCounter
-			if cmd.IssuedAt.IsZero() {
-				cmd.IssuedAt = issueAt
-			}
-			if ok, reason := engine.Enqueue(cmd); !ok {
-				t.Fatalf("determinism harness: failed to enqueue command for tick %d: %s", idx+1, reason)
-			}
-		}
-
-		current = current.Add(tickDuration)
-		tickCounter++
-
-		result := engine.Advance(sim.LoopTickContext{Tick: tickCounter, Now: current, Delta: dtSeconds})
-
-		if opts.recordKeyframes {
-			snapshot := result.Snapshot
-			frame := sim.Keyframe{
-				Tick:        tickCounter,
-				Sequence:    tickCounter,
-				Players:     simutil.ClonePlayers(snapshot.Players),
-				NPCs:        simutil.CloneNPCs(snapshot.NPCs),
-				Obstacles:   simutil.CloneObstacles(snapshot.Obstacles),
-				GroundItems: itemspkg.CloneGroundItems(snapshot.GroundItems),
-				Config:      simWorldConfigFromLegacy(world.config),
-				RecordedAt:  current,
-			}
-			engine.RecordKeyframe(frame)
-		}
-
-		patches := engine.DrainPatches()
-		patchEnvelope := struct {
-			Tick    int         `json:"tick"`
-			Patches []sim.Patch `json:"patches,omitempty"`
-		}{Tick: idx + 1, Patches: patches}
-		patchBytes := marshalHarnessPayload(t, patchEnvelope)
-		patchHasher.Write(patchBytes)
-		totalPatches += len(patches)
-
-		batch := engine.DrainEffectEvents()
-		effectBatch := simpatches.EffectEventBatch(batch)
-		journalEnvelope := struct {
-			Tick  int              `json:"tick"`
-			Batch EffectEventBatch `json:"batch"`
-		}{Tick: idx + 1, Batch: effectBatch}
-		journalBytes := marshalHarnessPayload(t, journalEnvelope)
-		journalHasher.Write(journalBytes)
-		totalJournalEvents += len(effectBatch.Spawns) + len(effectBatch.Updates) + len(effectBatch.Ends)
-	}
-
-	return determinismBaseline{
-		Seed:               determinismHarnessSeed,
-		Ticks:              len(script),
-		PatchChecksum:      hex.EncodeToString(patchHasher.Sum(nil)),
-		JournalChecksum:    hex.EncodeToString(journalHasher.Sum(nil)),
-		TotalPatches:       totalPatches,
-		TotalJournalEvents: totalJournalEvents,
-	}
-}
-
-func assertDeterminismHarnessEngineParity(t *testing.T, legacy, engine determinismBaseline) {
-	t.Helper()
-
-	if engine.PatchChecksum != legacy.PatchChecksum {
-		t.Fatalf("determinism harness: sim.NewEngine patch checksum mismatch: legacy=%s new=%s", legacy.PatchChecksum, engine.PatchChecksum)
-	}
-	if engine.JournalChecksum != legacy.JournalChecksum {
-		t.Fatalf("determinism harness: sim.NewEngine journal checksum mismatch: legacy=%s new=%s", legacy.JournalChecksum, engine.JournalChecksum)
-	}
-	if engine.TotalPatches != legacy.TotalPatches {
-		t.Fatalf("determinism harness: sim.NewEngine patch count mismatch: legacy=%d new=%d", legacy.TotalPatches, engine.TotalPatches)
-	}
-	if engine.TotalJournalEvents != legacy.TotalJournalEvents {
-		t.Fatalf("determinism harness: sim.NewEngine journal count mismatch: legacy=%d new=%d", legacy.TotalJournalEvents, engine.TotalJournalEvents)
-	}
+	return hubRecord
 }
 
 type constructorHarnessPair struct {
