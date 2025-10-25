@@ -4,98 +4,35 @@ import (
 	"math"
 	"time"
 
+	"mine-and-die/server/internal/state"
 	worldpkg "mine-and-die/server/internal/world"
 	stats "mine-and-die/server/stats"
 )
 
-// Actor captures the shared state for any living entity in the world.
-type Actor struct {
-	ID        string          `json:"id"`
-	X         float64         `json:"x"`
-	Y         float64         `json:"y"`
-	Facing    FacingDirection `json:"facing"`
-	Health    float64         `json:"health"`
-	MaxHealth float64         `json:"maxHealth"`
-	Inventory Inventory       `json:"inventory"`
-	Equipment Equipment       `json:"equipment"`
-}
-
-// Player mirrors the actor state for human-controlled characters.
-type Player struct {
-	Actor
-}
-
-type FacingDirection string
-
-const (
-	FacingUp    FacingDirection = "up"
-	FacingDown  FacingDirection = "down"
-	FacingLeft  FacingDirection = "left"
-	FacingRight FacingDirection = "right"
-
-	defaultFacing FacingDirection = FacingDown
+type (
+	Actor           = state.Actor
+	Player          = state.Player
+	FacingDirection = state.FacingDirection
 )
 
-// parseFacing validates a facing string received from the client.
+const (
+	FacingUp      = state.FacingUp
+	FacingDown    = state.FacingDown
+	FacingLeft    = state.FacingLeft
+	FacingRight   = state.FacingRight
+	defaultFacing = state.DefaultFacing
+)
+
 func parseFacing(value string) (FacingDirection, bool) {
-	switch FacingDirection(value) {
-	case FacingUp, FacingDown, FacingLeft, FacingRight:
-		return FacingDirection(value), true
-	default:
-		return "", false
-	}
+	return state.ParseFacing(value)
 }
 
-// deriveFacing picks the facing direction that best matches the movement
-// vector, falling back to the last known facing when idle.
 func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
-	if fallback == "" {
-		fallback = defaultFacing
-	}
-
-	const epsilon = 1e-6
-
-	if math.Abs(dx) < epsilon {
-		dx = 0
-	}
-	if math.Abs(dy) < epsilon {
-		dy = 0
-	}
-
-	if dx == 0 && dy == 0 {
-		return fallback
-	}
-
-	absX := math.Abs(dx)
-	absY := math.Abs(dy)
-
-	if absY >= absX && dy != 0 {
-		if dy > 0 {
-			return FacingDown
-		}
-		return FacingUp
-	}
-
-	if dx > 0 {
-		return FacingRight
-	}
-	return FacingLeft
+	return state.DeriveFacing(dx, dy, fallback)
 }
 
-// facingToVector returns a unit vector for the given facing.
 func facingToVector(facing FacingDirection) (float64, float64) {
-	switch facing {
-	case FacingUp:
-		return 0, -1
-	case FacingDown:
-		return 0, 1
-	case FacingLeft:
-		return -1, 0
-	case FacingRight:
-		return 1, 0
-	default:
-		return 0, 1
-	}
+	return state.FacingToVector(facing)
 }
 
 type actorState struct {

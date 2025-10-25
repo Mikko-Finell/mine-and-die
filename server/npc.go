@@ -4,24 +4,19 @@ import (
 	"time"
 
 	ai "mine-and-die/server/internal/ai"
+	"mine-and-die/server/internal/state"
 	stats "mine-and-die/server/stats"
 )
 
-// NPCType enumerates the available neutral enemy archetypes.
-type NPCType string
-
-const (
-	NPCTypeGoblin NPCType = "goblin"
-	NPCTypeRat    NPCType = "rat"
+type (
+	NPCType = state.NPCType
+	NPC     = state.NPC
 )
 
-// NPC describes an AI-controlled entity mirrored to the client.
-type NPC struct {
-	Actor
-	Type             NPCType `json:"type"`
-	AIControlled     bool    `json:"aiControlled"`
-	ExperienceReward int     `json:"experienceReward"`
-}
+const (
+	NPCTypeGoblin = state.NPCTypeGoblin
+	NPCTypeRat    = state.NPCTypeRat
+)
 
 type npcState struct {
 	actorState

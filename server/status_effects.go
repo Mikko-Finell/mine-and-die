@@ -9,12 +9,13 @@ import (
 	effectcontract "mine-and-die/server/effects/contract"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
+	"mine-and-die/server/internal/state"
 	worldpkg "mine-and-die/server/internal/world"
 	"mine-and-die/server/logging"
 	loggingstatuseffects "mine-and-die/server/logging/status_effects"
 )
 
-type StatusEffectType = internaleffects.StatusEffectType
+type StatusEffectType = state.StatusEffectType
 
 type statusEffectInstance struct {
 	Definition     *worldpkg.StatusEffectDefinition
@@ -48,7 +49,7 @@ func (inst *statusEffectInstance) DefinitionType() string {
 var _ worldpkg.StatusEffectInstance = (*statusEffectInstance)(nil)
 
 const (
-	StatusEffectBurning StatusEffectType = "burning"
+	StatusEffectBurning = state.StatusEffectBurning
 )
 
 const (

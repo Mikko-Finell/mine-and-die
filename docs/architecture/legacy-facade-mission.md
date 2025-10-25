@@ -29,16 +29,16 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 ---
 
-## [BLOCKED] Phase 0 — Finalize Concrete Constructors & State Ownership
+## [IN PROGRESS] Phase 0 — Finalize Concrete Constructors & State Ownership
 
 **Goal:** Make `internal/world` and `internal/sim` the authoritative constructors so legacy registries become thin pass-throughs ready for removal.
 
 ### Focus Areas
 
 1. Harden `internal/world` constructors and configuration so they emit fully-initialized state, lifecycle managers, and registries without reaching back into `server/*` for defaults.
-   - _Blocked:_ the legacy constructor still relies on `server.World`-scoped types (`playerState`, `npcState`, effect registries, journaling) that have not been promoted into `internal/world`. Promote those foundational types before the constructor can move.
-   - _New prerequisite:_ extract the shared inventory/equipment/actor state stack (player + NPC structs, status effect instances, journals, telemetry counters) into a façade-neutral package that both `server` and `internal/world` can import without cycles. Until that move lands we cannot create a concrete internal world state.
-   - _Next task:_ carve out a `worldstate` package (name TBD) by relocating `inventory.go`, `equipment.go`, `player.go`, `npc.go`, `status_effects.go`, and their helpers so the upcoming internal constructor can depend on them directly.
+   - State package now exists under `internal/state`; legacy constructors can start consuming the shared data structs directly.
+   - [x] Carve out a façade-neutral state package by relocating inventory, equipment, player, NPC, and status-effect types so upcoming constructors can depend on them directly.
+   - _Next task:_ Collapse `server/internal/world/constructor.go`'s registration shim by moving `legacyConstructWorld` from `server/simulation.go` into a concrete state type returned by `internal/world.New`.
    - [ ] Collapse `server/internal/world/constructor.go`'s registration shim by moving `legacyConstructWorld` from `server/simulation.go` into a concrete state type returned by `internal/world.New`.
    - [ ] Lift RNG seeding, obstacle/NPC generation, and effect registry wiring helpers from `server/simulation.go`, `server/world_mutators.go`, and related files into `server/internal/world` so configuration defaults resolve locally.
    - [ ] Publish the adapters (`AbilityOwnerLookup`, projectile stop callbacks, journal accessors) needed by the engine directly from the new `internal/world` state so callers stop reaching through `server.World` internals.
