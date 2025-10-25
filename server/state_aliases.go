@@ -1,7 +1,7 @@
 package server
 
 import (
-	state "mine-and-die/server/internal/state"
+       state "mine-and-die/server/internal/world/state"
 )
 
 type (

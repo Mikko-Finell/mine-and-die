@@ -3,7 +3,7 @@ package world
 import (
 	"math"
 
-	state "mine-and-die/server/internal/state"
+       state "mine-and-die/server/internal/world/state"
 )
 
 // DefaultPlayerArriveRadius mirrors the legacy arrival radius used when players

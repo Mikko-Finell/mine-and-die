@@ -3,7 +3,7 @@ package ai
 import (
 	"time"
 
-	state "mine-and-die/server/internal/state"
+       state "mine-and-die/server/internal/world/state"
 	worldpkg "mine-and-die/server/internal/world"
 )
 
