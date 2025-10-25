@@ -2,14 +2,14 @@
 
 We are executing the **IDIOM mission** — progressively refactoring the server into small, idiomatic Go packages while preserving exact simulation behavior.
 
-**`docs/architecture/idiomaticity-mission.md` is the source of truth.**
+**`docs/architecture/legacy-facade-mission.md` is the source of truth.**
 All coordination happens there — phases, order, progress markers, and next task.
 
 ---
 
 ### How to work
 
-* Open the mission file. Find the phase marked **`[TODO`** or **`[IN PROGRESS]`**.
+* Open the mission file. Find the phase marked **`[TODO]`** or **`[IN PROGRESS]`**.
 * Take the **top item under "Next task"**. Do not skip ahead unless explicitly stated.
 * Implement the task **without changing behavior**. Golden determinism tests must pass unchanged.
 * When you finish:
