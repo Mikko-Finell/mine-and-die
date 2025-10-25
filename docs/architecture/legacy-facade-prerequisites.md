@@ -63,7 +63,9 @@ Goal: build the world *internally* using the new state package.
 
 Goal: cut the hot path off the legacy hub.
 
-*Next task:* sketch the `internal/sim.NewEngine` constructor signature and option surface so follow-up work can begin wiring the production hub through the internal entry point.
+- [x] Next task: sketch the `internal/sim.NewEngine` constructor signature and option surface so follow-up work can begin wiring the production hub through the internal entry point.
+- [x] Next task: implement `internal/sim.NewEngine` by composing the legacy adapter and loop with the new option scaffold so the determinism harness can instantiate engines through both constructors.
+- [ ] Next task: update `server/determinism_harness_test.go` to instantiate engines through `sim.NewEngine` alongside the hub baseline so both constructors stay checksum-aligned.
 
 * [ ] Add `internal/sim.NewEngine(world *world.World, opts …Option) (*Engine, error)` that accepts `sim.Deps`, queue sizes, keyframe/journal hooks.
 * [ ] Point `cmd/server`, `internal/app`, and handlers to build via `world.New` + `sim.NewEngine`.
