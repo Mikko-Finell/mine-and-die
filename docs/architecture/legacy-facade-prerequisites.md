@@ -43,12 +43,15 @@ Goal: build the world *internally* using the new state package.
     - [x] ensure legacy boot paths supply journal telemetry via `world.Deps` when invoking the internal constructor
   * [x] wires effect registries from `internal/effects/registry`
   * [x] exposes **adapters** needed by `sim` (`AbilityOwnerLookup`, projectile stop, journal accessors) directly
-* [ ] Keep legacy boot alive by having `server` call into `internal/world.New` and then **decorate** with any legacy-only façade needs (no logic divergence).
-* [ ] Add tests that boot world via **both** constructors and assert:
+* [x] Keep legacy boot alive by having `server` call into `internal/world.New` and then **decorate** with any legacy-only façade needs (no logic divergence).
+* [x] Add tests that boot world via **both** constructors and assert:
 
-  * [ ] patch/journal **semantics** equal (ordering/content/timing), and
+  * [x] patch/journal **semantics** equal (ordering/content/timing), and
   * [ ] determinism checksum unchanged.
     (Don’t require byte-for-byte buffer identity.)
+  * [x] Extract a shared constructor harness that instantiates both worlds so parity tests and the determinism suite can reuse the same setup.
+
+  *Next task:* extend the determinism harness to exercise both constructors using the shared harness and confirm the recorded checksums remain unchanged before promoting the new path.
 
 **Acceptance:** All world creation in tests/tools can use `internal/world.New`; legacy path compiles but is now just a thin forwarder.
 
