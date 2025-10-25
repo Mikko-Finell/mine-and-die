@@ -1,22 +1,17 @@
 package world
 
-import "math"
+import (
+	"math"
+
+	state "mine-and-die/server/internal/state"
+)
 
 // DefaultNPCArriveRadius mirrors the legacy arrival radius fallback for NPC
 // navigation.
 const DefaultNPCArriveRadius = 12.0
 
-// NPCPathState tracks the legacy path-following metadata for a single NPC.
-type NPCPathState struct {
-	Path             []Vec2
-	PathIndex        int
-	PathTarget       Vec2
-	PathGoal         Vec2
-	PathLastDistance float64
-	PathStallTicks   uint16
-	PathRecalcTick   uint64
-	ArriveRadius     float64
-}
+// NPCPathState aliases the shared NPC path state for legacy helpers.
+type NPCPathState = state.NPCPathState
 
 // NPCPathActor exposes the minimal legacy state required to follow an NPC path.
 type NPCPathActor struct {

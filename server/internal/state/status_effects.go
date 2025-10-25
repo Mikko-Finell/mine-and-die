@@ -1,44 +1,38 @@
 package state
 
-import (
-	"time"
+import "time"
 
-	internaleffects "mine-and-die/server/internal/effects"
-	worldpkg "mine-and-die/server/internal/world"
-)
-
-type StatusEffectType = internaleffects.StatusEffectType
+type StatusEffectType string
 
 type StatusEffectInstance struct {
-	Definition     *worldpkg.StatusEffectDefinition
+	Definition     any
 	SourceID       string
 	AppliedAt      time.Time
 	ExpiresAt      time.Time
 	NextTick       time.Time
 	LastTick       time.Time
-	attachedEffect *internaleffects.State
+	attachedEffect any
 	actor          *ActorState
 }
 
 func (inst *StatusEffectInstance) AttachEffect(value any) {
-	if inst == nil {
+	if inst == nil || value == nil {
 		return
 	}
-	eff, ok := value.(*internaleffects.State)
-	if !ok || eff == nil {
-		return
-	}
-	inst.attachedEffect = eff
+	inst.attachedEffect = value
 }
 
 func (inst *StatusEffectInstance) DefinitionType() string {
-	if inst == nil || inst.Definition == nil {
+	if inst == nil {
 		return ""
 	}
-	return inst.Definition.Type
+	if provider, ok := inst.Definition.(interface{ StatusEffectType() string }); ok && provider != nil {
+		return provider.StatusEffectType()
+	}
+	return ""
 }
 
-func (inst *StatusEffectInstance) AttachedEffect() *internaleffects.State {
+func (inst *StatusEffectInstance) AttachedEffect() any {
 	if inst == nil {
 		return nil
 	}

@@ -3,8 +3,6 @@ package state
 import (
 	"time"
 
-	ai "mine-and-die/server/internal/ai"
-	worldpkg "mine-and-die/server/internal/world"
 	stats "mine-and-die/server/stats"
 )
 
@@ -24,8 +22,6 @@ type NPC struct {
 	ExperienceReward int     `json:"experienceReward"`
 }
 
-type Vec2 = worldpkg.Vec2
-
 type NPCState struct {
 	ActorState
 	Stats            stats.Component
@@ -33,7 +29,7 @@ type NPCState struct {
 	ExperienceReward int
 	AIState          uint8
 	AIConfigID       uint16
-	Blackboard       ai.Blackboard
+	Blackboard       Blackboard
 	Waypoints        []Vec2
 	Home             Vec2
 	Cooldowns        map[string]time.Time

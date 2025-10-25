@@ -3,37 +3,15 @@ package ai
 import (
 	"time"
 
+	state "mine-and-die/server/internal/state"
 	worldpkg "mine-and-die/server/internal/world"
 )
-
-const maxAbilitySlots = 4
 
 // Vec2 captures a 2D vector for blackboard bookkeeping.
 type Vec2 = worldpkg.Vec2
 
 // Blackboard stores per-NPC AI memory required by the finite-state executor.
-type Blackboard struct {
-	WaypointIndex     int
-	LastWaypointIndex int
-	WaypointBestDist  float64
-	WaypointLastDist  float64
-	WaypointStall     uint16
-	WaitUntil         uint64
-	NextDecisionAt    uint64
-	StateEnteredTick  uint64
-	LastDecisionTick  uint64
-	LastPos           Vec2
-	LastMoveDelta     float64
-	StuckCounter      uint8
-	TargetActorID     string
-	ChaseUntil        uint64
-	PauseTicks        uint64
-	PatrolSpeed       float64
-	StuckEpsilon      float64
-	worldpkg.NPCPathState
-
-	nextAbilityReady [maxAbilitySlots]uint64
-}
+type Blackboard = state.Blackboard
 
 // PositionRef exposes direct references to an NPC's positional coordinates.
 type PositionRef struct {

@@ -30,10 +30,10 @@ Goal: build the world *internally* using the new state package.
 
 * Implement `internal/world.New(cfg, deps) (*World, error)` that:
 
-  * [ ] seeds RNG, sets defaults (copied from legacy)
+  * [x] seeds RNG, sets defaults (copied from legacy)
   * instantiates state graphs (players/NPCs/inventory/registries)
-    - [ ] players
-    - [ ] NPCs
+    - [x] players
+    - [x] NPCs
     - [ ] inventory
     - [ ] registers
     - [ ] etc as needed

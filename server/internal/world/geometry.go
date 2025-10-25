@@ -1,10 +1,9 @@
 package world
 
-// Vec2 represents a 2D point used by legacy waypoint helpers.
-type Vec2 struct {
-	X float64
-	Y float64
-}
+import state "mine-and-die/server/internal/state"
+
+// Vec2 aliases the shared state vector type for world helpers.
+type Vec2 = state.Vec2
 
 // Clamp limits value to the range [min, max].
 func Clamp(value, min, max float64) float64 {

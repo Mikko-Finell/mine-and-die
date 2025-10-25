@@ -4,7 +4,6 @@ import (
 	"math"
 	"time"
 
-	worldpkg "mine-and-die/server/internal/world"
 	stats "mine-and-die/server/stats"
 )
 
@@ -105,7 +104,16 @@ type ActorState struct {
 	StatusEffects map[StatusEffectType]*StatusEffectInstance
 }
 
-type PlayerPathState = worldpkg.PlayerPathState
+type PlayerPathState struct {
+	Path             []Vec2
+	PathIndex        int
+	PathTarget       Vec2
+	PathGoal         Vec2
+	PathLastDistance float64
+	PathStallTicks   int
+	PathRecalcTick   uint64
+	ArriveRadius     float64
+}
 
 func (s *ActorState) SnapshotActor() Actor {
 	actor := s.Actor

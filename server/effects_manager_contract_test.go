@@ -240,8 +240,8 @@ func TestContractBurningVisualUpdatesAttachedEffectLifetime(t *testing.T) {
 	if inst == nil {
 		t.Fatalf("expected burning status effect instance to persist")
 	}
-	effect := inst.AttachedEffect()
-	if effect == nil {
+	effect, ok := inst.AttachedEffect().(*effectState)
+	if !ok || effect == nil {
 		t.Fatalf("expected burning visual to attach to status effect")
 	}
 

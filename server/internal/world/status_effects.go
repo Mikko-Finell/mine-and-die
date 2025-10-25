@@ -85,6 +85,16 @@ type StatusEffectDefinition struct {
 	AttachVisual func(AttachStatusEffectVisualConfig)
 }
 
+// StatusEffectType implements state.StatusEffectDefinitionView so shared state
+// can report the registered status effect identifier without importing this
+// package.
+func (def *StatusEffectDefinition) StatusEffectType() string {
+	if def == nil {
+		return ""
+	}
+	return def.Type
+}
+
 // StatusEffectDefinitionsConfig enumerates the status effects that should be
 // registered along with the callbacks required to drive their runtime
 // behaviour.

@@ -70,7 +70,7 @@ func TestWorldApplyBurningDamageDelegatesAndFlushesTelemetry(t *testing.T) {
 		if eff.Owner != ownerID {
 			t.Fatalf("effect %d owner mismatch: %q", i, eff.Owner)
 		}
-		if eff.StatusEffect != StatusEffectBurning {
+		if StatusEffectType(eff.StatusEffect) != StatusEffectBurning {
 			t.Fatalf("effect %d status effect mismatch: %q", i, eff.StatusEffect)
 		}
 		if eff.Params["healthDelta"] != delta {
@@ -127,8 +127,8 @@ func TestApplyStatusEffectAttachesFallbackVisualWhenManagerMissing(t *testing.T)
 		t.Fatalf("expected status effect instance to be stored")
 	}
 
-	effect := inst.AttachedEffect()
-	if effect == nil {
+	effect, ok := inst.AttachedEffect().(*effectState)
+	if !ok || effect == nil {
 		t.Fatalf("expected fallback visual effect to be attached")
 	}
 	if effect.Type != effectTypeBurningVisual {
@@ -137,7 +137,7 @@ func TestApplyStatusEffectAttachesFallbackVisualWhenManagerMissing(t *testing.T)
 	if effect.Owner != "caster-1" {
 		t.Fatalf("expected effect owner %q, got %q", "caster-1", effect.Owner)
 	}
-	if effect.StatusEffect != StatusEffectBurning {
+	if StatusEffectType(effect.StatusEffect) != StatusEffectBurning {
 		t.Fatalf("expected effect status %q, got %q", StatusEffectBurning, effect.StatusEffect)
 	}
 	if effect.ExpiresAt.Before(now) {
@@ -171,7 +171,7 @@ func TestAttachStatusEffectVisualResolvesActorFromHandle(t *testing.T) {
 		t.Fatalf("expected fallback visual effect to be constructed")
 	}
 
-	if inst.AttachedEffect() != effect {
+	if attached, ok := inst.AttachedEffect().(*effectState); !ok || attached != effect {
 		t.Fatalf("expected status effect instance to hold attached effect")
 	}
 	if effect.Owner != actorID {
@@ -180,7 +180,7 @@ func TestAttachStatusEffectVisualResolvesActorFromHandle(t *testing.T) {
 	if effect.FollowActorID != actorID {
 		t.Fatalf("expected effect to follow actor %q, got %q", actorID, effect.FollowActorID)
 	}
-	if effect.StatusEffect != StatusEffectBurning {
+	if StatusEffectType(effect.StatusEffect) != StatusEffectBurning {
 		t.Fatalf("expected status effect %q, got %q", StatusEffectBurning, effect.StatusEffect)
 	}
 

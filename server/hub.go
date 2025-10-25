@@ -522,7 +522,7 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 		interval = 1
 	}
 
-	world := requireLegacyWorld(worldpkg.New(cfg, pub))
+	world := requireLegacyWorld(worldpkg.ConstructLegacy(cfg, pub))
 	cfg = world.config
 
 	metrics := hubCfg.Metrics
@@ -861,7 +861,7 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 		playerIDs = append(playerIDs, id)
 	}
 
-	newW := requireLegacyWorld(worldpkg.New(cfg, h.publisher))
+	newW := requireLegacyWorld(worldpkg.ConstructLegacy(cfg, h.publisher))
 	cfg = newW.config
 	newW.attachTelemetry(h.telemetry)
 	newW.journal.AttachTelemetry(h.telemetry)
