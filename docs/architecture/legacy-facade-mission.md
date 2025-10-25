@@ -12,10 +12,15 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 ## Success Criteria ("Deletion-Ready State")
 
 ✅ `internal/world.New` constructs concrete world state (no LegacyWorld registry/indirection)
+
 ✅ `sim.Engine` drives only internal packages — no conversion hops into legacy `server.World/Hub`
+
 ✅ HTTP/WS handlers speak `sim.Command` + typed `sim/patches` snapshots — no legacy structs imported
+
 ✅ `make depscheck` forbids imports from `server/*` across the tree
+
 ✅ Golden determinism checksums unchanged
+
 ✅ Only after all above — delete `server/*` entirely and CI stays green
 
 ---
@@ -24,36 +29,36 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 Progress is tracked exclusively through the checklist below. When every unchecked item is complete, we can delete `server/*` and the mission ends.
 
-### 1. Constructors & State Ownership
+### 1. Constructors & State Ownership [IN PROGRESS]
 - [x] Extract shared inventory/equipment/actor state into `internal/state` so both legacy and internal constructors share the same types.
 - [ ] Relocate world state files (`inventory.go`, `equipment.go`, `player.go`, `npc.go`, `status_effects.go`, helpers) into a new internal package so `internal/world` owns the canonical structs.
 - [ ] Move `legacyConstructWorld` logic into a concrete type returned by `internal/world.New`, leaving the legacy constructor as a pass-through wrapper.
 - [ ] Hoist RNG seeding, NPC/obstacle generation, and effect registry wiring helpers from legacy paths into `internal/world`.
 - [ ] Publish adapters (`AbilityOwnerLookup`, projectile stop callbacks, journal accessors) straight from the new world state so the engine never reaches through `server.World` internals.
 
-### 2. Engine Promotion
+### 2. Engine Promotion [TODO]
 - [ ] Add an `internal/sim` constructor (e.g. `NewEngine`) that wires the command buffer, loop, and engine core from existing internal pieces.
 - [ ] Surface queue sizing, warnings, journaling/keyframe hooks, and telemetry wiring as options consumed by the new constructor.
 - [ ] Redirect `server/hub.go` and `server/sim_engine_adapter.go` to call the promoted constructor, retaining only thin translation layers until deletion day.
 
-### 3. Determinism & Parity Guarantees
+### 3. Determinism & Parity Guarantees [DONE]
 - [x] Add `server/internal/world/constructor_test.go` proving snapshots/journals match between constructors.
 - [x] Extend `server/internal/sim` tests to compare engine output between constructors.
 - [x] Update `server/determinism_harness_test.go` (and helpers) so both constructors lock the same checksums.
 - [x] Refactor determinism helpers to a single `RunDeterminismHarness` entry point.
 - [x] Rename the internal helper `runDeterminismHarnessLockstep` to `runDeterminismHarness` to finish the consolidation.
 
-### 4. Runtime Cutover (Phase 1)
+### 4. Runtime Cutover (Phase 1) [TODO]
 - [ ] Update `cmd/server` startup and dev harnesses to compose `internal/app`, `internal/world`, and `internal/sim` directly (no hubs).
 - [ ] Migrate HTTP + websocket handlers to accept `sim.Engine`, `sim.Command`, and `sim/patches` without legacy DTOs.
 - [ ] Point matchmaking, scripting hooks, and tooling (replay, determinism, load tests) at the promoted seams.
 
-### 5. Protocol & Tooling Contracts (Phase 2)
+### 5. Protocol & Tooling Contracts (Phase 2) [TODO]
 - [ ] Encode/decode internal `sim`/`world` types in HTTP/WS payloads, replay serializers, and admin/reporting endpoints.
 - [ ] Remove legacy DTO shims once consumers switch to internal contracts.
 - [ ] Keep compatibility layers operating solely on internal types with regression coverage for all supported protocol versions.
 
-### 6. Deletion & Guard Rails (Phase 3)
+### 6. Deletion & Guard Rails (Phase 3) [TODO]
 - [ ] Delete `server/*` code, tests, and shims once no callers remain; rewrite lingering tests against internal packages.
 - [ ] Extend `make depscheck`/lint rules to block future imports of removed paths.
 - [ ] Update architecture docs, diagrams, and onboarding guides to reference the internal entry points.
@@ -71,7 +76,7 @@ Progress is tracked exclusively through the checklist below. When every unchecke
 
 ---
 
-## [BLOCKED] Phase 0 — Finalize Concrete Constructors & State Ownership
+## [IN PROGRESS] Phase 0 — Finalize Concrete Constructors & State Ownership
 
 **Goal:** Make `internal/world` and `internal/sim` the authoritative constructors so legacy registries become thin pass-throughs ready for removal.
 
@@ -89,7 +94,7 @@ Progress is tracked exclusively through the checklist below. When every unchecke
 
 ---
 
-## [TODO] Phase 1 — Runtime Cutover to Internal Engine & World
+## [IN PROGRESS] Phase 1 — Runtime Cutover to Internal Engine & World
 
 **Goal:** Rewire process startup, match orchestration, and IO handlers to operate directly on the promoted internals, keeping feature parity while removing legacy indirection.
 
@@ -105,7 +110,7 @@ Complete every item under [Runtime Cutover (Phase 1)](#4-runtime-cutover-phase-1
 
 ---
 
-## [TODO] Phase 2 — Protocol & Tooling Contract Alignment
+## [IN PROGRESS] Phase 2 — Protocol & Tooling Contract Alignment
 
 **Goal:** Ensure every external interface (network protocol, admin tools, data exporters) reads and writes the internal contract types so no conversion helpers depend on legacy structs.
 
@@ -121,7 +126,7 @@ Complete every item under [Protocol & Tooling Contracts (Phase 2)](#5-protocol--
 
 ---
 
-## [TODO] Phase 3 — Legacy Deletion & Guard Rails
+## [IN PROGRESS] Phase 3 — Legacy Deletion & Guard Rails
 
 **Goal:** Remove the remaining legacy packages, reinforce dependency guards, and document the final architecture boundaries.
 
