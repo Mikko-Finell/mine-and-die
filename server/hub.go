@@ -784,7 +784,7 @@ func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 	maxHealth := statsComp.GetDerived(stats.DerivedMaxHealth)
 
 	return &playerState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        playerID,
 				X:         defaultSpawnX,
@@ -796,10 +796,10 @@ func (h *Hub) seedPlayerState(playerID string, now time.Time) *playerState {
 				Equipment: NewEquipment(),
 			},
 		},
-		stats:         statsComp,
-		lastHeartbeat: now,
-		cooldowns:     make(map[string]time.Time),
-		path:          playerPathState{ArriveRadius: defaultPlayerArriveRadius},
+		Stats:         statsComp,
+		LastHeartbeat: now,
+		Cooldowns:     make(map[string]time.Time),
+		Path:          playerPathState{ArriveRadius: defaultPlayerArriveRadius},
 	}
 }
 
@@ -909,7 +909,7 @@ func (h *Hub) Subscribe(playerID string, conn subscriberConn) (*subscriber, []si
 		return nil, nil, nil, nil, false
 	}
 
-	state.lastHeartbeat = h.now()
+	state.LastHeartbeat = h.now()
 
 	if existing, ok := h.subscribers[playerID]; ok {
 		existing.Close()
@@ -1108,7 +1108,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 			ack.Reason = "unknown_actor"
 			return ack, true
 		}
-		result, failure := h.world.dropGold(&player.actorState, qty, "manual")
+		result, failure := h.world.dropGold(&player.ActorState, qty, "manual")
 		if failure != nil {
 			h.mu.Unlock()
 			ack.Status = "error"
@@ -1187,7 +1187,7 @@ func (h *Hub) HandleConsoleCommand(playerID, cmd string, qty int) (proto.Console
 			return ack, true
 		}
 		actorRef := h.world.entityRef(playerID)
-		result, failure := h.world.pickupNearestGold(&player.actorState)
+		result, failure := h.world.pickupNearestGold(&player.ActorState)
 		if failure != nil {
 			failureReason := failure.Reason
 			failureStackID := failure.StackID
@@ -1441,8 +1441,8 @@ func (h *Hub) DiagnosticsSnapshot() []diagnosticsPlayer {
 		players = append(players, diagnosticsPlayer{
 			Ver:           ProtocolVersion,
 			ID:            state.ID,
-			LastHeartbeat: state.lastHeartbeat.UnixMilli(),
-			RTTMillis:     state.lastRTT.Milliseconds(),
+			LastHeartbeat: state.LastHeartbeat.UnixMilli(),
+			RTTMillis:     state.LastRTT.Milliseconds(),
 			LastAck:       ack,
 		})
 	}

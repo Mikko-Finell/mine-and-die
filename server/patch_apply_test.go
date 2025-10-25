@@ -20,7 +20,7 @@ func floatsEqual(a, b float64) bool {
 func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
-	basePlayer := &playerState{actorState: actorState{Actor: Actor{
+	basePlayer := &playerState{ActorState: actorState{Actor: Actor{
 		ID:        "player-1",
 		X:         10,
 		Y:         20,
@@ -31,21 +31,21 @@ func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 3},
 		}}),
-	}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
-	basePlayer.intentX = 0.5
-	basePlayer.intentY = -0.5
+	}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	basePlayer.IntentX = 0.5
+	basePlayer.IntentY = -0.5
 	w.AddPlayer(basePlayer)
 
-	secondary := &playerState{actorState: actorState{Actor: Actor{
+	secondary := &playerState{ActorState: actorState{Actor: Actor{
 		ID:        "player-2",
 		X:         0,
 		Y:         0,
 		Facing:    FacingDown,
 		Health:    50,
 		MaxHealth: 80,
-	}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
-	secondary.intentX = 0
-	secondary.intentY = 1
+	}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	secondary.IntentX = 0
+	secondary.IntentY = 1
 	w.AddPlayer(secondary)
 
 	original := capturePlayerViews(w)
@@ -103,7 +103,7 @@ func TestApplyPatchesReplaysLatestSnapshot(t *testing.T) {
 func TestApplyPatchesNoop(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
-	player := &playerState{actorState: actorState{Actor: Actor{
+	player := &playerState{ActorState: actorState{Actor: Actor{
 		ID:        "player-1",
 		X:         5,
 		Y:         -3,
@@ -114,9 +114,9 @@ func TestApplyPatchesNoop(t *testing.T) {
 			Slot: 0,
 			Item: ItemStack{Type: ItemTypeGold, Quantity: 1},
 		}}),
-	}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
-	player.intentX = 1
-	player.intentY = 0
+	}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player.IntentX = 1
+	player.IntentY = 0
 	w.AddPlayer(player)
 
 	original := capturePlayerViews(w)
@@ -335,8 +335,8 @@ func TestApplyPatchesUpdatesEquipment(t *testing.T) {
 func capturePlayerViews(w *World) map[string]simpaches.PlayerView {
 	views := make(map[string]simpaches.PlayerView, len(w.players))
 	for id, state := range w.players {
-		legacy := state.snapshot()
-		views[id] = playerViewFromLegacy(legacy, state.intentX, state.intentY)
+		legacy := state.Snapshot()
+		views[id] = playerViewFromLegacy(legacy, state.IntentX, state.IntentY)
 	}
 	return views
 }

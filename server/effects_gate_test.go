@@ -11,13 +11,13 @@ func TestConfigureMeleeAbilityGatePopulatesIntentOwner(t *testing.T) {
 	world := &World{
 		players: map[string]*playerState{
 			actorID: {
-				actorState: actorState{Actor: Actor{
+				ActorState: actorState{Actor: Actor{
 					ID:     actorID,
 					X:      180,
 					Y:      140,
 					Facing: FacingUp,
 				}},
-				cooldowns: make(map[string]time.Time),
+				Cooldowns: make(map[string]time.Time),
 			},
 		},
 	}
@@ -49,13 +49,13 @@ func TestConfigureProjectileAbilityGatePopulatesIntentOwner(t *testing.T) {
 	world := &World{
 		players: map[string]*playerState{
 			actorID: {
-				actorState: actorState{Actor: Actor{
+				ActorState: actorState{Actor: Actor{
 					ID:     actorID,
 					X:      120,
 					Y:      160,
 					Facing: FacingRight,
 				}},
-				cooldowns: make(map[string]time.Time),
+				Cooldowns: make(map[string]time.Time),
 			},
 		},
 		projectileTemplates: newProjectileTemplates(),

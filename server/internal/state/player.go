@@ -1,4 +1,4 @@
-package server
+package state
 
 import (
 	"math"
@@ -33,11 +33,11 @@ const (
 	FacingLeft  FacingDirection = "left"
 	FacingRight FacingDirection = "right"
 
-	defaultFacing FacingDirection = FacingDown
+	DefaultFacing FacingDirection = FacingDown
 )
 
-// parseFacing validates a facing string received from the client.
-func parseFacing(value string) (FacingDirection, bool) {
+// ParseFacing validates a facing string received from the client.
+func ParseFacing(value string) (FacingDirection, bool) {
 	switch FacingDirection(value) {
 	case FacingUp, FacingDown, FacingLeft, FacingRight:
 		return FacingDirection(value), true
@@ -46,11 +46,11 @@ func parseFacing(value string) (FacingDirection, bool) {
 	}
 }
 
-// deriveFacing picks the facing direction that best matches the movement
+// DeriveFacing picks the facing direction that best matches the movement
 // vector, falling back to the last known facing when idle.
-func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
+func DeriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
 	if fallback == "" {
-		fallback = defaultFacing
+		fallback = DefaultFacing
 	}
 
 	const epsilon = 1e-6
@@ -82,8 +82,8 @@ func deriveFacing(dx, dy float64, fallback FacingDirection) FacingDirection {
 	return FacingLeft
 }
 
-// facingToVector returns a unit vector for the given facing.
-func facingToVector(facing FacingDirection) (float64, float64) {
+// FacingToVector returns a unit vector for the given facing.
+func FacingToVector(facing FacingDirection) (float64, float64) {
 	switch facing {
 	case FacingUp:
 		return 0, -1
@@ -98,28 +98,28 @@ func facingToVector(facing FacingDirection) (float64, float64) {
 	}
 }
 
-type actorState struct {
+type ActorState struct {
 	Actor
-	intentX       float64
-	intentY       float64
-	statusEffects map[StatusEffectType]*statusEffectInstance
+	IntentX       float64
+	IntentY       float64
+	StatusEffects map[StatusEffectType]*StatusEffectInstance
 }
 
-type playerPathState = worldpkg.PlayerPathState
+type PlayerPathState = worldpkg.PlayerPathState
 
-func (s *actorState) snapshotActor() Actor {
+func (s *ActorState) SnapshotActor() Actor {
 	actor := s.Actor
 	if actor.Facing == "" {
-		actor.Facing = defaultFacing
+		actor.Facing = DefaultFacing
 	}
 	actor.Inventory = s.Inventory.Clone()
 	actor.Equipment = s.Equipment.Clone()
 	return actor
 }
 
-// applyHealthDelta adjusts the actor's health while clamping to [0, MaxHealth].
+// ApplyHealthDelta adjusts the actor's health while clamping to [0, MaxHealth].
 // It returns true when the value actually changes.
-func (s *actorState) applyHealthDelta(delta float64) bool {
+func (s *ActorState) ApplyHealthDelta(delta float64) bool {
 	if delta == 0 {
 		return false
 	}
@@ -138,20 +138,21 @@ func (s *actorState) applyHealthDelta(delta float64) bool {
 	return true
 }
 
-// playerState wraps actorState with simulation metadata. Mutate the embedded
+// PlayerState wraps ActorState with simulation metadata. Mutate the embedded
 // Actor's position via World.SetPosition so versioning and patch emission stay
 // consistent.
-type playerState struct {
-	actorState
-	stats         stats.Component
-	lastInput     time.Time
-	lastHeartbeat time.Time
-	lastRTT       time.Duration
-	cooldowns     map[string]time.Time
-	path          playerPathState
-	version       uint64
+type PlayerState struct {
+	ActorState
+	Stats         stats.Component
+	LastInput     time.Time
+	LastHeartbeat time.Time
+	LastRTT       time.Duration
+	Cooldowns     map[string]time.Time
+	Path          PlayerPathState
+	Version       uint64
 }
 
-func (s *playerState) snapshot() Player {
-	return Player{Actor: s.snapshotActor()}
+// Snapshot returns a sanitized player snapshot for serialization.
+func (s *PlayerState) Snapshot() Player {
+	return Player{Actor: s.SnapshotActor()}
 }

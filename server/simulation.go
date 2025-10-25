@@ -124,9 +124,9 @@ func (w *World) resolveStats(tick uint64) {
 			}
 			player := player
 			actors = append(actors, internalstats.Actor{
-				Component: &player.stats,
+				Component: &player.Stats,
 				SyncMaxHealth: func(max float64) {
-					w.setActorHealth(&player.actorState, &player.version, player.ID, PatchPlayerHealth, max, player.Health)
+					w.setActorHealth(&player.ActorState, &player.Version, player.ID, PatchPlayerHealth, max, player.Health)
 				},
 			})
 		}
@@ -141,9 +141,9 @@ func (w *World) resolveStats(tick uint64) {
 			}
 			npc := npc
 			actors = append(actors, internalstats.Actor{
-				Component: &npc.stats,
+				Component: &npc.Stats,
 				SyncMaxHealth: func(max float64) {
-					w.setActorHealth(&npc.actorState, &npc.version, npc.ID, PatchNPCHealth, max, npc.Health)
+					w.setActorHealth(&npc.ActorState, &npc.Version, npc.ID, PatchNPCHealth, max, npc.Health)
 				},
 			})
 		}
@@ -324,11 +324,11 @@ func init() {
 func (w *World) Snapshot(now time.Time) ([]Player, []NPC) {
 	players := make([]Player, 0, len(w.players))
 	for _, player := range w.players {
-		players = append(players, player.snapshot())
+		players = append(players, player.Snapshot())
 	}
 	npcs := make([]NPC, 0, len(w.npcs))
 	for _, npc := range w.npcs {
-		npcs = append(npcs, npc.snapshot())
+		npcs = append(npcs, npc.Snapshot())
 	}
 	return players, npcs
 }
@@ -385,8 +385,8 @@ func (w *World) AddPlayer(state *playerState) {
 	if state == nil {
 		return
 	}
-	state.stats.Resolve(w.currentTick)
-	w.syncMaxHealth(&state.actorState, &state.version, state.ID, PatchPlayerHealth, &state.stats)
+	state.Stats.Resolve(w.currentTick)
+	w.syncMaxHealth(&state.ActorState, &state.Version, state.ID, PatchPlayerHealth, &state.Stats)
 	w.players[state.ID] = state
 }
 
@@ -408,7 +408,7 @@ func (w *World) handleNPCDefeat(npc *npcState) {
 	if _, ok := w.npcs[npc.ID]; !ok {
 		return
 	}
-	w.dropAllInventory(&npc.actorState, "death")
+	w.dropAllInventory(&npc.ActorState, "death")
 	delete(w.npcs, npc.ID)
 	w.purgeEntityPatches(npc.ID)
 }
@@ -479,9 +479,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 				}
 				w.SetFacing(player.ID, nextFacing)
 				if !cmd.IssuedAt.IsZero() {
-					player.lastInput = cmd.IssuedAt
+					player.LastInput = cmd.IssuedAt
 				} else {
-					player.lastInput = now
+					player.LastInput = now
 				}
 			} else if npc, ok := w.npcs[cmd.ActorID]; ok {
 				dx := cmd.Move.DX
@@ -491,8 +491,8 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 					dx /= length
 					dy /= length
 				}
-				npc.intentX = dx
-				npc.intentY = dy
+				npc.IntentX = dx
+				npc.IntentY = dy
 				nextFacing := deriveFacing(dx, dy, npc.Facing)
 				if dx == 0 && dy == 0 && cmd.Move.Facing != "" {
 					nextFacing = cmd.Move.Facing
@@ -509,8 +509,8 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 				continue
 			}
 			if player, ok := w.players[cmd.ActorID]; ok {
-				player.lastHeartbeat = cmd.Heartbeat.ReceivedAt
-				player.lastRTT = cmd.Heartbeat.RTT
+				player.LastHeartbeat = cmd.Heartbeat.ReceivedAt
+				player.LastRTT = cmd.Heartbeat.RTT
 			}
 		case CommandSetPath:
 			if cmd.Path == nil {
@@ -520,9 +520,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 				target := vec2{X: cmd.Path.TargetX, Y: cmd.Path.TargetY}
 				w.ensurePlayerPath(player, target, tick)
 				if !cmd.IssuedAt.IsZero() {
-					player.lastInput = cmd.IssuedAt
+					player.LastInput = cmd.IssuedAt
 				} else {
-					player.lastInput = now
+					player.LastInput = now
 				}
 			}
 		case CommandClearPath:
@@ -530,9 +530,9 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 				w.clearPlayerPath(player)
 				w.SetIntent(player.ID, 0, 0)
 				if !cmd.IssuedAt.IsZero() {
-					player.lastInput = cmd.IssuedAt
+					player.LastInput = cmd.IssuedAt
 				} else {
-					player.lastInput = now
+					player.LastInput = now
 				}
 			}
 		}
@@ -553,8 +553,8 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	for id, player := range w.players {
 		// Operate on a copy so player coordinates can be committed via
 		// SetPosition after all collision resolution completes.
-		scratch := player.actorState
-		if player.intentX != 0 || player.intentY != 0 {
+		scratch := player.ActorState
+		if player.IntentX != 0 || player.IntentY != 0 {
 			moveActorWithObstacles(&scratch, dt, w.obstacles, width, height)
 		}
 		proposedPlayerStates[id] = &scratch
@@ -564,8 +564,8 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	proposedNPCStates := make(map[string]*actorState, len(w.npcs))
 	for id, npc := range w.npcs {
 		initialNPCPositions[id] = vec2{X: npc.X, Y: npc.Y}
-		scratch := npc.actorState
-		if npc.intentX != 0 || npc.intentY != 0 {
+		scratch := npc.ActorState
+		if npc.IntentX != 0 || npc.IntentY != 0 {
 			moveActorWithObstacles(&scratch, dt, w.obstacles, width, height)
 		}
 		proposedNPCStates[id] = &scratch
@@ -634,10 +634,10 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	// Environmental systems.
 	actorsForHazards := make([]*actorState, 0, len(w.players)+len(w.npcs))
 	for _, player := range w.players {
-		actorsForHazards = append(actorsForHazards, &player.actorState)
+		actorsForHazards = append(actorsForHazards, &player.ActorState)
 	}
 	for _, npc := range w.npcs {
-		actorsForHazards = append(actorsForHazards, &npc.actorState)
+		actorsForHazards = append(actorsForHazards, &npc.ActorState)
 	}
 	w.applyEnvironmentalStatusEffects(actorsForHazards, now)
 
@@ -660,10 +660,10 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 	cutoff := now.Add(-disconnectAfter)
 	removedPlayers := make([]string, 0)
 	for id, player := range w.players {
-		if player.lastHeartbeat.IsZero() {
+		if player.LastHeartbeat.IsZero() {
 			continue
 		}
-		if player.lastHeartbeat.Before(cutoff) {
+		if player.LastHeartbeat.Before(cutoff) {
 			if w.publisher != nil {
 				logginglifecycle.PlayerDisconnected(
 					context.Background(),
@@ -671,7 +671,7 @@ func (w *World) Step(tick uint64, now time.Time, dt float64, commands []Command,
 					w.currentTick,
 					logging.EntityRef{ID: id, Kind: logging.EntityKind("player")},
 					logginglifecycle.PlayerDisconnectedPayload{Reason: "timeout"},
-					map[string]any{"lastHeartbeat": player.lastHeartbeat},
+					map[string]any{"lastHeartbeat": player.LastHeartbeat},
 				)
 			}
 			delete(w.players, id)
@@ -800,7 +800,7 @@ func (w *World) spawnGoblinAt(x, y float64, waypoints []vec2, goldQty, potionQty
 	maxHealth := statsComp.GetDerived(stats.DerivedMaxHealth)
 
 	goblin := &npcState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        id,
 				X:         x,
@@ -812,7 +812,7 @@ func (w *World) spawnGoblinAt(x, y float64, waypoints []vec2, goldQty, potionQty
 				Equipment: NewEquipment(),
 			},
 		},
-		stats:            statsComp,
+		Stats:            statsComp,
 		Type:             NPCTypeGoblin,
 		ExperienceReward: 25,
 		Waypoints:        append([]vec2(nil), waypoints...),
@@ -833,7 +833,7 @@ func (w *World) initializeGoblinState(goblin *npcState) {
 		WaypointCount: len(goblin.Waypoints),
 	})
 
-	resolveObstaclePenetration(&goblin.actorState, w.obstacles, w.width(), w.height())
+	resolveObstaclePenetration(&goblin.ActorState, w.obstacles, w.width(), w.height())
 	goblin.Blackboard.LastPos = vec2{X: goblin.X, Y: goblin.Y}
 	w.npcs[goblin.ID] = goblin
 }
@@ -849,7 +849,7 @@ func (w *World) spawnRatAt(x, y float64) {
 	maxHealth := statsComp.GetDerived(stats.DerivedMaxHealth)
 
 	rat := &npcState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        id,
 				X:         x,
@@ -861,7 +861,7 @@ func (w *World) spawnRatAt(x, y float64) {
 				Equipment: NewEquipment(),
 			},
 		},
-		stats:            statsComp,
+		Stats:            statsComp,
 		Type:             NPCTypeRat,
 		ExperienceReward: 8,
 		Home:             vec2{X: x, Y: y},
@@ -885,7 +885,7 @@ func (w *World) initializeRatState(rat *npcState) {
 		WaypointCount: len(rat.Waypoints),
 	})
 
-	resolveObstaclePenetration(&rat.actorState, w.obstacles, w.width(), w.height())
+	resolveObstaclePenetration(&rat.ActorState, w.obstacles, w.width(), w.height())
 	rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
 	w.npcs[rat.ID] = rat
 }

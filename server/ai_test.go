@@ -28,7 +28,7 @@ func newStaticAIWorld() (*World, *npcState) {
 	w.rng = newDeterministicRNG(w.seed, "world")
 
 	npc := &npcState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        "npc-test",
 				X:         360,
@@ -39,7 +39,7 @@ func newStaticAIWorld() (*World, *npcState) {
 				Inventory: NewInventory(),
 			},
 		},
-		stats:            stats.DefaultComponent(stats.ArchetypeGoblin),
+		Stats:            stats.DefaultComponent(stats.ArchetypeGoblin),
 		Type:             NPCTypeGoblin,
 		ExperienceReward: 25,
 		Waypoints: []vec2{
@@ -101,7 +101,7 @@ func newRatTestWorld() (*World, *npcState) {
 	w.rng = newDeterministicRNG(w.seed, "world")
 
 	rat := &npcState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        "npc-rat-test",
 				X:         420,
@@ -112,7 +112,7 @@ func newRatTestWorld() (*World, *npcState) {
 				Inventory: NewInventory(),
 			},
 		},
-		stats:            stats.DefaultComponent(stats.ArchetypeRat),
+		Stats:            stats.DefaultComponent(stats.ArchetypeRat),
 		Type:             NPCTypeRat,
 		ExperienceReward: 8,
 		Home:             vec2{X: 420, Y: 360},
@@ -195,7 +195,7 @@ func TestGoblinPursuesPlayerWithinRange(t *testing.T) {
 	}
 
 	player := &playerState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        "player-target",
 				X:         npc.X + 200,
@@ -206,7 +206,7 @@ func TestGoblinPursuesPlayerWithinRange(t *testing.T) {
 				Inventory: NewInventory(),
 			},
 		},
-		stats: stats.DefaultComponent(stats.ArchetypePlayer),
+		Stats: stats.DefaultComponent(stats.ArchetypePlayer),
 	}
 	w.players[player.ID] = player
 
@@ -259,7 +259,7 @@ func TestGoblinReturnsToPatrolAfterLosingPlayer(t *testing.T) {
 	}
 
 	player := &playerState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        "player-escape",
 				X:         npc.X + 200,
@@ -270,7 +270,7 @@ func TestGoblinReturnsToPatrolAfterLosingPlayer(t *testing.T) {
 				Inventory: NewInventory(),
 			},
 		},
-		stats: stats.DefaultComponent(stats.ArchetypePlayer),
+		Stats: stats.DefaultComponent(stats.ArchetypePlayer),
 	}
 	w.players[player.ID] = player
 
@@ -448,7 +448,7 @@ func TestRatFleesFromNearbyThreat(t *testing.T) {
 	}
 
 	player := &playerState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        "player-threat",
 				X:         rat.X + 20,
@@ -459,7 +459,7 @@ func TestRatFleesFromNearbyThreat(t *testing.T) {
 				Inventory: NewInventory(),
 			},
 		},
-		stats: stats.DefaultComponent(stats.ArchetypePlayer),
+		Stats: stats.DefaultComponent(stats.ArchetypePlayer),
 	}
 	w.players[player.ID] = player
 

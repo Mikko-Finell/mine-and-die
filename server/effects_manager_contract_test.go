@@ -227,7 +227,7 @@ func TestContractBurningVisualUpdatesAttachedEffectLifetime(t *testing.T) {
 	target.Y = 200
 	world.AddPlayer(target)
 
-	actor := &world.players[target.ID].actorState
+	actor := &world.players[target.ID].ActorState
 	now := time.Unix(123, 0)
 
 	if applied := world.applyStatusEffect(actor, StatusEffectBurning, "lava-source", now); !applied {
@@ -236,11 +236,11 @@ func TestContractBurningVisualUpdatesAttachedEffectLifetime(t *testing.T) {
 
 	world.effectManager.RunTick(effectcontract.Tick(1), now, nil)
 
-	inst := actor.statusEffects[StatusEffectBurning]
+	inst := actor.StatusEffects[StatusEffectBurning]
 	if inst == nil {
 		t.Fatalf("expected burning status effect instance to persist")
 	}
-	effect := inst.attachedEffect
+	effect := inst.AttachedEffect()
 	if effect == nil {
 		t.Fatalf("expected burning visual to attach to status effect")
 	}
@@ -262,7 +262,7 @@ func TestContractBurningVisualUpdatesAttachedEffectLifetime(t *testing.T) {
 		t.Fatalf("expected effect duration %d, got %d", expectedDuration.Milliseconds(), effect.Duration)
 	}
 
-	delete(actor.statusEffects, StatusEffectBurning)
+	delete(actor.StatusEffects, StatusEffectBurning)
 
 	expireNow := later.Add(75 * time.Millisecond)
 	world.effectManager.RunTick(effectcontract.Tick(3), expireNow, nil)

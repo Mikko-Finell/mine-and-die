@@ -40,7 +40,7 @@ func (w *World) EquipFromInventory(playerID string, inventorySlot int) (EquipSlo
 	}
 
 	var removed ItemStack
-	if err := w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+	if err := w.mutateActorInventory(&player.ActorState, &player.Version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
 		var innerErr error
 		removed, innerErr = inv.RemoveQuantity(inventorySlot, 1)
 		return innerErr
@@ -55,7 +55,7 @@ func (w *World) EquipFromInventory(playerID string, inventorySlot int) (EquipSlo
 	slotKey := stats.SourceKey{Kind: stats.SourceKindEquipment, ID: string(def.EquipSlot)}
 
 	restoreRemoved := func() {
-		_ = w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+		_ = w.mutateActorInventory(&player.ActorState, &player.Version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
 			_, addErr := inv.AddStack(removed)
 			return addErr
 		})
@@ -80,7 +80,7 @@ func (w *World) EquipFromInventory(playerID string, inventorySlot int) (EquipSlo
 			}
 		}
 
-		if err := w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+		if err := w.mutateActorInventory(&player.ActorState, &player.Version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
 			var addErr error
 			reinsertionSlot, addErr = inv.AddStack(previous)
 			return addErr
@@ -97,7 +97,7 @@ func (w *World) EquipFromInventory(playerID string, inventorySlot int) (EquipSlo
 			return nil
 		}); err != nil {
 			if reinsertionActive {
-				_ = w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+				_ = w.mutateActorInventory(&player.ActorState, &player.Version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
 					_, remErr := inv.RemoveQuantity(reinsertionSlot, reinsertionQty)
 					return remErr
 				})
@@ -114,7 +114,7 @@ func (w *World) EquipFromInventory(playerID string, inventorySlot int) (EquipSlo
 	}); err != nil {
 		restoreRemoved()
 		if reinsertionActive {
-			_ = w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+			_ = w.mutateActorInventory(&player.ActorState, &player.Version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
 				_, remErr := inv.RemoveQuantity(reinsertionSlot, reinsertionQty)
 				return remErr
 			})
@@ -127,16 +127,16 @@ func (w *World) EquipFromInventory(playerID string, inventorySlot int) (EquipSlo
 	}
 
 	if reinsertionActive {
-		player.stats.Apply(stats.CommandStatChange{Layer: stats.LayerEquipment, Source: slotKey, Remove: true})
+		player.Stats.Apply(stats.CommandStatChange{Layer: stats.LayerEquipment, Source: slotKey, Remove: true})
 	}
 
 	delta, err := equipmentDeltaForDefinition(def)
 	if err != nil {
 		return "", err
 	}
-	player.stats.Apply(stats.CommandStatChange{Layer: stats.LayerEquipment, Source: slotKey, Delta: delta})
-	player.stats.Resolve(w.currentTick)
-	w.syncMaxHealth(&player.actorState, &player.version, player.ID, PatchPlayerHealth, &player.stats)
+	player.Stats.Apply(stats.CommandStatChange{Layer: stats.LayerEquipment, Source: slotKey, Delta: delta})
+	player.Stats.Resolve(w.currentTick)
+	w.syncMaxHealth(&player.ActorState, &player.Version, player.ID, PatchPlayerHealth, &player.Stats)
 	return def.EquipSlot, nil
 }
 
@@ -157,7 +157,7 @@ func (w *World) UnequipToInventory(playerID string, slot EquipSlot) (ItemStack, 
 	}
 
 	slotKey := stats.SourceKey{Kind: stats.SourceKindEquipment, ID: string(slot)}
-	player.stats.Apply(stats.CommandStatChange{Layer: stats.LayerEquipment, Source: slotKey, Remove: true})
+	player.Stats.Apply(stats.CommandStatChange{Layer: stats.LayerEquipment, Source: slotKey, Remove: true})
 
 	if err := w.MutateEquipment(playerID, func(eq *Equipment) error {
 		_, _ = eq.Remove(slot)
@@ -166,15 +166,15 @@ func (w *World) UnequipToInventory(playerID string, slot EquipSlot) (ItemStack, 
 		return ItemStack{}, err
 	}
 
-	if err := w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
+	if err := w.mutateActorInventory(&player.ActorState, &player.Version, playerID, PatchPlayerInventory, func(inv *Inventory) error {
 		_, addErr := inv.AddStack(stack)
 		return addErr
 	}); err != nil {
 		return ItemStack{}, err
 	}
 
-	player.stats.Resolve(w.currentTick)
-	w.syncMaxHealth(&player.actorState, &player.version, player.ID, PatchPlayerHealth, &player.stats)
+	player.Stats.Resolve(w.currentTick)
+	w.syncMaxHealth(&player.ActorState, &player.Version, player.ID, PatchPlayerHealth, &player.Stats)
 	return stack, nil
 }
 

@@ -18,8 +18,8 @@ func (c npcPathController) SetIntent(actorID string, dx, dy float64) {
 	if npc == nil {
 		return
 	}
-	npc.intentX = dx
-	npc.intentY = dy
+	npc.IntentX = dx
+	npc.IntentY = dy
 }
 
 func (c npcPathController) SetFacing(actorID string, facing string) {

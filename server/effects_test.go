@@ -24,7 +24,7 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 	}}
 
 	npc := &npcState{
-		actorState: actorState{Actor: Actor{
+		ActorState: actorState{Actor: Actor{
 			ID:        "npc-miner",
 			X:         2,
 			Y:         2,
@@ -34,7 +34,7 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 			Inventory: NewInventory(),
 			Equipment: NewEquipment(),
 		}},
-		stats: stats.DefaultComponent(stats.ArchetypeGoblin),
+		Stats: stats.DefaultComponent(stats.ArchetypeGoblin),
 	}
 	w.npcs[npc.ID] = npc
 
@@ -45,7 +45,7 @@ func TestNPCMiningEmitsInventoryPatch(t *testing.T) {
 	worldpkg.ResolveMeleeImpact(worldpkg.ResolveMeleeImpactConfig{
 		EffectType: effect.Type,
 		Effect:     effect,
-		Owner:      &npc.actorState,
+		Owner:      &npc.ActorState,
 		ActorID:    npc.ID,
 		Tick:       1,
 		Now:        now,

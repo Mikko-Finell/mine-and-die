@@ -55,7 +55,7 @@ func toPlayerPathActor(player *playerState) *worldpkg.PlayerPathActor {
 		X:      player.X,
 		Y:      player.Y,
 		Facing: string(player.Facing),
-		Path:   &player.path,
+		Path:   &player.Path,
 	}
 }
 

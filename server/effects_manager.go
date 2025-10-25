@@ -379,8 +379,8 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 				world.applyBurningDamage(ownerID, actor, StatusEffectType(status), delta, now)
 			},
 		}
-		if actor.statusEffects != nil {
-			if inst := actor.statusEffects[StatusEffectBurning]; inst != nil {
+		if actor.StatusEffects != nil {
+			if inst := actor.StatusEffects[StatusEffectBurning]; inst != nil {
 				contractActor.StatusInstance = &internaleffects.ContractStatusInstance{
 					Instance:  inst,
 					ExpiresAt: func() time.Time { return inst.ExpiresAt },
