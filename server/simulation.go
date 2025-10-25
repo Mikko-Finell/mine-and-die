@@ -162,7 +162,7 @@ func (w *World) syncMaxHealth(actor *actorState, version *uint64, entityID strin
 }
 
 // legacyConstructWorld constructs an empty world with generated obstacles and seeded NPCs.
-func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
+func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps worldpkg.Deps) *World {
 	normalized := cfg.Normalized()
 
 	if publisher == nil {
@@ -271,6 +271,10 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher) *World {
 	w.effectManager = newEffectManager(w)
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
+
+	if deps.JournalTelemetry != nil {
+		w.journal.AttachTelemetry(deps.JournalTelemetry)
+	}
 	return w
 }
 
@@ -315,8 +319,8 @@ func requireLegacyWorld(instance worldpkg.LegacyWorld) *World {
 }
 
 func init() {
-	worldpkg.RegisterLegacyConstructor(func(cfg worldpkg.Config, publisher logging.Publisher) worldpkg.LegacyWorld {
-		return legacyConstructWorld(cfg, publisher)
+	worldpkg.RegisterLegacyConstructor(func(cfg worldpkg.Config, publisher logging.Publisher, deps worldpkg.Deps) worldpkg.LegacyWorld {
+		return legacyConstructWorld(cfg, publisher, deps)
 	})
 }
 

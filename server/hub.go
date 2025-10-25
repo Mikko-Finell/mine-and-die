@@ -522,9 +522,6 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 		interval = 1
 	}
 
-	world := requireLegacyWorld(worldpkg.ConstructLegacy(cfg, pub))
-	cfg = world.config
-
 	metrics := hubCfg.Metrics
 	if metrics == nil {
 		if provider, ok := pub.(interface{ Metrics() *logging.Metrics }); ok {
@@ -540,6 +537,14 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 			clock = candidate
 		}
 	}
+
+	telemetryCounters := newTelemetryCounters(metrics)
+
+	world := requireLegacyWorld(worldpkg.ConstructLegacy(cfg, pub, worldpkg.Deps{
+		Publisher:        pub,
+		JournalTelemetry: telemetryCounters,
+	}))
+	cfg = world.config
 
 	engineDeps := sim.Deps{
 		Logger:  hubCfg.Logger,
@@ -561,7 +566,7 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 		subscribers:             make(map[string]*subscriber),
 		config:                  cfg,
 		publisher:               pub,
-		telemetry:               newTelemetryCounters(engineDeps.Metrics),
+		telemetry:               telemetryCounters,
 		defaultKeyframeInterval: interval,
 		resubscribeBaselines:    nil,
 	}
@@ -861,7 +866,10 @@ func (h *Hub) ResetWorld(cfg worldConfig) ([]Player, []NPC) {
 		playerIDs = append(playerIDs, id)
 	}
 
-	newW := requireLegacyWorld(worldpkg.ConstructLegacy(cfg, h.publisher))
+	newW := requireLegacyWorld(worldpkg.ConstructLegacy(cfg, h.publisher, worldpkg.Deps{
+		Publisher:        h.publisher,
+		JournalTelemetry: h.telemetry,
+	}))
 	cfg = newW.config
 	newW.attachTelemetry(h.telemetry)
 	newW.AttachJournalTelemetry(h.telemetry)

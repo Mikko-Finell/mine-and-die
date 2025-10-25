@@ -14,7 +14,7 @@ type LegacyWorld interface {
 }
 
 // Constructor builds a world instance using the legacy implementation.
-type Constructor func(Config, logging.Publisher) LegacyWorld
+type Constructor func(Config, logging.Publisher, Deps) LegacyWorld
 
 var registeredConstructor Constructor
 
@@ -27,10 +27,10 @@ func RegisterLegacyConstructor(fn Constructor) {
 }
 
 // ConstructLegacy builds a world using the registered legacy constructor.
-func ConstructLegacy(cfg Config, publisher logging.Publisher) LegacyWorld {
+func ConstructLegacy(cfg Config, publisher logging.Publisher, deps Deps) LegacyWorld {
 	if registeredConstructor == nil {
 		panic("world: legacy constructor not registered")
 	}
 	normalized := cfg.Normalized()
-	return registeredConstructor(normalized, publisher)
+	return registeredConstructor(normalized, publisher, deps)
 }
