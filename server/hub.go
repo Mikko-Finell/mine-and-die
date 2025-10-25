@@ -602,7 +602,16 @@ func NewHubWithConfig(hubCfg HubConfig, pubs ...logging.Publisher) *Hub {
 			hub.logf("[backpressure] pendingCommands=%d; investigate tick latency or raise throttle thresholds", length)
 		},
 	}
-	hub.engine = sim.NewLoop(engineAdapter, loopCfg, loopHooks)
+	engine, err := sim.NewEngine(
+		engineAdapter,
+		sim.WithDeps(engineDeps),
+		sim.WithLoopConfig(loopCfg),
+		sim.WithLoopHooks(sim.EngineLoopHooks{LoopHooks: loopHooks}),
+	)
+	if err != nil {
+		panic(fmt.Sprintf("hub: failed to construct engine: %v", err))
+	}
+	hub.engine = engine
 
 	hub.world.attachTelemetry(hub.telemetry)
 	hub.world.AttachJournalTelemetry(hub.telemetry)

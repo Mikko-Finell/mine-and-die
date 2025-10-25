@@ -73,7 +73,7 @@ Goal: cut the hot path off the legacy hub.
 - [x] Next task: remove `RunDeterminismHarnessBaseline` by pointing the remaining callers at `RunDeterminismHarnessLockstepWithOptions` so only the shared helper remains.
 - [x] Next task: collapse `RunDeterminismHarnessLockstep` into `RunDeterminismHarnessLockstepWithOptions` by updating callers to pass an empty options struct so the determinism helpers share a single entry point.
 - [x] Next task: rename `RunDeterminismHarnessLockstepWithOptions` to `RunDeterminismHarness` and update callers so the shared helper name reflects the consolidated entry point.
-- [ ] Next task: rename `runDeterminismHarnessLockstep` to `runDeterminismHarness` so the internal helper matches the exported harness entry point.
+- [x] Next task: rename `runDeterminismHarnessLockstep` to `runDeterminismHarness` so the internal helper matches the exported harness entry point.
 
 * [ ] Add `internal/sim.NewEngine(world *world.World, opts …Option) (*Engine, error)` that accepts `sim.Deps`, queue sizes, keyframe/journal hooks.
 * [ ] Point `cmd/server`, `internal/app`, and handlers to build via `world.New` + `sim.NewEngine`.
