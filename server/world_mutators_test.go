@@ -48,7 +48,7 @@ func requireEquipmentSlots(t *testing.T, slots any) []sim.EquippedItem {
 func TestMutateEquipmentRecordsPlayerPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-record", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-equipment-record", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -64,8 +64,8 @@ func TestMutateEquipmentRecordsPlayerPatch(t *testing.T) {
 		t.Fatalf("unexpected error mutating equipment: %v", err)
 	}
 
-	if player.version != 1 {
-		t.Fatalf("expected player version to increment, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected player version to increment, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -115,7 +115,7 @@ func TestMutateEquipmentRecordsPlayerPatch(t *testing.T) {
 func TestMutateEquipmentEmitsSortedSlots(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-sorted", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-equipment-sorted", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -176,7 +176,7 @@ func TestMutateEquipmentEmitsSortedSlots(t *testing.T) {
 func TestMutateEquipmentPatchCloneIndependent(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-clone", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-equipment-clone", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: NewEquipment()}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -225,7 +225,7 @@ func TestMutateEquipmentUpdatesPlayerSlot(t *testing.T) {
 	initial := NewEquipment()
 	initial.Set(EquipSlotMainHand, ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::base", Quantity: 1})
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-update", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-equipment-update", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -241,8 +241,8 @@ func TestMutateEquipmentUpdatesPlayerSlot(t *testing.T) {
 		t.Fatalf("unexpected error mutating equipment: %v", err)
 	}
 
-	if player.version != 1 {
-		t.Fatalf("expected player version to increment, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected player version to increment, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -292,7 +292,7 @@ func TestMutateEquipmentRemovalClearsPlayerPayload(t *testing.T) {
 	initial := NewEquipment()
 	initial.Set(EquipSlotMainHand, ItemStack{Type: ItemTypeIronDagger, Quantity: 1})
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-remove", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-equipment-remove", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -308,8 +308,8 @@ func TestMutateEquipmentRemovalClearsPlayerPayload(t *testing.T) {
 		t.Fatalf("unexpected error mutating equipment: %v", err)
 	}
 
-	if player.version != 1 {
-		t.Fatalf("expected player version to increment, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected player version to increment, got %d", player.Version)
 	}
 
 	if len(player.Equipment.Slots) != 0 {
@@ -344,7 +344,7 @@ func TestMutateEquipmentErrorRestoresPlayerState(t *testing.T) {
 	original := ItemStack{Type: ItemTypeIronDagger, FungibilityKey: "dagger::error", Quantity: 1}
 	initial.Set(EquipSlotMainHand, original)
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-error", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-equipment-error", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -360,8 +360,8 @@ func TestMutateEquipmentErrorRestoresPlayerState(t *testing.T) {
 		t.Fatalf("expected mutate to return sentinel error, got %v", err)
 	}
 
-	if player.version != 0 {
-		t.Fatalf("expected player version to remain 0 after failed mutate, got %d", player.version)
+	if player.Version != 0 {
+		t.Fatalf("expected player version to remain 0 after failed mutate, got %d", player.Version)
 	}
 
 	stack, ok := player.Equipment.Get(EquipSlotMainHand)
@@ -387,7 +387,7 @@ func TestMutateEquipmentNoopDoesNotEmitPlayerPatch(t *testing.T) {
 	kept := ItemStack{Type: ItemTypeIronDagger, Quantity: 1}
 	initial.Set(EquipSlotMainHand, kept)
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-equipment-noop", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-equipment-noop", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Equipment: initial}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -401,8 +401,8 @@ func TestMutateEquipmentNoopDoesNotEmitPlayerPatch(t *testing.T) {
 		t.Fatalf("unexpected error mutating equipment: %v", err)
 	}
 
-	if player.version != 0 {
-		t.Fatalf("expected player version to remain 0 for noop mutate, got %d", player.version)
+	if player.Version != 0 {
+		t.Fatalf("expected player version to remain 0 for noop mutate, got %d", player.Version)
 	}
 
 	if len(w.snapshotPatchesLocked()) != 0 {
@@ -413,7 +413,7 @@ func TestMutateEquipmentNoopDoesNotEmitPlayerPatch(t *testing.T) {
 func TestMutateEquipmentRecordsNPCPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-equipment-record", Equipment: NewEquipment()}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-equipment-record", Equipment: NewEquipment()}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-equipment-record": npc}
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -429,8 +429,8 @@ func TestMutateEquipmentRecordsNPCPatch(t *testing.T) {
 		t.Fatalf("unexpected error mutating npc equipment: %v", err)
 	}
 
-	if npc.version != 1 {
-		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	if npc.Version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -483,7 +483,7 @@ func TestMutateEquipmentRemovalClearsNPCPayload(t *testing.T) {
 	initial := NewEquipment()
 	initial.Set(EquipSlotOffHand, ItemStack{Type: ItemTypeIronDagger, Quantity: 1})
 
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-equipment-remove", Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-equipment-remove", Equipment: initial}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-equipment-remove": npc}
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -499,8 +499,8 @@ func TestMutateEquipmentRemovalClearsNPCPayload(t *testing.T) {
 		t.Fatalf("unexpected error mutating npc equipment: %v", err)
 	}
 
-	if npc.version != 1 {
-		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	if npc.Version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.Version)
 	}
 
 	if len(npc.Equipment.Slots) != 0 {
@@ -535,7 +535,7 @@ func TestMutateEquipmentNoopDoesNotEmitNPCPatch(t *testing.T) {
 	kept := ItemStack{Type: ItemTypeIronDagger, Quantity: 1}
 	initial.Set(EquipSlotOffHand, kept)
 
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-equipment-noop", Equipment: initial}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-equipment-noop", Equipment: initial}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-equipment-noop": npc}
 
 	if len(w.drainPatchesLocked()) != 0 {
@@ -549,8 +549,8 @@ func TestMutateEquipmentNoopDoesNotEmitNPCPatch(t *testing.T) {
 		t.Fatalf("unexpected error mutating npc equipment: %v", err)
 	}
 
-	if npc.version != 0 {
-		t.Fatalf("expected npc version to remain 0 for noop mutate, got %d", npc.version)
+	if npc.Version != 0 {
+		t.Fatalf("expected npc version to remain 0 for noop mutate, got %d", npc.Version)
 	}
 
 	if len(w.snapshotPatchesLocked()) != 0 {
@@ -560,13 +560,13 @@ func TestMutateEquipmentNoopDoesNotEmitNPCPatch(t *testing.T) {
 
 func TestSetPositionNoopDoesNotEmitPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-1", X: 10, Y: 20, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-1", X: 10, Y: 20, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetPosition("player-1", 10, 20)
 
-	if player.version != 0 {
-		t.Fatalf("expected version to remain 0, got %d", player.version)
+	if player.Version != 0 {
+		t.Fatalf("expected version to remain 0, got %d", player.Version)
 	}
 
 	if patches := w.snapshotPatchesLocked(); len(patches) != 0 {
@@ -576,13 +576,13 @@ func TestSetPositionNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestSetPositionRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-2", X: 5, Y: 6, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-2", X: 5, Y: 6, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetPosition("player-2", 15, 25)
 
-	if player.version != 1 {
-		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -607,20 +607,20 @@ func TestSetPositionRecordsPatch(t *testing.T) {
 	}
 
 	w.SetPosition("player-2", 30, 35)
-	if player.version != 2 {
-		t.Fatalf("expected version to increment to 2, got %d", player.version)
+	if player.Version != 2 {
+		t.Fatalf("expected version to increment to 2, got %d", player.Version)
 	}
 }
 
 func TestSetFacingNoopDoesNotEmitPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-3", Facing: FacingRight, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-3", Facing: FacingRight, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetFacing("player-3", FacingRight)
 
-	if player.version != 0 {
-		t.Fatalf("expected version to remain 0, got %d", player.version)
+	if player.Version != 0 {
+		t.Fatalf("expected version to remain 0, got %d", player.Version)
 	}
 
 	if patches := w.snapshotPatchesLocked(); len(patches) != 0 {
@@ -630,13 +630,13 @@ func TestSetFacingNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestSetFacingRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-4", Facing: FacingUp, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-4", Facing: FacingUp, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetFacing("player-4", FacingLeft)
 
-	if player.version != 1 {
-		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -661,22 +661,22 @@ func TestSetFacingRecordsPatch(t *testing.T) {
 	}
 
 	w.SetFacing("player-4", FacingDown)
-	if player.version != 2 {
-		t.Fatalf("expected version to increment to 2, got %d", player.version)
+	if player.Version != 2 {
+		t.Fatalf("expected version to increment to 2, got %d", player.Version)
 	}
 }
 
 func TestSetIntentNoopDoesNotEmitPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent-noop", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
-	player.intentX = 0.25
-	player.intentY = -0.5
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-intent-noop", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player.IntentX = 0.25
+	player.IntentY = -0.5
 	w.AddPlayer(player)
 
 	w.SetIntent("player-intent-noop", 0.25, -0.5)
 
-	if player.version != 0 {
-		t.Fatalf("expected version to remain 0, got %d", player.version)
+	if player.Version != 0 {
+		t.Fatalf("expected version to remain 0, got %d", player.Version)
 	}
 
 	if patches := w.snapshotPatchesLocked(); len(patches) != 0 {
@@ -686,13 +686,13 @@ func TestSetIntentNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestSetIntentRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-intent", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-intent", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetIntent("player-intent", 1, 0)
 
-	if player.version != 1 {
-		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -717,20 +717,20 @@ func TestSetIntentRecordsPatch(t *testing.T) {
 	}
 
 	w.SetIntent("player-intent", 0, -1)
-	if player.version != 2 {
-		t.Fatalf("expected version to increment to 2, got %d", player.version)
+	if player.Version != 2 {
+		t.Fatalf("expected version to increment to 2, got %d", player.Version)
 	}
 }
 
 func TestSetHealthNoopDoesNotEmitPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-5", Health: 75, MaxHealth: 100}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-5", Health: 75, MaxHealth: 100}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetHealth("player-5", 75)
 
-	if player.version != 0 {
-		t.Fatalf("expected version to remain 0, got %d", player.version)
+	if player.Version != 0 {
+		t.Fatalf("expected version to remain 0, got %d", player.Version)
 	}
 
 	if patches := w.snapshotPatchesLocked(); len(patches) != 0 {
@@ -740,13 +740,13 @@ func TestSetHealthNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestSetHealthRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-6", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-6", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	w.SetHealth("player-6", baselinePlayerMaxHealth-25)
 
-	if player.version != 1 {
-		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -774,14 +774,14 @@ func TestSetHealthRecordsPatch(t *testing.T) {
 	}
 
 	w.SetHealth("player-6", baselinePlayerMaxHealth)
-	if player.version != 2 {
-		t.Fatalf("expected version to increment to 2, got %d", player.version)
+	if player.Version != 2 {
+		t.Fatalf("expected version to increment to 2, got %d", player.Version)
 	}
 }
 
 func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-max-sync", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-max-sync", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	// Clear any staged patches from player onboarding.
@@ -789,7 +789,7 @@ func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
 
 	delta := stats.NewStatDelta()
 	delta.Add[stats.StatMight] = 4
-	player.stats.Apply(stats.CommandStatChange{
+	player.Stats.Apply(stats.CommandStatChange{
 		Layer:  stats.LayerPermanent,
 		Source: stats.SourceKey{Kind: stats.SourceKindProgression, ID: "test"},
 		Delta:  delta,
@@ -797,8 +797,8 @@ func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
 
 	w.resolveStats(w.currentTick)
 
-	if player.version != 1 {
-		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -819,7 +819,7 @@ func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
 		t.Fatalf("expected payload to be PlayerHealthPayload, got %T", patch.Payload)
 	}
 
-	expectedMax := player.stats.GetDerived(stats.DerivedMaxHealth)
+	expectedMax := player.Stats.GetDerived(stats.DerivedMaxHealth)
 	if math.Abs(payload.Health-baselinePlayerMaxHealth) > 1e-6 {
 		t.Fatalf("expected payload health %.2f, got %.2f", baselinePlayerMaxHealth, payload.Health)
 	}
@@ -830,7 +830,7 @@ func TestResolveStatsEmitsPatchWhenMaxHealthChanges(t *testing.T) {
 
 func TestPlayerHitCallbackEmitsHealthPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-7", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-7", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	eff := &effectState{
@@ -845,8 +845,8 @@ func TestPlayerHitCallbackEmitsHealthPatch(t *testing.T) {
 	if math.Abs(player.Health-expected) > 1e-6 {
 		t.Fatalf("expected player health to drop to %.2f, got %.2f", expected, player.Health)
 	}
-	if player.version != 1 {
-		t.Fatalf("expected version to increment to 1 after damage, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to increment to 1 after damage, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -869,15 +869,15 @@ func TestPlayerHitCallbackEmitsHealthPatch(t *testing.T) {
 
 func TestMutateInventoryNoopDoesNotEmitPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-8", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-8", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if err := w.MutateInventory("player-8", func(inv *Inventory) error { return nil }); err != nil {
 		t.Fatalf("expected mutate to succeed, got %v", err)
 	}
 
-	if player.version != 0 {
-		t.Fatalf("expected version to remain 0, got %d", player.version)
+	if player.Version != 0 {
+		t.Fatalf("expected version to remain 0, got %d", player.Version)
 	}
 
 	if patches := w.snapshotPatchesLocked(); len(patches) != 0 {
@@ -887,7 +887,7 @@ func TestMutateInventoryNoopDoesNotEmitPatch(t *testing.T) {
 
 func TestMutateInventoryRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-9", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-9", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if err := w.MutateInventory("player-9", func(inv *Inventory) error {
@@ -897,8 +897,8 @@ func TestMutateInventoryRecordsPatch(t *testing.T) {
 		t.Fatalf("expected mutate to succeed, got %v", err)
 	}
 
-	if player.version != 1 {
-		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -958,7 +958,7 @@ func TestMutateInventoryEmitsPatchWhenFungibilityChanges(t *testing.T) {
 		Item: ItemStack{Type: ItemTypeIronDagger, FungibilityKey: daggerDef.FungibilityKey, Quantity: 1},
 	}})
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-9-fungibility", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: initialInventory}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-9-fungibility", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: initialInventory}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if patches := w.snapshotPatchesLocked(); len(patches) != 0 {
@@ -977,8 +977,8 @@ func TestMutateInventoryEmitsPatchWhenFungibilityChanges(t *testing.T) {
 		t.Fatalf("expected mutate to succeed, got %v", err)
 	}
 
-	if player.version != 1 {
-		t.Fatalf("expected version to increment to 1, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to increment to 1, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -1030,7 +1030,7 @@ func TestMutateInventoryEmitsPatchWhenFungibilityChanges(t *testing.T) {
 
 func TestMutateInventoryErrorRestoresState(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-10", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-10", Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth, Inventory: NewInventory()}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	w.AddPlayer(player)
 
 	if err := w.MutateInventory("player-10", func(inv *Inventory) error {
@@ -1051,8 +1051,8 @@ func TestMutateInventoryErrorRestoresState(t *testing.T) {
 		t.Fatalf("expected inventory to retain 4 gold, got %d", qty)
 	}
 
-	if player.version != 1 {
-		t.Fatalf("expected version to remain 1 after failed mutate, got %d", player.version)
+	if player.Version != 1 {
+		t.Fatalf("expected version to remain 1 after failed mutate, got %d", player.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -1063,13 +1063,13 @@ func TestMutateInventoryErrorRestoresState(t *testing.T) {
 
 func TestSetNPCPositionRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-1", X: 1, Y: 2}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-1", X: 1, Y: 2}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-1": npc}
 
 	w.SetNPCPosition("npc-1", 10, 20)
 
-	if npc.version != 1 {
-		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	if npc.Version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -1092,13 +1092,13 @@ func TestSetNPCPositionRecordsPatch(t *testing.T) {
 
 func TestSetNPCFacingRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-2", Facing: FacingUp}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-2", Facing: FacingUp}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-2": npc}
 
 	w.SetNPCFacing("npc-2", FacingLeft)
 
-	if npc.version != 1 {
-		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	if npc.Version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()
@@ -1120,13 +1120,13 @@ func TestSetNPCFacingRecordsPatch(t *testing.T) {
 
 func TestSetNPCHealthRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-3", Health: 50, MaxHealth: 100}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-3", Health: 50, MaxHealth: 100}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-3": npc}
 
 	w.SetNPCHealth("npc-3", 20)
 
-	if npc.version != 1 {
-		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	if npc.Version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.Version)
 	}
 	if math.Abs(npc.Health-20) > 1e-6 {
 		t.Fatalf("expected npc health to be 20, got %.2f", npc.Health)
@@ -1151,7 +1151,7 @@ func TestSetNPCHealthRecordsPatch(t *testing.T) {
 
 func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-4", Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-4", Inventory: NewInventory()}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin)}
 	w.npcs = map[string]*npcState{"npc-4": npc}
 
 	if err := w.MutateNPCInventory("npc-4", func(inv *Inventory) error {
@@ -1161,8 +1161,8 @@ func TestMutateNPCInventoryRecordsPatch(t *testing.T) {
 		t.Fatalf("unexpected error mutating npc inventory: %v", err)
 	}
 
-	if npc.version != 1 {
-		t.Fatalf("expected npc version to increment, got %d", npc.version)
+	if npc.Version != 1 {
+		t.Fatalf("expected npc version to increment, got %d", npc.Version)
 	}
 
 	patches := w.snapshotPatchesLocked()

@@ -203,7 +203,7 @@ func TestMaybeSpawnBloodSplatterQueuesIntent(t *testing.T) {
 	world.effectManager.ResetPendingIntents()
 
 	eff := &effectState{Type: effectTypeAttack, Owner: "player-attacker"}
-	target := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 220, Y: 300}}, Type: NPCTypeGoblin}
+	target := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-target", X: 220, Y: 300}}, Type: NPCTypeGoblin}
 	now := time.Unix(0, 0)
 
 	world.maybeSpawnBloodSplatter(eff, target, now)

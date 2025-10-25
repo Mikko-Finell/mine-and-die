@@ -11,15 +11,15 @@ import (
 func TestFollowPlayerPathNormalizesIntentVectors(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	player := &playerState{
-		actorState: actorState{Actor: Actor{
+		ActorState: actorState{Actor: Actor{
 			ID:        "path-player",
 			X:         100,
 			Y:         100,
 			Health:    baselinePlayerMaxHealth,
 			MaxHealth: baselinePlayerMaxHealth,
 		}},
-		stats: stats.DefaultComponent(stats.ArchetypePlayer),
-		path: playerPathState{
+		Stats: stats.DefaultComponent(stats.ArchetypePlayer),
+		Path: playerPathState{
 			Path:       []vec2{{X: 340, Y: 220}},
 			PathTarget: vec2{X: 340, Y: 220},
 		},
@@ -31,8 +31,8 @@ func TestFollowPlayerPathNormalizesIntentVectors(t *testing.T) {
 		t.Fatalf("expected no patches before path follow, got %d", len(patches))
 	}
 
-	rawDX := player.path.Path[0].X - player.X
-	rawDY := player.path.Path[0].Y - player.Y
+	rawDX := player.Path.Path[0].X - player.X
+	rawDY := player.Path.Path[0].Y - player.Y
 	if math.Hypot(rawDX, rawDY) <= 1 {
 		t.Fatalf("test setup error: raw delta %.2f, %.2f should exceed unit length", rawDX, rawDY)
 	}

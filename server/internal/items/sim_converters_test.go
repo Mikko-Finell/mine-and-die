@@ -48,7 +48,7 @@ func TestInventorySlotFromSimConverter(t *testing.T) {
 		t.Fatalf("expected slot index 3, got %d", slot.Slot)
 	}
 	if slot.Item.Type != "arrow" || slot.Item.FungibilityKey != "stack" || slot.Item.Quantity != 5 {
-		t.Fatalf("unexpected item conversion: %#v", slot.Item)
+		t.Fatalf("unexpected item conVersion: %#v", slot.Item)
 	}
 }
 
@@ -85,7 +85,7 @@ func TestEquippedItemFromSimConverter(t *testing.T) {
 		t.Fatalf("expected slot 'head', got %q", item.Slot)
 	}
 	if item.Item.Type != "helm" || item.Item.FungibilityKey != "unique" || item.Item.Quantity != 1 {
-		t.Fatalf("unexpected item conversion: %#v", item.Item)
+		t.Fatalf("unexpected item conVersion: %#v", item.Item)
 	}
 }
 

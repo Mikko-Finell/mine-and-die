@@ -325,7 +325,7 @@ func (w *World) groundDropActorConfig(actor *actorState) (itemspkg.GroundDropAct
 			if !ok || player == nil {
 				return nil, false
 			}
-			stacks := w.drainEquipment(&player.actorState, &player.version, player.ID, PatchPlayerEquipment, PatchPlayerHealth, &player.stats)
+			stacks := w.drainEquipment(&player.ActorState, &player.Version, player.ID, PatchPlayerEquipment, PatchPlayerHealth, &player.Stats)
 			return toWorldStacks(stacks), true
 		}
 	}
@@ -365,7 +365,7 @@ func (w *World) groundDropActorConfig(actor *actorState) (itemspkg.GroundDropAct
 			if npc == nil {
 				return nil, false
 			}
-			stacks := w.drainEquipment(&npc.actorState, &npc.version, npcID, PatchNPCEquipment, PatchNPCHealth, &npc.stats)
+			stacks := w.drainEquipment(&npc.ActorState, &npc.Version, npcID, PatchNPCEquipment, PatchNPCHealth, &npc.Stats)
 			return toWorldStacks(stacks), true
 		}
 	}

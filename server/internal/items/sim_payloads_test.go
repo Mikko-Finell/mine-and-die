@@ -38,7 +38,7 @@ func TestInventoryFromSim(t *testing.T) {
 		t.Fatalf("expected 1 slot, got %d", len(converted.Slots))
 	}
 	if converted.Slots[0].Slot != 2 || converted.Slots[0].Qty != 5 {
-		t.Fatalf("unexpected slot conversion: %+v", converted.Slots[0])
+		t.Fatalf("unexpected slot conVersion: %+v", converted.Slots[0])
 	}
 }
 
@@ -73,7 +73,7 @@ func TestEquipmentFromSim(t *testing.T) {
 		t.Fatalf("expected 1 slot, got %d", len(converted.Slots))
 	}
 	if converted.Slots[0].Slot != "head" || converted.Slots[0].Qty != 3 {
-		t.Fatalf("unexpected slot conversion: %+v", converted.Slots[0])
+		t.Fatalf("unexpected slot conVersion: %+v", converted.Slots[0])
 	}
 }
 

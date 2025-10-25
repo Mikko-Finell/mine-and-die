@@ -11,8 +11,8 @@ func moveActorWithObstacles(state *actorState, dt float64, obstacles []Obstacle,
 	movement := worldpkg.MovementActor{
 		X:       state.X,
 		Y:       state.Y,
-		IntentX: state.intentX,
-		IntentY: state.intentY,
+		IntentX: state.IntentX,
+		IntentY: state.IntentY,
 	}
 	worldpkg.MoveActorWithObstacles(&movement, dt, obstacles, width, height, moveSpeed)
 	state.X = movement.X

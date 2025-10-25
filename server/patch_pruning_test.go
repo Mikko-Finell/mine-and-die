@@ -13,7 +13,7 @@ import (
 
 func TestNPCRemovalPurgesPatches(t *testing.T) {
 	w := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-test", Health: 50, MaxHealth: 50}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin), Type: NPCTypeGoblin}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-test", Health: 50, MaxHealth: 50}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin), Type: NPCTypeGoblin}
 	w.npcs[npc.ID] = npc
 
 	tile := tileForPosition(npc.X, npc.Y)
@@ -80,7 +80,7 @@ func TestEffectExpiryPurgesPatches(t *testing.T) {
 func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 	hub := newHub()
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-patch", Facing: FacingDown, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-patch", Facing: FacingDown, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 
 	hub.mu.Lock()
 	hub.world.AddPlayer(player)
@@ -126,7 +126,7 @@ func TestMarshalStateOmitsUnknownEntityPatches(t *testing.T) {
 func TestMarshalStateRetainsEffectPatches(t *testing.T) {
 	hub := newHub()
 
-	player := &playerState{actorState: actorState{Actor: Actor{ID: "player-anchor", Facing: FacingDown, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, stats: stats.DefaultComponent(stats.ArchetypePlayer)}
+	player := &playerState{ActorState: actorState{Actor: Actor{ID: "player-anchor", Facing: FacingDown, Health: baselinePlayerMaxHealth, MaxHealth: baselinePlayerMaxHealth}}, Stats: stats.DefaultComponent(stats.ArchetypePlayer)}
 	now := time.Now()
 	effect := &effectState{ID: "effect-patch", Type: effectTypeFireball, ExpiresAt: now.Add(time.Minute)}
 

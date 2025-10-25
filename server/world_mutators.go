@@ -73,12 +73,12 @@ func (w *World) setActorIntent(actor *actorState, version *uint64, entityID stri
 		return
 	}
 
-	if math.Abs(actor.intentX-dx) < intentEpsilon && math.Abs(actor.intentY-dy) < intentEpsilon {
+	if math.Abs(actor.IntentX-dx) < intentEpsilon && math.Abs(actor.IntentY-dy) < intentEpsilon {
 		return
 	}
 
-	actor.intentX = dx
-	actor.intentY = dy
+	actor.IntentX = dx
+	actor.IntentY = dy
 	incrementVersion(version)
 
 	w.appendPatch(PatchPlayerIntent, entityID, PlayerIntentPayload{DX: dx, DY: dy})
@@ -150,7 +150,7 @@ func (w *World) SetPosition(playerID string, x, y float64) {
 		return
 	}
 
-	w.setActorPosition(&player.actorState, &player.version, playerID, PatchPlayerPos, x, y)
+	w.setActorPosition(&player.ActorState, &player.Version, playerID, PatchPlayerPos, x, y)
 }
 
 // SetFacing updates a player's facing, bumps the version, and records a patch.
@@ -166,7 +166,7 @@ func (w *World) SetFacing(playerID string, facing FacingDirection) {
 		return
 	}
 
-	w.setActorFacing(&player.actorState, &player.version, playerID, PatchPlayerFacing, facing)
+	w.setActorFacing(&player.ActorState, &player.Version, playerID, PatchPlayerFacing, facing)
 }
 
 // SetIntent updates a player's movement intent, bumps the version, and records
@@ -186,7 +186,7 @@ func (w *World) SetIntent(playerID string, dx, dy float64) {
 		return
 	}
 
-	w.setActorIntent(&player.actorState, &player.version, playerID, dx, dy)
+	w.setActorIntent(&player.ActorState, &player.Version, playerID, dx, dy)
 }
 
 // SetHealth updates a player's health, bumps the version, and records a patch.
@@ -202,9 +202,9 @@ func (w *World) SetHealth(playerID string, health float64) {
 		return
 	}
 
-	player.stats.Resolve(w.currentTick)
-	max := player.stats.GetDerived(stats.DerivedMaxHealth)
-	w.setActorHealth(&player.actorState, &player.version, playerID, PatchPlayerHealth, max, health)
+	player.Stats.Resolve(w.currentTick)
+	max := player.Stats.GetDerived(stats.DerivedMaxHealth)
+	w.setActorHealth(&player.ActorState, &player.Version, playerID, PatchPlayerHealth, max, health)
 }
 
 // MutateInventory applies the provided mutation to a player's inventory while
@@ -220,7 +220,7 @@ func (w *World) MutateInventory(playerID string, mutate func(inv *Inventory) err
 		return nil
 	}
 
-	return w.mutateActorInventory(&player.actorState, &player.version, playerID, PatchPlayerInventory, mutate)
+	return w.mutateActorInventory(&player.ActorState, &player.Version, playerID, PatchPlayerInventory, mutate)
 }
 
 // MutateEquipment applies the provided mutation to an actor's equipment while preserving patches.
@@ -231,11 +231,11 @@ func (w *World) MutateEquipment(entityID string, mutate func(eq *Equipment) erro
 	}
 
 	if player, ok := w.players[entityID]; ok {
-		return w.mutateActorEquipment(&player.actorState, &player.version, entityID, PatchPlayerEquipment, mutate)
+		return w.mutateActorEquipment(&player.ActorState, &player.Version, entityID, PatchPlayerEquipment, mutate)
 	}
 
 	if npc, ok := w.npcs[entityID]; ok {
-		return w.mutateActorEquipment(&npc.actorState, &npc.version, entityID, PatchNPCEquipment, mutate)
+		return w.mutateActorEquipment(&npc.ActorState, &npc.Version, entityID, PatchNPCEquipment, mutate)
 	}
 
 	return nil
@@ -252,7 +252,7 @@ func (w *World) SetNPCPosition(npcID string, x, y float64) {
 		return
 	}
 
-	w.setActorPosition(&npc.actorState, &npc.version, npcID, PatchNPCPos, x, y)
+	w.setActorPosition(&npc.ActorState, &npc.Version, npcID, PatchNPCPos, x, y)
 }
 
 // SetNPCFacing updates an NPC's facing direction, bumps the version, and records a patch.
@@ -266,7 +266,7 @@ func (w *World) SetNPCFacing(npcID string, facing FacingDirection) {
 		return
 	}
 
-	w.setActorFacing(&npc.actorState, &npc.version, npcID, PatchNPCFacing, facing)
+	w.setActorFacing(&npc.ActorState, &npc.Version, npcID, PatchNPCFacing, facing)
 }
 
 // SetNPCHealth updates an NPC's health, bumps the version, and records a patch.
@@ -280,9 +280,9 @@ func (w *World) SetNPCHealth(npcID string, health float64) {
 		return
 	}
 
-	npc.stats.Resolve(w.currentTick)
-	max := npc.stats.GetDerived(stats.DerivedMaxHealth)
-	w.setActorHealth(&npc.actorState, &npc.version, npcID, PatchNPCHealth, max, health)
+	npc.Stats.Resolve(w.currentTick)
+	max := npc.Stats.GetDerived(stats.DerivedMaxHealth)
+	w.setActorHealth(&npc.ActorState, &npc.Version, npcID, PatchNPCHealth, max, health)
 }
 
 // MutateNPCInventory applies a mutation to an NPC inventory with versioning and patches.
@@ -296,7 +296,7 @@ func (w *World) MutateNPCInventory(npcID string, mutate func(inv *Inventory) err
 		return nil
 	}
 
-	return w.mutateActorInventory(&npc.actorState, &npc.version, npcID, PatchNPCInventory, mutate)
+	return w.mutateActorInventory(&npc.ActorState, &npc.Version, npcID, PatchNPCInventory, mutate)
 }
 
 // SetEffectPosition updates an effect's position, bumps the version, and records a patch.

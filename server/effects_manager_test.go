@@ -91,8 +91,8 @@ func TestEffectManagerProjectileLifecycleUpdatesRegistry(t *testing.T) {
 	world := &World{
 		players: map[string]*playerState{
 			ownerID: {
-				actorState: actorState{Actor: Actor{ID: ownerID, X: 10, Y: 15, Facing: FacingRight}},
-				cooldowns:  make(map[string]time.Time),
+				ActorState: actorState{Actor: Actor{ID: ownerID, X: 10, Y: 15, Facing: FacingRight}},
+				Cooldowns:  make(map[string]time.Time),
 			},
 		},
 		effectsByID:         make(map[string]*effectState),

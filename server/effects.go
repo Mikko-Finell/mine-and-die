@@ -187,7 +187,7 @@ func (w *World) configureAbilityOwnerAdapters() {
 			if !ok || player == nil {
 				return nil, nil, false
 			}
-			return &player.actorState, &player.cooldowns, true
+			return &player.ActorState, &player.Cooldowns, true
 		},
 		FindNPC: func(actorID string) (*actorState, *map[string]time.Time, bool) {
 			if w == nil || actorID == "" {
@@ -197,7 +197,7 @@ func (w *World) configureAbilityOwnerAdapters() {
 			if !ok || npc == nil {
 				return nil, nil, false
 			}
-			return &npc.actorState, &npc.cooldowns, true
+			return &npc.ActorState, &npc.Cooldowns, true
 		},
 	})
 
@@ -693,10 +693,10 @@ func (w *World) actorByID(id string) *actorState {
 		return nil
 	}
 	if player, ok := w.players[id]; ok && player != nil {
-		return &player.actorState
+		return &player.ActorState
 	}
 	if npc, ok := w.npcs[id]; ok && npc != nil {
-		return &npc.actorState
+		return &npc.ActorState
 	}
 	return nil
 }
@@ -910,13 +910,13 @@ func (w *World) configureEffectHitAdapter() {
 				if typed == nil {
 					return combat.WorldActorAdapter{}, false
 				}
-				actor = &typed.actorState
+				actor = &typed.ActorState
 				kind = combat.ActorKindPlayer
 			case *npcState:
 				if typed == nil {
 					return combat.WorldActorAdapter{}, false
 				}
-				actor = &typed.actorState
+				actor = &typed.ActorState
 				kind = combat.ActorKindNPC
 			default:
 				return combat.WorldActorAdapter{}, false
@@ -960,7 +960,7 @@ func (w *World) configureEffectHitAdapter() {
 				return false, 0, actor.Health
 			}
 			before := state.Health
-			if !state.applyHealthDelta(delta) {
+			if !state.ApplyHealthDelta(delta) {
 				return false, 0, before
 			}
 			return true, state.Health - before, state.Health

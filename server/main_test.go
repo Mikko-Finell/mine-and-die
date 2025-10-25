@@ -63,7 +63,7 @@ func slicesEqual(a, b []string) bool {
 
 func newTestPlayerState(id string) *playerState {
 	return &playerState{
-		actorState: actorState{
+		ActorState: actorState{
 			Actor: Actor{
 				ID:        id,
 				Facing:    defaultFacing,
@@ -73,9 +73,9 @@ func newTestPlayerState(id string) *playerState {
 				MaxHealth: baselinePlayerMaxHealth,
 			},
 		},
-		stats:         stats.DefaultComponent(stats.ArchetypePlayer),
-		lastHeartbeat: time.Now(),
-		path:          playerPathState{ArriveRadius: defaultPlayerArriveRadius},
+		Stats:         stats.DefaultComponent(stats.ArchetypePlayer),
+		LastHeartbeat: time.Now(),
+		Path:          playerPathState{ArriveRadius: defaultPlayerArriveRadius},
 	}
 }
 
@@ -433,13 +433,13 @@ func TestUpdateIntentNormalizesVector(t *testing.T) {
 	runAdvance(hub, 1.0/float64(tickRate))
 
 	state := hub.world.players[playerID]
-	if state.intentX <= 0 || state.intentX > 1 {
-		t.Fatalf("expected normalized intentX in (0,1], got %f", state.intentX)
+	if state.IntentX <= 0 || state.IntentX > 1 {
+		t.Fatalf("expected normalized intentX in (0,1], got %f", state.IntentX)
 	}
-	if state.intentY != 0 {
-		t.Fatalf("expected intentY to remain 0, got %f", state.intentY)
+	if state.IntentY != 0 {
+		t.Fatalf("expected intentY to remain 0, got %f", state.IntentY)
 	}
-	if state.lastInput.IsZero() {
+	if state.LastInput.IsZero() {
 		t.Fatalf("expected lastInput to be recorded")
 	}
 	if state.Facing != FacingRight {
@@ -527,13 +527,13 @@ func TestPlayerPathCommands(t *testing.T) {
 	if state == nil {
 		t.Fatalf("expected player to exist after path command")
 	}
-	if len(state.path.Path) == 0 {
+	if len(state.Path.Path) == 0 {
 		t.Fatalf("expected path to be populated for player")
 	}
-	if state.path.PathTarget.X == 0 && state.path.PathTarget.Y == 0 {
+	if state.Path.PathTarget.X == 0 && state.Path.PathTarget.Y == 0 {
 		t.Fatalf("expected path target to be recorded")
 	}
-	if state.intentX == 0 && state.intentY == 0 {
+	if state.IntentX == 0 && state.IntentY == 0 {
 		t.Fatalf("expected path follower to set intent")
 	}
 
@@ -543,11 +543,11 @@ func TestPlayerPathCommands(t *testing.T) {
 	_, _, _, _, _ = hub.advance(now.Add(time.Second), 1.0/float64(tickRate))
 
 	state = hub.world.players[playerID]
-	if len(state.path.Path) != 0 {
+	if len(state.Path.Path) != 0 {
 		t.Fatalf("expected manual input to clear player path")
 	}
-	if state.intentX <= 0 {
-		t.Fatalf("expected manual intent to persist after clearing path, got %f", state.intentX)
+	if state.IntentX <= 0 {
+		t.Fatalf("expected manual intent to persist after clearing path, got %f", state.IntentX)
 	}
 
 	if _, ok, _ := hub.SetPlayerPath(playerID, 200, 280); !ok {
@@ -555,7 +555,7 @@ func TestPlayerPathCommands(t *testing.T) {
 	}
 	_, _, _, _, _ = hub.advance(now.Add(2*time.Second), 1.0/float64(tickRate))
 	state = hub.world.players[playerID]
-	if len(state.path.Path) == 0 {
+	if len(state.Path.Path) == 0 {
 		t.Fatalf("expected path to be populated after second command")
 	}
 
@@ -564,11 +564,11 @@ func TestPlayerPathCommands(t *testing.T) {
 	}
 	_, _, _, _, _ = hub.advance(now.Add(3*time.Second), 1.0/float64(tickRate))
 	state = hub.world.players[playerID]
-	if len(state.path.Path) != 0 {
+	if len(state.Path.Path) != 0 {
 		t.Fatalf("expected player path to be cleared after explicit cancel")
 	}
-	if state.intentX != 0 || state.intentY != 0 {
-		t.Fatalf("expected intent to reset after cancel, got (%f,%f)", state.intentX, state.intentY)
+	if state.IntentX != 0 || state.IntentY != 0 {
+		t.Fatalf("expected intent to reset after cancel, got (%f,%f)", state.IntentX, state.IntentY)
 	}
 }
 
@@ -583,14 +583,14 @@ func TestAdvanceMovesAndClampsPlayers(t *testing.T) {
 	moverState := newTestPlayerState(moverID)
 	moverState.X = 80
 	moverState.Y = 80
-	moverState.lastHeartbeat = now
+	moverState.LastHeartbeat = now
 	hub.world.AddPlayer(moverState)
 	hub.world.SetIntent(moverID, 1, 0)
 
 	boundaryState := newTestPlayerState(boundaryID)
 	boundaryState.X = hub.world.width() - playerHalf - 5
 	boundaryState.Y = 100
-	boundaryState.lastHeartbeat = now
+	boundaryState.LastHeartbeat = now
 	hub.world.AddPlayer(boundaryState)
 	hub.world.SetIntent(boundaryID, 1, 0)
 
@@ -628,8 +628,8 @@ func TestWorldRespectsConfiguredDimensions(t *testing.T) {
 	mover := newTestPlayerState("custom-bound")
 	mover.X = cfg.Width - playerHalf - 2
 	mover.Y = cfg.Height / 2
-	mover.intentX = 1
-	moveActorWithObstacles(&mover.actorState, 1, nil, w.width(), w.height())
+	mover.IntentX = 1
+	moveActorWithObstacles(&mover.ActorState, 1, nil, w.width(), w.height())
 	expectedClamp := cfg.Width - playerHalf
 	if math.Abs(mover.X-expectedClamp) > 1e-6 {
 		t.Fatalf("expected mover to clamp at %.1f, got %.6f", expectedClamp, mover.X)
@@ -643,11 +643,11 @@ func TestWorldRespectsConfiguredDimensions(t *testing.T) {
 	if !w.ensurePlayerPath(pathPlayer, target, 0) {
 		t.Fatalf("expected ensurePlayerPath to succeed for uncluttered world")
 	}
-	if math.Abs(pathPlayer.path.PathTarget.X-(cfg.Width-playerHalf)) > 1e-6 {
-		t.Fatalf("expected path target X to clamp to %.1f, got %.6f", cfg.Width-playerHalf, pathPlayer.path.PathTarget.X)
+	if math.Abs(pathPlayer.Path.PathTarget.X-(cfg.Width-playerHalf)) > 1e-6 {
+		t.Fatalf("expected path target X to clamp to %.1f, got %.6f", cfg.Width-playerHalf, pathPlayer.Path.PathTarget.X)
 	}
-	if math.Abs(pathPlayer.path.PathTarget.Y-(cfg.Height-playerHalf)) > 1e-6 {
-		t.Fatalf("expected path target Y to clamp to %.1f, got %.6f", cfg.Height-playerHalf, pathPlayer.path.PathTarget.Y)
+	if math.Abs(pathPlayer.Path.PathTarget.Y-(cfg.Height-playerHalf)) > 1e-6 {
+		t.Fatalf("expected path target Y to clamp to %.1f, got %.6f", cfg.Height-playerHalf, pathPlayer.Path.PathTarget.Y)
 	}
 
 	grid := newNavGrid(nil, w.width(), w.height())
@@ -683,14 +683,14 @@ func TestEnsurePlayerPathProducesDiagonalWaypoint(t *testing.T) {
 	if !w.ensurePlayerPath(player, target, 0) {
 		t.Fatalf("expected ensurePlayerPath to succeed with open grid")
 	}
-	if len(player.path.Path) == 0 {
+	if len(player.Path.Path) == 0 {
 		t.Fatalf("expected path to contain waypoints")
 	}
-	if len(player.path.Path) != 1 {
-		t.Fatalf("expected a single diagonal step, got %d", len(player.path.Path))
+	if len(player.Path.Path) != 1 {
+		t.Fatalf("expected a single diagonal step, got %d", len(player.Path.Path))
 	}
 
-	waypoint := player.path.Path[0]
+	waypoint := player.Path.Path[0]
 	dx := waypoint.X - player.X
 	dy := waypoint.Y - player.Y
 	if math.Abs(dx) <= 1 || math.Abs(dy) <= 1 {
@@ -698,8 +698,8 @@ func TestEnsurePlayerPathProducesDiagonalWaypoint(t *testing.T) {
 	}
 
 	w.followPlayerPath(player, 0)
-	if math.Abs(player.intentX) <= 1e-6 || math.Abs(player.intentY) <= 1e-6 {
-		t.Fatalf("expected followPlayerPath to emit diagonal intent, got dx=%.2f dy=%.2f", player.intentX, player.intentY)
+	if math.Abs(player.IntentX) <= 1e-6 || math.Abs(player.IntentY) <= 1e-6 {
+		t.Fatalf("expected followPlayerPath to emit diagonal intent, got dx=%.2f dy=%.2f", player.IntentX, player.IntentY)
 	}
 }
 
@@ -710,7 +710,7 @@ func TestAdvanceRemovesStalePlayers(t *testing.T) {
 	staleState := newTestPlayerState(staleID)
 	staleState.X = 100
 	staleState.Y = 100
-	staleState.lastHeartbeat = time.Now().Add(-disconnectAfter - time.Second)
+	staleState.LastHeartbeat = time.Now().Add(-disconnectAfter - time.Second)
 	hub.world.players[staleID] = staleState
 
 	players, _, _, _, toClose := hub.advance(time.Now(), 0)
@@ -732,8 +732,8 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 	attackerState.X = 200
 	attackerState.Y = 200
 	attackerState.Facing = FacingRight
-	attackerState.lastHeartbeat = time.Now()
-	attackerState.cooldowns = make(map[string]time.Time)
+	attackerState.LastHeartbeat = time.Now()
+	attackerState.Cooldowns = make(map[string]time.Time)
 	hub.world.players[attackerID] = attackerState
 
 	if _, ok, _ := hub.HandleAction(attackerID, effectTypeAttack); !ok {
@@ -768,7 +768,7 @@ func TestMeleeAttackCreatesEffectAndRespectsCooldown(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected cooldown to prevent new spawn, have %d", len(batch.Spawns))
 	}
-	hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
+	hub.world.players[attackerID].Cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
 	hub.mu.Unlock()
 
 	_, _, _ = hub.HandleAction(attackerID, effectTypeAttack)
@@ -800,15 +800,15 @@ func TestMeleeAttackDealsDamage(t *testing.T) {
 	attackerState.X = 200
 	attackerState.Y = 200
 	attackerState.Facing = FacingRight
-	attackerState.lastHeartbeat = now
-	attackerState.cooldowns = make(map[string]time.Time)
+	attackerState.LastHeartbeat = now
+	attackerState.Cooldowns = make(map[string]time.Time)
 	hub.world.players[attackerID] = attackerState
 
 	targetState := newTestPlayerState(targetID)
 	targetState.X = 200 + playerHalf + meleeAttackReach/2
 	targetState.Y = 200
 	targetState.Facing = FacingLeft
-	targetState.lastHeartbeat = now
+	targetState.LastHeartbeat = now
 	hub.world.players[targetID] = targetState
 
 	if _, ok, _ := hub.HandleAction(attackerID, effectTypeAttack); !ok {
@@ -850,7 +850,7 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 	attackerState.X = goblin.X - playerHalf - meleeAttackReach/2
 	attackerState.Y = goblin.Y
 	attackerState.Facing = FacingRight
-	attackerState.cooldowns = make(map[string]time.Time)
+	attackerState.Cooldowns = make(map[string]time.Time)
 	hub.world.players[attackerID] = attackerState
 
 	const maxSwings = 10
@@ -872,7 +872,7 @@ func TestMeleeAttackCanDefeatGoblin(t *testing.T) {
 			break
 		}
 		if i < maxSwings-1 {
-			hub.world.players[attackerID].cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
+			hub.world.players[attackerID].Cooldowns[effectTypeAttack] = time.Now().Add(-meleeAttackCooldown)
 		}
 		hub.mu.Unlock()
 	}
@@ -925,7 +925,7 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 	}
 
 	goblin := &npcState{
-		actorState: actorState{Actor: Actor{
+		ActorState: actorState{Actor: Actor{
 			ID:        goblinID,
 			X:         playerX + playerHalf + meleeAttackReach/2,
 			Y:         playerY,
@@ -935,9 +935,9 @@ func TestContractMeleeHitBroadcastsBloodEffect(t *testing.T) {
 			Inventory: NewInventory(),
 			Equipment: NewEquipment(),
 		}},
-		stats:     goblinStats,
+		Stats:     goblinStats,
 		Type:      NPCTypeGoblin,
-		cooldowns: make(map[string]time.Time),
+		Cooldowns: make(map[string]time.Time),
 	}
 	hub.world.npcs[goblin.ID] = goblin
 	hub.mu.Unlock()
@@ -1000,8 +1000,8 @@ func TestMeleeAttackAgainstGoldOreAwardsCoin(t *testing.T) {
 	minerState.X = 200
 	minerState.Y = 186
 	minerState.Facing = FacingDown
-	minerState.lastHeartbeat = time.Now()
-	minerState.cooldowns = make(map[string]time.Time)
+	minerState.LastHeartbeat = time.Now()
+	minerState.Cooldowns = make(map[string]time.Time)
 	hub.world.players[minerID] = minerState
 
 	if _, ok, _ := hub.HandleAction(minerID, effectTypeAttack); !ok {
@@ -1048,10 +1048,10 @@ func TestUpdateHeartbeatRecordsRTT(t *testing.T) {
 	runAdvance(hub, 1.0/float64(tickRate))
 
 	state := hub.world.players[playerID]
-	if state.lastHeartbeat != received {
-		t.Fatalf("lastHeartbeat not updated: want %v, got %v", received, state.lastHeartbeat)
+	if state.LastHeartbeat != received {
+		t.Fatalf("lastHeartbeat not updated: want %v, got %v", received, state.LastHeartbeat)
 	}
-	if got := state.lastRTT; got != rtt {
+	if got := state.LastRTT; got != rtt {
 		t.Fatalf("state lastRTT mismatch: want %s, got %s", rtt, got)
 	}
 }
@@ -1063,8 +1063,8 @@ func TestDiagnosticsSnapshotIncludesHeartbeatData(t *testing.T) {
 	diagState := newTestPlayerState(playerID)
 	diagState.X = 120
 	diagState.Y = 140
-	diagState.lastHeartbeat = now
-	diagState.lastRTT = 30 * time.Millisecond
+	diagState.LastHeartbeat = now
+	diagState.LastRTT = 30 * time.Millisecond
 	hub.world.players[playerID] = diagState
 
 	sub := newSubscriber(nil, nil)
@@ -1133,7 +1133,7 @@ func TestPlayerStopsAtObstacle(t *testing.T) {
 	blockState := newTestPlayerState(playerID)
 	blockState.X = 100
 	blockState.Y = 120
-	blockState.lastHeartbeat = now
+	blockState.LastHeartbeat = now
 	hub.world.AddPlayer(blockState)
 	hub.world.SetIntent(playerID, 1, 0)
 
@@ -1166,7 +1166,7 @@ func TestLavaAppliesBurningStatusEffect(t *testing.T) {
 	walkerState := newTestPlayerState(playerID)
 	walkerState.X = 220
 	walkerState.Y = 220
-	walkerState.lastHeartbeat = now
+	walkerState.LastHeartbeat = now
 	hub.world.players[playerID] = walkerState
 
 	players, _, _, _, _ := hub.advance(now, 1.0)
@@ -1185,7 +1185,7 @@ func TestLavaAppliesBurningStatusEffect(t *testing.T) {
 	if state == nil {
 		t.Fatalf("expected player state tracked")
 	}
-	if len(state.statusEffects) == 0 {
+	if len(state.StatusEffects) == 0 {
 		t.Fatalf("expected burning status effect to be applied")
 	}
 
@@ -1224,14 +1224,14 @@ func TestPlayersSeparateWhenColliding(t *testing.T) {
 	firstState := newTestPlayerState(firstID)
 	firstState.X = 300
 	firstState.Y = 200
-	firstState.lastHeartbeat = now
+	firstState.LastHeartbeat = now
 	hub.world.AddPlayer(firstState)
 	hub.world.SetIntent(firstID, 1, 0)
 
 	secondState := newTestPlayerState(secondID)
 	secondState.X = 300 + playerHalf/2
 	secondState.Y = 200
-	secondState.lastHeartbeat = now
+	secondState.LastHeartbeat = now
 	hub.world.AddPlayer(secondState)
 	hub.world.SetIntent(secondID, -1, 0)
 
@@ -1262,8 +1262,8 @@ func TestTriggerFireballCreatesProjectile(t *testing.T) {
 	shooterState.X = 200
 	shooterState.Y = 200
 	shooterState.Facing = FacingRight
-	shooterState.lastHeartbeat = now
-	shooterState.cooldowns = make(map[string]time.Time)
+	shooterState.LastHeartbeat = now
+	shooterState.Cooldowns = make(map[string]time.Time)
 	hub.world.players[shooterID] = shooterState
 
 	if _, ok, _ := hub.HandleAction(shooterID, effectTypeFireball); !ok {
@@ -1306,7 +1306,7 @@ func TestContractMeleeDefinitionsApplyDamage(t *testing.T) {
 	attacker.X = 200
 	attacker.Y = 200
 	attacker.Facing = FacingRight
-	attacker.cooldowns = make(map[string]time.Time)
+	attacker.Cooldowns = make(map[string]time.Time)
 	world.AddPlayer(attacker)
 
 	target := newTestPlayerState("contract-target")
@@ -1340,7 +1340,7 @@ func TestContractMeleeSpawnPopulatesMotionCenter(t *testing.T) {
 	attacker.X = 320
 	attacker.Y = 280
 	attacker.Facing = FacingRight
-	attacker.cooldowns = make(map[string]time.Time)
+	attacker.Cooldowns = make(map[string]time.Time)
 	world.AddPlayer(attacker)
 
 	commands := []Command{{ActorID: attacker.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeAttack}}}
@@ -1379,7 +1379,7 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 	caster.X = 200
 	caster.Y = 200
 	caster.Facing = FacingRight
-	caster.cooldowns = make(map[string]time.Time)
+	caster.Cooldowns = make(map[string]time.Time)
 	world.AddPlayer(caster)
 
 	target := newTestPlayerState("contract-projectile-target")
@@ -1431,7 +1431,7 @@ func TestContractProjectileDefinitionsApplyDamage(t *testing.T) {
 	if math.Abs(victim.Health-expected) > 1e-6 {
 		t.Fatalf("expected victim health %.1f, got %.1f", expected, victim.Health)
 	}
-	if victim.statusEffects == nil || victim.statusEffects[StatusEffectBurning] == nil {
+	if victim.StatusEffects == nil || victim.StatusEffects[StatusEffectBurning] == nil {
 		t.Fatalf("expected fireball to apply burning status")
 	}
 }
@@ -1447,7 +1447,7 @@ func TestContractProjectileSpawnPopulatesMotionCenter(t *testing.T) {
 	caster.X = 360
 	caster.Y = 300
 	caster.Facing = FacingRight
-	caster.cooldowns = make(map[string]time.Time)
+	caster.Cooldowns = make(map[string]time.Time)
 	world.AddPlayer(caster)
 
 	commands := []Command{{ActorID: caster.ID, Type: CommandAction, Action: &ActionCommand{Name: effectTypeFireball}}}
@@ -1495,7 +1495,7 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 	target.Y = 160
 	world.AddPlayer(target)
 
-	actor := &world.players[target.ID].actorState
+	actor := &world.players[target.ID].ActorState
 	now := time.Unix(0, 0)
 
 	if applied := world.applyStatusEffect(actor, StatusEffectBurning, "lava-1", now); !applied {
@@ -1514,17 +1514,18 @@ func TestContractBurningDefinitionsApplyDamage(t *testing.T) {
 		t.Fatalf("expected target health %.2f after first tick, got %.2f", expected, burned.Health)
 	}
 
-	inst := burned.statusEffects[StatusEffectBurning]
+	inst := burned.StatusEffects[StatusEffectBurning]
 	if inst == nil {
 		t.Fatalf("expected burning status effect instance to persist")
 	}
-	if inst.attachedEffect == nil {
+	if inst.AttachedEffect() == nil {
 		t.Fatalf("expected burning visual to attach to status effect")
 	}
-	if !inst.attachedEffect.ContractManaged {
+	effect := inst.AttachedEffect()
+	if effect == nil || !effect.ContractManaged {
 		t.Fatalf("expected burning visual to be contract-managed")
 	}
-	if inst.attachedEffect.FollowActorID != target.ID {
+	if effect.FollowActorID != target.ID {
 		t.Fatalf("expected burning visual to follow %s", target.ID)
 	}
 
@@ -1554,7 +1555,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	world.AddPlayer(attacker)
 
 	npc := &npcState{
-		actorState: actorState{Actor: Actor{
+		ActorState: actorState{Actor: Actor{
 			ID:        "npc-target",
 			X:         280,
 			Y:         300,
@@ -1562,7 +1563,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 			MaxHealth: 25,
 			Inventory: NewInventory(),
 		}},
-		stats: stats.DefaultComponent(stats.ArchetypeGoblin),
+		Stats: stats.DefaultComponent(stats.ArchetypeGoblin),
 		Type:  NPCTypeGoblin,
 	}
 	world.npcs[npc.ID] = npc
@@ -1680,7 +1681,7 @@ func TestEffectManagerSkeletonQueuesIntents(t *testing.T) {
 	attacker.X = 200
 	attacker.Y = 200
 	attacker.Facing = FacingRight
-	attacker.cooldowns = make(map[string]time.Time)
+	attacker.Cooldowns = make(map[string]time.Time)
 	world.AddPlayer(attacker)
 
 	now := time.Now()
@@ -1865,7 +1866,7 @@ func (c *effectEventCollector) collect(evt effectcontract.EffectLifecycleEvent) 
 func TestContractMeleeEndsInstantly(t *testing.T) {
 	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	attacker := newTestPlayerState("melee-owner")
-	attacker.cooldowns = make(map[string]time.Time)
+	attacker.Cooldowns = make(map[string]time.Time)
 	world.AddPlayer(attacker)
 
 	collector := &effectEventCollector{}
@@ -1918,7 +1919,7 @@ func TestContractProjectileEndsByDuration(t *testing.T) {
 	world.obstacles = nil
 	world.npcs = make(map[string]*npcState)
 	attacker := newTestPlayerState("projectile-owner")
-	attacker.cooldowns = make(map[string]time.Time)
+	attacker.Cooldowns = make(map[string]time.Time)
 	attacker.X = worldWidth / 2
 	attacker.Y = worldHeight / 2
 	world.AddPlayer(attacker)
@@ -1988,7 +1989,7 @@ func TestContractProjectileEndsByDuration(t *testing.T) {
 func TestContractOwnerLostConditionEndsEffect(t *testing.T) {
 	world := newTestWorld(fullyFeaturedTestWorldConfig(), logging.NopPublisher{})
 	owner := newTestPlayerState("anchor-owner")
-	owner.cooldowns = make(map[string]time.Time)
+	owner.Cooldowns = make(map[string]time.Time)
 	world.AddPlayer(owner)
 
 	const anchorType = "anchor-effect"
@@ -2175,15 +2176,15 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 	casterState.X = shooterX
 	casterState.Y = shooterY
 	casterState.Facing = FacingRight
-	casterState.lastHeartbeat = now
-	casterState.cooldowns = make(map[string]time.Time)
+	casterState.LastHeartbeat = now
+	casterState.Cooldowns = make(map[string]time.Time)
 	hub.world.players[shooterID] = casterState
 
 	victimState := newTestPlayerState(targetID)
 	victimState.X = shooterX + spawnOffset + travel/2
 	victimState.Y = shooterY
 	victimState.Facing = FacingLeft
-	victimState.lastHeartbeat = now
+	victimState.LastHeartbeat = now
 	hub.world.players[targetID] = victimState
 
 	if _, ok, _ := hub.HandleAction(shooterID, effectTypeFireball); !ok {
@@ -2209,7 +2210,7 @@ func TestFireballDealsDamageOnHit(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected target health %.1f, got %.1f", expected, target.Health)
 	}
-	if target.statusEffects == nil || target.statusEffects[StatusEffectBurning] == nil {
+	if target.StatusEffects == nil || target.StatusEffects[StatusEffectBurning] == nil {
 		hub.mu.Unlock()
 		t.Fatalf("expected fireball hit to apply burning status effect")
 	}
@@ -2223,7 +2224,7 @@ func TestHealthDeltaHealingClampsToMax(t *testing.T) {
 	state.X = 160
 	state.Y = 160
 	state.Health = baselinePlayerMaxHealth - 30
-	state.lastHeartbeat = time.Now()
+	state.LastHeartbeat = time.Now()
 	hub.world.players[playerID] = state
 
 	heal := &effectState{Type: effectTypeAttack, Owner: "healer", Params: map[string]float64{"healthDelta": 50}}
@@ -2242,7 +2243,7 @@ func TestHealthDamageClampsToZero(t *testing.T) {
 	state.X = 180
 	state.Y = 180
 	state.Health = 5
-	state.lastHeartbeat = time.Now()
+	state.LastHeartbeat = time.Now()
 	hub.world.players[playerID] = state
 
 	blast := &effectState{Type: effectTypeAttack, Owner: "boom", Params: map[string]float64{"healthDelta": -50}}
@@ -2263,8 +2264,8 @@ func TestFireballExpiresOnObstacleCollision(t *testing.T) {
 	casterState.X = 200
 	casterState.Y = 200
 	casterState.Facing = FacingRight
-	casterState.lastHeartbeat = now
-	casterState.cooldowns = make(map[string]time.Time)
+	casterState.LastHeartbeat = now
+	casterState.Cooldowns = make(map[string]time.Time)
 	hub.world.players[shooterID] = casterState
 
 	hub.world.obstacles = []Obstacle{{
@@ -2461,7 +2462,7 @@ func TestConsolePickupGoldBroadcastsGroundItemsFromSimEngine(t *testing.T) {
 	hub := newHubWithFullWorld()
 	player := newTestPlayerState("player-console-pickup-engine")
 	hub.world.AddPlayer(player)
-	stack := hub.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: 6}, "manual")
+	stack := hub.world.upsertGroundItem(&player.ActorState, ItemStack{Type: ItemTypeGold, Quantity: 6}, "manual")
 	if stack == nil {
 		t.Fatalf("expected ground item to seed for pickup test")
 	}
@@ -2508,7 +2509,7 @@ func TestRunSimulationBroadcastsGroundItemsFromSimEngine(t *testing.T) {
 
 	player := newTestPlayerState("player-sim-broadcast")
 	hub.world.AddPlayer(player)
-	if stack := hub.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: 9}, "world"); stack == nil {
+	if stack := hub.world.upsertGroundItem(&player.ActorState, ItemStack{Type: ItemTypeGold, Quantity: 9}, "world"); stack == nil {
 		t.Fatalf("expected world ground item to seed test scenario")
 	}
 
@@ -2617,8 +2618,8 @@ func TestEquipConsoleCommandUpdatesStats(t *testing.T) {
 		t.Fatalf("failed to seed dagger: %v", err)
 	}
 
-	baseMight := player.stats.GetTotal(stats.StatMight)
-	baseHealth := player.stats.GetDerived(stats.DerivedMaxHealth)
+	baseMight := player.Stats.GetTotal(stats.StatMight)
+	baseHealth := player.Stats.GetDerived(stats.DerivedMaxHealth)
 
 	ack, handled := hub.HandleConsoleCommand(playerID, "equip_slot", 0)
 	if !handled {
@@ -2631,10 +2632,10 @@ func TestEquipConsoleCommandUpdatesStats(t *testing.T) {
 		t.Fatalf("expected equip slot %s, got %s", EquipSlotMainHand, ack.Slot)
 	}
 
-	if player.stats.GetTotal(stats.StatMight) <= baseMight {
+	if player.Stats.GetTotal(stats.StatMight) <= baseMight {
 		t.Fatalf("expected might to increase after equip")
 	}
-	equippedHealth := player.stats.GetDerived(stats.DerivedMaxHealth)
+	equippedHealth := player.Stats.GetDerived(stats.DerivedMaxHealth)
 	if equippedHealth <= baseHealth {
 		t.Fatalf("expected max health to increase, got %.2f <= %.2f", equippedHealth, baseHealth)
 	}
@@ -2655,11 +2656,11 @@ func TestEquipConsoleCommandUpdatesStats(t *testing.T) {
 	if qty := player.Inventory.QuantityOf(ItemTypeIronDagger); qty != 1 {
 		t.Fatalf("expected dagger returned to inventory, got %d", qty)
 	}
-	player.stats.Resolve(hub.world.currentTick)
-	if player.stats.GetTotal(stats.StatMight) != baseMight {
-		t.Fatalf("expected might to return to baseline %.2f, got %.2f", baseMight, player.stats.GetTotal(stats.StatMight))
+	player.Stats.Resolve(hub.world.currentTick)
+	if player.Stats.GetTotal(stats.StatMight) != baseMight {
+		t.Fatalf("expected might to return to baseline %.2f, got %.2f", baseMight, player.Stats.GetTotal(stats.StatMight))
 	}
-	restoredHealth := player.stats.GetDerived(stats.DerivedMaxHealth)
+	restoredHealth := player.Stats.GetDerived(stats.DerivedMaxHealth)
 	if math.Abs(restoredHealth-baseHealth) > 1e-6 {
 		t.Fatalf("expected health to return to baseline %.2f, got %.2f", baseHealth, restoredHealth)
 	}
@@ -2668,7 +2669,7 @@ func TestEquipConsoleCommandUpdatesStats(t *testing.T) {
 func TestDeathDropsNPCInventory(t *testing.T) {
 	hub := newHubWithFullWorld()
 	attacker := newTestPlayerState("player-vs-npc")
-	npc := &npcState{actorState: actorState{Actor: Actor{ID: "npc-target", X: 300, Y: 300, Health: 25, MaxHealth: 25, Inventory: NewInventory()}}, stats: stats.DefaultComponent(stats.ArchetypeGoblin), Type: NPCTypeGoblin}
+	npc := &npcState{ActorState: actorState{Actor: Actor{ID: "npc-target", X: 300, Y: 300, Health: 25, MaxHealth: 25, Inventory: NewInventory()}}, Stats: stats.DefaultComponent(stats.ArchetypeGoblin), Type: NPCTypeGoblin}
 	if _, err := npc.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 12}); err != nil {
 		t.Fatalf("failed to seed npc gold: %v", err)
 	}
@@ -2825,8 +2826,8 @@ func TestMarshalStateCapturesResubscribeBaselinesFromSnapshot(t *testing.T) {
 	player := newTestPlayerState("resubscribe-baseline")
 	player.X = 12
 	player.Y = -7
-	player.intentX = 0.5
-	player.intentY = -0.25
+	player.IntentX = 0.5
+	player.IntentY = -0.25
 	hub.world.AddPlayer(player)
 
 	if _, _, err := hub.marshalState(nil, nil, nil, nil, false, true); err != nil {
@@ -2849,8 +2850,8 @@ func TestMarshalStateCapturesResubscribeBaselinesFromSnapshot(t *testing.T) {
 	if math.Abs(view.Player.Actor.X-player.X) > 1e-6 || math.Abs(view.Player.Actor.Y-player.Y) > 1e-6 {
 		t.Fatalf("expected baseline coordinates (%.1f, %.1f), got (%.1f, %.1f)", player.X, player.Y, view.Player.Actor.X, view.Player.Actor.Y)
 	}
-	if math.Abs(view.IntentDX-player.intentX) > 1e-6 || math.Abs(view.IntentDY-player.intentY) > 1e-6 {
-		t.Fatalf("expected baseline intents (%.2f, %.2f), got (%.2f, %.2f)", player.intentX, player.intentY, view.IntentDX, view.IntentDY)
+	if math.Abs(view.IntentDX-player.IntentX) > 1e-6 || math.Abs(view.IntentDY-player.IntentY) > 1e-6 {
+		t.Fatalf("expected baseline intents (%.2f, %.2f), got (%.2f, %.2f)", player.IntentX, player.IntentY, view.IntentDX, view.IntentDY)
 	}
 }
 

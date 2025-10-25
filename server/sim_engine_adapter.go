@@ -108,8 +108,8 @@ func (a *legacyEngineAdapter) Snapshot() sim.Snapshot {
 				continue
 			}
 			if state, ok := a.world.players[id]; ok && state != nil {
-				simPlayers[i].IntentDX = state.intentX
-				simPlayers[i].IntentDY = state.intentY
+				simPlayers[i].IntentDX = state.IntentX
+				simPlayers[i].IntentDY = state.IntentY
 			}
 		}
 	}

@@ -403,7 +403,7 @@ func TestMarshalStateIncludesSharedGroundItemSchema(t *testing.T) {
 		hub.mu.Unlock()
 		t.Fatalf("expected player %s to be present in world", join.ID)
 	}
-	stack := hub.world.upsertGroundItem(&player.actorState, ItemStack{Type: ItemTypeGold, Quantity: 3}, "test")
+	stack := hub.world.upsertGroundItem(&player.ActorState, ItemStack{Type: ItemTypeGold, Quantity: 3}, "test")
 	hub.mu.Unlock()
 	if stack == nil {
 		t.Fatalf("expected ground item stack to be created")

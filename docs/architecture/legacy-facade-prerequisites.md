@@ -1,6 +1,6 @@
 # Unblock plan (3 PRs, no behaviour change)
 
-### [TODO] PR-0: Introduce a façade-neutral state package
+### [DONE] PR-0: Introduce a façade-neutral state package
 
 Goal: move the *data* out of `server/*` without moving *behaviour* yet.
 
