@@ -194,12 +194,12 @@ func (a *determinismAccumulator) record() DeterminismHarnessRecord {
 func RunDeterminismHarness(t *testing.T, opts DeterminismHarnessOptions) (DeterminismHarnessRecord, DeterminismHarnessRecord) {
 	t.Helper()
 
-	hubRecord, engineRecord := runDeterminismHarnessLockstep(t, opts)
+	hubRecord, engineRecord := runDeterminismHarness(t, opts)
 	assertDeterminismHarnessParity(t, hubRecord, engineRecord)
 	return hubRecord, engineRecord
 }
 
-func runDeterminismHarnessLockstep(t *testing.T, opts DeterminismHarnessOptions) (DeterminismHarnessRecord, DeterminismHarnessRecord) {
+func runDeterminismHarness(t *testing.T, opts DeterminismHarnessOptions) (DeterminismHarnessRecord, DeterminismHarnessRecord) {
 	hub := newHub()
 	cfg := worldpkg.DefaultConfig()
 	cfg.Seed = determinismHarnessSeedValue

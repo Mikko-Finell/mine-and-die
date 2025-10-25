@@ -54,7 +54,7 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
   - [x] Next task: remove `RunDeterminismHarnessBaseline` by routing any remaining callers through `RunDeterminismHarnessLockstepWithOptions` so the legacy baseline wrapper disappears entirely.
   - [x] Next task: collapse `RunDeterminismHarnessLockstep` into `RunDeterminismHarnessLockstepWithOptions` by updating callers to pass `DeterminismHarnessOptions{}` explicitly so only one helper remains.
   - [x] Next task: rename `RunDeterminismHarnessLockstepWithOptions` to `RunDeterminismHarness` and update callers so the unified helper name reflects the remaining entry point.
-  - [ ] Next task: rename `runDeterminismHarnessLockstep` to `runDeterminismHarness` so the internal helper matches the exported harness entry point.
+  - [x] Next task: rename `runDeterminismHarnessLockstep` to `runDeterminismHarness` so the internal helper matches the exported harness entry point.
 
 ### Exit Criteria
 
