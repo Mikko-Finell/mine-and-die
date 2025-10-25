@@ -20,6 +20,48 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 ---
 
+## Deletion Checklist
+
+Progress is tracked exclusively through the checklist below. When every unchecked item is complete, we can delete `server/*` and the mission ends.
+
+### 1. Constructors & State Ownership
+- [x] Extract shared inventory/equipment/actor state into `internal/state` so both legacy and internal constructors share the same types.
+- [ ] Relocate world state files (`inventory.go`, `equipment.go`, `player.go`, `npc.go`, `status_effects.go`, helpers) into a new internal package so `internal/world` owns the canonical structs.
+- [ ] Move `legacyConstructWorld` logic into a concrete type returned by `internal/world.New`, leaving the legacy constructor as a pass-through wrapper.
+- [ ] Hoist RNG seeding, NPC/obstacle generation, and effect registry wiring helpers from legacy paths into `internal/world`.
+- [ ] Publish adapters (`AbilityOwnerLookup`, projectile stop callbacks, journal accessors) straight from the new world state so the engine never reaches through `server.World` internals.
+
+### 2. Engine Promotion
+- [ ] Add an `internal/sim` constructor (e.g. `NewEngine`) that wires the command buffer, loop, and engine core from existing internal pieces.
+- [ ] Surface queue sizing, warnings, journaling/keyframe hooks, and telemetry wiring as options consumed by the new constructor.
+- [ ] Redirect `server/hub.go` and `server/sim_engine_adapter.go` to call the promoted constructor, retaining only thin translation layers until deletion day.
+
+### 3. Determinism & Parity Guarantees
+- [x] Add `server/internal/world/constructor_test.go` proving snapshots/journals match between constructors.
+- [x] Extend `server/internal/sim` tests to compare engine output between constructors.
+- [x] Update `server/determinism_harness_test.go` (and helpers) so both constructors lock the same checksums.
+- [x] Refactor determinism helpers to a single `RunDeterminismHarness` entry point.
+- [x] Rename the internal helper `runDeterminismHarnessLockstep` to `runDeterminismHarness` to finish the consolidation.
+
+### 4. Runtime Cutover (Phase 1)
+- [ ] Update `cmd/server` startup and dev harnesses to compose `internal/app`, `internal/world`, and `internal/sim` directly (no hubs).
+- [ ] Migrate HTTP + websocket handlers to accept `sim.Engine`, `sim.Command`, and `sim/patches` without legacy DTOs.
+- [ ] Point matchmaking, scripting hooks, and tooling (replay, determinism, load tests) at the promoted seams.
+
+### 5. Protocol & Tooling Contracts (Phase 2)
+- [ ] Encode/decode internal `sim`/`world` types in HTTP/WS payloads, replay serializers, and admin/reporting endpoints.
+- [ ] Remove legacy DTO shims once consumers switch to internal contracts.
+- [ ] Keep compatibility layers operating solely on internal types with regression coverage for all supported protocol versions.
+
+### 6. Deletion & Guard Rails (Phase 3)
+- [ ] Delete `server/*` code, tests, and shims once no callers remain; rewrite lingering tests against internal packages.
+- [ ] Extend `make depscheck`/lint rules to block future imports of removed paths.
+- [ ] Update architecture docs, diagrams, and onboarding guides to reference the internal entry points.
+
+**Final exit condition:** `git grep "server/"` → empty while determinism and CI stay green.
+
+---
+
 ## Guiding Principles
 
 * Preserve behaviour: determinism, protocol framing, and telemetry semantics must remain identical.
@@ -35,26 +77,9 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 ### Focus Areas
 
-1. Harden `internal/world` constructors and configuration so they emit fully-initialized state, lifecycle managers, and registries without reaching back into `server/*` for defaults.
-   - _Blocked:_ the legacy constructor still relies on `server.World`-scoped types (`playerState`, `npcState`, effect registries, journaling) that have not been promoted into `internal/world`. Promote those foundational types before the constructor can move.
-   - [x] Extract the shared inventory/equipment/actor state stack (player + NPC structs, status effect instances, journals, telemetry counters) into a façade-neutral package that both `server` and `internal/world` can import without cycles. The new `internal/state` package now owns these types so future constructor work can depend on them directly.
-   - _Next task:_ carve out a `worldstate` package (name TBD) by relocating `inventory.go`, `equipment.go`, `player.go`, `npc.go`, `status_effects.go`, and their helpers so the upcoming internal constructor can depend on them directly.
-   - [ ] Collapse `server/internal/world/constructor.go`'s registration shim by moving `legacyConstructWorld` from `server/simulation.go` into a concrete state type returned by `internal/world.New`.
-   - [ ] Lift RNG seeding, obstacle/NPC generation, and effect registry wiring helpers from `server/simulation.go`, `server/world_mutators.go`, and related files into `server/internal/world` so configuration defaults resolve locally.
-   - [ ] Publish the adapters (`AbilityOwnerLookup`, projectile stop callbacks, journal accessors) needed by the engine directly from the new `internal/world` state so callers stop reaching through `server.World` internals.
-2. Promote `sim.Engine` configuration (deps, journaling, command buffer sizing, keyframe hooks) so runtime callers can build it directly without `server.Hub`.
-   - [ ] Introduce an `internal/sim` constructor (e.g. `NewEngine`) that wires the command buffer, loop, and engine core using `loop.go` and `command_buffer.go`, accepting a concrete `internal/world` state plus `sim.Deps`.
-   - [ ] Hoist queue sizing, warning thresholds, journaling/keyframe hooks, and telemetry wiring from `server/hub.go` into options consumed by the new constructor so non-legacy callers can configure the engine without hub glue.
-   - [ ] Redirect `server/hub.go` and `server/sim_engine_adapter.go` to invoke the promoted constructor, leaving only thin translation layers until the hub façade is deleted.
-3. Backfill tests proving the promoted constructors produce determinism-equivalent snapshots, journal baselines, and patch streams to the legacy paths.
-   - [x] Add `server/internal/world/constructor_test.go` that instantiates worlds via both constructors and asserts snapshots/journal state match for representative configs.
-   - [x] Extend `server/internal/sim` tests to build the engine through the new constructor and compare patch/journal outputs against the current hub-driven harness script.
-   - [x] Update `server/determinism_harness_test.go` (or a shared helper) to run against both constructor paths, locking determinism-equivalent checksums before swapping entry points.
-   - [x] Next task: refactor `server/determinism_harness_test.go` to assert the golden checksum directly against `DeterminismHarnessRecord` so the legacy baseline wrapper can be deleted.
-  - [x] Next task: remove `RunDeterminismHarnessBaseline` by routing any remaining callers through `RunDeterminismHarnessLockstepWithOptions` so the legacy baseline wrapper disappears entirely.
-  - [x] Next task: collapse `RunDeterminismHarnessLockstep` into `RunDeterminismHarnessLockstepWithOptions` by updating callers to pass `DeterminismHarnessOptions{}` explicitly so only one helper remains.
-  - [x] Next task: rename `RunDeterminismHarnessLockstepWithOptions` to `RunDeterminismHarness` and update callers so the unified helper name reflects the remaining entry point.
-  - [x] Next task: rename `runDeterminismHarnessLockstep` to `runDeterminismHarness` so the internal helper matches the exported harness entry point.
+1. Harden `internal/world` constructors until they no longer reach into `server/*` for defaults. Remaining work is tracked in the [Constructors & State Ownership checklist](#1-constructors--state-ownership).
+2. Promote `sim.Engine` configuration so runtime callers can build it directly without `server.Hub`. Outstanding steps live in the [Engine Promotion checklist](#2-engine-promotion).
+3. Keep determinism parity locked. The lone remaining task is recorded in the [Determinism & Parity Guarantees checklist](#3-determinism--parity-guarantees).
 
 ### Exit Criteria
 
@@ -70,9 +95,7 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 ### Focus Areas
 
-1. Update `cmd/server`, integration tests, and dev harnesses to compose `internal/app`, `internal/sim`, and `internal/world` without touching legacy hubs.
-2. Migrate HTTP + websocket handler construction to accept native `sim.Engine` seams, `sim.Command` intake, and `sim/patches` outputs, deleting hub-specific glue.
-3. Ensure matchmaking, scripting hooks, and tooling (replay, determinism, load tests) call directly into the internal engine/world seams.
+Complete every item under [Runtime Cutover (Phase 1)](#4-runtime-cutover-phase-1).
 
 ### Exit Criteria
 
@@ -88,9 +111,7 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 ### Focus Areas
 
-1. Update HTTP/WS payload assembly, replay serializers, and admin/reporting endpoints to encode/decode internal `sim`/`world` types directly.
-2. Remove shim-only DTOs and adapters (legacy snapshots, command wrappers, patch reformatters) once consumers adopt the internal contracts.
-3. Verify compatibility layers (version negotiation, schema migrations) operate purely on the internal types with regression coverage for all protocol versions still supported.
+Complete every item under [Protocol & Tooling Contracts (Phase 2)](#5-protocol--tooling-contracts-phase-2).
 
 ### Exit Criteria
 
@@ -106,16 +127,10 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 ### Focus Areas
 
-1. Delete `server/*` source, tests, and shims once all references are gone; rewrite any lingering tests against the internal packages.
-2. Extend `make depscheck` / lint rules to block future imports of removed paths and ensure CI enforces the new boundaries.
-3. Update architecture docs, diagrams, and onboarding guides to reference the internal engine/world entry points and removal of the façade.
+Complete every item under [Deletion & Guard Rails (Phase 3)](#6-deletion--guard-rails-phase-3).
 
 ### Exit Criteria
 
 * Repository builds, determinism harness, and CI pipelines succeed with `server/*` removed.
 * Dependency checks fail fast if any `server/` import reappears.
 * Documentation and READMEs accurately describe the new entry points without referencing legacy facades.
-
----
-
-**Final exit condition:** `git grep "server/"` → empty. Determinism & build still green. Mission ends.
