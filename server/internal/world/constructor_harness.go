@@ -6,7 +6,8 @@ import (
 	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
-       state "mine-and-die/server/internal/world/state"
+	worldeffects "mine-and-die/server/internal/world/effects"
+	state "mine-and-die/server/internal/world/state"
 )
 
 // ConstructorHarness captures the shared state instances produced during world construction.
@@ -24,6 +25,7 @@ type ConstructorHarness struct {
 	Seed              string
 	NextEffectID      uint64
 	EffectsRegistry   internalruntime.Registry
+	EffectManager     *worldeffects.Manager
 }
 
 // ConstructorHarness returns the shared construction state for parity tests.
@@ -46,5 +48,6 @@ func (w *World) ConstructorHarness() ConstructorHarness {
 		Seed:              w.seed,
 		NextEffectID:      w.nextEffectID,
 		EffectsRegistry:   registry,
+		EffectManager:     w.effectManager,
 	}
 }
