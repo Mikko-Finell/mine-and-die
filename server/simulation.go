@@ -16,6 +16,7 @@ import (
 	internalstats "mine-and-die/server/internal/stats"
 	worldpkg "mine-and-die/server/internal/world"
 	abilitiespkg "mine-and-die/server/internal/world/abilities"
+	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -90,7 +91,7 @@ type World struct {
 	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*actorState]
 	projectileStopAdapter   worldpkg.ProjectileStopAdapter
 	projectileTemplates     map[string]*ProjectileTemplate
-	statusEffectDefs        map[StatusEffectType]worldpkg.ApplyStatusEffectDefinition
+	statusEffectDefs        map[StatusEffectType]statuspkg.ApplyStatusEffectDefinition
 	nextEffectID            uint64
 	nextNPCID               uint64
 	nextGroundItemID        uint64
@@ -217,6 +218,8 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
 	}
 
+	baseStatusDefs := constructed.StatusEffectDefinitions()
+
 	w := &World{
 		players:             players,
 		npcs:                npcs,
@@ -246,7 +249,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		w.rng = newDeterministicRNG(w.seed, "world")
 	}
 
-	w.statusEffectDefs = newStatusEffectDefinitions(w)
+	w.statusEffectDefs = newStatusEffectDefinitions(baseStatusDefs, w)
 	w.configureAbilityOwnerAdapters()
 	w.configureEffectHitAdapter()
 	w.configureMeleeAbilityGate()

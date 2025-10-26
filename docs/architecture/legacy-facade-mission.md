@@ -51,6 +51,12 @@ dependencies" goals captured in the [idiomaticity mission](./idiomaticity-missio
 | Ability gating hooks (`server/effects_gate_test.go`, `server/effects_manager.go`) | Ability unlock checks are delegated to façade helpers that query legacy hub state. | Extract the gate calculation (`CanCastAbility`, unlock timers, faction checks) into a pure helper under `internal/world/abilities` fed by world state, then swap the façade calls for direct helpers when building the constructor. | Pulling the logic into `internal/world/abilities` keeps gating colocated with the data it reads, replacing cross-package reach-ins with explicit, testable helpers. **done** |
 | Status effect handlers (`server/status_effects.go`) | Status lifecycle wiring (apply, tick, expire) is still owned by façade helpers so `internal/world` cannot instantiate the registries alone. | Lift the registry definitions into `internal/world/status`, export helpers for registration + lifecycle wiring, and update `internal/world.New` to create the full handler set without touching legacy wiring. | Relocating the registries makes lifecycle wiring a normal dependency of the constructor, eliminating the façade hook and keeping status behaviour inside the world package boundary. |
 
+#### Status effect remediation plan
+
+- [x] Promote the core registries and handler interfaces from `server/status_effects.go` into a new `internal/world/status` package with explicit constructors.
+- [x] Update `internal/world.New` (and dependent wiring) to build the status runtime using the new package while removing façade reach-ins.
+- [x] Backfill unit coverage by migrating `server/internal/world/status_effects_test.go` to the new package and adjusting world integration tests.
+
 Once those three replacements exist, the world constructor can build its dependencies without calling back into the façade; the
 checklist items above unblock automatically because the legacy `NewWorld` wrapper becomes a pass-through and we stay within the
 idiomatic ownership rules.

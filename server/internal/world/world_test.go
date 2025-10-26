@@ -10,7 +10,7 @@ import (
 	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
-       state "mine-and-die/server/internal/world/state"
+	state "mine-and-die/server/internal/world/state"
 )
 
 func TestNewNormalizesConfigAndSeedsRNG(t *testing.T) {
@@ -148,13 +148,22 @@ func TestNewInitializesStatusEffectDefinitions(t *testing.T) {
 	if w.statusEffectDefinitions == nil {
 		t.Fatalf("statusEffectDefinitions map not initialized")
 	}
-	if len(w.statusEffectDefinitions) != 0 {
-		t.Fatalf("expected no status effect definitions, got %d", len(w.statusEffectDefinitions))
+	if len(w.statusEffectDefinitions) != 1 {
+		t.Fatalf("expected a single status effect definition, got %d", len(w.statusEffectDefinitions))
 	}
 
-	w.statusEffectDefinitions["burning"] = ApplyStatusEffectDefinition{Duration: 1}
-	if def, ok := w.statusEffectDefinitions["burning"]; !ok || def.Duration != 1 {
-		t.Fatalf("expected to store status effect definition in map")
+	def, ok := w.statusEffectDefinitions[string(StatusEffectBurning)]
+	if !ok {
+		t.Fatalf("expected burning status effect definition to be registered")
+	}
+	if def.Duration != burningStatusEffectDuration {
+		t.Fatalf("expected burning duration %v, got %v", burningStatusEffectDuration, def.Duration)
+	}
+	if def.TickInterval != burningTickInterval {
+		t.Fatalf("expected burning tick interval %v, got %v", burningTickInterval, def.TickInterval)
+	}
+	if !def.InitialTick {
+		t.Fatalf("expected burning definition to request initial tick")
 	}
 }
 
