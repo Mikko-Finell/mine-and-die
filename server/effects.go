@@ -9,6 +9,7 @@ import (
 	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
 	worldpkg "mine-and-die/server/internal/world"
+	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	"mine-and-die/server/logging"
 )
 
@@ -41,7 +42,7 @@ const (
 
 	bloodSplatterDuration = 1200 * time.Millisecond
 
-	fireballCooldown = 650 * time.Millisecond
+	fireballCooldown = abilitiespkg.FireballCooldown
 	fireballSpeed    = 320.0
 	fireballRange    = 5 * 40.0
 	fireballSize     = 24.0

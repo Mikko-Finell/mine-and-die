@@ -246,7 +246,20 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 	}
 
 	w.statusEffectDefs = newStatusEffectDefinitions(w)
-	w.configureAbilityOwnerAdapters()
+
+	if stateLookup := constructed.AbilityOwnerStateLookup(); stateLookup != nil {
+		w.abilityOwnerStateLookup = worldpkg.AbilityOwnerStateLookup[*actorState](stateLookup)
+		w.abilityOwnerLookup = worldpkg.NewAbilityOwnerLookup(worldpkg.AbilityOwnerLookupConfig[*actorState, combat.AbilityActor]{
+			LookupState: w.abilityOwnerStateLookup,
+			Snapshot: func(state *actorState) *combat.AbilityActor {
+				return abilityActorSnapshot(state)
+			},
+		})
+	} else {
+		w.abilityOwnerStateLookup = nil
+		w.abilityOwnerLookup = nil
+	}
+
 	w.configureEffectHitAdapter()
 	w.configureMeleeAbilityGate()
 	w.configureProjectileAbilityGate()

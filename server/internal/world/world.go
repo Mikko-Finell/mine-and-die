@@ -12,6 +12,7 @@ import (
 	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
+	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	worldeffects "mine-and-die/server/internal/world/effects"
 	state "mine-and-die/server/internal/world/state"
 	"mine-and-die/server/logging"
@@ -48,12 +49,13 @@ type World struct {
 	players map[string]*state.PlayerState
 	npcs    map[string]*state.NPCState
 
-	effects         []*internalruntime.State
-	effectsByID     map[string]*internalruntime.State
-	effectsIndex    *internalruntime.SpatialIndex
-	effectsRegistry internalruntime.Registry
-	effectManager   *worldeffects.Manager
-	nextEffectID    uint64
+	effects                 []*internalruntime.State
+	effectsByID             map[string]*internalruntime.State
+	effectsIndex            *internalruntime.SpatialIndex
+	effectsRegistry         internalruntime.Registry
+	effectManager           *worldeffects.Manager
+	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*state.ActorState]
+	nextEffectID            uint64
 
 	groundItems       map[string]*itemspkg.GroundItemState
 	groundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
@@ -281,10 +283,23 @@ func (w *World) AbilityOwnerStateLookup() AbilityOwnerStateLookup[*state.ActorSt
 	if w == nil {
 		return nil
 	}
-	return NewAbilityOwnerStateLookup(AbilityOwnerStateLookupConfig[*state.ActorState]{
+	w.ensureAbilityOwnerAdapters()
+	return w.abilityOwnerStateLookup
+}
+
+func (w *World) ensureAbilityOwnerAdapters() {
+	if w == nil {
+		return
+	}
+	if w.abilityOwnerStateLookup != nil {
+		return
+	}
+
+	stateLookup := abilitiespkg.NewAbilityOwnerStateLookup(abilitiespkg.AbilityOwnerStateLookupConfig[*state.ActorState]{
 		FindPlayer: w.playerAbilityOwnerState,
 		FindNPC:    w.npcAbilityOwnerState,
 	})
+	w.abilityOwnerStateLookup = stateLookup
 }
 
 // ProjectileStopAdapterOptions configures optional callbacks for the projectile stop adapter.
