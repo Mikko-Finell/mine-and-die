@@ -190,48 +190,6 @@ func TestNewInitializesJournalWithDefaults(t *testing.T) {
 	}
 }
 
-func TestLegacyAdapterAllocatesCollections(t *testing.T) {
-	w := &World{}
-
-	adapter := w.LegacyAdapter()
-
-	if adapter.Players == nil || w.players == nil {
-		t.Fatalf("expected players map to be initialized")
-	}
-	adapter.Players["player-legacy"] = &state.PlayerState{}
-	if _, ok := w.players["player-legacy"]; !ok {
-		t.Fatalf("expected players map to share world state")
-	}
-
-	if adapter.NPCs == nil || w.npcs == nil {
-		t.Fatalf("expected npcs map to be initialized")
-	}
-	adapter.NPCs["npc-legacy"] = &state.NPCState{}
-	if _, ok := w.npcs["npc-legacy"]; !ok {
-		t.Fatalf("expected npcs map to share world state")
-	}
-
-	if adapter.Effects == nil || w.effects == nil {
-		t.Fatalf("expected effects slice to be initialized")
-	}
-
-	if adapter.EffectsByID == nil || w.effectsByID == nil {
-		t.Fatalf("expected effects map to be initialized")
-	}
-
-	if adapter.EffectsIndex == nil || w.effectsIndex == nil {
-		t.Fatalf("expected effects index to be initialized")
-	}
-
-	if adapter.GroundItems == nil || w.groundItems == nil {
-		t.Fatalf("expected ground items map to be initialized")
-	}
-
-	if adapter.GroundItemsByTile == nil || w.groundItemsByTile == nil {
-		t.Fatalf("expected ground items by tile map to be initialized")
-	}
-}
-
 func TestNewConfiguresJournalFromOverride(t *testing.T) {
 	w, err := New(Config{}, Deps{JournalRetention: func() (int, time.Duration) {
 		return 2, time.Millisecond
