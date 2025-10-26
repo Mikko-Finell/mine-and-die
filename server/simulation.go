@@ -11,7 +11,6 @@ import (
 	ai "mine-and-die/server/internal/ai"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
-	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	internalstats "mine-and-die/server/internal/stats"
 	worldpkg "mine-and-die/server/internal/world"
@@ -188,41 +187,14 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		return nil
 	}
 
-	players := constructed.Players()
-	if players == nil {
-		players = make(map[string]*playerState)
-	}
-	npcs := constructed.NPCs()
-	if npcs == nil {
-		npcs = make(map[string]*npcState)
-	}
-	effects := constructed.Effects()
-	if effects == nil {
-		effects = make([]*internalruntime.State, 0)
-	}
-	effectsByID := constructed.EffectsByID()
-	if effectsByID == nil {
-		effectsByID = make(map[string]*internalruntime.State)
-	}
-	index := constructed.EffectsIndex()
-	if index == nil {
-		index = internalruntime.NewSpatialIndex(internaleffects.DefaultSpatialCellSize, internaleffects.DefaultSpatialMaxPerCell)
-	}
-	groundItems := constructed.GroundItems()
-	if groundItems == nil {
-		groundItems = make(map[string]*itemspkg.GroundItemState)
-	}
-	groundItemsByTile := constructed.GroundItemsByTile()
-	if groundItemsByTile == nil {
-		groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
-	}
+	legacy := constructed.LegacyAdapter()
 
 	w := &World{
-		players:             players,
-		npcs:                npcs,
-		effects:             effects,
-		effectsByID:         effectsByID,
-		effectsIndex:        index,
+		players:             legacy.Players,
+		npcs:                legacy.NPCs,
+		effects:             legacy.Effects,
+		effectsByID:         legacy.EffectsByID,
+		effectsIndex:        (*effectSpatialIndex)(legacy.EffectsIndex),
 		effectTriggers:      make([]EffectTrigger, 0),
 		projectileTemplates: newProjectileTemplates(),
 		aiLibrary:           ai.GlobalLibrary,
@@ -231,8 +203,8 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		seed:                constructed.Seed(),
 		publisher:           effectivePublisher,
 		telemetry:           nil,
-		groundItems:         groundItems,
-		groundItemsByTile:   groundItemsByTile,
+		groundItems:         legacy.GroundItems,
+		groundItemsByTile:   legacy.GroundItemsByTile,
 		journal:             constructed.JournalState(),
 		nextEffectID:        constructed.NextEffectID(),
 	}
