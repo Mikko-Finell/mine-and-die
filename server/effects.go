@@ -10,6 +10,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	worldpkg "mine-and-die/server/internal/world"
 	abilitiespkg "mine-and-die/server/internal/world/abilities"
+	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 )
 
@@ -334,7 +335,7 @@ func (w *World) advanceEffects(now time.Time, dt float64) {
 			if state == nil {
 				return
 			}
-			if worldpkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(state), at) {
+			if statuspkg.ExpireStatusEffectAttachment(statusEffectAttachmentFields(state), at) {
 				w.recordEffectEnd(state, "status-effect-expire")
 			}
 		},

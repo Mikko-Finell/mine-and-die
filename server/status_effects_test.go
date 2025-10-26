@@ -4,8 +4,21 @@ import (
 	"testing"
 	"time"
 
+	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 )
+
+func baseStatusEffectDefinitions() map[string]statuspkg.ApplyStatusEffectDefinition {
+	return statuspkg.NewStatusEffectDefinitions(statuspkg.StatusEffectDefinitionsConfig{
+		Burning: statuspkg.BurningStatusEffectDefinitionConfig{
+			Type:               string(StatusEffectBurning),
+			Duration:           burningStatusEffectDuration,
+			TickInterval:       burningTickInterval,
+			InitialTick:        true,
+			FallbackAttachment: statuspkg.AttachStatusEffectVisual,
+		},
+	})
+}
 
 func TestWorldApplyBurningDamageDelegatesAndFlushesTelemetry(t *testing.T) {
 	t.Parallel()
@@ -113,7 +126,7 @@ func TestApplyStatusEffectAttachesFallbackVisualWhenManagerMissing(t *testing.T)
 		telemetry:   &telemetryCounters{},
 		currentTick: 12,
 	}
-	world.statusEffectDefs = newStatusEffectDefinitions(world)
+	world.statusEffectDefs = newStatusEffectDefinitions(baseStatusEffectDefinitions(), world)
 
 	actor := &actorState{Actor: Actor{ID: "target-1"}}
 
@@ -160,7 +173,7 @@ func TestAttachStatusEffectVisualResolvesActorFromHandle(t *testing.T) {
 		effectsByID: make(map[string]*effectState),
 		currentTick: 64,
 	}
-	world.statusEffectDefs = newStatusEffectDefinitions(world)
+	world.statusEffectDefs = newStatusEffectDefinitions(baseStatusEffectDefinitions(), world)
 
 	actor := &actorState{Actor: Actor{ID: actorID, X: 320, Y: 440}}
 	inst := &statusEffectInstance{}

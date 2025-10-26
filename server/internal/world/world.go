@@ -15,6 +15,7 @@ import (
 	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	worldeffects "mine-and-die/server/internal/world/effects"
 	state "mine-and-die/server/internal/world/state"
+	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 )
 
@@ -59,7 +60,7 @@ type World struct {
 	groundItems       map[string]*itemspkg.GroundItemState
 	groundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
 
-	statusEffectDefinitions map[string]ApplyStatusEffectDefinition
+	statusEffectDefinitions map[string]statuspkg.ApplyStatusEffectDefinition
 
 	journal journalpkg.Journal
 }
@@ -89,20 +90,24 @@ func New(cfg Config, deps Deps) (*World, error) {
 	}
 
 	world := &World{
-		config:                  normalized,
-		seed:                    seed,
-		publisher:               publisher,
-		rngFactory:              factory,
-		rng:                     factory(seed, "world"),
-		players:                 make(map[string]*state.PlayerState),
-		npcs:                    make(map[string]*state.NPCState),
-		effects:                 make([]*internalruntime.State, 0),
-		effectsByID:             make(map[string]*internalruntime.State),
-		effectsIndex:            internalruntime.NewSpatialIndex(internalruntime.DefaultSpatialCellSize, internalruntime.DefaultSpatialMaxPerCell),
-		groundItems:             make(map[string]*itemspkg.GroundItemState),
-		groundItemsByTile:       make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState),
-		statusEffectDefinitions: make(map[string]ApplyStatusEffectDefinition),
-		journal:                 journalpkg.New(capacity, maxAge),
+		config:            normalized,
+		seed:              seed,
+		publisher:         publisher,
+		rngFactory:        factory,
+		rng:               factory(seed, "world"),
+		players:           make(map[string]*state.PlayerState),
+		npcs:              make(map[string]*state.NPCState),
+		effects:           make([]*internalruntime.State, 0),
+		effectsByID:       make(map[string]*internalruntime.State),
+		effectsIndex:      internalruntime.NewSpatialIndex(internalruntime.DefaultSpatialCellSize, internalruntime.DefaultSpatialMaxPerCell),
+		groundItems:       make(map[string]*itemspkg.GroundItemState),
+		groundItemsByTile: make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState),
+		journal:           journalpkg.New(capacity, maxAge),
+	}
+
+	world.statusEffectDefinitions = world.buildStatusEffectDefinitions()
+	if world.statusEffectDefinitions == nil {
+		world.statusEffectDefinitions = make(map[string]statuspkg.ApplyStatusEffectDefinition)
 	}
 
 	world.effectsRegistry = internalruntime.Registry{
@@ -181,7 +186,7 @@ func (w *World) GroundItemsByTile() map[itemspkg.GroundTileKey]map[string]*items
 }
 
 // StatusEffectDefinitions exposes the registered status effect definitions.
-func (w *World) StatusEffectDefinitions() map[string]ApplyStatusEffectDefinition {
+func (w *World) StatusEffectDefinitions() map[string]statuspkg.ApplyStatusEffectDefinition {
 	if w == nil {
 		return nil
 	}
