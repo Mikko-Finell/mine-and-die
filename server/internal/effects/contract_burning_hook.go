@@ -5,7 +5,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	worldpkg "mine-and-die/server/internal/world"
+	statuspkg "mine-and-die/server/internal/world/status"
 )
 
 // ContractStatusInstance captures the status effect instance metadata required
@@ -13,7 +13,7 @@ import (
 // instance so the hook can attach the spawned effect and read the expiry while
 // keeping lifetime bookkeeping behind world adapters.
 type ContractStatusInstance struct {
-	Instance  worldpkg.StatusEffectInstance
+	Instance  statuspkg.StatusEffectInstance
 	ExpiresAt func() time.Time
 }
 
@@ -39,8 +39,8 @@ type ContractBurningVisualHookConfig struct {
 	DefaultFootprint  float64
 	TickRate          int
 	LookupActor       func(actorID string) *ContractStatusActor
-	ExtendLifetime    func(worldpkg.StatusEffectLifetimeFields, time.Time)
-	ExpireLifetime    func(worldpkg.StatusEffectLifetimeFields, time.Time)
+	ExtendLifetime    func(statuspkg.StatusEffectLifetimeFields, time.Time)
+	ExpireLifetime    func(statuspkg.StatusEffectLifetimeFields, time.Time)
 	RecordEffectSpawn func(effectType, category string)
 }
 
@@ -154,7 +154,7 @@ func attachAndExtendStatusVisual(cfg ContractBurningVisualHookConfig, inst *Cont
 	if inst == nil || inst.Instance == nil || effect == nil {
 		return
 	}
-	worldpkg.AttachStatusEffectVisual(worldpkg.AttachStatusEffectVisualConfig{
+	statuspkg.AttachStatusEffectVisual(statuspkg.AttachStatusEffectVisualConfig{
 		Instance:    inst.Instance,
 		Effect:      statusEffectVisualAdapter{state: effect},
 		DefaultType: string(cfg.StatusEffect),
@@ -195,11 +195,11 @@ func expireContractStatusVisual(cfg ContractBurningVisualHookConfig, effect *Sta
 	cfg.ExpireLifetime(statusEffectLifetimeFields(effect), now)
 }
 
-func statusEffectLifetimeFields(effect *State) worldpkg.StatusEffectLifetimeFields {
+func statusEffectLifetimeFields(effect *State) statuspkg.StatusEffectLifetimeFields {
 	if effect == nil {
-		return worldpkg.StatusEffectLifetimeFields{}
+		return statuspkg.StatusEffectLifetimeFields{}
 	}
-	return worldpkg.StatusEffectLifetimeFields{
+	return statuspkg.StatusEffectLifetimeFields{
 		ExpiresAt:      &effect.ExpiresAt,
 		StartMillis:    effect.Start,
 		DurationMillis: &effect.Duration,

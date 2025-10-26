@@ -11,6 +11,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
 	state "mine-and-die/server/internal/world/state"
+	statuspkg "mine-and-die/server/internal/world/status"
 )
 
 func TestNewNormalizesConfigAndSeedsRNG(t *testing.T) {
@@ -152,7 +153,7 @@ func TestNewInitializesStatusEffectDefinitions(t *testing.T) {
 		t.Fatalf("expected no status effect definitions, got %d", len(w.statusEffectDefinitions))
 	}
 
-	w.statusEffectDefinitions["burning"] = ApplyStatusEffectDefinition{Duration: 1}
+	w.statusEffectDefinitions["burning"] = statuspkg.ApplyStatusEffectDefinition{Duration: 1}
 	if def, ok := w.statusEffectDefinitions["burning"]; !ok || def.Duration != 1 {
 		t.Fatalf("expected to store status effect definition in map")
 	}
