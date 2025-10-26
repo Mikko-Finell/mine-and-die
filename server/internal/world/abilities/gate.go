@@ -1,4 +1,4 @@
-package world
+package abilities
 
 // AbilityGateFactory constructs an ability gate using the sanitized owner lookup
 // configuration provided by the world package. The returned boolean indicates
