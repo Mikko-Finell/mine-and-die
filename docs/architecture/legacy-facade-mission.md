@@ -38,7 +38,7 @@ Progress is tracked exclusively through the checklist below. When every unchecke
 
 > **Blocked:** `internal/world` still lacks equivalents for the server façade dependencies (`EffectManager`, ability-gate wiring, status effect handlers). The constructor cannot be moved until those building blocks are promoted or new internal replacements exist.
 
-#### Blocker remediation plan
+#### Blocker remediation plan [DONE]
 
 The remediation work below deliberately mirrors the idiomaticity mandates: each item moves legacy helpers into focussed internal
 packages with explicit constructors, keeps state ownership inside `internal/world`, and deletes façade reach-ins once the
