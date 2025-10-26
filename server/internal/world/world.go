@@ -66,19 +66,6 @@ type World struct {
 	journal journalpkg.Journal
 }
 
-// LegacyAdapter captures the shared world collections required by the legacy
-// constructor. Callers obtain the adapter to reuse the internal state maps while
-// guarding against nil instances left over from partially constructed worlds.
-type LegacyAdapter struct {
-	Players           map[string]*state.PlayerState
-	NPCs              map[string]*state.NPCState
-	Effects           []*internalruntime.State
-	EffectsByID       map[string]*internalruntime.State
-	EffectsIndex      *internalruntime.SpatialIndex
-	GroundItems       map[string]*itemspkg.GroundItemState
-	GroundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
-}
-
 // New constructs a world instance with normalized configuration and seeded RNG.
 func New(cfg Config, deps Deps) (*World, error) {
 	normalized := cfg.normalized()
@@ -137,54 +124,6 @@ func New(cfg Config, deps Deps) (*World, error) {
 	}
 
 	return world, nil
-}
-
-// LegacyAdapter returns the shared world collections needed by the legacy
-// constructor, allocating them on demand so callers observe non-nil instances.
-func (w *World) LegacyAdapter() LegacyAdapter {
-	if w == nil {
-		return LegacyAdapter{
-			Players:           make(map[string]*state.PlayerState),
-			NPCs:              make(map[string]*state.NPCState),
-			Effects:           make([]*internalruntime.State, 0),
-			EffectsByID:       make(map[string]*internalruntime.State),
-			EffectsIndex:      internalruntime.NewSpatialIndex(internalruntime.DefaultSpatialCellSize, internalruntime.DefaultSpatialMaxPerCell),
-			GroundItems:       make(map[string]*itemspkg.GroundItemState),
-			GroundItemsByTile: make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState),
-		}
-	}
-
-	if w.players == nil {
-		w.players = make(map[string]*state.PlayerState)
-	}
-	if w.npcs == nil {
-		w.npcs = make(map[string]*state.NPCState)
-	}
-	if w.effects == nil {
-		w.effects = make([]*internalruntime.State, 0)
-	}
-	if w.effectsByID == nil {
-		w.effectsByID = make(map[string]*internalruntime.State)
-	}
-	if w.effectsIndex == nil {
-		w.effectsIndex = internalruntime.NewSpatialIndex(internalruntime.DefaultSpatialCellSize, internalruntime.DefaultSpatialMaxPerCell)
-	}
-	if w.groundItems == nil {
-		w.groundItems = make(map[string]*itemspkg.GroundItemState)
-	}
-	if w.groundItemsByTile == nil {
-		w.groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
-	}
-
-	return LegacyAdapter{
-		Players:           w.players,
-		NPCs:              w.npcs,
-		Effects:           w.effects,
-		EffectsByID:       w.effectsByID,
-		EffectsIndex:      w.effectsIndex,
-		GroundItems:       w.groundItems,
-		GroundItemsByTile: w.groundItemsByTile,
-	}
 }
 
 // Players returns the map of player state keyed by player ID.

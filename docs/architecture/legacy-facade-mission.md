@@ -32,7 +32,7 @@ Progress is tracked exclusively through the checklist below. When every unchecke
 ### 1. Constructors & State Ownership [BLOCKED]
 - [x] Extract shared inventory/equipment/actor state into `internal/state` so both legacy and internal constructors share the same types.
 - [x] Relocate world state files (`inventory.go`, `equipment.go`, `player.go`, `npc.go`, `status_effects.go`, helpers) into a new internal package so `internal/world` owns the canonical structs.
-- [x] Move `legacyConstructWorld` logic into a concrete type returned by `internal/world.New`, leaving the legacy constructor as a pass-through wrapper.
+- [ ] Move `legacyConstructWorld` logic into a concrete type returned by `internal/world.New`, leaving the legacy constructor as a pass-through wrapper.
 - [ ] Hoist RNG seeding, NPC/obstacle generation, and effect registry wiring helpers from legacy paths into `internal/world`.
 - [ ] Publish adapters (`AbilityOwnerLookup`, projectile stop callbacks, journal accessors) straight from the new world state so the engine never reaches through `server.World` internals.
 
