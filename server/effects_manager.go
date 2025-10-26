@@ -9,6 +9,7 @@ import (
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
+	statuspkg "mine-and-die/server/internal/world/status"
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
@@ -397,11 +398,11 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		DefaultFootprint: playerHalf * 2,
 		TickRate:         tickRate,
 		LookupActor:      lookupContractActor,
-		ExtendLifetime: func(fields worldpkg.StatusEffectLifetimeFields, expiresAt time.Time) {
-			worldpkg.ExtendStatusEffectLifetime(fields, expiresAt)
+		ExtendLifetime: func(fields statuspkg.StatusEffectLifetimeFields, expiresAt time.Time) {
+			statuspkg.ExtendStatusEffectLifetime(fields, expiresAt)
 		},
-		ExpireLifetime: func(fields worldpkg.StatusEffectLifetimeFields, now time.Time) {
-			worldpkg.ExpireStatusEffectLifetime(fields, now)
+		ExpireLifetime: func(fields statuspkg.StatusEffectLifetimeFields, now time.Time) {
+			statuspkg.ExpireStatusEffectLifetime(fields, now)
 		},
 		RecordEffectSpawn: func(effectType, category string) {
 			if world == nil {

@@ -15,6 +15,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	internalstats "mine-and-die/server/internal/stats"
 	worldpkg "mine-and-die/server/internal/world"
+	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -89,7 +90,7 @@ type World struct {
 	abilityOwnerStateLookup worldpkg.AbilityOwnerStateLookup[*actorState]
 	projectileStopAdapter   worldpkg.ProjectileStopAdapter
 	projectileTemplates     map[string]*ProjectileTemplate
-	statusEffectDefs        map[StatusEffectType]worldpkg.ApplyStatusEffectDefinition
+	statusEffectDefs        map[StatusEffectType]statuspkg.ApplyStatusEffectDefinition
 	nextEffectID            uint64
 	nextNPCID               uint64
 	nextGroundItemID        uint64

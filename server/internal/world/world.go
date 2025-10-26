@@ -15,6 +15,7 @@ import (
 	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	worldeffects "mine-and-die/server/internal/world/effects"
 	state "mine-and-die/server/internal/world/state"
+	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 )
 
@@ -60,7 +61,7 @@ type World struct {
 	groundItems       map[string]*itemspkg.GroundItemState
 	groundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
 
-	statusEffectDefinitions map[string]ApplyStatusEffectDefinition
+	statusEffectDefinitions map[string]statuspkg.ApplyStatusEffectDefinition
 
 	journal journalpkg.Journal
 }
@@ -102,7 +103,7 @@ func New(cfg Config, deps Deps) (*World, error) {
 		effectsIndex:            internalruntime.NewSpatialIndex(internalruntime.DefaultSpatialCellSize, internalruntime.DefaultSpatialMaxPerCell),
 		groundItems:             make(map[string]*itemspkg.GroundItemState),
 		groundItemsByTile:       make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState),
-		statusEffectDefinitions: make(map[string]ApplyStatusEffectDefinition),
+		statusEffectDefinitions: make(map[string]statuspkg.ApplyStatusEffectDefinition),
 		journal:                 journalpkg.New(capacity, maxAge),
 	}
 
@@ -182,7 +183,7 @@ func (w *World) GroundItemsByTile() map[itemspkg.GroundTileKey]map[string]*items
 }
 
 // StatusEffectDefinitions exposes the registered status effect definitions.
-func (w *World) StatusEffectDefinitions() map[string]ApplyStatusEffectDefinition {
+func (w *World) StatusEffectDefinitions() map[string]statuspkg.ApplyStatusEffectDefinition {
 	if w == nil {
 		return nil
 	}
