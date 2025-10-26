@@ -12,6 +12,7 @@ import (
 	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
+	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	worldeffects "mine-and-die/server/internal/world/effects"
 	state "mine-and-die/server/internal/world/state"
 	"mine-and-die/server/logging"
@@ -277,11 +278,11 @@ func (w *World) effectOwnerMissing(actorID string) bool {
 }
 
 // AbilityOwnerStateLookup exposes a state lookup adapter for ability owners.
-func (w *World) AbilityOwnerStateLookup() AbilityOwnerStateLookup[*state.ActorState] {
+func (w *World) AbilityOwnerStateLookup() abilitiespkg.AbilityOwnerStateLookup[*state.ActorState] {
 	if w == nil {
 		return nil
 	}
-	return NewAbilityOwnerStateLookup(AbilityOwnerStateLookupConfig[*state.ActorState]{
+	return abilitiespkg.NewAbilityOwnerStateLookup(abilitiespkg.AbilityOwnerStateLookupConfig[*state.ActorState]{
 		FindPlayer: w.playerAbilityOwnerState,
 		FindNPC:    w.npcAbilityOwnerState,
 	})

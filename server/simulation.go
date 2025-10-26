@@ -15,6 +15,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	internalstats "mine-and-die/server/internal/stats"
 	worldpkg "mine-and-die/server/internal/world"
+	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	"mine-and-die/server/logging"
 	loggingeconomy "mine-and-die/server/logging/economy"
 	logginglifecycle "mine-and-die/server/logging/lifecycle"
@@ -85,8 +86,8 @@ type World struct {
 	effectHitAdapter        combat.EffectHitCallback
 	meleeAbilityGate        combat.MeleeAbilityGate
 	projectileAbilityGate   combat.ProjectileAbilityGate
-	abilityOwnerLookup      worldpkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
-	abilityOwnerStateLookup worldpkg.AbilityOwnerStateLookup[*actorState]
+	abilityOwnerLookup      abilitiespkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
+	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*actorState]
 	projectileStopAdapter   worldpkg.ProjectileStopAdapter
 	projectileTemplates     map[string]*ProjectileTemplate
 	statusEffectDefs        map[StatusEffectType]worldpkg.ApplyStatusEffectDefinition

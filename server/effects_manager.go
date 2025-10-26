@@ -9,6 +9,7 @@ import (
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
+	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
 
@@ -174,8 +175,8 @@ func (a projectileOwnerAdapter) Position() (float64, float64) {
 
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
 	hooks := make(map[string]internaleffects.HookSet)
-	var ownerLookup worldpkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
-	var stateLookup worldpkg.AbilityOwnerStateLookup[*actorState]
+	var ownerLookup abilitiespkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
+	var stateLookup abilitiespkg.AbilityOwnerStateLookup[*actorState]
 	if world != nil {
 		world.configureAbilityOwnerAdapters()
 		ownerLookup = world.abilityOwnerLookup

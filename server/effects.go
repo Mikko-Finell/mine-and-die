@@ -9,6 +9,7 @@ import (
 	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
 	worldpkg "mine-and-die/server/internal/world"
+	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	"mine-and-die/server/logging"
 )
 
@@ -178,7 +179,7 @@ func (w *World) configureAbilityOwnerAdapters() {
 		return
 	}
 
-	stateLookup := worldpkg.NewAbilityOwnerStateLookup(worldpkg.AbilityOwnerStateLookupConfig[*actorState]{
+	stateLookup := abilitiespkg.NewAbilityOwnerStateLookup(abilitiespkg.AbilityOwnerStateLookupConfig[*actorState]{
 		FindPlayer: func(actorID string) (*actorState, *map[string]time.Time, bool) {
 			if w == nil || actorID == "" {
 				return nil, nil, false
@@ -202,7 +203,7 @@ func (w *World) configureAbilityOwnerAdapters() {
 	})
 
 	w.abilityOwnerStateLookup = stateLookup
-	w.abilityOwnerLookup = worldpkg.NewAbilityOwnerLookup(worldpkg.AbilityOwnerLookupConfig[*actorState, combat.AbilityActor]{
+	w.abilityOwnerLookup = abilitiespkg.NewAbilityOwnerLookup(abilitiespkg.AbilityOwnerLookupConfig[*actorState, combat.AbilityActor]{
 		LookupState: stateLookup,
 		Snapshot: func(state *actorState) *combat.AbilityActor {
 			return abilityActorSnapshot(state)
@@ -806,13 +807,13 @@ func (w *World) configureMeleeAbilityGate() {
 		w.configureAbilityOwnerAdapters()
 	}
 
-	gate, ok := worldpkg.BindMeleeAbilityGate(worldpkg.AbilityGateBindingOptions[*actorState, combat.AbilityActor, combat.MeleeAbilityGate]{
-		AbilityGateOptions: worldpkg.AbilityGateOptions[*actorState, combat.AbilityActor]{
+	gate, ok := abilitiespkg.BindMeleeAbilityGate(abilitiespkg.AbilityGateBindingOptions[*actorState, combat.AbilityActor, combat.MeleeAbilityGate]{
+		AbilityGateOptions: abilitiespkg.AbilityGateOptions[*actorState, combat.AbilityActor]{
 			AbilityID: effectTypeAttack,
 			Cooldown:  meleeAttackCooldown,
 			Lookup:    w.abilityOwnerLookup,
 		},
-		Factory: func(cfg worldpkg.AbilityGateConfig[combat.AbilityActor]) (combat.MeleeAbilityGate, bool) {
+		Factory: func(cfg abilitiespkg.AbilityGateConfig[combat.AbilityActor]) (combat.MeleeAbilityGate, bool) {
 			constructed := combat.NewMeleeAbilityGate(combat.MeleeAbilityGateConfig{
 				AbilityID:   cfg.AbilityID,
 				Cooldown:    cfg.Cooldown,
@@ -847,13 +848,13 @@ func (w *World) configureProjectileAbilityGate() {
 		return
 	}
 
-	gate, ok := worldpkg.BindProjectileAbilityGate(worldpkg.AbilityGateBindingOptions[*actorState, combat.AbilityActor, combat.ProjectileAbilityGate]{
-		AbilityGateOptions: worldpkg.AbilityGateOptions[*actorState, combat.AbilityActor]{
+	gate, ok := abilitiespkg.BindProjectileAbilityGate(abilitiespkg.AbilityGateBindingOptions[*actorState, combat.AbilityActor, combat.ProjectileAbilityGate]{
+		AbilityGateOptions: abilitiespkg.AbilityGateOptions[*actorState, combat.AbilityActor]{
 			AbilityID: tpl.Type,
 			Cooldown:  tpl.Cooldown,
 			Lookup:    w.abilityOwnerLookup,
 		},
-		Factory: func(cfg worldpkg.AbilityGateConfig[combat.AbilityActor]) (combat.ProjectileAbilityGate, bool) {
+		Factory: func(cfg abilitiespkg.AbilityGateConfig[combat.AbilityActor]) (combat.ProjectileAbilityGate, bool) {
 			constructed := combat.NewProjectileAbilityGate(combat.ProjectileAbilityGateConfig{
 				AbilityID:   cfg.AbilityID,
 				Cooldown:    cfg.Cooldown,
