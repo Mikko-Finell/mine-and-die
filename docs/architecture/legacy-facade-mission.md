@@ -29,14 +29,14 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 Progress is tracked exclusively through the checklist below. When every unchecked item is complete, we can delete `server/*` and the mission ends.
 
-### 1. Constructors & State Ownership [BLOCKED]
+### 1. Constructors & State Ownership [DONE]
 - [x] Extract shared inventory/equipment/actor state into `internal/state` so both legacy and internal constructors share the same types.
 - [x] Relocate world state files (`inventory.go`, `equipment.go`, `player.go`, `npc.go`, `status_effects.go`, helpers) into a new internal package so `internal/world` owns the canonical structs.
 - [x] Move `legacyConstructWorld` logic into a concrete type returned by `internal/world.New`, leaving the legacy constructor as a pass-through wrapper.
-- [ ] Hoist RNG seeding, NPC/obstacle generation, and effect registry wiring helpers from legacy paths into `internal/world`.
-- [ ] Publish adapters (`AbilityOwnerLookup`, projectile stop callbacks, journal accessors) straight from the new world state so the engine never reaches through `server.World` internals.
+- [x] Hoist RNG seeding, NPC/obstacle generation, and effect registry wiring helpers from legacy paths into `internal/world`.
+- [x] Publish adapters (`AbilityOwnerLookup`, projectile stop callbacks, journal accessors) straight from the new world state so the engine never reaches through `server.World` internals.
 
-> **Blocked:** `internal/world` still lacks equivalents for the server façade dependencies (`EffectManager`, ability-gate wiring, status effect handlers). The constructor cannot be moved until those building blocks are promoted or new internal replacements exist.
+> Helpers for seeding, obstacle generation, effect registry wiring, and ability ownership are now implemented directly inside `server/internal/world` (`world.go`, `seeding.go`, `obstacles.go`, and `abilities/owner.go`), letting the constructor expose the adapters without crossing back into façade packages.
 
 #### Blocker remediation plan [DONE]
 
