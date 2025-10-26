@@ -11,7 +11,6 @@ import (
 	ai "mine-and-die/server/internal/ai"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
-	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	internalstats "mine-and-die/server/internal/stats"
 	worldpkg "mine-and-die/server/internal/world"
@@ -189,55 +188,26 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		return nil
 	}
 
-	players := constructed.Players()
-	if players == nil {
-		players = make(map[string]*playerState)
-	}
-	npcs := constructed.NPCs()
-	if npcs == nil {
-		npcs = make(map[string]*npcState)
-	}
-	effects := constructed.Effects()
-	if effects == nil {
-		effects = make([]*internalruntime.State, 0)
-	}
-	effectsByID := constructed.EffectsByID()
-	if effectsByID == nil {
-		effectsByID = make(map[string]*internalruntime.State)
-	}
-	index := constructed.EffectsIndex()
-	if index == nil {
-		index = internalruntime.NewSpatialIndex(internaleffects.DefaultSpatialCellSize, internaleffects.DefaultSpatialMaxPerCell)
-	}
-	groundItems := constructed.GroundItems()
-	if groundItems == nil {
-		groundItems = make(map[string]*itemspkg.GroundItemState)
-	}
-	groundItemsByTile := constructed.GroundItemsByTile()
-	if groundItemsByTile == nil {
-		groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
-	}
-
-	baseStatusDefs := constructed.StatusEffectDefinitions()
+	export := constructed.ExportLegacyState()
 
 	w := &World{
-		players:             players,
-		npcs:                npcs,
-		effects:             effects,
-		effectsByID:         effectsByID,
-		effectsIndex:        index,
+		players:             export.Players,
+		npcs:                export.NPCs,
+		effects:             export.Effects,
+		effectsByID:         export.EffectsByID,
+		effectsIndex:        (*effectSpatialIndex)(export.EffectsIndex),
 		effectTriggers:      make([]EffectTrigger, 0),
 		projectileTemplates: newProjectileTemplates(),
 		aiLibrary:           ai.GlobalLibrary,
-		config:              constructed.Config(),
-		rng:                 constructed.RNG(),
-		seed:                constructed.Seed(),
+		config:              export.Config,
+		rng:                 export.RNG,
+		seed:                export.Seed,
 		publisher:           effectivePublisher,
 		telemetry:           nil,
-		groundItems:         groundItems,
-		groundItemsByTile:   groundItemsByTile,
-		journal:             constructed.JournalState(),
-		nextEffectID:        constructed.NextEffectID(),
+		groundItems:         export.GroundItems,
+		groundItemsByTile:   export.GroundItemsByTile,
+		journal:             export.Journal,
+		nextEffectID:        export.EffectIDSeed,
 	}
 	if w.config.Seed == "" {
 		w.config.Seed = normalized.Seed
@@ -248,6 +218,10 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 	if w.rng == nil {
 		w.rng = newDeterministicRNG(w.seed, "world")
 	}
+
+	w.effectsRegistry = internaleffects.Registry(export.EffectsRegistry)
+
+	baseStatusDefs := export.StatusEffectDefinitions
 
 	w.statusEffectDefs = newStatusEffectDefinitions(baseStatusDefs, w)
 	w.configureAbilityOwnerAdapters()
@@ -323,11 +297,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 			w.handleNPCDefeat(npc)
 		},
 	})
-	w.effectsRegistry = internaleffects.Registry{
-		Effects: &w.effects,
-		ByID:    &w.effectsByID,
-		Index:   w.effectsIndex,
-	}
+	w.effectRegistry()
 	w.effectManager = newEffectManager(w)
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()

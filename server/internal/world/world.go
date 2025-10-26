@@ -65,6 +65,109 @@ type World struct {
 	journal journalpkg.Journal
 }
 
+// LegacyWorldMarker marks the concrete world type as a transitional legacy implementation.
+func (w *World) LegacyWorldMarker() {}
+
+// LegacyExport captures the shared state required to hydrate the legacy façade world.
+type LegacyExport struct {
+	Config Config
+	Seed   string
+
+	Players map[string]*state.PlayerState
+	NPCs    map[string]*state.NPCState
+
+	Effects      []*internalruntime.State
+	EffectsByID  map[string]*internalruntime.State
+	EffectsIndex *internalruntime.SpatialIndex
+
+	GroundItems       map[string]*itemspkg.GroundItemState
+	GroundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
+
+	StatusEffectDefinitions map[string]statuspkg.ApplyStatusEffectDefinition
+
+	Journal journalpkg.Journal
+
+	RNG          *rand.Rand
+	EffectIDSeed uint64
+
+	EffectsRegistry internalruntime.Registry
+	EffectManager   *worldeffects.Manager
+}
+
+// ExportLegacyState exposes the shared state bindings expected by the legacy façade constructor.
+func (w *World) ExportLegacyState() LegacyExport {
+	if w == nil {
+		return LegacyExport{}
+	}
+
+	players := w.players
+	if players == nil {
+		players = make(map[string]*state.PlayerState)
+	}
+
+	npcs := w.npcs
+	if npcs == nil {
+		npcs = make(map[string]*state.NPCState)
+	}
+
+	effects := w.effects
+	if effects == nil {
+		effects = make([]*internalruntime.State, 0)
+	}
+
+	effectsByID := w.effectsByID
+	if effectsByID == nil {
+		effectsByID = make(map[string]*internalruntime.State)
+	}
+
+	index := w.effectsIndex
+	if index == nil {
+		index = internalruntime.NewSpatialIndex(
+			internalruntime.DefaultSpatialCellSize,
+			internalruntime.DefaultSpatialMaxPerCell,
+		)
+	}
+
+	groundItems := w.groundItems
+	if groundItems == nil {
+		groundItems = make(map[string]*itemspkg.GroundItemState)
+	}
+
+	groundItemsByTile := w.groundItemsByTile
+	if groundItemsByTile == nil {
+		groundItemsByTile = make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState)
+	}
+
+	statusDefinitions := w.statusEffectDefinitions
+	if statusDefinitions == nil {
+		statusDefinitions = make(map[string]statuspkg.ApplyStatusEffectDefinition)
+	}
+
+	registry := w.EffectRegistry()
+
+	rng := w.RNG()
+
+	export := LegacyExport{
+		Config:                  w.config,
+		Seed:                    w.seed,
+		Players:                 players,
+		NPCs:                    npcs,
+		Effects:                 effects,
+		EffectsByID:             effectsByID,
+		EffectsIndex:            index,
+		GroundItems:             groundItems,
+		GroundItemsByTile:       groundItemsByTile,
+		StatusEffectDefinitions: statusDefinitions,
+		Journal:                 w.journal,
+		RNG:                     rng,
+		EffectIDSeed:            w.nextEffectID,
+		EffectsRegistry:         registry,
+		EffectManager:           w.effectManager,
+	}
+
+	return export
+}
+
 // New constructs a world instance with normalized configuration and seeded RNG.
 func New(cfg Config, deps Deps) (*World, error) {
 	normalized := cfg.normalized()
