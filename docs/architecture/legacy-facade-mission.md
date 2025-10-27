@@ -40,20 +40,35 @@ Progress is tracked exclusively through the checklist below. When every unchecke
 
 > **Blocked:** `internal/world` still lacks the façade wiring: the effect manager hooks/telemetry live in `server/effects_manager.go`, ability gating + projectile dispatch remain in `server/effects.go`, and the burning/status registries plus NPC/obstacle seeding are still built in `server/simulation.go`. Constructors cannot be moved until those systems run inside the internal package.
 
-#### Blocker remediation plan
+#### Blocker remediation phase — deliverables
 
-The remediation work below deliberately mirrors the idiomaticity mandates: each item moves legacy helpers into focussed internal
-packages with explicit constructors, keeps state ownership inside `internal/world`, and deletes façade reach-ins once the
-internal replacements are wired. That keeps the cutover in lockstep with the "small packages, clear ownership, explicit
-dependencies" goals captured in the [idiomaticity mission](./idiomaticity-mission.md).
+Effect wiring still cannot move because `server/internal/effects` reaches back into world packages in several places: `adapters.go`
+wraps `internal/world` mutation helpers, `burning_tick_intent.go` leans on `internal/world.ApplyBurningDamage`,
+`contract_burning_hook.go` imports `internal/world/status`, and the package exposes the world-owned manager alias in
+`manager.go`. Pulling those hooks into `internal/world` would immediately create a cycle unless we first relocate the world
+affine pieces. The remediation work below keeps the effort aligned with the idiomaticity mandates by moving each dependency into
+focused internal packages, keeping state ownership inside `internal/world`, and deleting façade reach-ins once the internal
+replacements are wired.
 
-| Legacy dependency | Why the constructor still reaches it | Replacement we need inside `internal/world` | Idiomaticity alignment |
-| --- | --- | --- | --- |
-| `server/effects_manager.go` (`EffectManager`) | Hook registration, telemetry emitters, and cooldown bookkeeping still live in the façade constructor. | Mirror the façade hook builder inside `internal/world` (calling into `internal/world/melee_impact.go`, `internal/world/follow_effects.go`, etc.), thread telemetry callbacks from `World`, and construct the effect manager via the internal helper. | Keeps combat wiring colocated with state ownership and unlocks deterministic parity tests without the façade. **TODO** |
-| Ability gating + projectile adapters (`server/effects.go`) | Unlock checks, melee/projectile dispatch, and burn tick wiring still depend on façade-owned lookups. | Move the gating helpers and projectile stop adapters into `internal/world/abilities` and `internal/world/effect_hits`, binding them to the internal state lookups created during `New`. | Collapses legacy reach-ins so combat can rely purely on internal helpers before the constructor swap. **TODO** |
-| Status effect handlers (`server/status_effects.go`) | Burning lifecycle and status registries are stitched together only in the façade world. | Port the registry definitions + lifecycle wiring to `internal/world/status` and expose constructor helpers that operate on internal journal/effect manager references. | Ensures `internal/world.New` can build the full status system before the façade wrapper is removed. **TODO** |
+- [ ] **Break the world ↔ effects import cycle** by re-homing the world-owned helpers that live under `server/internal/effects`.
+  - Move the position/parameter mutators from `server/internal/effects/adapters.go` into an `internal/world/effects` subpackage
+    that both constructors can call directly, then update legacy callers (`server/world_mutators.go`) to depend on the new
+    location so the adapters package no longer imports `internal/world`.
+  - Relocate burning queue helpers into the status system: port `NewBurningTickIntent` and the `ContractBurningDamageHook`/
+    `ContractBurningVisualHook` flows into `internal/world/status` alongside `ApplyBurningDamage` so the effect manager wiring can
+    build burning intents without referencing the façade.
+  - After these moves, keep `server/internal/effects` focused on contract/runtime glue that is safe for `internal/world` to
+    import, unlocking the constructor work below.
+- [ ] **Rebuild the effect manager inside `internal/world`.** Mirror the façade hook builder (melee impact, follow effects,
+  cooldown bookkeeping, telemetry emitters) so `internal/world.New` can construct the manager without
+  `server/effects_manager.go`.
+- [ ] **Inline ability gating and projectile adapters** by moving the façade helpers from `server/effects.go` into
+  `internal/world/abilities` and `internal/world/effect_hits`, binding them to the internal state lookups created during
+  `New`.
+- [ ] **Port status effect lifecycle wiring** by lifting the registry setup and fallback hooks from `server/status_effects.go`
+  into `internal/world/status`, exposing constructors that work entirely on internal state containers.
 
-Once those three replacements exist, the world constructor can build its dependencies without calling back into the façade; the
+Once these deliverables land the world constructor can build its dependencies without calling back into the façade; the
 checklist items above unblock automatically because the legacy `NewWorld` wrapper becomes a pass-through and we stay within the
 idiomatic ownership rules.
 
