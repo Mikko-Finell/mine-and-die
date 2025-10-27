@@ -6,7 +6,7 @@ import (
 	"time"
 
 	internaleffects "mine-and-die/server/internal/effects"
-	worldpkg "mine-and-die/server/internal/world"
+	statuspkg "mine-and-die/server/internal/world/status"
 )
 
 func TestNewWorldEffectHitDispatcherDelegates(t *testing.T) {
@@ -380,7 +380,7 @@ func TestNewWorldBurningDamageCallbackDelegates(t *testing.T) {
 		},
 		Target: &target,
 		Now:    now,
-		BuildEffect: func(effect worldpkg.BurningDamageEffect) any {
+		BuildEffect: func(effect statuspkg.BurningDamageEffect) any {
 			builderCalled = true
 			if effect.EffectType != "burn" {
 				t.Fatalf("unexpected effect type %q", effect.EffectType)
@@ -399,7 +399,7 @@ func TestNewWorldBurningDamageCallbackDelegates(t *testing.T) {
 		t.Fatalf("expected callback")
 	}
 
-	payload := worldpkg.BurningDamageEffect{EffectType: "burn", OwnerID: "caster", HealthDelta: -3}
+	payload := statuspkg.BurningDamageEffect{EffectType: "burn", OwnerID: "caster", HealthDelta: -3}
 	callback(payload)
 
 	if !builderCalled {
@@ -425,7 +425,7 @@ func TestNewWorldBurningDamageCallbackAllowsNilDispatcher(t *testing.T) {
 	callback := NewWorldBurningDamageCallback(WorldBurningDamageCallbackConfig{
 		Target: struct{}{},
 		Now:    time.UnixMilli(23),
-		BuildEffect: func(effect worldpkg.BurningDamageEffect) any {
+		BuildEffect: func(effect statuspkg.BurningDamageEffect) any {
 			return effect.EffectType
 		},
 		AfterApply: func(effect any) {
@@ -440,7 +440,7 @@ func TestNewWorldBurningDamageCallbackAllowsNilDispatcher(t *testing.T) {
 		t.Fatalf("expected callback")
 	}
 
-	callback(worldpkg.BurningDamageEffect{EffectType: "burn"})
+	callback(statuspkg.BurningDamageEffect{EffectType: "burn"})
 
 	if !afterCalled {
 		t.Fatalf("expected after apply hook")
@@ -459,7 +459,7 @@ func TestNewWorldBurningDamageCallbackSkipsNilBuildResult(t *testing.T) {
 		},
 		Target: struct{}{},
 		Now:    time.UnixMilli(31),
-		BuildEffect: func(effect worldpkg.BurningDamageEffect) any {
+		BuildEffect: func(effect statuspkg.BurningDamageEffect) any {
 			return nil
 		},
 		AfterApply: func(effect any) {
@@ -471,7 +471,7 @@ func TestNewWorldBurningDamageCallbackSkipsNilBuildResult(t *testing.T) {
 		t.Fatalf("expected callback")
 	}
 
-	callback(worldpkg.BurningDamageEffect{EffectType: "burn"})
+	callback(statuspkg.BurningDamageEffect{EffectType: "burn"})
 
 	if dispatcherCalled {
 		t.Fatalf("expected dispatcher to be skipped")

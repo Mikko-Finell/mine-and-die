@@ -9,7 +9,6 @@ import (
 	effectcontract "mine-and-die/server/effects/contract"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
-	worldpkg "mine-and-die/server/internal/world"
 	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 	loggingstatuseffects "mine-and-die/server/logging/status_effects"
@@ -351,11 +350,11 @@ func (w *World) applyStatusEffectDamage(actor *actorState, inst *statusEffectIns
 	}
 	delta := -amount
 	if w.effectManager != nil {
-		if intent, ok := internaleffects.NewBurningTickIntent(internaleffects.BurningTickIntentConfig{
+		if intent, ok := statuspkg.NewBurningTickIntent(statuspkg.BurningTickIntentConfig{
 			EffectType:    effectTypeBurningTick,
 			TargetActorID: actor.ID,
 			SourceActorID: owner,
-			StatusEffect:  internaleffects.StatusEffectType(statusType),
+			StatusEffect:  statuspkg.StatusEffectType(statusType),
 			Delta:         delta,
 			TileSize:      tileSize,
 			Footprint:     playerHalf * 2,
@@ -378,7 +377,7 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		Dispatcher: w.effectHitAdapter,
 		Target:     actor,
 		Now:        now,
-		BuildEffect: func(effect worldpkg.BurningDamageEffect) any {
+		BuildEffect: func(effect statuspkg.BurningDamageEffect) any {
 			return &effectState{
 				Type:   effect.EffectType,
 				Owner:  effect.OwnerID,
@@ -405,7 +404,7 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		return
 	}
 
-	worldpkg.ApplyBurningDamage(worldpkg.ApplyBurningDamageConfig{
+	statuspkg.ApplyBurningDamage(statuspkg.ApplyBurningDamageConfig{
 		EffectType:   effectTypeBurningTick,
 		OwnerID:      owner,
 		ActorID:      actor.ID,

@@ -364,7 +364,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			return world.advanceProjectile(effect, now, dt)
 		},
 	})
-	lookupContractActor := func(actorID string) *internaleffects.ContractStatusActor {
+	lookupContractActor := func(actorID string) *statuspkg.ContractStatusActor {
 		if world == nil || actorID == "" {
 			return nil
 		}
@@ -372,17 +372,17 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		if actor == nil {
 			return nil
 		}
-		contractActor := &internaleffects.ContractStatusActor{
+		contractActor := &statuspkg.ContractStatusActor{
 			ID: actor.ID,
 			X:  actor.X,
 			Y:  actor.Y,
-			ApplyBurningDamage: func(ownerID string, status internaleffects.StatusEffectType, delta float64, now time.Time) {
+			ApplyBurningDamage: func(ownerID string, status statuspkg.StatusEffectType, delta float64, now time.Time) {
 				world.applyBurningDamage(ownerID, actor, StatusEffectType(status), delta, now)
 			},
 		}
 		if actor.StatusEffects != nil {
 			if inst := actor.StatusEffects[StatusEffectBurning]; inst != nil {
-				contractActor.StatusInstance = &internaleffects.ContractStatusInstance{
+				contractActor.StatusInstance = &statuspkg.ContractStatusInstance{
 					Instance:  inst,
 					ExpiresAt: func() time.Time { return inst.ExpiresAt },
 				}
@@ -390,8 +390,8 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		}
 		return contractActor
 	}
-	hooks[effectcontract.HookStatusBurningVisual] = internaleffects.ContractBurningVisualHook(internaleffects.ContractBurningVisualHookConfig{
-		StatusEffect:     internaleffects.StatusEffectType(StatusEffectBurning),
+	hooks[effectcontract.HookStatusBurningVisual] = statuspkg.ContractBurningVisualHook(statuspkg.ContractBurningVisualHookConfig{
+		StatusEffect:     statuspkg.StatusEffectType(StatusEffectBurning),
 		DefaultLifetime:  burningStatusEffectDuration,
 		FallbackLifetime: burningTickInterval,
 		TileSize:         tileSize,
@@ -411,8 +411,8 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			world.recordEffectSpawn(effectType, category)
 		},
 	})
-	hooks[effectcontract.HookStatusBurningDamage] = internaleffects.ContractBurningDamageHook(internaleffects.ContractBurningDamageHookConfig{
-		StatusEffect:    internaleffects.StatusEffectType(StatusEffectBurning),
+	hooks[effectcontract.HookStatusBurningDamage] = statuspkg.ContractBurningDamageHook(statuspkg.ContractBurningDamageHookConfig{
+		StatusEffect:    statuspkg.StatusEffectType(StatusEffectBurning),
 		DamagePerSecond: lavaDamagePerSecond,
 		TickInterval:    burningTickInterval,
 		LookupActor:     lookupContractActor,

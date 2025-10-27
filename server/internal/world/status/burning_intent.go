@@ -1,11 +1,11 @@
-package effects
+package status
 
 import (
 	"math"
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	worldpkg "mine-and-die/server/internal/world"
+	effecthelpers "mine-and-die/server/internal/effects"
 )
 
 // BurningTickIntentConfig bundles the inputs required to enqueue a contract
@@ -35,7 +35,7 @@ func NewBurningTickIntent(cfg BurningTickIntentConfig) (effectcontract.EffectInt
 		ok     bool
 	)
 
-	worldpkg.ApplyBurningDamage(worldpkg.ApplyBurningDamageConfig{
+	ApplyBurningDamage(ApplyBurningDamageConfig{
 		EffectType:   cfg.EffectType,
 		OwnerID:      cfg.SourceActorID,
 		ActorID:      cfg.TargetActorID,
@@ -43,7 +43,7 @@ func NewBurningTickIntent(cfg BurningTickIntentConfig) (effectcontract.EffectInt
 		Delta:        cfg.Delta,
 		Now:          cfg.Now,
 		CurrentTick:  cfg.CurrentTick,
-		Apply: func(effect worldpkg.BurningDamageEffect) {
+		Apply: func(effect BurningDamageEffect) {
 			rounded := int(math.Round(effect.HealthDelta))
 			if rounded == 0 {
 				return
@@ -56,8 +56,8 @@ func NewBurningTickIntent(cfg BurningTickIntentConfig) (effectcontract.EffectInt
 
 			geometry := effectcontract.EffectGeometry{
 				Shape:   effectcontract.GeometryShapeRect,
-				Width:   QuantizeWorldCoord(footprint, cfg.TileSize),
-				Height:  QuantizeWorldCoord(footprint, cfg.TileSize),
+				Width:   effecthelpers.QuantizeWorldCoord(footprint, cfg.TileSize),
+				Height:  effecthelpers.QuantizeWorldCoord(footprint, cfg.TileSize),
 				OffsetX: 0,
 				OffsetY: 0,
 			}
