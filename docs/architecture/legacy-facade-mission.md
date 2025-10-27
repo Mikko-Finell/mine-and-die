@@ -50,7 +50,7 @@ affine pieces. The remediation work below keeps the effort aligned with the idio
 focused internal packages, keeping state ownership inside `internal/world`, and deleting façade reach-ins once the internal
 replacements are wired.
 
-- [ ] **Break the world ↔ effects import cycle** by re-homing the world-owned helpers that live under `server/internal/effects`.
+- [x] **Break the world ↔ effects import cycle** by re-homing the world-owned helpers that live under `server/internal/effects`.
   - Move the position/parameter mutators from `server/internal/effects/adapters.go` into an `internal/world/effects` subpackage
     that both constructors can call directly, then update legacy callers (`server/world_mutators.go`) to depend on the new
     location so the adapters package no longer imports `internal/world`.

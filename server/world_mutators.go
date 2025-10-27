@@ -3,10 +3,10 @@ package server
 import (
 	"math"
 
-	internaleffects "mine-and-die/server/internal/effects"
 	items "mine-and-die/server/internal/items"
 	"mine-and-die/server/internal/sim"
 	worldpkg "mine-and-die/server/internal/world"
+	worldeffects "mine-and-die/server/internal/world/effects"
 	stats "mine-and-die/server/stats"
 )
 
@@ -305,7 +305,7 @@ func (w *World) SetEffectPosition(eff *effectState, x, y float64) {
 		return
 	}
 
-	changed := internaleffects.SetPosition(
+	changed := worldeffects.SetPosition(
 		eff,
 		x,
 		y,
@@ -338,7 +338,7 @@ func (w *World) SetEffectParam(eff *effectState, key string, value float64) {
 		return
 	}
 
-	if !internaleffects.SetParam(eff, key, value) {
+	if !worldeffects.SetParam(eff, key, value) {
 		return
 	}
 

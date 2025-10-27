@@ -5,6 +5,7 @@ import (
 
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
+	statuspkg "mine-and-die/server/internal/world/status"
 )
 
 // WorldEffectHitDispatcherConfig bundles the adapters required to wire the
@@ -288,7 +289,7 @@ type WorldBurningDamageCallbackConfig struct {
 	Target     any
 	Now        time.Time
 
-	BuildEffect func(effect worldpkg.BurningDamageEffect) any
+	BuildEffect func(effect statuspkg.BurningDamageEffect) any
 	AfterApply  func(effect any)
 }
 
@@ -296,12 +297,12 @@ type WorldBurningDamageCallbackConfig struct {
 // world burning damage helper that converts the normalized effect payload into
 // the legacy effect state, applies the hit through the dispatcher, and invokes
 // the optional telemetry hook.
-func NewWorldBurningDamageCallback(cfg WorldBurningDamageCallbackConfig) func(worldpkg.BurningDamageEffect) {
+func NewWorldBurningDamageCallback(cfg WorldBurningDamageCallbackConfig) func(statuspkg.BurningDamageEffect) {
 	if cfg.BuildEffect == nil {
 		return nil
 	}
 
-	return func(effect worldpkg.BurningDamageEffect) {
+	return func(effect statuspkg.BurningDamageEffect) {
 		built := cfg.BuildEffect(effect)
 		if built == nil {
 			return

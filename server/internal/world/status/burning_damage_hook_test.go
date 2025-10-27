@@ -1,4 +1,4 @@
-package effects
+package status
 
 import (
 	"math"
@@ -128,4 +128,103 @@ func TestContractBurningDamageHook_FallsBackToDefaultDelta(t *testing.T) {
 	if math.Abs(gotDelta-expected) > tol {
 		t.Fatalf("expected delta %.6f, got %.6f", expected, gotDelta)
 	}
+}
+
+func TestContractBurningDamageHook_NoActorLookup(t *testing.T) {
+	cfg := ContractBurningDamageHookConfig{
+		StatusEffect: StatusEffectType("burning"),
+	}
+	hook := ContractBurningDamageHook(cfg)
+	hook.OnSpawn(nil, &effectcontract.EffectInstance{}, 0, time.Unix(0, 0))
+}
+
+func TestContractBurningDamageHook_SkipWhenApplyNil(t *testing.T) {
+	cfg := ContractBurningDamageHookConfig{
+		StatusEffect: StatusEffectType("burning"),
+		LookupActor: func(string) *ContractStatusActor {
+			return &ContractStatusActor{}
+		},
+	}
+	hook := ContractBurningDamageHook(cfg)
+	hook.OnSpawn(nil, &effectcontract.EffectInstance{}, 0, time.Unix(0, 0))
+}
+
+func TestContractBurningDamageHook_UsesDefaultStatus(t *testing.T) {
+	var gotStatus StatusEffectType
+	cfg := ContractBurningDamageHookConfig{
+		StatusEffect: StatusEffectType("burning"),
+		LookupActor: func(string) *ContractStatusActor {
+			return &ContractStatusActor{
+				StatusInstance: &ContractStatusInstance{Instance: stubStatusInstance{}},
+				ApplyBurningDamage: func(ownerID string, status StatusEffectType, delta float64, now time.Time) {
+					gotStatus = status
+				},
+			}
+		},
+	}
+
+	hook := ContractBurningDamageHook(cfg)
+	hook.OnSpawn(nil, &effectcontract.EffectInstance{OwnerActorID: "owner", FollowActorID: "target"}, 0, time.Unix(0, 0))
+
+	if gotStatus != StatusEffectType("burning") {
+		t.Fatalf("expected status %q, got %q", "burning", gotStatus)
+	}
+}
+
+func TestContractBurningDamageHook_DefaultDeltaZeroWhenTickIntervalMissing(t *testing.T) {
+	cfg := ContractBurningDamageHookConfig{
+		StatusEffect:    StatusEffectType("burning"),
+		DamagePerSecond: 10,
+		LookupActor: func(string) *ContractStatusActor {
+			return &ContractStatusActor{
+				ApplyBurningDamage: func(ownerID string, status StatusEffectType, delta float64, now time.Time) {
+					if delta != 0 {
+						t.Fatalf("expected delta 0, got %.2f", delta)
+					}
+				},
+			}
+		},
+	}
+
+	hook := ContractBurningDamageHook(cfg)
+	hook.OnSpawn(nil, &effectcontract.EffectInstance{OwnerActorID: "owner"}, 0, time.Unix(0, 0))
+}
+
+func TestContractBurningDamageHook_DefaultDeltaZeroWhenDamageMissing(t *testing.T) {
+	cfg := ContractBurningDamageHookConfig{
+		StatusEffect: StatusEffectType("burning"),
+		TickInterval: 200 * time.Millisecond,
+		LookupActor: func(string) *ContractStatusActor {
+			return &ContractStatusActor{
+				ApplyBurningDamage: func(ownerID string, status StatusEffectType, delta float64, now time.Time) {
+					if delta != 0 {
+						t.Fatalf("expected delta 0, got %.2f", delta)
+					}
+				},
+			}
+		},
+	}
+
+	hook := ContractBurningDamageHook(cfg)
+	hook.OnSpawn(nil, &effectcontract.EffectInstance{OwnerActorID: "owner"}, 0, time.Unix(0, 0))
+}
+
+func TestContractBurningDamageHook_DefaultDeltaZeroWhenInstanceNil(t *testing.T) {
+	cfg := ContractBurningDamageHookConfig{
+		StatusEffect:    StatusEffectType("burning"),
+		DamagePerSecond: 10,
+		TickInterval:    200 * time.Millisecond,
+		LookupActor: func(string) *ContractStatusActor {
+			return &ContractStatusActor{
+				ApplyBurningDamage: func(ownerID string, status StatusEffectType, delta float64, now time.Time) {
+					if delta != 0 {
+						t.Fatalf("expected delta 0, got %.2f", delta)
+					}
+				},
+			}
+		},
+	}
+
+	hook := ContractBurningDamageHook(cfg)
+	hook.OnSpawn(nil, nil, 0, time.Unix(0, 0))
 }
