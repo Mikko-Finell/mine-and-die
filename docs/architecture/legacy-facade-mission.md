@@ -59,9 +59,18 @@ replacements are wired.
     build burning intents without referencing the façade.
   - After these moves, keep `server/internal/effects` focused on contract/runtime glue that is safe for `internal/world` to
     import, unlocking the constructor work below.
-- [ ] **Rebuild the effect manager inside `internal/world`.** Mirror the façade hook builder (melee impact, follow effects,
-  cooldown bookkeeping, telemetry emitters) so `internal/world.New` can construct the manager without
-  `server/effects_manager.go`.
+- [ ] **Lay the `internal/world` effect manager scaffolding.** Introduce the constructor surface and package seams mirroring
+  the legacy `server/effects_manager.go` types, but keep them backed by the façade wiring so behaviour stays identical while we
+  stage the move. The new internal effect manager still calls the façade manager under the hood initially — via thin forwarders
+  (no new logic yet, no behaviour change).
+- [ ] **Move ability owners & projectile lifecycle helpers first.** Port the pure helper functions into the new scaffolding so
+  the internal package can depend on them without changing hook registration.
+- [ ] **Then move hook registration.** Shift melee, follow-up, and projectile impact hook wiring into the internal manager once
+  the helpers exist, keeping behaviour equivalent via the façade forwarders.
+- [ ] **Port cooldown bookkeeping and telemetry emitters.** Move the timer/counter wiring plus emitter construction into the
+  internal package, keeping telemetry configuration identical by reusing the existing interfaces.
+- [ ] **Switch constructors to the new manager.** Update `internal/world.New` to instantiate the internal manager and delete the
+  remaining façade dependency once determinism verifies the wiring.
 - [ ] **Inline ability gating and projectile adapters** by moving the façade helpers from `server/effects.go` into
   `internal/world/abilities` and `internal/world/effect_hits`, binding them to the internal state lookups created during
   `New`.
