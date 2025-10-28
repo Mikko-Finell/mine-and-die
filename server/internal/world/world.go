@@ -54,6 +54,7 @@ type World struct {
 	effectsRegistry         worldeffects.Registry
 	effectManager           *EffectManager
 	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*state.ActorState]
+	abilityOwnerLookup      abilitiespkg.AbilityOwnerLookup[*state.ActorState, AbilityActorSnapshot]
 	nextEffectID            uint64
 
 	groundItems       map[string]*itemspkg.GroundItemState
@@ -251,11 +252,22 @@ func (w *World) AbilityOwnerStateLookup() AbilityOwnerStateLookup[*state.ActorSt
 	return w.abilityOwnerStateLookup
 }
 
+// AbilityOwnerLookup exposes a sanitized ability owner snapshot for downstream
+// consumers that require position and facing without importing legacy world
+// types.
+func (w *World) AbilityOwnerLookup() AbilityOwnerLookup[*state.ActorState, AbilityActorSnapshot] {
+	if w == nil {
+		return nil
+	}
+	w.ensureAbilityOwnerAdapters()
+	return w.abilityOwnerLookup
+}
+
 func (w *World) ensureAbilityOwnerAdapters() {
 	if w == nil {
 		return
 	}
-	if w.abilityOwnerStateLookup != nil {
+	if w.abilityOwnerStateLookup != nil && w.abilityOwnerLookup != nil {
 		return
 	}
 
@@ -264,6 +276,10 @@ func (w *World) ensureAbilityOwnerAdapters() {
 		FindNPC:    w.npcAbilityOwnerState,
 	})
 	w.abilityOwnerStateLookup = stateLookup
+	w.abilityOwnerLookup = abilitiespkg.NewAbilityOwnerLookup(abilitiespkg.AbilityOwnerLookupConfig[*state.ActorState, AbilityActorSnapshot]{
+		LookupState: stateLookup,
+		Snapshot:    abilityActorSnapshot,
+	})
 }
 
 // ProjectileStopAdapterOptions configures optional callbacks for the projectile stop adapter.

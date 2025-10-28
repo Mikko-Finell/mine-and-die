@@ -459,6 +459,42 @@ func TestAbilityOwnerStateLookupPrefersPlayersAndFallsBackToNPCs(t *testing.T) {
 	}
 }
 
+func TestAbilityOwnerLookupReturnsSnapshot(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	player := &state.PlayerState{
+		ActorState: state.ActorState{Actor: state.Actor{ID: "actor-1", X: 12, Y: 24, Facing: ""}},
+		Cooldowns:  map[string]time.Time{"ability": time.Now()},
+	}
+	w.players[player.ID] = player
+
+	lookup := w.AbilityOwnerLookup()
+	if lookup == nil {
+		t.Fatalf("expected ability owner lookup")
+	}
+
+	owner, cooldowns, ok := lookup("actor-1")
+	if !ok || owner == nil {
+		t.Fatalf("expected lookup to succeed, got ok=%v owner=%v", ok, owner)
+	}
+	if cooldowns != &player.Cooldowns {
+		t.Fatalf("expected cooldown map pointer to match player, got %p", cooldowns)
+	}
+	if owner.ID != player.ID || owner.X != player.X || owner.Y != player.Y {
+		t.Fatalf("unexpected owner snapshot: %+v", owner)
+	}
+	if owner.Facing != string(state.DefaultFacing) {
+		t.Fatalf("expected facing fallback to default, got %q", owner.Facing)
+	}
+
+	if _, _, ok := lookup("missing"); ok {
+		t.Fatalf("expected missing actor lookup to fail")
+	}
+}
+
 func TestProjectileStopAdapterRegistersEffects(t *testing.T) {
 	w, err := New(Config{}, Deps{})
 	if err != nil {
