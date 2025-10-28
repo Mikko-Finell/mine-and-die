@@ -3,7 +3,6 @@ package world
 import (
 	"math/rand"
 
-	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
 	worldeffects "mine-and-die/server/internal/world/effects"
@@ -14,9 +13,9 @@ import (
 type ConstructorHarness struct {
 	Players           map[string]*state.PlayerState
 	NPCs              map[string]*state.NPCState
-	Effects           []*internalruntime.State
-	EffectsByID       map[string]*internalruntime.State
-	EffectsIndex      *internalruntime.SpatialIndex
+	Effects           []*worldeffects.State
+	EffectsByID       map[string]*worldeffects.State
+	EffectsIndex      *worldeffects.SpatialIndex
 	GroundItems       map[string]*itemspkg.GroundItemState
 	GroundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
 	Journal           *journalpkg.Journal
@@ -24,7 +23,7 @@ type ConstructorHarness struct {
 	Config            Config
 	Seed              string
 	NextEffectID      uint64
-	EffectsRegistry   internalruntime.Registry
+	EffectsRegistry   worldeffects.Registry
 	EffectManager     *worldeffects.Manager
 }
 

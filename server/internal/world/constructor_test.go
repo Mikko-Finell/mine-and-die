@@ -8,9 +8,9 @@ import (
 
 	_ "mine-and-die/server"
 	effectcontract "mine-and-die/server/effects/contract"
-	internalruntime "mine-and-die/server/internal/effects/runtime"
 	journalpkg "mine-and-die/server/internal/journal"
 	worldpkg "mine-and-die/server/internal/world"
+	worldeffects "mine-and-die/server/internal/world/effects"
 	"mine-and-die/server/logging"
 )
 
@@ -226,14 +226,14 @@ func assertSharedSlice[T any](t *testing.T, name string, internal, legacy []T) {
 	}
 }
 
-func assertSharedIndex(t *testing.T, internal, legacy *internalruntime.SpatialIndex) {
+func assertSharedIndex(t *testing.T, internal, legacy *worldeffects.SpatialIndex) {
 	t.Helper()
 	if internal != legacy {
 		t.Fatalf("expected spatial index pointer to be reused")
 	}
 }
 
-func assertSharedRegistry(t *testing.T, internal, legacy internalruntime.Registry) {
+func assertSharedRegistry(t *testing.T, internal, legacy worldeffects.Registry) {
 	t.Helper()
 
 	if pointerOfSlicePtr(internal.Effects) != pointerOfSlicePtr(legacy.Effects) {

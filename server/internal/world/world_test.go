@@ -7,9 +7,9 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
+	worldeffects "mine-and-die/server/internal/world/effects"
 	state "mine-and-die/server/internal/world/state"
 	statuspkg "mine-and-die/server/internal/world/status"
 )
@@ -406,8 +406,8 @@ func TestEffectRegistryBindsWorldStorage(t *testing.T) {
 		t.Fatalf("expected registry pointers to be initialised")
 	}
 
-	effect := &internalruntime.State{ID: "effect-1"}
-	if !internalruntime.RegisterEffect(registry, effect) {
+	effect := &worldeffects.State{ID: "effect-1"}
+	if !worldeffects.RegisterEffect(registry, effect) {
 		t.Fatalf("expected effect registration to succeed")
 	}
 
@@ -470,7 +470,7 @@ func TestProjectileStopAdapterRegistersEffects(t *testing.T) {
 		t.Fatalf("expected allocateID to be bound")
 	}
 
-	bindings := adapter.StopConfig(&internalruntime.State{}, time.Now())
+	bindings := adapter.StopConfig(&worldeffects.State{}, time.Now())
 	if bindings.AreaEffectSpawn.AllocateID == nil {
 		t.Fatalf("expected AllocateID to be provided")
 	}
@@ -483,7 +483,7 @@ func TestProjectileStopAdapterRegistersEffects(t *testing.T) {
 		t.Fatalf("expected Register to be provided")
 	}
 
-	spawned := &internalruntime.State{ID: "effect-2"}
+	spawned := &worldeffects.State{ID: "effect-2"}
 	if !bindings.AreaEffectSpawn.Register(spawned) {
 		t.Fatalf("expected spawned effect registration to succeed")
 	}

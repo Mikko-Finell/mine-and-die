@@ -8,10 +8,10 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	internalruntime "mine-and-die/server/internal/effects/runtime"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
 	abilitiespkg "mine-and-die/server/internal/world/abilities"
+	worldeffects "mine-and-die/server/internal/world/effects"
 	state "mine-and-die/server/internal/world/state"
 	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
@@ -48,10 +48,10 @@ type World struct {
 	players map[string]*state.PlayerState
 	npcs    map[string]*state.NPCState
 
-	effects                 []*internalruntime.State
-	effectsByID             map[string]*internalruntime.State
-	effectsIndex            *internalruntime.SpatialIndex
-	effectsRegistry         internalruntime.Registry
+	effects                 []*worldeffects.State
+	effectsByID             map[string]*worldeffects.State
+	effectsIndex            *worldeffects.SpatialIndex
+	effectsRegistry         worldeffects.Registry
 	effectManager           *EffectManager
 	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*state.ActorState]
 	nextEffectID            uint64
@@ -96,16 +96,16 @@ func New(cfg Config, deps Deps) (*World, error) {
 		rng:                     factory(seed, "world"),
 		players:                 make(map[string]*state.PlayerState),
 		npcs:                    make(map[string]*state.NPCState),
-		effects:                 make([]*internalruntime.State, 0),
-		effectsByID:             make(map[string]*internalruntime.State),
-		effectsIndex:            internalruntime.NewSpatialIndex(internalruntime.DefaultSpatialCellSize, internalruntime.DefaultSpatialMaxPerCell),
+		effects:                 make([]*worldeffects.State, 0),
+		effectsByID:             make(map[string]*worldeffects.State),
+		effectsIndex:            worldeffects.NewSpatialIndex(worldeffects.DefaultSpatialCellSize, worldeffects.DefaultSpatialMaxPerCell),
 		groundItems:             make(map[string]*itemspkg.GroundItemState),
 		groundItemsByTile:       make(map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState),
 		statusEffectDefinitions: make(map[string]statuspkg.ApplyStatusEffectDefinition),
 		journal:                 journalpkg.New(capacity, maxAge),
 	}
 
-	world.effectsRegistry = internalruntime.Registry{
+	world.effectsRegistry = worldeffects.Registry{
 		Effects: &world.effects,
 		ByID:    &world.effectsByID,
 		Index:   world.effectsIndex,
@@ -141,7 +141,7 @@ func (w *World) NPCs() map[string]*state.NPCState {
 }
 
 // Effects returns the slice of active effect runtime state.
-func (w *World) Effects() []*internalruntime.State {
+func (w *World) Effects() []*worldeffects.State {
 	if w == nil {
 		return nil
 	}
@@ -149,7 +149,7 @@ func (w *World) Effects() []*internalruntime.State {
 }
 
 // EffectsByID returns the lookup map of active effects keyed by ID.
-func (w *World) EffectsByID() map[string]*internalruntime.State {
+func (w *World) EffectsByID() map[string]*worldeffects.State {
 	if w == nil {
 		return nil
 	}
@@ -157,7 +157,7 @@ func (w *World) EffectsByID() map[string]*internalruntime.State {
 }
 
 // EffectsIndex exposes the spatial index backing effect lookups.
-func (w *World) EffectsIndex() *internalruntime.SpatialIndex {
+func (w *World) EffectsIndex() *worldeffects.SpatialIndex {
 	if w == nil {
 		return nil
 	}
@@ -205,9 +205,9 @@ func (w *World) JournalState() journalpkg.Journal {
 }
 
 // EffectRegistry exposes the world's shared effect registry bindings.
-func (w *World) EffectRegistry() internalruntime.Registry {
+func (w *World) EffectRegistry() worldeffects.Registry {
 	if w == nil {
-		return internalruntime.Registry{}
+		return worldeffects.Registry{}
 	}
 	if w.effectsRegistry.Effects == nil || w.effectsRegistry.Effects != &w.effects {
 		w.effectsRegistry.Effects = &w.effects
@@ -321,12 +321,12 @@ func (w *World) allocateEffectID() string {
 }
 
 func (w *World) registerRuntimeEffect(effect any) bool {
-	runtime, _ := effect.(*internalruntime.State)
+	runtime, _ := effect.(*worldeffects.State)
 	if runtime == nil {
 		return false
 	}
 	registry := w.EffectRegistry()
-	return internalruntime.RegisterEffect(registry, runtime)
+	return worldeffects.RegisterEffect(registry, runtime)
 }
 
 // Config returns the normalized configuration captured at construction time.

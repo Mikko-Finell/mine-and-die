@@ -5,7 +5,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	effecthelpers "mine-and-die/server/internal/effects"
+	worldeffects "mine-and-die/server/internal/world/effects"
 )
 
 // BurningTickIntentConfig bundles the inputs required to enqueue a contract
@@ -56,8 +56,8 @@ func NewBurningTickIntent(cfg BurningTickIntentConfig) (effectcontract.EffectInt
 
 			geometry := effectcontract.EffectGeometry{
 				Shape:   effectcontract.GeometryShapeRect,
-				Width:   effecthelpers.QuantizeWorldCoord(footprint, cfg.TileSize),
-				Height:  effecthelpers.QuantizeWorldCoord(footprint, cfg.TileSize),
+				Width:   worldeffects.QuantizeWorldCoord(footprint, cfg.TileSize),
+				Height:  worldeffects.QuantizeWorldCoord(footprint, cfg.TileSize),
 				OffsetX: 0,
 				OffsetY: 0,
 			}
