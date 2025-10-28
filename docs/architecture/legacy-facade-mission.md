@@ -65,7 +65,7 @@ replacements are wired.
   (no new logic yet, no behaviour change).
 - [x] **Move ability owners & projectile lifecycle helpers first.** Port the pure helper functions into the new scaffolding so
   the internal package can depend on them without changing hook registration.
-- [ ] **Then move hook registration.** Shift melee, follow-up, and projectile impact hook wiring into the internal manager once
+- [x] **Then move hook registration.** Shift melee, follow-up, and projectile impact hook wiring into the internal manager once
   the helpers exist, keeping behaviour equivalent via the façade forwarders.
 - [ ] **Port cooldown bookkeeping and telemetry emitters.** Move the timer/counter wiring plus emitter construction into the
   internal package, keeping telemetry configuration identical by reusing the existing interfaces.
