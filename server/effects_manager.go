@@ -167,27 +167,6 @@ func (m *EffectManager) RunTick(tick effectcontract.Tick, now time.Time, emit fu
 	m.core.RunTick(tick, now, emit)
 }
 
-type projectileOwnerAdapter struct {
-	x      float64
-	y      float64
-	facing string
-}
-
-func (a projectileOwnerAdapter) Facing() string {
-	if a.facing == "" {
-		return string(defaultFacing)
-	}
-	return a.facing
-}
-
-func (a projectileOwnerAdapter) FacingVector() (float64, float64) {
-	return facingToVector(FacingDirection(a.Facing()))
-}
-
-func (a projectileOwnerAdapter) Position() (float64, float64) {
-	return a.x, a.y
-}
-
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
 	hooks := make(map[string]internaleffects.HookSet)
 	var ownerLookup worldpkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
@@ -358,7 +337,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			if !ok || owner == nil {
 				return nil
 			}
-			return projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: owner.Facing}
+			return &worldeffects.ProjectileOwnerSnapshot{X: owner.X, Y: owner.Y, FacingValue: owner.Facing}
 		},
 		PruneExpired: func(at time.Time) {
 			if world == nil {

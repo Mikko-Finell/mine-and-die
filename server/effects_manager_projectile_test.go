@@ -7,6 +7,7 @@ import (
 
 	effectcontract "mine-and-die/server/effects/contract"
 	internaleffects "mine-and-die/server/internal/effects"
+	worldeffects "mine-and-die/server/internal/world/effects"
 )
 
 func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
@@ -33,7 +34,7 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 
 	internaleffects.SyncContractProjectileInstance(internaleffects.ContractProjectileSyncConfig{
 		Instance: instance,
-		Owner:    projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: string(owner.Facing)},
+		Owner:    worldeffects.ProjectileOwnerSnapshot{X: owner.X, Y: owner.Y, FacingValue: string(owner.Facing)},
 		Effect:   effect,
 		TileSize: tileSize,
 		TickRate: tickRate,
@@ -62,7 +63,7 @@ func TestSyncProjectileInstanceQuantizesDirection(t *testing.T) {
 
 	spawned := internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
 		Instance: instance,
-		Owner:    projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: string(owner.Facing)},
+		Owner:    worldeffects.ProjectileOwnerSnapshot{X: owner.X, Y: owner.Y, FacingValue: string(owner.Facing)},
 		Template: tpl,
 		Now:      time.Unix(0, 0),
 		TileSize: tileSize,
@@ -119,7 +120,7 @@ func TestSpawnContractProjectileFromInstancePreservesLifetime(t *testing.T) {
 
 	spawned := internaleffects.SpawnContractProjectileFromInstance(internaleffects.ProjectileSpawnConfig{
 		Instance: instance,
-		Owner:    projectileOwnerAdapter{x: owner.X, y: owner.Y, facing: string(owner.Facing)},
+		Owner:    worldeffects.ProjectileOwnerSnapshot{X: owner.X, Y: owner.Y, FacingValue: string(owner.Facing)},
 		Template: tpl,
 		Now:      now,
 		TileSize: tileSize,
