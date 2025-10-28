@@ -168,7 +168,6 @@ func (m *EffectManager) RunTick(tick effectcontract.Tick, now time.Time, emit fu
 }
 
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
-	hooks := make(map[string]internaleffects.HookSet)
 	var ownerLookup worldpkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
 	var stateLookup worldpkg.AbilityOwnerStateLookup[*actorState]
 	if world != nil {
@@ -176,188 +175,202 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		ownerLookup = world.abilityOwnerLookup
 		stateLookup = world.abilityOwnerStateLookup
 	}
-	hooks[effectcontract.HookMeleeSpawn] = internaleffects.MeleeSpawnHook(internaleffects.MeleeSpawnHookConfig{
-		TileSize:        tileSize,
-		DefaultWidth:    meleeAttackWidth,
-		DefaultReach:    meleeAttackReach,
-		DefaultDamage:   meleeAttackDamage,
-		DefaultDuration: meleeAttackDuration,
-		LookupOwner: func(actorID string) *internaleffects.MeleeOwner {
-			if actorID == "" {
-				return nil
-			}
-			if ownerLookup == nil {
-				return nil
-			}
-			owner, _, ok := ownerLookup(actorID)
-			if !ok || owner == nil {
-				return nil
-			}
-			var reference any
-			if stateLookup != nil {
-				if state, _, ok := stateLookup(actorID); ok && state != nil {
-					reference = state
+
+	hookCfg := worldpkg.EffectManagerHooksConfig{
+		Melee: worldpkg.MeleeHookConfig{
+			TileSize:        tileSize,
+			DefaultWidth:    meleeAttackWidth,
+			DefaultReach:    meleeAttackReach,
+			DefaultDamage:   meleeAttackDamage,
+			DefaultDuration: meleeAttackDuration,
+			LookupOwner: func(actorID string) *internaleffects.MeleeOwner {
+				if actorID == "" || ownerLookup == nil {
+					return nil
 				}
-			}
-			return &internaleffects.MeleeOwner{
-				X:         owner.X,
-				Y:         owner.Y,
-				Reference: reference,
-			}
-		},
-		ResolveImpact: func(effect *internaleffects.State, owner *internaleffects.MeleeOwner, actorID string, tick effectcontract.Tick, now time.Time, area internaleffects.MeleeImpactArea) {
-			if world == nil || effect == nil {
-				return
-			}
+				owner, _, ok := ownerLookup(actorID)
+				if !ok || owner == nil {
+					return nil
+				}
+				var reference any
+				if stateLookup != nil {
+					if state, _, ok := stateLookup(actorID); ok && state != nil {
+						reference = state
+					}
+				}
+				return &internaleffects.MeleeOwner{X: owner.X, Y: owner.Y, Reference: reference}
+			},
+			ResolveImpact: func(effect *worldeffects.State, owner *internaleffects.MeleeOwner, actorID string, tick effectcontract.Tick, now time.Time, area internaleffects.MeleeImpactArea) {
+				if world == nil || effect == nil {
+					return
+				}
 
-			var ownerRef any
-			if owner != nil {
-				ownerRef = owner.Reference
-			}
+				var ownerRef any
+				if owner != nil {
+					ownerRef = owner.Reference
+				}
 
-			tick64 := uint64(tick)
+				tick64 := uint64(tick)
 
-			cfg := worldpkg.ResolveMeleeImpactConfig{
-				EffectType: effect.Type,
-				Effect:     effect,
-				Owner:      ownerRef,
-				ActorID:    actorID,
-				Tick:       tick64,
-				Now:        now,
-				Area: worldpkg.Obstacle{
-					X:      area.X,
-					Y:      area.Y,
-					Width:  area.Width,
-					Height: area.Height,
-				},
-				Obstacles: world.obstacles,
-				ForEachPlayer: func(visit func(id string, x, y float64, reference any)) {
-					for id, player := range world.players {
-						if player == nil {
-							continue
+				cfg := worldpkg.ResolveMeleeImpactConfig{
+					EffectType: effect.Type,
+					Effect:     (*internaleffects.State)(effect),
+					Owner:      ownerRef,
+					ActorID:    actorID,
+					Tick:       tick64,
+					Now:        now,
+					Area:       worldpkg.Obstacle{X: area.X, Y: area.Y, Width: area.Width, Height: area.Height},
+					Obstacles:  world.obstacles,
+					ForEachPlayer: func(visit func(id string, x, y float64, reference any)) {
+						for id, player := range world.players {
+							if player == nil {
+								continue
+							}
+							visit(id, player.X, player.Y, player)
 						}
-						visit(id, player.X, player.Y, player)
-					}
-				},
-				ForEachNPC: func(visit func(id string, x, y float64, reference any)) {
-					for id, npc := range world.npcs {
-						if npc == nil {
-							continue
+					},
+					ForEachNPC: func(visit func(id string, x, y float64, reference any)) {
+						for id, npc := range world.npcs {
+							if npc == nil {
+								continue
+							}
+							visit(id, npc.X, npc.Y, npc)
 						}
-						visit(id, npc.X, npc.Y, npc)
-					}
-				},
-				GivePlayerGold: func(id string) (bool, error) {
-					if _, ok := world.players[id]; !ok {
-						return false, nil
-					}
-					err := world.MutateInventory(id, func(inv *Inventory) error {
-						if inv == nil {
+					},
+					GivePlayerGold: func(id string) (bool, error) {
+						if _, ok := world.players[id]; !ok {
+							return false, nil
+						}
+						err := world.MutateInventory(id, func(inv *Inventory) error {
+							if inv == nil {
+								return nil
+							}
+							_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+							return addErr
+						})
+						return true, err
+					},
+					GiveNPCGold: func(id string) (bool, error) {
+						if _, ok := world.npcs[id]; !ok {
+							return false, nil
+						}
+						err := world.MutateNPCInventory(id, func(inv *Inventory) error {
+							if inv == nil {
+								return nil
+							}
+							_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+							return addErr
+						})
+						return true, err
+					},
+					GiveOwnerGold: func(ref any) error {
+						actor, ok := ref.(*actorState)
+						if !ok || actor == nil {
 							return nil
 						}
-						_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
-						return addErr
-					})
-					return true, err
-				},
-				GiveNPCGold: func(id string) (bool, error) {
-					if _, ok := world.npcs[id]; !ok {
-						return false, nil
-					}
-					err := world.MutateNPCInventory(id, func(inv *Inventory) error {
-						if inv == nil {
-							return nil
+						_, err := actor.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
+						return err
+					},
+					ApplyPlayerHit: func(effectRef any, target any, now time.Time) {
+						if world == nil || world.playerHitCallback == nil {
+							return
 						}
-						_, addErr := inv.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
-						return addErr
-					})
-					return true, err
-				},
-				GiveOwnerGold: func(ref any) error {
-					actor, ok := ref.(*actorState)
-					if !ok || actor == nil {
-						return nil
-					}
-					_, err := actor.Inventory.AddStack(ItemStack{Type: ItemTypeGold, Quantity: 1})
-					return err
-				},
-				ApplyPlayerHit: func(effectRef any, target any, now time.Time) {
-					if world == nil || world.playerHitCallback == nil {
-						return
-					}
-					world.playerHitCallback(effectRef, target, now)
-				},
-				ApplyNPCHit: func(effectRef any, target any, now time.Time) {
-					if world == nil || world.npcHitCallback == nil {
-						return
-					}
-					world.npcHitCallback(effectRef, target, now)
-				},
-				RecordGoldGrantFailure: func(actorID string, obstacleID string, err error) {
-					if err == nil {
-						return
-					}
-					loggingeconomy.ItemGrantFailed(
-						context.Background(),
-						world.publisher,
-						tick64,
-						world.entityRef(actorID),
-						loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 1, Reason: "mine_gold"},
-						map[string]any{"error": err.Error(), "obstacle": obstacleID},
-					)
-				},
-				RecordAttackOverlap: func(actorID string, tick uint64, effectType string, hitPlayers []string, hitNPCs []string) {
-					if world == nil || world.recordAttackOverlap == nil {
-						return
-					}
-					world.recordAttackOverlap(actorID, tick, effectType, hitPlayers, hitNPCs, nil)
-				},
-			}
+						world.playerHitCallback(effectRef, target, now)
+					},
+					ApplyNPCHit: func(effectRef any, target any, now time.Time) {
+						if world == nil || world.npcHitCallback == nil {
+							return
+						}
+						world.npcHitCallback(effectRef, target, now)
+					},
+					RecordGoldGrantFailure: func(actorID string, obstacleID string, err error) {
+						if err == nil {
+							return
+						}
+						loggingeconomy.ItemGrantFailed(
+							context.Background(),
+							world.publisher,
+							tick64,
+							world.entityRef(actorID),
+							loggingeconomy.ItemGrantFailedPayload{ItemType: string(ItemTypeGold), Quantity: 1, Reason: "mine_gold"},
+							map[string]any{"error": err.Error(), "obstacle": obstacleID},
+						)
+					},
+					RecordAttackOverlap: func(actorID string, tick uint64, effectType string, hitPlayers []string, hitNPCs []string) {
+						if world == nil || world.recordAttackOverlap == nil {
+							return
+						}
+						world.recordAttackOverlap(actorID, tick, effectType, hitPlayers, hitNPCs, nil)
+					},
+				}
 
-			worldpkg.ResolveMeleeImpact(cfg)
+				worldpkg.ResolveMeleeImpact(cfg)
+			},
 		},
-	})
-	hooks[effectcontract.HookProjectileLifecycle] = internaleffects.ContractProjectileLifecycleHook(internaleffects.ContractProjectileLifecycleHookConfig{
-		TileSize: tileSize,
-		TickRate: tickRate,
-		LookupTemplate: func(definitionID string) *internaleffects.ProjectileTemplate {
-			if world == nil {
-				return nil
-			}
-			return world.projectileTemplates[definitionID]
+		Projectile: worldpkg.ProjectileHookConfig{
+			TileSize: tileSize,
+			TickRate: tickRate,
+			LookupTemplate: func(definitionID string) *internaleffects.ProjectileTemplate {
+				if world == nil {
+					return nil
+				}
+				return world.projectileTemplates[definitionID]
+			},
+			LookupOwner: func(actorID string) internaleffects.ProjectileOwner {
+				if actorID == "" || ownerLookup == nil {
+					return nil
+				}
+				owner, _, ok := ownerLookup(actorID)
+				if !ok || owner == nil {
+					return nil
+				}
+				return &worldeffects.ProjectileOwnerSnapshot{X: owner.X, Y: owner.Y, FacingValue: owner.Facing}
+			},
+			PruneExpired: func(at time.Time) {
+				if world == nil {
+					return
+				}
+				world.pruneEffects(at)
+			},
+			RecordEffectSpawn: func(effectType, category string) {
+				if world == nil {
+					return
+				}
+				world.recordEffectSpawn(effectType, category)
+			},
+			AdvanceProjectile: func(effect *worldeffects.State, now time.Time, dt float64) bool {
+				if world == nil {
+					return false
+				}
+				return world.advanceProjectile((*internaleffects.State)(effect), now, dt)
+			},
 		},
-		LookupOwner: func(actorID string) internaleffects.ProjectileOwner {
-			if actorID == "" {
-				return nil
-			}
-			if ownerLookup == nil {
-				return nil
-			}
-			owner, _, ok := ownerLookup(actorID)
-			if !ok || owner == nil {
-				return nil
-			}
-			return &worldeffects.ProjectileOwnerSnapshot{X: owner.X, Y: owner.Y, FacingValue: owner.Facing}
+		Blood: worldpkg.BloodHookConfig{
+			TileSize:        tileSize,
+			TickRate:        tickRate,
+			DefaultSize:     playerHalf * 2,
+			DefaultDuration: bloodSplatterDuration,
+			Params:          newBloodSplatterParams,
+			Colors:          bloodSplatterColors,
+			PruneExpired: func(at time.Time) {
+				if world == nil {
+					return
+				}
+				world.pruneEffects(at)
+			},
+			RecordEffectSpawn: func(effectType, category string) {
+				if world == nil {
+					return
+				}
+				world.recordEffectSpawn(effectType, category)
+			},
 		},
-		PruneExpired: func(at time.Time) {
-			if world == nil {
-				return
-			}
-			world.pruneEffects(at)
-		},
-		RecordEffectSpawn: func(effectType, category string) {
-			if world == nil {
-				return
-			}
-			world.recordEffectSpawn(effectType, category)
-		},
-		AdvanceProjectile: func(effect *internaleffects.State, now time.Time, dt float64) bool {
-			if world == nil {
-				return false
-			}
-			return world.advanceProjectile(effect, now, dt)
-		},
-	})
+	}
+
+	hooks := worldpkg.BuildEffectManagerHooks(hookCfg)
+	legacyHooks := make(map[string]internaleffects.HookSet, len(hooks)+3)
+	for key, value := range hooks {
+		legacyHooks[key] = internaleffects.HookSet(value)
+	}
 	lookupContractActor := func(actorID string) *statuspkg.ContractStatusActor {
 		if world == nil || actorID == "" {
 			return nil
@@ -384,7 +397,7 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		}
 		return contractActor
 	}
-	hooks[effectcontract.HookStatusBurningVisual] = statuspkg.ContractBurningVisualHook(statuspkg.ContractBurningVisualHookConfig{
+	legacyHooks[effectcontract.HookStatusBurningVisual] = statuspkg.ContractBurningVisualHook(statuspkg.ContractBurningVisualHookConfig{
 		StatusEffect:     statuspkg.StatusEffectType(StatusEffectBurning),
 		DefaultLifetime:  burningStatusEffectDuration,
 		FallbackLifetime: burningTickInterval,
@@ -405,40 +418,11 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			world.recordEffectSpawn(effectType, category)
 		},
 	})
-	hooks[effectcontract.HookStatusBurningDamage] = statuspkg.ContractBurningDamageHook(statuspkg.ContractBurningDamageHookConfig{
+	legacyHooks[effectcontract.HookStatusBurningDamage] = statuspkg.ContractBurningDamageHook(statuspkg.ContractBurningDamageHookConfig{
 		StatusEffect:    statuspkg.StatusEffectType(StatusEffectBurning),
 		DamagePerSecond: lavaDamagePerSecond,
 		TickInterval:    burningTickInterval,
 		LookupActor:     lookupContractActor,
 	})
-	ensureBloodDecal := func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, _ effectcontract.Tick, now time.Time) {
-		internaleffects.EnsureBloodDecalInstance(internaleffects.BloodDecalInstanceConfig{
-			Runtime:         rt,
-			Instance:        instance,
-			Now:             now,
-			TileSize:        tileSize,
-			TickRate:        tickRate,
-			DefaultSize:     playerHalf * 2,
-			DefaultDuration: bloodSplatterDuration,
-			Params:          newBloodSplatterParams(),
-			Colors:          bloodSplatterColors(),
-			PruneExpired: func(at time.Time) {
-				if world == nil {
-					return
-				}
-				world.pruneEffects(at)
-			},
-			RecordSpawn: func(effectType, producer string) {
-				if world == nil {
-					return
-				}
-				world.recordEffectSpawn(effectType, producer)
-			},
-		})
-	}
-	hooks[effectcontract.HookVisualBloodSplatter] = internaleffects.HookSet{
-		OnSpawn: ensureBloodDecal,
-		OnTick:  ensureBloodDecal,
-	}
-	return hooks
+	return legacyHooks
 }

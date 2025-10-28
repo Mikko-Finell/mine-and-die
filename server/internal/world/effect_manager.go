@@ -289,9 +289,21 @@ func (w *World) buildEffectManagerCore() *worldeffects.Manager {
 	return worldeffects.NewManager(worldeffects.ManagerConfig{
 		Definitions: definitions,
 		Catalog:     resolver,
+		Hooks:       w.effectManagerHooks(),
 		OwnerMissing: func(actorID string) bool {
 			return w.effectOwnerMissing(actorID)
 		},
 		Registry: registryProvider,
 	})
+}
+
+func (w *World) effectManagerHooks() map[string]worldeffects.HookSet {
+	if w == nil {
+		return nil
+	}
+	return buildEffectManagerHooks(w.effectManagerHooksConfig())
+}
+
+func (w *World) effectManagerHooksConfig() EffectManagerHooksConfig {
+	return EffectManagerHooksConfig{}
 }
