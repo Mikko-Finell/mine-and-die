@@ -48,6 +48,6 @@ func (w *World) ConstructorHarness() ConstructorHarness {
 		Seed:              w.seed,
 		NextEffectID:      w.nextEffectID,
 		EffectsRegistry:   registry,
-		EffectManager:     w.effectManager,
+		EffectManager:     w.effectManager.Core(),
 	}
 }

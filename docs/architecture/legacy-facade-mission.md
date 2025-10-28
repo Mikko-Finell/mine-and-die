@@ -59,7 +59,7 @@ replacements are wired.
     build burning intents without referencing the façade.
   - After these moves, keep `server/internal/effects` focused on contract/runtime glue that is safe for `internal/world` to
     import, unlocking the constructor work below.
-- [ ] **Lay the `internal/world` effect manager scaffolding.** Introduce the constructor surface and package seams mirroring
+- [x] **Lay the `internal/world` effect manager scaffolding.** Introduce the constructor surface and package seams mirroring
   the legacy `server/effects_manager.go` types, but keep them backed by the façade wiring so behaviour stays identical while we
   stage the move. The new internal effect manager still calls the façade manager under the hood initially — via thin forwarders
   (no new logic yet, no behaviour change).

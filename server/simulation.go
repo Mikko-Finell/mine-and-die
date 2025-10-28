@@ -339,6 +339,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		Index:   w.effectsIndex,
 	}
 	w.effectManager = newEffectManager(w)
+	constructed.BindLegacyEffectManager(w.effectManager)
 	w.obstacles = w.generateObstacles(normalized.ObstaclesCount)
 	w.spawnInitialNPCs()
 
