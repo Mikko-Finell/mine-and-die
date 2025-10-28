@@ -9,6 +9,7 @@ import (
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
+	worldeffects "mine-and-die/server/internal/world/effects"
 	statuspkg "mine-and-die/server/internal/world/status"
 	loggingeconomy "mine-and-die/server/logging/economy"
 )
@@ -101,6 +102,20 @@ func (m *EffectManager) TotalDrained() int {
 		return 0
 	}
 	return m.core.TotalDrained()
+}
+
+func (m *EffectManager) Core() *worldeffects.Manager {
+	if m == nil || m.core == nil {
+		return nil
+	}
+	return (*worldeffects.Manager)(m.core)
+}
+
+func (m *EffectManager) RuntimeEffect(id string) *internaleffects.State {
+	if m == nil || m.core == nil || id == "" {
+		return nil
+	}
+	return internaleffects.LoadRuntimeEffect(m.core, id)
 }
 
 func (m *EffectManager) LastTickProcessed() effectcontract.Tick {
