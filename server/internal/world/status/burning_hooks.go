@@ -5,7 +5,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	internaleffects "mine-and-die/server/internal/effects"
+	worldeffects "mine-and-die/server/internal/world/effects"
 )
 
 // ContractStatusInstance captures the status effect instance metadata required
@@ -46,77 +46,77 @@ type ContractBurningVisualHookConfig struct {
 
 // ContractBurningVisualHook returns the spawn and tick handlers that keep the
 // contract-managed burning visual effect synchronized with its world state.
-func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) internaleffects.HookSet {
-	return internaleffects.HookSet{
-		OnSpawn: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, _ effectcontract.Tick, now time.Time) {
+func ContractBurningVisualHook(cfg ContractBurningVisualHookConfig) worldeffects.HookSet {
+	return worldeffects.HookSet{
+		OnSpawn: func(rt worldeffects.Runtime, instance *effectcontract.EffectInstance, _ effectcontract.Tick, now time.Time) {
 			if instance == nil {
 				return
 			}
 
 			actor := lookupContractStatusActor(cfg.LookupActor, instance)
-			effect := internaleffects.LoadRuntimeEffect(rt, instance.ID)
+			effect := worldeffects.LoadRuntimeEffect(rt, instance.ID)
 
 			if effect == nil && actor != nil {
-				lifetime := internaleffects.TicksToDuration(instance.BehaviorState.TicksRemaining, cfg.TickRate)
+				lifetime := worldeffects.TicksToDuration(instance.BehaviorState.TicksRemaining, cfg.TickRate)
 				if lifetime <= 0 {
 					lifetime = cfg.DefaultLifetime
 				}
 
-				target := &internaleffects.StatusVisualTarget{ID: actor.ID, X: actor.X, Y: actor.Y}
-				effect = internaleffects.SpawnContractStatusVisualFromInstance(internaleffects.StatusVisualSpawnConfig{
+				target := &worldeffects.StatusVisualTarget{ID: actor.ID, X: actor.X, Y: actor.Y}
+				effect = worldeffects.SpawnContractStatusVisualFromInstance(worldeffects.StatusVisualSpawnConfig{
 					Instance:         instance,
 					Target:           target,
 					Lifetime:         lifetime,
 					Now:              now,
 					DefaultFootprint: cfg.DefaultFootprint,
 					FallbackLifetime: cfg.FallbackLifetime,
-					StatusEffect:     internaleffects.StatusEffectType(cfg.StatusEffect),
+					StatusEffect:     worldeffects.StatusEffectType(cfg.StatusEffect),
 				})
 				if effect != nil {
 					attachAndExtendStatusVisual(cfg, actor.StatusInstance, effect)
-					if !internaleffects.RegisterRuntimeEffect(rt, effect) {
+					if !worldeffects.RegisterRuntimeEffect(rt, effect) {
 						instance.BehaviorState.TicksRemaining = 0
 						effect = nil
 					} else {
 						recordContractStatusVisualSpawn(cfg, effect.Type)
-						internaleffects.StoreRuntimeEffect(rt, instance.ID, effect)
+						worldeffects.StoreRuntimeEffect(rt, instance.ID, effect)
 					}
 				}
 			}
 
 			syncContractStatusVisual(cfg, instance, effect, actor)
 		},
-		OnTick: func(rt internaleffects.Runtime, instance *effectcontract.EffectInstance, _ effectcontract.Tick, now time.Time) {
+		OnTick: func(rt worldeffects.Runtime, instance *effectcontract.EffectInstance, _ effectcontract.Tick, now time.Time) {
 			if instance == nil {
 				return
 			}
 
 			actor := lookupContractStatusActor(cfg.LookupActor, instance)
-			effect := internaleffects.LoadRuntimeEffect(rt, instance.ID)
+			effect := worldeffects.LoadRuntimeEffect(rt, instance.ID)
 
 			if effect == nil && actor != nil {
-				lifetime := internaleffects.TicksToDuration(instance.BehaviorState.TicksRemaining, cfg.TickRate)
+				lifetime := worldeffects.TicksToDuration(instance.BehaviorState.TicksRemaining, cfg.TickRate)
 				if lifetime <= 0 {
 					lifetime = cfg.DefaultLifetime
 				}
-				target := &internaleffects.StatusVisualTarget{ID: actor.ID, X: actor.X, Y: actor.Y}
-				effect = internaleffects.SpawnContractStatusVisualFromInstance(internaleffects.StatusVisualSpawnConfig{
+				target := &worldeffects.StatusVisualTarget{ID: actor.ID, X: actor.X, Y: actor.Y}
+				effect = worldeffects.SpawnContractStatusVisualFromInstance(worldeffects.StatusVisualSpawnConfig{
 					Instance:         instance,
 					Target:           target,
 					Lifetime:         lifetime,
 					Now:              now,
 					DefaultFootprint: cfg.DefaultFootprint,
 					FallbackLifetime: cfg.FallbackLifetime,
-					StatusEffect:     internaleffects.StatusEffectType(cfg.StatusEffect),
+					StatusEffect:     worldeffects.StatusEffectType(cfg.StatusEffect),
 				})
 				if effect != nil {
 					attachAndExtendStatusVisual(cfg, actor.StatusInstance, effect)
-					if !internaleffects.RegisterRuntimeEffect(rt, effect) {
+					if !worldeffects.RegisterRuntimeEffect(rt, effect) {
 						instance.BehaviorState.TicksRemaining = 0
 						effect = nil
 					} else {
 						recordContractStatusVisualSpawn(cfg, effect.Type)
-						internaleffects.StoreRuntimeEffect(rt, instance.ID, effect)
+						worldeffects.StoreRuntimeEffect(rt, instance.ID, effect)
 					}
 				}
 			}
@@ -148,9 +148,9 @@ type ContractBurningDamageHookConfig struct {
 
 // ContractBurningDamageHook returns the hook set that applies lava damage when a
 // contract-managed burning status effect processes its tick.
-func ContractBurningDamageHook(cfg ContractBurningDamageHookConfig) internaleffects.HookSet {
-	return internaleffects.HookSet{
-		OnSpawn: func(_ internaleffects.Runtime, instance *effectcontract.EffectInstance, _ effectcontract.Tick, now time.Time) {
+func ContractBurningDamageHook(cfg ContractBurningDamageHookConfig) worldeffects.HookSet {
+	return worldeffects.HookSet{
+		OnSpawn: func(_ worldeffects.Runtime, instance *effectcontract.EffectInstance, _ effectcontract.Tick, now time.Time) {
 			applyContractBurningDamage(cfg, instance, now)
 		},
 	}
@@ -208,7 +208,7 @@ func lookupContractStatusActor(lookup func(string) *ContractStatusActor, instanc
 	return lookup(targetID)
 }
 
-func attachAndExtendStatusVisual(cfg ContractBurningVisualHookConfig, inst *ContractStatusInstance, effect *internaleffects.State) {
+func attachAndExtendStatusVisual(cfg ContractBurningVisualHookConfig, inst *ContractStatusInstance, effect *worldeffects.State) {
 	if inst == nil || inst.Instance == nil || effect == nil {
 		return
 	}
@@ -222,7 +222,7 @@ func attachAndExtendStatusVisual(cfg ContractBurningVisualHookConfig, inst *Cont
 	}
 }
 
-func extendContractStatusVisual(cfg ContractBurningVisualHookConfig, inst *ContractStatusInstance, effect *internaleffects.State, now time.Time, instance *effectcontract.EffectInstance) {
+func extendContractStatusVisual(cfg ContractBurningVisualHookConfig, inst *ContractStatusInstance, effect *worldeffects.State, now time.Time, instance *effectcontract.EffectInstance) {
 	if inst == nil || inst.Instance == nil {
 		expireContractStatusVisual(cfg, effect, now)
 		return
@@ -246,14 +246,14 @@ func extendContractStatusVisual(cfg ContractBurningVisualHookConfig, inst *Contr
 	}
 }
 
-func expireContractStatusVisual(cfg ContractBurningVisualHookConfig, effect *internaleffects.State, now time.Time) {
+func expireContractStatusVisual(cfg ContractBurningVisualHookConfig, effect *worldeffects.State, now time.Time) {
 	if effect == nil || cfg.ExpireLifetime == nil {
 		return
 	}
 	cfg.ExpireLifetime(statusEffectLifetimeFields(effect), now)
 }
 
-func statusEffectLifetimeFields(effect *internaleffects.State) StatusEffectLifetimeFields {
+func statusEffectLifetimeFields(effect *worldeffects.State) StatusEffectLifetimeFields {
 	if effect == nil {
 		return StatusEffectLifetimeFields{}
 	}
@@ -264,15 +264,15 @@ func statusEffectLifetimeFields(effect *internaleffects.State) StatusEffectLifet
 	}
 }
 
-func syncContractStatusVisual(cfg ContractBurningVisualHookConfig, instance *effectcontract.EffectInstance, effect *internaleffects.State, actor *ContractStatusActor) {
+func syncContractStatusVisual(cfg ContractBurningVisualHookConfig, instance *effectcontract.EffectInstance, effect *worldeffects.State, actor *ContractStatusActor) {
 	if instance == nil || effect == nil {
 		return
 	}
-	var actorPos *internaleffects.ActorPosition
+	var actorPos *worldeffects.ActorPosition
 	if actor != nil {
-		actorPos = &internaleffects.ActorPosition{X: actor.X, Y: actor.Y}
+		actorPos = &worldeffects.ActorPosition{X: actor.X, Y: actor.Y}
 	}
-	internaleffects.SyncContractStatusVisualInstance(internaleffects.StatusVisualSyncConfig{
+	worldeffects.SyncContractStatusVisualInstance(worldeffects.StatusVisualSyncConfig{
 		Instance:         instance,
 		Effect:           effect,
 		Actor:            actorPos,
@@ -300,14 +300,14 @@ func durationToTicks(duration time.Duration, tickRate int) int {
 }
 
 type statusEffectVisualAdapter struct {
-	state *internaleffects.State
+	state *worldeffects.State
 }
 
 func (a statusEffectVisualAdapter) SetStatusEffect(value string) {
 	if a.state == nil {
 		return
 	}
-	a.state.StatusEffect = internaleffects.StatusEffectType(value)
+	a.state.StatusEffect = worldeffects.StatusEffectType(value)
 }
 
 func (a statusEffectVisualAdapter) EffectState() any {

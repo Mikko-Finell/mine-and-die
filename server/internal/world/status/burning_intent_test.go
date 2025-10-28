@@ -5,7 +5,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	effecthelpers "mine-and-die/server/internal/effects"
+	worldeffects "mine-and-die/server/internal/world/effects"
 )
 
 func TestNewBurningTickIntent_BuildsIntentFromWorldHelper(t *testing.T) {
@@ -44,7 +44,7 @@ func TestNewBurningTickIntent_BuildsIntentFromWorldHelper(t *testing.T) {
 	if intent.DurationTicks != 1 {
 		t.Fatalf("expected DurationTicks 1, got %d", intent.DurationTicks)
 	}
-	expectedFootprint := effecthelpers.QuantizeWorldCoord(cfg.Footprint, cfg.TileSize)
+	expectedFootprint := worldeffects.QuantizeWorldCoord(cfg.Footprint, cfg.TileSize)
 	if intent.Geometry.Width != expectedFootprint || intent.Geometry.Height != expectedFootprint {
 		t.Fatalf("expected footprint %d, got width=%d height=%d", expectedFootprint, intent.Geometry.Width, intent.Geometry.Height)
 	}

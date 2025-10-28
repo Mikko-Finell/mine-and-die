@@ -10,8 +10,9 @@ import (
 )
 
 type (
-	Registry = runtime.Registry
-	State    = runtime.State
+	Registry         = runtime.Registry
+	State            = runtime.State
+	StatusEffectType = runtime.StatusEffectType
 )
 
 var (
@@ -183,6 +184,13 @@ func (m *Manager) Registry() Registry {
 		return Registry{}
 	}
 	return m.registry()
+}
+
+func (m *Manager) RuntimeEffect(id string) *State {
+	if m == nil || id == "" {
+		return nil
+	}
+	return LoadRuntimeEffect(m, id)
 }
 
 func (m *Manager) EnqueueIntent(intent effectcontract.EffectIntent) {

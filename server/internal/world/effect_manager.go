@@ -5,7 +5,6 @@ import (
 
 	effectcatalog "mine-and-die/server/effects/catalog"
 	effectcontract "mine-and-die/server/effects/contract"
-	internaleffects "mine-and-die/server/internal/effects"
 	worldeffects "mine-and-die/server/internal/world/effects"
 )
 
@@ -14,7 +13,7 @@ import (
 // behaviour stays identical while the internal scaffolding lands.
 type EffectManagerFacade interface {
 	Definitions() map[string]*effectcontract.EffectDefinition
-	Hooks() map[string]internaleffects.HookSet
+	Hooks() map[string]worldeffects.HookSet
 	Instances() map[string]*effectcontract.EffectInstance
 	Catalog() *effectcatalog.Resolver
 	TotalEnqueued() int
@@ -92,7 +91,7 @@ func (m *EffectManager) Definitions() map[string]*effectcontract.EffectDefinitio
 }
 
 // Hooks exposes the installed hook registry.
-func (m *EffectManager) Hooks() map[string]internaleffects.HookSet {
+func (m *EffectManager) Hooks() map[string]worldeffects.HookSet {
 	if m == nil {
 		return nil
 	}
@@ -259,7 +258,7 @@ func (m *EffectManager) RuntimeEffect(id string) *worldeffects.State {
 	if m.core == nil {
 		return nil
 	}
-	return internaleffects.LoadRuntimeEffect(m.core, id)
+	return m.core.RuntimeEffect(id)
 }
 
 func (w *World) buildEffectManagerCore() *worldeffects.Manager {
