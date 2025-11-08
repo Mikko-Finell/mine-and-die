@@ -303,7 +303,3 @@ func (w *World) effectManagerHooks() map[string]worldeffects.HookSet {
 	}
 	return buildEffectManagerHooks(w.effectManagerHooksConfig())
 }
-
-func (w *World) effectManagerHooksConfig() EffectManagerHooksConfig {
-	return EffectManagerHooksConfig{}
-}

@@ -63,6 +63,49 @@ func BuildEffectManagerHooks(cfg EffectManagerHooksConfig) map[string]worldeffec
 	return buildEffectManagerHooks(cfg)
 }
 
+func (w *World) effectManagerHooksConfig() EffectManagerHooksConfig {
+	if w == nil {
+		return EffectManagerHooksConfig{}
+	}
+
+	cfg := EffectManagerHooksConfig{}
+
+	stateLookup := w.AbilityOwnerStateLookup()
+	if stateLookup != nil {
+		cfg.Melee.LookupOwner = func(actorID string) *internaleffects.MeleeOwner {
+			state, _, ok := stateLookup(actorID)
+			if !ok || state == nil {
+				return nil
+			}
+			return &internaleffects.MeleeOwner{X: state.X, Y: state.Y, Reference: state}
+		}
+		cfg.Projectile.LookupOwner = func(actorID string) internaleffects.ProjectileOwner {
+			state, _, ok := stateLookup(actorID)
+			if !ok || state == nil {
+				return nil
+			}
+			snapshot := abilityActorSnapshot(state)
+			if snapshot == nil {
+				return nil
+			}
+			return worldeffects.ProjectileOwnerSnapshot{X: snapshot.X, Y: snapshot.Y, FacingValue: snapshot.Facing}
+		}
+	}
+
+	cfg.Projectile.RecordEffectSpawn = func(effectType, category string) {
+		if w != nil {
+			w.recordEffectSpawn(effectType, category)
+		}
+	}
+	cfg.Blood.RecordEffectSpawn = func(effectType, category string) {
+		if w != nil {
+			w.recordEffectSpawn(effectType, category)
+		}
+	}
+
+	return cfg
+}
+
 func buildEffectManagerHooks(cfg EffectManagerHooksConfig) map[string]worldeffects.HookSet {
 	hooks := make(map[string]worldeffects.HookSet)
 

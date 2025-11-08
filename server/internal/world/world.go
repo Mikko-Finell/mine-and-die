@@ -56,6 +56,8 @@ type World struct {
 	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*state.ActorState]
 	abilityOwnerLookup      abilitiespkg.AbilityOwnerLookup[*state.ActorState, AbilityActorSnapshot]
 	nextEffectID            uint64
+	currentTick             uint64
+	effectTelemetry         EffectTelemetry
 
 	groundItems       map[string]*itemspkg.GroundItemState
 	groundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
