@@ -342,6 +342,50 @@ func TestWorldJournalResyncAndKeyframeAdapters(t *testing.T) {
 	}
 }
 
+func TestQueueEffectTriggerDrainsAndRecordsTelemetry(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	telemetry := &effectTelemetryStub{}
+	w.AttachEffectTelemetry(telemetry)
+
+	now := time.Unix(10, 0)
+	trigger := w.QueueEffectTrigger(EffectTrigger{Type: "visual.spark"}, now)
+	if trigger.Type != "visual.spark" {
+		t.Fatalf("expected trigger type to persist, got %q", trigger.Type)
+	}
+	if trigger.ID == "" {
+		t.Fatalf("expected trigger id to be allocated")
+	}
+	if trigger.Start != now.UnixMilli() {
+		t.Fatalf("expected trigger start %d, got %d", now.UnixMilli(), trigger.Start)
+	}
+
+	if len(telemetry.triggerTypes) != 1 || telemetry.triggerTypes[0] != "visual.spark" {
+		t.Fatalf("expected telemetry to record trigger, got %+v", telemetry.triggerTypes)
+	}
+
+	snapshot := w.SnapshotEffectTriggers()
+	if len(snapshot) != 1 || snapshot[0].ID != trigger.ID {
+		t.Fatalf("expected snapshot to retain trigger, got %+v", snapshot)
+	}
+
+	drained := w.DrainEffectTriggers()
+	if len(drained) != 1 || drained[0].ID != trigger.ID {
+		t.Fatalf("expected drain to return queued trigger, got %+v", drained)
+	}
+
+	if again := w.DrainEffectTriggers(); len(again) != 0 {
+		t.Fatalf("expected trigger queue to be empty after drain, got %d", len(again))
+	}
+
+	if snapshot := w.SnapshotEffectTriggers(); len(snapshot) != 0 {
+		t.Fatalf("expected snapshot to be empty after drain, got %d", len(snapshot))
+	}
+}
+
 func TestNewAttachesJournalTelemetry(t *testing.T) {
 	telemetry := &recordingJournalTelemetry{}
 	w, err := New(Config{}, Deps{JournalTelemetry: telemetry})
@@ -394,6 +438,22 @@ func (t *recordingJournalTelemetry) recorded(metric string) bool {
 	}
 	return false
 }
+
+type effectTelemetryStub struct {
+	triggerTypes []string
+}
+
+func (e *effectTelemetryStub) RecordEffectSpawned(effectType, producer string) {}
+
+func (e *effectTelemetryStub) RecordEffectUpdated(effectType, mutation string) {}
+
+func (e *effectTelemetryStub) RecordEffectEnded(effectType, reason string) {}
+
+func (e *effectTelemetryStub) RecordEffectTrigger(triggerType string) {
+	e.triggerTypes = append(e.triggerTypes, triggerType)
+}
+
+func (e *effectTelemetryStub) RecordEffectParity(summary EffectTelemetrySummary) {}
 
 func TestEffectRegistryBindsWorldStorage(t *testing.T) {
 	w, err := New(Config{}, Deps{})

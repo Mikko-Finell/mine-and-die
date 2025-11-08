@@ -67,9 +67,9 @@ replacements are wired.
   the internal package can depend on them without changing hook registration.
 - [x] **Then move hook registration.** Shift melee, follow-up, and projectile impact hook wiring into the internal manager once
   the helpers exist, keeping behaviour equivalent via the façade forwarders.
-- [partial] **Port cooldown bookkeeping and telemetry emitters.** Move the timer/counter wiring plus emitter construction into the
+- [x] **Port cooldown bookkeeping and telemetry emitters.** Move the timer/counter wiring plus emitter construction into the
   internal package, keeping telemetry configuration identical by reusing the existing interfaces.
-  - [ ] telemetry helpers moved; cooldown wiring still partially facade-owned; Finish porting cooldown timers + all effect emitters into internal/world; delete leftover façade bookkeeping; keep determinism unchanged.
+  - [x] telemetry helpers moved; cooldown wiring still partially facade-owned; Finish porting cooldown timers + all effect emitters into internal/world; delete leftover façade bookkeeping; keep determinism unchanged.
 - [ ] **Switch constructors to the new manager.** Update `internal/world.New` to instantiate the internal manager and delete the
   remaining façade dependency once determinism verifies the wiring.
 - [ ] **Inline ability gating and projectile adapters** by moving the façade helpers from `server/effects.go` into

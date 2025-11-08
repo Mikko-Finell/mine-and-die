@@ -1583,7 +1583,7 @@ func TestContractBloodDecalDefinitionsSpawn(t *testing.T) {
 	if world.effectManager.PendingIntentCount() == 0 {
 		t.Fatalf("expected blood splatter to enqueue contract intent")
 	}
-	if len(world.effectTriggers) != 0 {
+	if triggers := world.flushEffectTriggersLocked(); len(triggers) != 0 {
 		t.Fatalf("expected legacy triggers to be suppressed when contract blood decals enabled")
 	}
 

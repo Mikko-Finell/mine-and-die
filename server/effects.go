@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
@@ -195,14 +194,17 @@ func (w *World) QueueEffectTrigger(trigger EffectTrigger, now time.Time) EffectT
 	if trigger.Type == "" {
 		return EffectTrigger{}
 	}
+	if w.internalWorld != nil {
+		queued := w.internalWorld.QueueEffectTrigger(trigger, now)
+		w.nextEffectID = w.internalWorld.NextEffectID()
+		return queued
+	}
 	if trigger.ID == "" {
-		w.nextEffectID++
-		trigger.ID = fmt.Sprintf("effect-%d", w.nextEffectID)
+		trigger.ID = w.allocateEffectID()
 	}
 	if trigger.Start == 0 {
 		trigger.Start = now.UnixMilli()
 	}
-	w.effectTriggers = append(w.effectTriggers, trigger)
 	w.recordEffectTrigger(trigger.Type)
 	return trigger
 }
@@ -428,10 +430,7 @@ func (w *World) bindProjectileStopConfig(bindings worldpkg.ProjectileStopConfig,
 		}
 	}
 	if spawnCfg.AllocateID == nil {
-		spawnCfg.AllocateID = func() string {
-			w.nextEffectID++
-			return fmt.Sprintf("effect-%d", w.nextEffectID)
-		}
+		spawnCfg.AllocateID = w.allocateEffectID
 	}
 	if areaBindings.Register != nil {
 		spawnCfg.Register = func(effect *internaleffects.State) bool {

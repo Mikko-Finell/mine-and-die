@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"time"
 
@@ -442,11 +441,10 @@ func (w *World) attachStatusEffectVisual(handle statuspkg.StatusEffectInstanceHa
 		expiresAt = now.Add(lifetime)
 	}
 	w.pruneEffects(now)
-	w.nextEffectID++
+	instanceID := w.allocateEffectID()
 	width := playerHalf * 2
 	height := playerHalf * 2
 	start := now.UnixMilli()
-	instanceID := fmt.Sprintf("effect-%d", w.nextEffectID)
 	owner := sourceID
 	if owner == "" {
 		owner = actor.ID
