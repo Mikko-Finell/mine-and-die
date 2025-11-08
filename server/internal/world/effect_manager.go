@@ -305,5 +305,19 @@ func (w *World) effectManagerHooks() map[string]worldeffects.HookSet {
 }
 
 func (w *World) effectManagerHooksConfig() EffectManagerHooksConfig {
-	return EffectManagerHooksConfig{}
+	if w == nil {
+		return EffectManagerHooksConfig{}
+	}
+
+	cfg := EffectManagerHooksConfig{}
+
+	cfg.Projectile.RecordEffectSpawn = func(effectType, category string) {
+		w.recordEffectSpawn(effectType, category)
+	}
+
+	cfg.Blood.RecordEffectSpawn = func(effectType, category string) {
+		w.recordEffectSpawn(effectType, category)
+	}
+
+	return cfg
 }

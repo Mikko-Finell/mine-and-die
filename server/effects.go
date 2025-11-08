@@ -10,6 +10,7 @@ import (
 	itemspkg "mine-and-die/server/internal/items"
 	worldpkg "mine-and-die/server/internal/world"
 	abilitiespkg "mine-and-die/server/internal/world/abilities"
+	worldeffects "mine-and-die/server/internal/world/effects"
 	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 )
@@ -93,86 +94,59 @@ func newProjectileTemplates() map[string]*ProjectileTemplate {
 }
 
 func (w *World) recordEffectSpawn(effectType, producer string) {
-	if w == nil || w.telemetry == nil {
+	if w == nil {
 		return
 	}
-	w.telemetry.RecordEffectSpawned(effectType, producer)
+	worldpkg.RecordEffectSpawnTelemetry(w.telemetry, effectType, producer)
 }
 
 func (w *World) recordEffectUpdate(eff *effectState, mutation string) {
-	if w == nil || eff == nil || w.telemetry == nil {
+	if w == nil || eff == nil {
 		return
 	}
-	w.telemetry.RecordEffectUpdated(eff.Type, mutation)
+	worldpkg.RecordEffectUpdateTelemetry(w.telemetry, eff.Type, mutation)
 }
 
 func (w *World) recordEffectEnd(eff *effectState, reason string) {
 	if w == nil || eff == nil {
 		return
 	}
-	if !eff.TelemetryEnded {
-		w.flushEffectTelemetry(eff)
-		eff.TelemetryEnded = true
-	}
-	if w.telemetry != nil {
-		w.telemetry.RecordEffectEnded(eff.Type, reason)
-	}
+	worldpkg.RecordEffectEndTelemetry(
+		w.telemetry,
+		(*worldeffects.State)(eff),
+		reason,
+		effectcontract.Tick(int64(w.currentTick)),
+	)
 }
 
 func (w *World) recordEffectTrigger(triggerType string) {
-	if w == nil || w.telemetry == nil {
+	if w == nil {
 		return
 	}
-	w.telemetry.RecordEffectTrigger(triggerType)
+	worldpkg.RecordEffectTriggerTelemetry(w.telemetry, triggerType)
 }
 
 func (w *World) recordEffectHitTelemetry(eff *effectState, targetID string, delta float64) {
 	if w == nil || eff == nil {
 		return
 	}
-	if eff.TelemetrySpawnTick == 0 {
-		eff.TelemetrySpawnTick = effectcontract.Tick(int64(w.currentTick))
-	}
-	if eff.TelemetryFirstHitTick == 0 {
-		eff.TelemetryFirstHitTick = effectcontract.Tick(int64(w.currentTick))
-	}
-	eff.TelemetryHitCount++
-	if eff.TelemetryVictims == nil {
-		eff.TelemetryVictims = make(map[string]struct{})
-	}
-	if targetID != "" {
-		eff.TelemetryVictims[targetID] = struct{}{}
-	}
-	if delta < 0 {
-		eff.TelemetryDamage += -delta
-	}
+	worldpkg.RecordEffectHitTelemetry(
+		(*worldeffects.State)(eff),
+		targetID,
+		delta,
+		effectcontract.Tick(int64(w.currentTick)),
+	)
 }
 
 func (w *World) flushEffectTelemetry(eff *effectState) {
-	if w == nil || eff == nil || w.telemetry == nil {
+	if w == nil || eff == nil {
 		return
 	}
-	victims := 0
-	if len(eff.TelemetryVictims) > 0 {
-		victims = len(eff.TelemetryVictims)
-	}
-	spawnTick := eff.TelemetrySpawnTick
-	if spawnTick == 0 {
-		spawnTick = effectcontract.Tick(int64(w.currentTick))
-	}
-	summary := effectParitySummary{
-		EffectType:    eff.Type,
-		Hits:          eff.TelemetryHitCount,
-		UniqueVictims: victims,
-		TotalDamage:   eff.TelemetryDamage,
-		SpawnTick:     spawnTick,
-		FirstHitTick:  eff.TelemetryFirstHitTick,
-	}
-	w.telemetry.RecordEffectParity(summary)
-	eff.TelemetryHitCount = 0
-	eff.TelemetryDamage = 0
-	eff.TelemetryVictims = nil
-	eff.TelemetryFirstHitTick = 0
+	worldpkg.FlushEffectTelemetry(
+		w.telemetry,
+		(*worldeffects.State)(eff),
+		effectcontract.Tick(int64(w.currentTick)),
+	)
 }
 
 func (w *World) configureAbilityOwnerAdapters() {
