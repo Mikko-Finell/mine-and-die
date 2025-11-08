@@ -53,6 +53,8 @@ type World struct {
 	effectsIndex            *worldeffects.SpatialIndex
 	effectsRegistry         worldeffects.Registry
 	effectManager           *EffectManager
+	effectTelemetry         EffectTelemetry
+	effectCurrentTick       func() effectcontract.Tick
 	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*state.ActorState]
 	abilityOwnerLookup      abilitiespkg.AbilityOwnerLookup[*state.ActorState, AbilityActorSnapshot]
 	nextEffectID            uint64
@@ -343,6 +345,57 @@ func (w *World) registerRuntimeEffect(effect any) bool {
 	}
 	registry := w.EffectRegistry()
 	return worldeffects.RegisterEffect(registry, runtime)
+}
+
+// EffectTelemetryConfig configures telemetry adapters for effect lifecycle
+// events. Callers provide the telemetry implementation and an optional current
+// tick provider so parity counters mirror the legacy runtime behaviour.
+type EffectTelemetryConfig struct {
+	Telemetry   EffectTelemetry
+	CurrentTick func() effectcontract.Tick
+}
+
+// BindEffectTelemetry attaches telemetry emitters for effect lifecycle events.
+func (w *World) BindEffectTelemetry(cfg EffectTelemetryConfig) {
+	if w == nil {
+		return
+	}
+	w.effectTelemetry = cfg.Telemetry
+	w.effectCurrentTick = cfg.CurrentTick
+}
+
+func (w *World) effectEmitters() EffectTelemetryEmitters {
+	if w == nil {
+		return EffectTelemetryEmitters{}
+	}
+	return EffectTelemetryEmitters{
+		Telemetry:   w.effectTelemetry,
+		CurrentTick: w.effectCurrentTick,
+	}
+}
+
+func (w *World) recordEffectSpawn(effectType, producer string) {
+	w.effectEmitters().RecordEffectSpawn(effectType, producer)
+}
+
+func (w *World) recordEffectUpdate(effect *worldeffects.State, mutation string) {
+	w.effectEmitters().RecordEffectUpdate(effect, mutation)
+}
+
+func (w *World) recordEffectEnd(effect *worldeffects.State, reason string) {
+	w.effectEmitters().RecordEffectEnd(effect, reason)
+}
+
+func (w *World) recordEffectTrigger(triggerType string) {
+	w.effectEmitters().RecordEffectTrigger(triggerType)
+}
+
+func (w *World) recordEffectHitTelemetry(effect *worldeffects.State, targetID string, delta float64) {
+	w.effectEmitters().RecordEffectHit(effect, targetID, delta)
+}
+
+func (w *World) flushEffectTelemetry(effect *worldeffects.State) {
+	w.effectEmitters().FlushEffect(effect)
 }
 
 // Config returns the normalized configuration captured at construction time.

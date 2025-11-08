@@ -5,6 +5,7 @@ import (
 
 	effectcatalog "mine-and-die/server/effects/catalog"
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	worldeffects "mine-and-die/server/internal/world/effects"
 )
 
@@ -305,5 +306,61 @@ func (w *World) effectManagerHooks() map[string]worldeffects.HookSet {
 }
 
 func (w *World) effectManagerHooksConfig() EffectManagerHooksConfig {
-	return EffectManagerHooksConfig{}
+	cfg := EffectManagerHooksConfig{}
+	if w == nil {
+		return cfg
+	}
+
+	w.ensureAbilityOwnerAdapters()
+
+	stateLookup := w.abilityOwnerStateLookup
+	ownerLookup := w.abilityOwnerLookup
+
+	if ownerLookup != nil {
+		cfg.Melee.LookupOwner = func(actorID string) *internaleffects.MeleeOwner {
+			if actorID == "" || ownerLookup == nil {
+				return nil
+			}
+
+			owner, _, ok := ownerLookup(actorID)
+			if !ok || owner == nil {
+				return nil
+			}
+
+			var reference any
+			if stateLookup != nil {
+				if state, _, ok := stateLookup(actorID); ok && state != nil {
+					reference = state
+				}
+			}
+
+			return &internaleffects.MeleeOwner{X: owner.X, Y: owner.Y, Reference: reference}
+		}
+
+		cfg.Projectile.LookupOwner = func(actorID string) internaleffects.ProjectileOwner {
+			if actorID == "" || ownerLookup == nil {
+				return nil
+			}
+
+			owner, _, ok := ownerLookup(actorID)
+			if !ok || owner == nil {
+				return nil
+			}
+
+			return &worldeffects.ProjectileOwnerSnapshot{
+				X:           owner.X,
+				Y:           owner.Y,
+				FacingValue: owner.Facing,
+			}
+		}
+	}
+
+	cfg.Projectile.RecordEffectSpawn = func(effectType, category string) {
+		w.recordEffectSpawn(effectType, category)
+	}
+	cfg.Blood.RecordEffectSpawn = func(effectType, category string) {
+		w.recordEffectSpawn(effectType, category)
+	}
+
+	return cfg
 }
