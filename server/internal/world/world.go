@@ -8,6 +8,7 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
+	internaleffects "mine-and-die/server/internal/effects"
 	itemspkg "mine-and-die/server/internal/items"
 	journalpkg "mine-and-die/server/internal/journal"
 	abilitiespkg "mine-and-die/server/internal/world/abilities"
@@ -54,6 +55,7 @@ type World struct {
 	effectsRegistry         worldeffects.Registry
 	effectManager           *EffectManager
 	effectTelemetry         EffectTelemetry
+	effectTriggers          []internaleffects.Trigger
 	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*state.ActorState]
 	abilityOwnerLookup      abilitiespkg.AbilityOwnerLookup[*state.ActorState, AbilityActorSnapshot]
 	nextEffectID            uint64
@@ -350,6 +352,14 @@ func (w *World) npcAbilityOwnerState(actorID string) (*state.ActorState, *map[st
 		return nil, nil, false
 	}
 	return &npc.ActorState, &npc.Cooldowns, true
+}
+
+// AllocateEffectID returns a new effect identifier bound to the world counter.
+func (w *World) AllocateEffectID() string {
+	if w == nil {
+		return ""
+	}
+	return w.allocateEffectID()
 }
 
 func (w *World) allocateEffectID() string {

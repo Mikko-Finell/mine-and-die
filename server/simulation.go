@@ -74,13 +74,12 @@ type HeartbeatCommand struct {
 type World struct {
 	players map[string]*playerState
 	npcs    map[string]*npcState
-	// effects/effectTriggers/nextEffectID track contract-managed runtime state
+	// effects/nextEffectID track contract-managed runtime state
 	// and author the telemetry snapshots consumed by gameplay and analytics.
 	effects                 []*effectState
 	effectsByID             map[string]*effectState
 	effectsIndex            *effectSpatialIndex
 	effectsRegistry         internaleffects.Registry
-	effectTriggers          []EffectTrigger
 	effectManager           *EffectManager
 	obstacles               []Obstacle
 	effectHitAdapter        combat.EffectHitCallback
@@ -109,6 +108,7 @@ type World struct {
 	groundItems       map[string]*itemspkg.GroundItemState
 	groundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
 	journal           Journal
+	internalWorld     *worldpkg.World
 }
 
 func (w *World) LegacyWorldMarker() {}
@@ -223,7 +223,6 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		effects:             effects,
 		effectsByID:         effectsByID,
 		effectsIndex:        index,
-		effectTriggers:      make([]EffectTrigger, 0),
 		projectileTemplates: newProjectileTemplates(),
 		aiLibrary:           ai.GlobalLibrary,
 		config:              constructed.Config(),
@@ -235,6 +234,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		groundItemsByTile:   groundItemsByTile,
 		journal:             constructed.JournalState(),
 		nextEffectID:        constructed.NextEffectID(),
+		internalWorld:       constructed,
 	}
 	if w.config.Seed == "" {
 		w.config.Seed = normalized.Seed
@@ -266,8 +266,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 	w.configureProjectileAbilityGate()
 	w.projectileStopAdapter = worldpkg.NewProjectileStopAdapter(worldpkg.ProjectileStopAdapterConfig{
 		AllocateID: func() string {
-			w.nextEffectID++
-			return fmt.Sprintf("effect-%d", w.nextEffectID)
+			return w.allocateEffectID()
 		},
 		RegisterEffect: func(effect any) bool {
 			state, _ := effect.(*effectState)
@@ -365,11 +364,27 @@ func (w *World) effectRegistry() internaleffects.Registry {
 	return w.effectsRegistry
 }
 
+func (w *World) allocateEffectID() string {
+	if w == nil {
+		return ""
+	}
+	if w.internalWorld != nil {
+		id := w.internalWorld.AllocateEffectID()
+		w.nextEffectID = w.internalWorld.NextEffectID()
+		return id
+	}
+	w.nextEffectID++
+	return fmt.Sprintf("effect-%d", w.nextEffectID)
+}
+
 func (w *World) attachTelemetry(t *telemetryCounters) {
 	if w == nil {
 		return
 	}
 	w.telemetry = t
+	if w.internalWorld != nil {
+		w.internalWorld.AttachEffectTelemetry(t)
+	}
 	w.effectRegistry()
 	if t != nil {
 		w.effectsRegistry.RecordSpatialOverflow = t.RecordEffectSpatialOverflow
@@ -411,12 +426,13 @@ func (w *World) Snapshot(now time.Time) ([]Player, []NPC) {
 // flushEffectTriggersLocked drains the queued fire-and-forget triggers. Callers
 // must hold the world mutex.
 func (w *World) flushEffectTriggersLocked() []EffectTrigger {
-	if len(w.effectTriggers) == 0 {
+	if w == nil || w.internalWorld == nil {
 		return nil
 	}
-	drained := make([]EffectTrigger, len(w.effectTriggers))
-	copy(drained, w.effectTriggers)
-	w.effectTriggers = w.effectTriggers[:0]
+	drained := w.internalWorld.DrainEffectTriggers()
+	if len(drained) == 0 {
+		return nil
+	}
 	return drained
 }
 
