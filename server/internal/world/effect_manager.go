@@ -8,34 +8,12 @@ import (
 	worldeffects "mine-and-die/server/internal/world/effects"
 )
 
-// EffectManagerFacade exposes the legacy façade manager operations used during the
-// transition. Implementations forward into the existing server effect manager so
-// behaviour stays identical while the internal scaffolding lands.
-type EffectManagerFacade interface {
-	Definitions() map[string]*effectcontract.EffectDefinition
-	Hooks() map[string]worldeffects.HookSet
-	Instances() map[string]*effectcontract.EffectInstance
-	Catalog() *effectcatalog.Resolver
-	TotalEnqueued() int
-	TotalDrained() int
-	LastTickProcessed() effectcontract.Tick
-	PendingIntentCount() int
-	PendingIntents() []effectcontract.EffectIntent
-	ResetPendingIntents()
-	EnqueueIntent(effectcontract.EffectIntent)
-	RunTick(effectcontract.Tick, time.Time, func(effectcontract.EffectLifecycleEvent))
-	RuntimeEffect(string) *worldeffects.State
-	Core() *worldeffects.Manager
-}
-
-// EffectManager orchestrates contract-managed effects for the internal world. The
-// manager begins life with local bookkeeping so standalone constructor callers
-// continue to work, and can bind to the legacy façade for behaviour parity when
-// the legacy world is present.
+// EffectManager orchestrates contract-managed effects for the internal world.
+// The manager owns its runtime core directly so constructor callers can operate
+// without relying on the legacy façade wiring.
 type EffectManager struct {
-	world  *World
-	core   *worldeffects.Manager
-	facade EffectManagerFacade
+	world *World
+	core  *worldeffects.Manager
 }
 
 func newEffectManager(world *World) *EffectManager {
@@ -46,29 +24,8 @@ func newEffectManager(world *World) *EffectManager {
 	return manager
 }
 
-// BindLegacyEffectManager attaches the façade-backed manager so internal callers
-// forward through the legacy wiring until the migration completes.
-func (w *World) BindLegacyEffectManager(facade EffectManagerFacade) {
-	if w == nil || w.effectManager == nil {
-		return
-	}
-	w.effectManager.bindFacade(facade)
-}
-
-func (m *EffectManager) bindFacade(facade EffectManagerFacade) {
-	if m == nil {
-		return
-	}
-	m.facade = facade
-	if facade != nil {
-		if core := facade.Core(); core != nil {
-			m.core = core
-		}
-	}
-}
-
 // Core exposes the underlying runtime manager, enabling callers to share the
-// façade-owned core while the migration is in flight.
+// runtime state with parity checks.
 func (m *EffectManager) Core() *worldeffects.Manager {
 	if m == nil {
 		return nil
@@ -81,9 +38,6 @@ func (m *EffectManager) Definitions() map[string]*effectcontract.EffectDefinitio
 	if m == nil {
 		return nil
 	}
-	if m.facade != nil {
-		return m.facade.Definitions()
-	}
 	if m.core == nil {
 		return nil
 	}
@@ -94,9 +48,6 @@ func (m *EffectManager) Definitions() map[string]*effectcontract.EffectDefinitio
 func (m *EffectManager) Hooks() map[string]worldeffects.HookSet {
 	if m == nil {
 		return nil
-	}
-	if m.facade != nil {
-		return m.facade.Hooks()
 	}
 	if m.core == nil {
 		return nil
@@ -109,9 +60,6 @@ func (m *EffectManager) Instances() map[string]*effectcontract.EffectInstance {
 	if m == nil {
 		return nil
 	}
-	if m.facade != nil {
-		return m.facade.Instances()
-	}
 	if m.core == nil {
 		return nil
 	}
@@ -122,9 +70,6 @@ func (m *EffectManager) Instances() map[string]*effectcontract.EffectInstance {
 func (m *EffectManager) Catalog() *effectcatalog.Resolver {
 	if m == nil {
 		return nil
-	}
-	if m.facade != nil {
-		return m.facade.Catalog()
 	}
 	if m.core == nil {
 		return nil
@@ -137,9 +82,6 @@ func (m *EffectManager) TotalEnqueued() int {
 	if m == nil {
 		return 0
 	}
-	if m.facade != nil {
-		return m.facade.TotalEnqueued()
-	}
 	if m.core == nil {
 		return 0
 	}
@@ -150,9 +92,6 @@ func (m *EffectManager) TotalEnqueued() int {
 func (m *EffectManager) TotalDrained() int {
 	if m == nil {
 		return 0
-	}
-	if m.facade != nil {
-		return m.facade.TotalDrained()
 	}
 	if m.core == nil {
 		return 0
@@ -165,9 +104,6 @@ func (m *EffectManager) LastTickProcessed() effectcontract.Tick {
 	if m == nil {
 		return 0
 	}
-	if m.facade != nil {
-		return m.facade.LastTickProcessed()
-	}
 	if m.core == nil {
 		return 0
 	}
@@ -178,9 +114,6 @@ func (m *EffectManager) LastTickProcessed() effectcontract.Tick {
 func (m *EffectManager) PendingIntentCount() int {
 	if m == nil {
 		return 0
-	}
-	if m.facade != nil {
-		return m.facade.PendingIntentCount()
 	}
 	if m.core == nil {
 		return 0
@@ -193,9 +126,6 @@ func (m *EffectManager) PendingIntents() []effectcontract.EffectIntent {
 	if m == nil {
 		return nil
 	}
-	if m.facade != nil {
-		return m.facade.PendingIntents()
-	}
 	if m.core == nil {
 		return nil
 	}
@@ -205,10 +135,6 @@ func (m *EffectManager) PendingIntents() []effectcontract.EffectIntent {
 // ResetPendingIntents clears any staged intents.
 func (m *EffectManager) ResetPendingIntents() {
 	if m == nil {
-		return
-	}
-	if m.facade != nil {
-		m.facade.ResetPendingIntents()
 		return
 	}
 	if m.core == nil {
@@ -222,10 +148,6 @@ func (m *EffectManager) EnqueueIntent(intent effectcontract.EffectIntent) {
 	if m == nil {
 		return
 	}
-	if m.facade != nil {
-		m.facade.EnqueueIntent(intent)
-		return
-	}
 	if m.core == nil {
 		return
 	}
@@ -235,10 +157,6 @@ func (m *EffectManager) EnqueueIntent(intent effectcontract.EffectIntent) {
 // RunTick advances the manager by one tick.
 func (m *EffectManager) RunTick(tick effectcontract.Tick, now time.Time, emit func(effectcontract.EffectLifecycleEvent)) {
 	if m == nil {
-		return
-	}
-	if m.facade != nil {
-		m.facade.RunTick(tick, now, emit)
 		return
 	}
 	if m.core == nil {
@@ -251,9 +169,6 @@ func (m *EffectManager) RunTick(tick effectcontract.Tick, now time.Time, emit fu
 func (m *EffectManager) RuntimeEffect(id string) *worldeffects.State {
 	if m == nil || id == "" {
 		return nil
-	}
-	if m.facade != nil {
-		return m.facade.RuntimeEffect(id)
 	}
 	if m.core == nil {
 		return nil
