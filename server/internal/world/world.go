@@ -254,6 +254,27 @@ func (w *World) recordEffectTrigger(triggerType string) {
 	RecordEffectTriggerTelemetry(w.effectTelemetry, triggerType)
 }
 
+func (w *World) recordEffectEnd(effect *worldeffects.State, reason string, tick effectcontract.Tick) {
+	if effect == nil {
+		return
+	}
+	RecordEffectEndTelemetry(w.effectTelemetry, effect, reason, tick)
+}
+
+func (w *World) recordEffectHitTelemetry(effect *worldeffects.State, targetID string, delta float64, tick effectcontract.Tick) {
+	if effect == nil {
+		return
+	}
+	RecordEffectHitTelemetry(effect, targetID, delta, tick)
+}
+
+func (w *World) flushEffectTelemetry(effect *worldeffects.State, tick effectcontract.Tick) {
+	if effect == nil {
+		return
+	}
+	FlushEffectTelemetry(w.effectTelemetry, effect, tick)
+}
+
 func (w *World) effectOwnerMissing(actorID string) bool {
 	if w == nil || actorID == "" {
 		return false
@@ -326,6 +347,24 @@ func (w *World) ProjectileStopAdapter(opts ProjectileStopAdapterOptions) Project
 		CurrentTick:       opts.CurrentTick,
 		SetRemainingRange: opts.SetRemainingRange,
 		RecordEffectEnd:   opts.RecordEffectEnd,
+	}
+	if cfg.RecordEffectSpawn == nil {
+		cfg.RecordEffectSpawn = func(effectType, category string) {
+			w.recordEffectSpawn(effectType, category)
+		}
+	}
+	if cfg.RecordEffectEnd == nil {
+		cfg.RecordEffectEnd = func(effect any, reason string) {
+			state, _ := effect.(*worldeffects.State)
+			if state == nil {
+				return
+			}
+			var tick effectcontract.Tick
+			if opts.CurrentTick != nil {
+				tick = opts.CurrentTick()
+			}
+			w.recordEffectEnd(state, reason, tick)
+		}
 	}
 	return NewProjectileStopAdapter(cfg)
 }

@@ -378,6 +378,128 @@ func TestAttachJournalTelemetry(t *testing.T) {
 	}
 }
 
+func TestRecordEffectHitTelemetryUpdatesState(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	tick := effectcontract.Tick(10)
+	effect := &worldeffects.State{Type: "fireball"}
+
+	w.recordEffectHitTelemetry(effect, "actor-1", -7, tick)
+
+	if effect.TelemetryHitCount != 1 {
+		t.Fatalf("expected hit count to increment, got %d", effect.TelemetryHitCount)
+	}
+	if effect.TelemetryDamage != 7 {
+		t.Fatalf("expected damage to accumulate, got %f", effect.TelemetryDamage)
+	}
+	if _, ok := effect.TelemetryVictims["actor-1"]; !ok {
+		t.Fatalf("expected victim to be recorded")
+	}
+	if effect.TelemetrySpawnTick != tick {
+		t.Fatalf("expected spawn tick to default to %d, got %d", tick, effect.TelemetrySpawnTick)
+	}
+	if effect.TelemetryFirstHitTick != tick {
+		t.Fatalf("expected first hit tick to default to %d, got %d", tick, effect.TelemetryFirstHitTick)
+	}
+}
+
+func TestFlushEffectTelemetryEmitsSummary(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	telemetry := &recordingEffectTelemetry{}
+	w.effectTelemetry = telemetry
+
+	effect := &worldeffects.State{
+		Type:                  "burning",
+		TelemetryHitCount:     3,
+		TelemetryVictims:      map[string]struct{}{"actor-1": {}, "actor-2": {}},
+		TelemetryDamage:       9,
+		TelemetrySpawnTick:    effectcontract.Tick(4),
+		TelemetryFirstHitTick: effectcontract.Tick(5),
+	}
+
+	tick := effectcontract.Tick(12)
+	w.flushEffectTelemetry(effect, tick)
+
+	if len(telemetry.parity) != 1 {
+		t.Fatalf("expected parity summary to be recorded, got %d", len(telemetry.parity))
+	}
+	summary := telemetry.parity[0]
+	if summary.EffectType != "burning" || summary.Hits != 3 || summary.UniqueVictims != 2 || summary.TotalDamage != 9 {
+		t.Fatalf("unexpected parity summary: %+v", summary)
+	}
+	if summary.SpawnTick != effectcontract.Tick(4) {
+		t.Fatalf("expected spawn tick to be preserved, got %d", summary.SpawnTick)
+	}
+	if summary.FirstHitTick != effectcontract.Tick(5) {
+		t.Fatalf("expected first hit tick to be preserved, got %d", summary.FirstHitTick)
+	}
+
+	if effect.TelemetryHitCount != 0 {
+		t.Fatalf("expected hit count to reset, got %d", effect.TelemetryHitCount)
+	}
+	if effect.TelemetryDamage != 0 {
+		t.Fatalf("expected damage to reset, got %f", effect.TelemetryDamage)
+	}
+	if effect.TelemetryVictims != nil {
+		t.Fatalf("expected victims to reset, got %+v", effect.TelemetryVictims)
+	}
+	if effect.TelemetryFirstHitTick != 0 {
+		t.Fatalf("expected first hit tick to reset, got %d", effect.TelemetryFirstHitTick)
+	}
+}
+
+func TestRecordEffectEndTelemetryFlushesAndEnds(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	telemetry := &recordingEffectTelemetry{}
+	w.effectTelemetry = telemetry
+
+	effect := &worldeffects.State{
+		Type:                  "fireball",
+		TelemetryHitCount:     2,
+		TelemetryVictims:      map[string]struct{}{"actor-1": {}},
+		TelemetryDamage:       6,
+		TelemetrySpawnTick:    effectcontract.Tick(3),
+		TelemetryFirstHitTick: effectcontract.Tick(4),
+	}
+
+	tick := effectcontract.Tick(20)
+	w.recordEffectEnd(effect, "expired", tick)
+
+	if len(telemetry.ends) != 1 {
+		t.Fatalf("expected effect end telemetry, got %d", len(telemetry.ends))
+	}
+	if got := telemetry.ends[0]; got.effectType != "fireball" || got.reason != "expired" {
+		t.Fatalf("unexpected end telemetry: %+v", got)
+	}
+	if len(telemetry.parity) != 1 {
+		t.Fatalf("expected parity telemetry to flush on end, got %d", len(telemetry.parity))
+	}
+	summary := telemetry.parity[0]
+	if summary.Hits != 2 || summary.UniqueVictims != 1 || summary.TotalDamage != 6 {
+		t.Fatalf("unexpected parity summary: %+v", summary)
+	}
+	if summary.SpawnTick != effectcontract.Tick(3) {
+		t.Fatalf("expected spawn tick to persist, got %d", summary.SpawnTick)
+	}
+	if !effect.TelemetryEnded {
+		t.Fatalf("expected effect telemetry to mark ended")
+	}
+	if effect.TelemetryHitCount != 0 || effect.TelemetryDamage != 0 || effect.TelemetryVictims != nil {
+		t.Fatalf("expected telemetry fields to reset, got hits=%d damage=%f victims=%+v", effect.TelemetryHitCount, effect.TelemetryDamage, effect.TelemetryVictims)
+	}
+}
+
 type recordingJournalTelemetry struct {
 	metrics []string
 }
@@ -393,6 +515,34 @@ func (t *recordingJournalTelemetry) recorded(metric string) bool {
 		}
 	}
 	return false
+}
+
+type recordingEffectTelemetry struct {
+	spawns   []struct{ effectType, producer string }
+	updates  []struct{ effectType, mutation string }
+	triggers []string
+	ends     []struct{ effectType, reason string }
+	parity   []EffectTelemetrySummary
+}
+
+func (t *recordingEffectTelemetry) RecordEffectSpawned(effectType, producer string) {
+	t.spawns = append(t.spawns, struct{ effectType, producer string }{effectType, producer})
+}
+
+func (t *recordingEffectTelemetry) RecordEffectUpdated(effectType, mutation string) {
+	t.updates = append(t.updates, struct{ effectType, mutation string }{effectType, mutation})
+}
+
+func (t *recordingEffectTelemetry) RecordEffectEnded(effectType, reason string) {
+	t.ends = append(t.ends, struct{ effectType, reason string }{effectType, reason})
+}
+
+func (t *recordingEffectTelemetry) RecordEffectTrigger(triggerType string) {
+	t.triggers = append(t.triggers, triggerType)
+}
+
+func (t *recordingEffectTelemetry) RecordEffectParity(summary EffectTelemetrySummary) {
+	t.parity = append(t.parity, summary)
 }
 
 func TestEffectRegistryBindsWorldStorage(t *testing.T) {
