@@ -67,7 +67,7 @@ replacements are wired.
   the internal package can depend on them without changing hook registration.
 - [x] **Then move hook registration.** Shift melee, follow-up, and projectile impact hook wiring into the internal manager once
   the helpers exist, keeping behaviour equivalent via the façade forwarders.
-- [ ] **Port cooldown bookkeeping and telemetry emitters.** Move the timer/counter wiring plus emitter construction into the
+- [x] **Port cooldown bookkeeping and telemetry emitters.** Move the timer/counter wiring plus emitter construction into the
   internal package, keeping telemetry configuration identical by reusing the existing interfaces.
 - [ ] **Switch constructors to the new manager.** Update `internal/world.New` to instantiate the internal manager and delete the
   remaining façade dependency once determinism verifies the wiring.

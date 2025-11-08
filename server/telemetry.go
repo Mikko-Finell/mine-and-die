@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	effectcontract "mine-and-die/server/effects/contract"
 	"mine-and-die/server/internal/telemetry"
+	worldpkg "mine-and-die/server/internal/world"
 )
 
 const (
@@ -273,7 +273,7 @@ func (a *telemetryMetricsAdapter) IncrementBroadcastQueueDrops() {
 	a.add(metricKeyBroadcastQueueDropsTotal, 1)
 }
 
-func (a *telemetryMetricsAdapter) RecordEffectParity(summary effectParitySummary) {
+func (a *telemetryMetricsAdapter) RecordEffectParity(summary worldpkg.EffectTelemetrySummary) {
 	if a == nil || a.metrics == nil {
 		return
 	}
@@ -378,14 +378,7 @@ func (c *layeredCounter) snapshot() map[string]map[string]uint64 {
 	return result
 }
 
-type effectParitySummary struct {
-	EffectType    string
-	Hits          int
-	UniqueVictims int
-	TotalDamage   float64
-	SpawnTick     effectcontract.Tick
-	FirstHitTick  effectcontract.Tick
-}
+type effectParitySummary = worldpkg.EffectTelemetrySummary
 
 type effectParityTotals struct {
 	Hits                 uint64
@@ -944,7 +937,7 @@ func (t *telemetryCounters) RecordBroadcastQueueDrop(depth int) {
 	t.metricsAdapter.IncrementBroadcastQueueDrops()
 }
 
-func (t *telemetryCounters) RecordEffectParity(summary effectParitySummary) {
+func (t *telemetryCounters) RecordEffectParity(summary worldpkg.EffectTelemetrySummary) {
 	if t == nil {
 		return
 	}

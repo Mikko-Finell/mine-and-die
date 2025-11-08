@@ -53,6 +53,7 @@ type World struct {
 	effectsIndex            *worldeffects.SpatialIndex
 	effectsRegistry         worldeffects.Registry
 	effectManager           *EffectManager
+	effectTelemetry         EffectTelemetry
 	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*state.ActorState]
 	abilityOwnerLookup      abilitiespkg.AbilityOwnerLookup[*state.ActorState, AbilityActorSnapshot]
 	nextEffectID            uint64
@@ -228,6 +229,29 @@ func (w *World) EffectManager() *EffectManager {
 		return nil
 	}
 	return w.effectManager
+}
+
+// AttachEffectTelemetry wires the provided telemetry counters into the world.
+func (w *World) AttachEffectTelemetry(t EffectTelemetry) {
+	if w == nil {
+		return
+	}
+	w.effectTelemetry = t
+}
+
+func (w *World) recordEffectSpawn(effectType, producer string) {
+	RecordEffectSpawnTelemetry(w.effectTelemetry, effectType, producer)
+}
+
+func (w *World) recordEffectUpdate(effect *worldeffects.State, mutation string) {
+	if effect == nil {
+		return
+	}
+	RecordEffectUpdateTelemetry(w.effectTelemetry, effect.Type, mutation)
+}
+
+func (w *World) recordEffectTrigger(triggerType string) {
+	RecordEffectTriggerTelemetry(w.effectTelemetry, triggerType)
 }
 
 func (w *World) effectOwnerMissing(actorID string) bool {
