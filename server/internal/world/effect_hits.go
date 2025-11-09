@@ -88,6 +88,40 @@ func EffectHitNPCCallback(cfg EffectHitNPCConfig) EffectHitCallback {
 	}
 }
 
+// EffectHitAdaptersConfig bundles the dispatcher and callback options required to
+// wire the effect hit adapters to world state.
+type EffectHitAdaptersConfig struct {
+	Combat EffectHitCombatDispatcherConfig
+	NPC    EffectHitNPCConfig
+}
+
+// ConfigureEffectHitAdapters wires the effect hit dispatcher and NPC/player
+// callbacks using the provided configuration. Returns false when the dispatcher
+// could not be constructed.
+func (w *World) ConfigureEffectHitAdapters(cfg EffectHitAdaptersConfig) bool {
+	if w == nil {
+		return false
+	}
+
+	dispatcher := NewEffectHitCombatDispatcher(cfg.Combat)
+	if dispatcher == nil {
+		w.effectHitDispatcher = nil
+		w.playerEffectHitCallback = nil
+		w.npcEffectHitCallback = nil
+		return false
+	}
+
+	w.effectHitDispatcher = dispatcher
+	w.playerEffectHitCallback = EffectHitPlayerCallback(EffectHitPlayerConfig{
+		ApplyActorHit: dispatcher,
+	})
+
+	npcCfg := cfg.NPC
+	npcCfg.ApplyActorHit = dispatcher
+	w.npcEffectHitCallback = EffectHitNPCCallback(npcCfg)
+	return true
+}
+
 // EffectHitCombatDispatcherConfig bundles the adapters required to construct the
 // combat dispatcher backed by world state. Callers provide the telemetry and
 // mutation helpers so the dispatcher can mirror the legacy effect hit flow while

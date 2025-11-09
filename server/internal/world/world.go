@@ -56,6 +56,9 @@ type World struct {
 	effectManager           *EffectManager
 	effectTelemetry         EffectTelemetry
 	effectTriggers          []internaleffects.Trigger
+	effectHitDispatcher     EffectHitCallback
+	playerEffectHitCallback EffectHitCallback
+	npcEffectHitCallback    EffectHitCallback
 	abilityOwnerStateLookup abilitiespkg.AbilityOwnerStateLookup[*state.ActorState]
 	abilityOwnerLookup      abilitiespkg.AbilityOwnerLookup[*state.ActorState, AbilityActorSnapshot]
 	nextEffectID            uint64
@@ -65,7 +68,8 @@ type World struct {
 
 	statusEffectDefinitions map[string]statuspkg.ApplyStatusEffectDefinition
 
-	journal journalpkg.Journal
+	journal    journalpkg.Journal
+	tickSource func() uint64
 }
 
 // New constructs a world instance with normalized configuration and seeded RNG.
@@ -317,6 +321,30 @@ func (w *World) ensureAbilityOwnerAdapters() {
 		LookupState: stateLookup,
 		Snapshot:    abilityActorSnapshot,
 	})
+}
+
+// EffectHitDispatcher exposes the bound combat dispatcher used by hit callbacks.
+func (w *World) EffectHitDispatcher() EffectHitCallback {
+	if w == nil {
+		return nil
+	}
+	return w.effectHitDispatcher
+}
+
+// PlayerEffectHitCallback returns the player hit callback bound to the dispatcher.
+func (w *World) PlayerEffectHitCallback() EffectHitCallback {
+	if w == nil {
+		return nil
+	}
+	return w.playerEffectHitCallback
+}
+
+// NPCEffectHitCallback returns the NPC hit callback bound to the dispatcher.
+func (w *World) NPCEffectHitCallback() EffectHitCallback {
+	if w == nil {
+		return nil
+	}
+	return w.npcEffectHitCallback
 }
 
 // ProjectileStopAdapterOptions configures optional callbacks for the projectile stop adapter.

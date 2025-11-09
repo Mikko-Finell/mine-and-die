@@ -10,6 +10,7 @@ import (
 	worldpkg "mine-and-die/server/internal/world"
 	abilitiespkg "mine-and-die/server/internal/world/abilities"
 	worldeffects "mine-and-die/server/internal/world/effects"
+	worldstate "mine-and-die/server/internal/world/state"
 	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 )
@@ -773,7 +774,7 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 }
 
 func (w *World) configureEffectHitAdapter() {
-	if w == nil {
+	if w == nil || w.internalWorld == nil {
 		return
 	}
 
@@ -784,62 +785,132 @@ func (w *World) configureEffectHitAdapter() {
 		},
 	})
 
-	w.effectHitAdapter = combat.NewLegacyWorldEffectHitAdapter(combat.LegacyWorldEffectHitAdapterConfig{
+	toWorldCallback := func(cb combat.EffectHitCallback) worldpkg.EffectHitCallback {
+		if cb == nil {
+			return nil
+		}
+		return func(effect any, target any, now time.Time) {
+			cb(effect, target, now)
+		}
+	}
+
+	toCombatCallback := func(cb worldpkg.EffectHitCallback) combat.EffectHitCallback {
+		if cb == nil {
+			return nil
+		}
+		return func(effect any, target any, now time.Time) {
+			cb(effect, target, now)
+		}
+	}
+
+	builder := func(adapterCfg worldpkg.LegacyEffectHitAdapterConfig) worldpkg.EffectHitCallback {
+		return toWorldCallback(combat.NewLegacyWorldEffectHitAdapter(combat.LegacyWorldEffectHitAdapterConfig{
+			HealthEpsilon:           adapterCfg.HealthEpsilon,
+			BaselinePlayerMaxHealth: adapterCfg.BaselinePlayerMaxHealth,
+			ExtractEffect: func(effect any) (*internaleffects.State, bool) {
+				if adapterCfg.ExtractEffect == nil {
+					return nil, false
+				}
+				state, ok := adapterCfg.ExtractEffect(effect)
+				if !ok || state == nil {
+					return nil, false
+				}
+				return (*internaleffects.State)(state), true
+			},
+			ExtractActor: func(target any) (combat.WorldActorAdapter, bool) {
+				if adapterCfg.ExtractActor == nil {
+					return combat.WorldActorAdapter{}, false
+				}
+				data, ok := adapterCfg.ExtractActor(target)
+				if !ok || data.State == nil {
+					return combat.WorldActorAdapter{}, false
+				}
+				kind := combat.ActorKindGeneric
+				switch data.Kind {
+				case worldpkg.CombatActorKindPlayer:
+					kind = combat.ActorKindPlayer
+				case worldpkg.CombatActorKindNPC:
+					kind = combat.ActorKindNPC
+				}
+				return combat.WorldActorAdapter{
+					ID:        data.State.ID,
+					Health:    data.State.Health,
+					MaxHealth: data.State.MaxHealth,
+					KindHint:  kind,
+					Raw:       data,
+				}, true
+			},
+			IsPlayer: func(id string) bool {
+				_, ok := w.players[id]
+				return ok
+			},
+			IsNPC: func(id string) bool {
+				_, ok := w.npcs[id]
+				return ok
+			},
+			SetPlayerHealth: adapterCfg.SetPlayerHealth,
+			SetNPCHealth:    adapterCfg.SetNPCHealth,
+			ApplyGenericHealthDelta: func(adapter combat.WorldActorAdapter, delta float64) (bool, float64, float64) {
+				if adapterCfg.ApplyGenericHealthDelta == nil {
+					return false, 0, adapter.Health
+				}
+				data, _ := adapter.Raw.(worldpkg.CombatActorData)
+				return adapterCfg.ApplyGenericHealthDelta(data, delta)
+			},
+			RecordEffectHitTelemetry: func(effect *internaleffects.State, targetID string, delta float64) {
+				if adapterCfg.RecordEffectHitTelemetry == nil || effect == nil {
+					return
+				}
+				adapterCfg.RecordEffectHitTelemetry((*worldeffects.State)(effect), targetID, delta)
+			},
+			RecordDamageTelemetry: func(effect combat.EffectRef, target combat.ActorRef, damage float64, targetHealth float64, statusEffect string) {
+				if adapterCfg.RecordDamageTelemetry == nil {
+					return
+				}
+				data, _ := target.Raw.(worldpkg.CombatActorData)
+				state, _ := effect.Raw.(*internaleffects.State)
+				if state == nil {
+					return
+				}
+				adapterCfg.RecordDamageTelemetry((*worldeffects.State)(state), data, damage, targetHealth, statusEffect)
+			},
+			RecordDefeatTelemetry: func(effect combat.EffectRef, target combat.ActorRef, statusEffect string) {
+				if adapterCfg.RecordDefeatTelemetry == nil {
+					return
+				}
+				data, _ := target.Raw.(worldpkg.CombatActorData)
+				state, _ := effect.Raw.(*internaleffects.State)
+				if state == nil {
+					return
+				}
+				adapterCfg.RecordDefeatTelemetry((*worldeffects.State)(state), data, statusEffect)
+			},
+			DropAllInventory: func(adapter combat.WorldActorAdapter, reason string) {
+				if adapterCfg.DropAllInventory == nil {
+					return
+				}
+				data, _ := adapter.Raw.(worldpkg.CombatActorData)
+				adapterCfg.DropAllInventory(data, reason)
+			},
+			ApplyStatusEffect: func(effect *internaleffects.State, adapter combat.WorldActorAdapter, status string, now time.Time) {
+				if adapterCfg.ApplyStatusEffect == nil || effect == nil {
+					return
+				}
+				data, _ := adapter.Raw.(worldpkg.CombatActorData)
+				adapterCfg.ApplyStatusEffect((*worldeffects.State)(effect), data, statuspkg.StatusEffectType(status), now)
+			},
+		}))
+	}
+
+	combatCfg := worldpkg.EffectHitCombatDispatcherConfig{
 		HealthEpsilon:           worldpkg.HealthEpsilon,
 		BaselinePlayerMaxHealth: baselinePlayerMaxHealth,
-		ExtractEffect: func(effect any) (*internaleffects.State, bool) {
-			eff, _ := effect.(*effectState)
-			if eff == nil {
-				return nil, false
-			}
-			return eff, true
+		Publisher:               w.publisher,
+		LookupEntity: func(id string) logging.EntityRef {
+			return w.entityRef(id)
 		},
-		ExtractActor: func(target any) (combat.WorldActorAdapter, bool) {
-			if target == nil {
-				return combat.WorldActorAdapter{}, false
-			}
-
-			var actor *actorState
-			kind := combat.ActorKindGeneric
-
-			switch typed := target.(type) {
-			case *actorState:
-				actor = typed
-			case *playerState:
-				if typed == nil {
-					return combat.WorldActorAdapter{}, false
-				}
-				actor = &typed.ActorState
-				kind = combat.ActorKindPlayer
-			case *npcState:
-				if typed == nil {
-					return combat.WorldActorAdapter{}, false
-				}
-				actor = &typed.ActorState
-				kind = combat.ActorKindNPC
-			default:
-				return combat.WorldActorAdapter{}, false
-			}
-
-			if actor == nil {
-				return combat.WorldActorAdapter{}, false
-			}
-
-			return combat.WorldActorAdapter{
-				ID:        actor.ID,
-				Health:    actor.Health,
-				MaxHealth: actor.MaxHealth,
-				KindHint:  kind,
-				Raw:       actor,
-			}, true
-		},
-		IsPlayer: func(id string) bool {
-			_, ok := w.players[id]
-			return ok
-		},
-		IsNPC: func(id string) bool {
-			_, ok := w.npcs[id]
-			return ok
+		CurrentTick: func() uint64 {
+			return w.currentTick
 		},
 		SetPlayerHealth: func(id string, next float64) {
 			if id == "" {
@@ -853,63 +924,81 @@ func (w *World) configureEffectHitAdapter() {
 			}
 			w.SetNPCHealth(id, next)
 		},
-		ApplyGenericHealthDelta: func(actor combat.WorldActorAdapter, delta float64) (bool, float64, float64) {
-			state, _ := actor.Raw.(*actorState)
-			if state == nil {
-				return false, 0, actor.Health
+		ApplyGenericHealthDelta: func(actor *worldstate.ActorState, delta float64) (bool, float64, float64) {
+			if actor == nil {
+				return false, 0, 0
 			}
+			state := (*actorState)(actor)
 			before := state.Health
 			if !state.ApplyHealthDelta(delta) {
 				return false, 0, before
 			}
 			return true, state.Health - before, state.Health
 		},
-		RecordEffectHitTelemetry: func(effect *internaleffects.State, targetID string, actualDelta float64) {
+		RecordEffectHitTelemetry: func(effect *worldeffects.State, targetID string, actualDelta float64) {
 			if effect == nil || targetID == "" {
 				return
 			}
-			w.recordEffectHitTelemetry(effect, targetID, actualDelta)
+			w.recordEffectHitTelemetry((*effectState)(effect), targetID, actualDelta)
 		},
-		RecordDamageTelemetry: combat.NewDamageTelemetryRecorder(combat.DamageTelemetryRecorderConfig{
-			Publisher: w.publisher,
-			LookupEntity: func(id string) logging.EntityRef {
-				return w.entityRef(id)
-			},
-			CurrentTick: func() uint64 {
-				return w.currentTick
-			},
-		}),
-		RecordDefeatTelemetry: combat.NewDefeatTelemetryRecorder(combat.DefeatTelemetryRecorderConfig{
-			Publisher: w.publisher,
-			LookupEntity: func(id string) logging.EntityRef {
-				return w.entityRef(id)
-			},
-			CurrentTick: func() uint64 {
-				return w.currentTick
-			},
-		}),
-		DropAllInventory: func(actor combat.WorldActorAdapter, reason string) {
-			state, _ := actor.Raw.(*actorState)
-			if state == nil {
+		DropAllInventory: func(actor *worldstate.ActorState, reason string) {
+			if actor == nil {
 				return
 			}
-			w.dropAllInventory(state, reason)
+			w.dropAllInventory((*actorState)(actor), reason)
 		},
-		ApplyStatusEffect: func(effect *internaleffects.State, actor combat.WorldActorAdapter, statusEffect string, now time.Time) {
-			if statusEffect == "" {
-				return
-			}
-			state, _ := actor.Raw.(*actorState)
-			if state == nil {
+		ApplyStatusEffect: func(effect *worldeffects.State, actor *worldstate.ActorState, status statuspkg.StatusEffectType, now time.Time) {
+			if actor == nil || status == "" {
 				return
 			}
 			ownerID := ""
 			if effect != nil {
 				ownerID = effect.Owner
 			}
-			w.applyStatusEffect(state, StatusEffectType(statusEffect), ownerID, now)
+			w.applyStatusEffect((*actorState)(actor), StatusEffectType(status), ownerID, now)
 		},
-	})
+		BuildLegacyAdapter: builder,
+	}
+
+	npcCfg := worldpkg.EffectHitNPCConfig{
+		SpawnBlood: func(effect any, target any, now time.Time) {
+			eff, _ := effect.(*effectState)
+			npc, _ := target.(*npcState)
+			if eff == nil || npc == nil {
+				return
+			}
+			w.maybeSpawnBloodSplatter(eff, npc, now)
+		},
+		IsAlive: func(target any) bool {
+			npc, _ := target.(*npcState)
+			if npc == nil {
+				return false
+			}
+			return npc.Health > 0
+		},
+		HandleDefeat: func(target any) {
+			npc, _ := target.(*npcState)
+			if npc == nil {
+				return
+			}
+			w.dropAllGold(&npc.ActorState, "death")
+			w.handleNPCDefeat(npc)
+		},
+	}
+
+	if ok := w.internalWorld.ConfigureEffectHitAdapters(worldpkg.EffectHitAdaptersConfig{
+		Combat: combatCfg,
+		NPC:    npcCfg,
+	}); !ok {
+		w.effectHitAdapter = nil
+		w.playerHitCallback = nil
+		w.npcHitCallback = nil
+		return
+	}
+
+	w.effectHitAdapter = toCombatCallback(w.internalWorld.EffectHitDispatcher())
+	w.playerHitCallback = w.internalWorld.PlayerEffectHitCallback()
+	w.npcHitCallback = w.internalWorld.NPCEffectHitCallback()
 }
 
 // applyEnvironmentalStatusEffects applies persistent effects triggered by hazards.
