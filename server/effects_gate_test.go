@@ -3,26 +3,45 @@ package server
 import (
 	"testing"
 	"time"
+
+	worldpkg "mine-and-die/server/internal/world"
 )
 
 func TestConfigureMeleeAbilityGatePopulatesIntentOwner(t *testing.T) {
 	const actorID = "player-gate"
 
-	world := &World{
-		players: map[string]*playerState{
-			actorID: {
-				ActorState: actorState{Actor: Actor{
-					ID:     actorID,
-					X:      180,
-					Y:      140,
-					Facing: FacingUp,
-				}},
-				Cooldowns: make(map[string]time.Time),
-			},
-		},
+	player := &playerState{
+		ActorState: actorState{Actor: Actor{
+			ID:     actorID,
+			X:      180,
+			Y:      140,
+			Facing: FacingUp,
+		}},
+		Cooldowns: make(map[string]time.Time),
 	}
 
-	world.configureMeleeAbilityGate()
+	internalWorld, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
+	if err != nil {
+		t.Fatalf("failed to construct internal world: %v", err)
+	}
+	internalWorld.Players()[actorID] = player
+
+	world := &World{
+		players: map[string]*playerState{actorID: player},
+	}
+	world.internalWorld = internalWorld
+	world.configureAbilityOwnerAdapters()
+
+	options, ok := internalWorld.AbilityGateOptions()
+	if !ok {
+		t.Fatal("expected internal world to expose ability gate options")
+	}
+
+	gate, ok := newMeleeAbilityGateFromOptions(options.Melee)
+	if !ok {
+		t.Fatal("expected melee ability gate to bind")
+	}
+	world.meleeAbilityGate = gate
 	if world.meleeAbilityGate == nil {
 		t.Fatal("expected melee ability gate to be configured")
 	}
@@ -46,22 +65,45 @@ func TestConfigureMeleeAbilityGatePopulatesIntentOwner(t *testing.T) {
 func TestConfigureProjectileAbilityGatePopulatesIntentOwner(t *testing.T) {
 	const actorID = "caster-gate"
 
-	world := &World{
-		players: map[string]*playerState{
-			actorID: {
-				ActorState: actorState{Actor: Actor{
-					ID:     actorID,
-					X:      120,
-					Y:      160,
-					Facing: FacingRight,
-				}},
-				Cooldowns: make(map[string]time.Time),
-			},
-		},
-		projectileTemplates: newProjectileTemplates(),
+	player := &playerState{
+		ActorState: actorState{Actor: Actor{
+			ID:     actorID,
+			X:      120,
+			Y:      160,
+			Facing: FacingRight,
+		}},
+		Cooldowns: make(map[string]time.Time),
 	}
 
-	world.configureProjectileAbilityGate()
+	internalWorld, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
+	if err != nil {
+		t.Fatalf("failed to construct internal world: %v", err)
+	}
+	internalWorld.Players()[actorID] = player
+
+	world := &World{
+		players:             map[string]*playerState{actorID: player},
+		projectileTemplates: newProjectileTemplates(),
+	}
+	world.internalWorld = internalWorld
+	world.configureAbilityOwnerAdapters()
+
+	options, ok := internalWorld.AbilityGateOptions()
+	if !ok {
+		t.Fatal("expected internal world to expose ability gate options")
+	}
+
+	projectileOpts := options.Projectile
+	if tpl := world.projectileTemplates[effectTypeFireball]; tpl != nil {
+		projectileOpts.AbilityID = tpl.Type
+		projectileOpts.Cooldown = tpl.Cooldown
+	}
+
+	gate, ok := newProjectileAbilityGateFromOptions(projectileOpts)
+	if !ok {
+		t.Fatal("expected projectile ability gate to bind")
+	}
+	world.projectileAbilityGate = gate
 	if world.projectileAbilityGate == nil {
 		t.Fatal("expected projectile ability gate to be configured")
 	}

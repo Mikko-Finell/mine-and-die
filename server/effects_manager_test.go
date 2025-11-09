@@ -6,6 +6,7 @@ import (
 
 	effectcontract "mine-and-die/server/effects/contract"
 	internaleffects "mine-and-die/server/internal/effects"
+	worldpkg "mine-and-die/server/internal/world"
 )
 
 func TestEffectManagerRunTickWithoutEmitterProcessesHooks(t *testing.T) {
@@ -68,8 +69,12 @@ func TestEffectManagerWorldEffectLoadsFromRegistry(t *testing.T) {
 		effectsByID: make(map[string]*effectState),
 	}
 	world.configureEffectHitAdapter()
-	world.configureMeleeAbilityGate()
-	world.configureProjectileAbilityGate()
+
+	constructed, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
+	if err != nil {
+		t.Fatalf("failed to construct internal world: %v", err)
+	}
+	bindAbilityGatesForTest(t, world, constructed)
 	world.effectsRegistry = internaleffects.Registry{
 		Effects: &world.effects,
 		ByID:    &world.effectsByID,
@@ -99,8 +104,13 @@ func TestEffectManagerProjectileLifecycleUpdatesRegistry(t *testing.T) {
 		projectileTemplates: newProjectileTemplates(),
 	}
 	world.configureEffectHitAdapter()
-	world.configureMeleeAbilityGate()
-	world.configureProjectileAbilityGate()
+
+	constructed, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
+	if err != nil {
+		t.Fatalf("failed to construct internal world: %v", err)
+	}
+	constructed.Players()[ownerID] = world.players[ownerID]
+	bindAbilityGatesForTest(t, world, constructed)
 	world.effectsIndex = internaleffects.NewSpatialIndex(0, 0)
 	world.effectsRegistry = internaleffects.Registry{
 		Effects: &world.effects,
@@ -139,5 +149,37 @@ func TestEffectManagerProjectileLifecycleUpdatesRegistry(t *testing.T) {
 
 	if _, ok := world.effectsByID[instanceID]; ok {
 		t.Fatalf("expected projectile effect to be unregistered after teardown")
+	}
+}
+
+func bindAbilityGatesForTest(t *testing.T, world *World, constructed *worldpkg.World) {
+	t.Helper()
+	if world == nil || constructed == nil {
+		return
+	}
+
+	world.internalWorld = constructed
+	world.configureAbilityOwnerAdapters()
+
+	gateOptions, ok := constructed.AbilityGateOptions()
+	if !ok {
+		return
+	}
+
+	if gate, ok := newMeleeAbilityGateFromOptions(gateOptions.Melee); ok {
+		world.meleeAbilityGate = gate
+	}
+
+	if tpl := world.projectileTemplates[effectTypeFireball]; tpl != nil {
+		projectileOpts := gateOptions.Projectile
+		if tpl.Type != "" {
+			projectileOpts.AbilityID = tpl.Type
+		}
+		if tpl.Cooldown > 0 {
+			projectileOpts.Cooldown = tpl.Cooldown
+		}
+		if gate, ok := newProjectileAbilityGateFromOptions(projectileOpts); ok {
+			world.projectileAbilityGate = gate
+		}
 	}
 }

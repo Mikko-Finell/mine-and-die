@@ -289,6 +289,17 @@ func (w *World) AbilityOwnerLookup() AbilityOwnerLookup[*state.ActorState, Abili
 	return w.abilityOwnerLookup
 }
 
+// AbilityGateOptions exposes the pre-bound melee and projectile gate options
+// constructed from the world's ability owner lookup. Callers bind the returned
+// options to combat gates without re-deriving façade lookups.
+func (w *World) AbilityGateOptions() (abilitiespkg.WorldAbilityGateOptions, bool) {
+	if w == nil {
+		return abilitiespkg.WorldAbilityGateOptions{}, false
+	}
+	w.ensureAbilityOwnerAdapters()
+	return abilitiespkg.NewWorldAbilityGateOptions(w.abilityOwnerLookup)
+}
+
 func (w *World) ensureAbilityOwnerAdapters() {
 	if w == nil {
 		return
