@@ -83,7 +83,7 @@ replacements are wired.
     4. Refresh tests that relied on the façade helpers (`server/effects_gate_test.go`, `server/ai_test.go`, `server/effects_manager_test.go`) so they import the new internal wiring instead of calling the removed configure methods.
 
   - [ ] Subtask 2: The effect-hit adapter (including telemetry recorders) is still authored in the façade even though internal/world/effect_hits.go already owns the callback contracts. To inline it, we need an internal helper that assembles the combat.LegacyWorldEffectHitAdapterConfig and forwards the callbacks that touch world state; consumers like simulation.go and status_effects.go must swap over to the internal entry point.
-    1. Introduce a constructor in `server/internal/world/effect_hits` that accepts the world-level dependencies (telemetry publisher, entity lookup, health setters, status application) and returns the combat dispatcher ready to install in the effect manager.
+    1. [x] Introduce a constructor in `server/internal/world/effect_hits` that accepts the world-level dependencies (telemetry publisher, entity lookup, health setters, status application) and returns the combat dispatcher ready to install in the effect manager.
     2. Replace `World.configureEffectHitAdapter` with calls into the new helper, wiring it up during internal world construction and exposing any necessary accessors for legacy consumers.
     3. Update façade call sites (`server/simulation.go`, `server/status_effects.go`, related tests) to fetch the adapter from the internal world instead of invoking the removed configure function.
 
