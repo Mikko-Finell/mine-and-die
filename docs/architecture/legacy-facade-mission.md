@@ -74,7 +74,24 @@ replacements are wired.
   remaining façade dependency once determinism verifies the wiring.
 - [ ] **Inline ability gating and projectile adapters** by moving the façade helpers from `server/effects.go` into
   `internal/world/abilities` and `internal/world/effect_hits`, binding them to the internal state lookups created during
-  `New`.
+  `New`. Ability gating and the effect-hit adapter are still wired inside the façade: World.configureMeleeAbilityGate, configureProjectileAbilityGate, and configureEffectHitAdapter all live in server/effects.go, while internal/world.New only exposes the ability-owner lookup and the server constructor stitches everything together manually. Inline wiring will require moving these helpers into the internal packages and teaching internal/world to publish the bound adapters.
+
+  - [ ] Subtask 1: The ability gates need to be bound to internal/world’s state instead of the legacy world. Today the legacy layer instantiates the gates and owns the meleeAbilityGate / projectileAbilityGate fields even though the internal constructor already maintains the owner lookups; migrating the binding will also require touching the tests that exercise the façade helpers.
+    1. Extend `server/internal/world/world.go` so the `World` exposes pre-bound gate options (or thin gate wrappers) built from `AbilityOwnerLookup`, allowing callers to acquire gate-ready closures without re-binding façade lookups.
+    2. Add a helper in `server/internal/world/abilities` that assembles those options for melee and projectile abilities, keeping cooldown constants and snapshot conversion colocated with the owner lookup code.
+    3. Update `server/simulation.go` to consume the new internal helpers, delete `configureMeleeAbilityGate`/`configureProjectileAbilityGate` from `server/effects.go`, and adjust any direct field usage accordingly.
+    4. Refresh tests that relied on the façade helpers (`server/effects_gate_test.go`, `server/ai_test.go`, `server/effects_manager_test.go`) so they import the new internal wiring instead of calling the removed configure methods.
+
+  - [ ] Subtask 2: The effect-hit adapter (including telemetry recorders) is still authored in the façade even though internal/world/effect_hits.go already owns the callback contracts. To inline it, we need an internal helper that assembles the combat.LegacyWorldEffectHitAdapterConfig and forwards the callbacks that touch world state; consumers like simulation.go and status_effects.go must swap over to the internal entry point.
+    1. Introduce a constructor in `server/internal/world/effect_hits` that accepts the world-level dependencies (telemetry publisher, entity lookup, health setters, status application) and returns the combat dispatcher ready to install in the effect manager.
+    2. Replace `World.configureEffectHitAdapter` with calls into the new helper, wiring it up during internal world construction and exposing any necessary accessors for legacy consumers.
+    3. Update façade call sites (`server/simulation.go`, `server/status_effects.go`, related tests) to fetch the adapter from the internal world instead of invoking the removed configure function.
+
+  - [ ] Subtask 3: Import cycles block internal/world from directly instantiating combat gates or adapters: several files in server/internal/combat still import server/internal/world, so naïvely pulling the helpers inward would introduce a cycle (world → abilities/effect_hits → combat → world). We need to decouple those combat utilities or relocate them before the move.
+    1. Identify the world-specific helpers inside `server/internal/combat` (`world_effect_hits.go`, `projectile_advance.go`, related tests) and either migrate them into internal/world packages or introduce interfaces so `combat` no longer imports `internal/world`.
+    2. Adjust the callers (effect manager hooks, ability staging, status hooks) to use the relocated helpers, confirming the combat package compiles without referencing `internal/world`.
+    3. Once the dependency wall is clean, verify that `internal/world` can import the combat constructors needed for the new gating/effect-hit helpers without reintroducing a cycle.
+
 - [ ] **Port status effect lifecycle wiring** by lifting the registry setup and fallback hooks from `server/status_effects.go`
   into `internal/world/status`, exposing constructors that work entirely on internal state containers.
 
