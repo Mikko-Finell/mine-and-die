@@ -6,6 +6,7 @@ import (
 	"time"
 
 	ai "mine-and-die/server/internal/ai"
+	worldpkg "mine-and-die/server/internal/world"
 	stats "mine-and-die/server/stats"
 )
 
@@ -18,8 +19,20 @@ func newStaticAIWorld() (*World, *npcState) {
 		aiLibrary: ai.GlobalLibrary,
 	}
 	w.configureEffectHitAdapter()
-	w.configureMeleeAbilityGate()
-	w.configureProjectileAbilityGate()
+
+	internalWorld, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
+	if err != nil {
+		panic(err)
+	}
+	w.internalWorld = internalWorld
+	w.configureAbilityOwnerAdapters()
+
+	if gateOptions, ok := internalWorld.AbilityGateOptions(); ok {
+		if gate, ok := newMeleeAbilityGateFromOptions(gateOptions.Melee); ok {
+			w.meleeAbilityGate = gate
+		}
+	}
+
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-static"
 	cfg = cfg.Normalized()
@@ -42,6 +55,7 @@ func newStaticAIWorld() (*World, *npcState) {
 		Stats:            stats.DefaultComponent(stats.ArchetypeGoblin),
 		Type:             NPCTypeGoblin,
 		ExperienceReward: 25,
+		Cooldowns:        make(map[string]time.Time),
 		Waypoints: []vec2{
 			{X: 360, Y: 260},
 			{X: 480, Y: 260},
@@ -61,6 +75,7 @@ func newStaticAIWorld() (*World, *npcState) {
 	npc.Blackboard.LastPos = vec2{X: npc.X, Y: npc.Y}
 
 	w.npcs[npc.ID] = npc
+	w.internalWorld.NPCs()[npc.ID] = npc
 	return w, npc
 }
 
@@ -91,8 +106,19 @@ func newRatTestWorld() (*World, *npcState) {
 		aiLibrary: ai.GlobalLibrary,
 	}
 	w.configureEffectHitAdapter()
-	w.configureMeleeAbilityGate()
-	w.configureProjectileAbilityGate()
+
+	internalWorld, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
+	if err != nil {
+		panic(err)
+	}
+	w.internalWorld = internalWorld
+	w.configureAbilityOwnerAdapters()
+
+	if gateOptions, ok := internalWorld.AbilityGateOptions(); ok {
+		if gate, ok := newMeleeAbilityGateFromOptions(gateOptions.Melee); ok {
+			w.meleeAbilityGate = gate
+		}
+	}
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-rat"
 	cfg = cfg.Normalized()
@@ -116,6 +142,7 @@ func newRatTestWorld() (*World, *npcState) {
 		Type:             NPCTypeRat,
 		ExperienceReward: 8,
 		Home:             vec2{X: 420, Y: 360},
+		Cooldowns:        make(map[string]time.Time),
 	}
 
 	ai.BootstrapNPC(ai.SpawnBootstrapConfig{
@@ -129,6 +156,7 @@ func newRatTestWorld() (*World, *npcState) {
 	rat.Blackboard.LastPos = vec2{X: rat.X, Y: rat.Y}
 
 	w.npcs[rat.ID] = rat
+	w.internalWorld.NPCs()[rat.ID] = rat
 	return w, rat
 }
 

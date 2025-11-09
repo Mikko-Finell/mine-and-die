@@ -262,8 +262,27 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 	}
 
 	w.configureEffectHitAdapter()
-	w.configureMeleeAbilityGate()
-	w.configureProjectileAbilityGate()
+
+	w.meleeAbilityGate = nil
+	w.projectileAbilityGate = nil
+	if gateOptions, ok := constructed.AbilityGateOptions(); ok {
+		if gate, ok := newMeleeAbilityGateFromOptions(gateOptions.Melee); ok {
+			w.meleeAbilityGate = gate
+		}
+
+		if tpl := w.projectileTemplates[effectTypeFireball]; tpl != nil {
+			projectileOpts := gateOptions.Projectile
+			if tpl.Type != "" {
+				projectileOpts.AbilityID = tpl.Type
+			}
+			if tpl.Cooldown > 0 {
+				projectileOpts.Cooldown = tpl.Cooldown
+			}
+			if gate, ok := newProjectileAbilityGateFromOptions(projectileOpts); ok {
+				w.projectileAbilityGate = gate
+			}
+		}
+	}
 	w.projectileStopAdapter = worldpkg.NewProjectileStopAdapter(worldpkg.ProjectileStopAdapterConfig{
 		AllocateID: func() string {
 			return w.allocateEffectID()
@@ -982,4 +1001,81 @@ func (w *World) initializeRatState(rat *npcState) {
 
 func (w *World) spawnExtraRats(count int) {
 	ai.SpawnExtraRats(w.npcSpawner(), count)
+}
+
+func newMeleeAbilityGateFromOptions(
+	opts worldpkg.AbilityGateOptions[*actorState, worldpkg.AbilityActorSnapshot],
+) (combat.MeleeAbilityGate, bool) {
+	gate, ok := worldpkg.BindMeleeAbilityGate(worldpkg.AbilityGateBindingOptions[*actorState, worldpkg.AbilityActorSnapshot, combat.MeleeAbilityGate]{
+		AbilityGateOptions: opts,
+		Factory: func(cfg worldpkg.AbilityGateConfig[worldpkg.AbilityActorSnapshot]) (combat.MeleeAbilityGate, bool) {
+			constructed := combat.NewMeleeAbilityGate(combat.MeleeAbilityGateConfig{
+				AbilityID:   cfg.AbilityID,
+				Cooldown:    cfg.Cooldown,
+				LookupOwner: wrapAbilityOwnerLookup(cfg.LookupOwner),
+			})
+			if constructed == nil {
+				return nil, false
+			}
+			return constructed, true
+		},
+	})
+	if !ok {
+		return nil, false
+	}
+	return gate, true
+}
+
+func newProjectileAbilityGateFromOptions(
+	opts worldpkg.AbilityGateOptions[*actorState, worldpkg.AbilityActorSnapshot],
+) (combat.ProjectileAbilityGate, bool) {
+	gate, ok := worldpkg.BindProjectileAbilityGate(worldpkg.AbilityGateBindingOptions[*actorState, worldpkg.AbilityActorSnapshot, combat.ProjectileAbilityGate]{
+		AbilityGateOptions: opts,
+		Factory: func(cfg worldpkg.AbilityGateConfig[worldpkg.AbilityActorSnapshot]) (combat.ProjectileAbilityGate, bool) {
+			constructed := combat.NewProjectileAbilityGate(combat.ProjectileAbilityGateConfig{
+				AbilityID:   cfg.AbilityID,
+				Cooldown:    cfg.Cooldown,
+				LookupOwner: wrapAbilityOwnerLookup(cfg.LookupOwner),
+			})
+			if constructed == nil {
+				return nil, false
+			}
+			return constructed, true
+		},
+	})
+	if !ok {
+		return nil, false
+	}
+	return gate, true
+}
+
+func wrapAbilityOwnerLookup(
+	lookup func(string) (*worldpkg.AbilityActorSnapshot, *map[string]time.Time, bool),
+) func(string) (*combat.AbilityActor, *map[string]time.Time, bool) {
+	if lookup == nil {
+		return nil
+	}
+	return func(actorID string) (*combat.AbilityActor, *map[string]time.Time, bool) {
+		owner, cooldowns, ok := lookup(actorID)
+		if !ok || owner == nil {
+			return nil, cooldowns, false
+		}
+		converted := abilityActorFromSnapshot(owner)
+		if converted == nil {
+			return nil, cooldowns, false
+		}
+		return converted, cooldowns, true
+	}
+}
+
+func abilityActorFromSnapshot(snapshot *worldpkg.AbilityActorSnapshot) *combat.AbilityActor {
+	if snapshot == nil {
+		return nil
+	}
+	return &combat.AbilityActor{
+		ID:     snapshot.ID,
+		X:      snapshot.X,
+		Y:      snapshot.Y,
+		Facing: snapshot.Facing,
+	}
 }

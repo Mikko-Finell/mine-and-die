@@ -11,6 +11,7 @@ type (
 	AbilityGateOptions[State any, Owner any]                  = abilities.AbilityGateOptions[State, Owner]
 	AbilityGateFactory[Owner any, Gate any]                   = abilities.AbilityGateFactory[Owner, Gate]
 	AbilityGateBindingOptions[State any, Owner any, Gate any] = abilities.AbilityGateBindingOptions[State, Owner, Gate]
+	WorldAbilityGateOptions                                   = abilities.WorldAbilityGateOptions
 )
 
 func NewAbilityOwnerStateLookup[State any](cfg abilities.AbilityOwnerStateLookupConfig[State]) abilities.AbilityOwnerStateLookup[State] {
