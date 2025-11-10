@@ -82,10 +82,10 @@ type World struct {
 	effectsRegistry         internaleffects.Registry
 	effectManager           *EffectManager
 	obstacles               []Obstacle
-	effectHitAdapter        combat.EffectHitCallback
+	effectHitAdapter        worldpkg.EffectHitCallback
 	meleeAbilityGate        combat.MeleeAbilityGate
 	projectileAbilityGate   combat.ProjectileAbilityGate
-	abilityOwnerLookup      worldpkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
+	abilityOwnerLookup      worldpkg.AbilityOwnerLookup[*actorState, worldpkg.AbilityActorSnapshot]
 	abilityOwnerStateLookup worldpkg.AbilityOwnerStateLookup[*actorState]
 	projectileStopAdapter   worldpkg.ProjectileStopAdapter
 	projectileTemplates     map[string]*ProjectileTemplate
@@ -250,11 +250,9 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 
 	if stateLookup := constructed.AbilityOwnerStateLookup(); stateLookup != nil {
 		w.abilityOwnerStateLookup = worldpkg.AbilityOwnerStateLookup[*actorState](stateLookup)
-		w.abilityOwnerLookup = worldpkg.NewAbilityOwnerLookup(worldpkg.AbilityOwnerLookupConfig[*actorState, combat.AbilityActor]{
+		w.abilityOwnerLookup = worldpkg.NewAbilityOwnerLookup(worldpkg.AbilityOwnerLookupConfig[*actorState, worldpkg.AbilityActorSnapshot]{
 			LookupState: w.abilityOwnerStateLookup,
-			Snapshot: func(state *actorState) *combat.AbilityActor {
-				return abilityActorSnapshot(state)
-			},
+			Snapshot:    worldAbilityActorSnapshot,
 		})
 	} else {
 		w.abilityOwnerStateLookup = nil

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	effectcontract "mine-and-die/server/effects/contract"
-	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	statuspkg "mine-and-die/server/internal/world/status"
@@ -373,7 +372,7 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		return
 	}
 
-	dispatcher := w.combatEffectHitDispatcher()
+	dispatcher := w.effectHitDispatcher()
 	if dispatcher == nil {
 		return
 	}
@@ -421,7 +420,7 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 	})
 }
 
-func (w *World) combatEffectHitDispatcher() combat.EffectHitCallback {
+func (w *World) effectHitDispatcher() worldpkg.EffectHitCallback {
 	if w == nil {
 		return nil
 	}
@@ -437,10 +436,8 @@ func (w *World) combatEffectHitDispatcher() combat.EffectHitCallback {
 		return nil
 	}
 
-	w.effectHitAdapter = func(effect any, target any, now time.Time) {
-		dispatcher(effect, target, now)
-	}
-	return w.effectHitAdapter
+	w.effectHitAdapter = dispatcher
+	return dispatcher
 }
 
 func (w *World) attachStatusEffectVisual(handle statuspkg.StatusEffectInstanceHandle, actor *actorState, statusType StatusEffectType, sourceID, effectType string, lifetime time.Duration, expiresAt, now time.Time) *effectState {

@@ -6,7 +6,6 @@ import (
 
 	effectcatalog "mine-and-die/server/effects/catalog"
 	effectcontract "mine-and-die/server/effects/contract"
-	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldpkg "mine-and-die/server/internal/world"
 	worldeffects "mine-and-die/server/internal/world/effects"
@@ -168,7 +167,7 @@ func (m *EffectManager) RunTick(tick effectcontract.Tick, now time.Time, emit fu
 }
 
 func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet {
-	var ownerLookup worldpkg.AbilityOwnerLookup[*actorState, combat.AbilityActor]
+	var ownerLookup worldpkg.AbilityOwnerLookup[*actorState, worldpkg.AbilityActorSnapshot]
 	var stateLookup worldpkg.AbilityOwnerStateLookup[*actorState]
 	if world != nil {
 		world.configureAbilityOwnerAdapters()

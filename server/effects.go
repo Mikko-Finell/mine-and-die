@@ -178,11 +178,9 @@ func (w *World) configureAbilityOwnerAdapters() {
 	})
 
 	w.abilityOwnerStateLookup = stateLookup
-	w.abilityOwnerLookup = worldpkg.NewAbilityOwnerLookup(worldpkg.AbilityOwnerLookupConfig[*actorState, combat.AbilityActor]{
+	w.abilityOwnerLookup = worldpkg.NewAbilityOwnerLookup(worldpkg.AbilityOwnerLookupConfig[*actorState, worldpkg.AbilityActorSnapshot]{
 		LookupState: stateLookup,
-		Snapshot: func(state *actorState) *combat.AbilityActor {
-			return abilityActorSnapshot(state)
-		},
+		Snapshot:    worldAbilityActorSnapshot,
 	})
 }
 
@@ -801,15 +799,6 @@ func bindEffectHitAdapters(w *World) {
 		}
 	}
 
-	toCombatCallback := func(cb worldpkg.EffectHitCallback) combat.EffectHitCallback {
-		if cb == nil {
-			return nil
-		}
-		return func(effect any, target any, now time.Time) {
-			cb(effect, target, now)
-		}
-	}
-
 	builder := func(adapterCfg worldpkg.LegacyEffectHitAdapterConfig) worldpkg.EffectHitCallback {
 		return toWorldCallback(combat.NewLegacyWorldEffectHitAdapter(combat.LegacyWorldEffectHitAdapterConfig{
 			HealthEpsilon:           adapterCfg.HealthEpsilon,
@@ -1003,7 +992,7 @@ func bindEffectHitAdapters(w *World) {
 		return
 	}
 
-	w.effectHitAdapter = toCombatCallback(w.internalWorld.EffectHitDispatcher())
+	w.effectHitAdapter = w.internalWorld.EffectHitDispatcher()
 }
 
 // applyEnvironmentalStatusEffects applies persistent effects triggered by hazards.

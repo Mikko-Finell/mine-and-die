@@ -91,7 +91,7 @@ replacements are wired.
     1. [x] Identify the world-specific helpers inside `server/internal/combat` (`world_effect_hits.go`, `projectile_advance.go`, related tests) and either migrate them into internal/world packages or introduce interfaces so `combat` no longer imports `internal/world`.
        - Completed by moving the world-owned callback wrappers (player/NPC/burning damage) into `internal/world` so they bind to combat dispatchers without requiring combat → world imports, and by teaching `status_effects.go`/`simulation.go` to call the new world helpers.
        - Added a combat-local `Rectangle` type + `CircleRectOverlap` helper so projectile advance/overlap logic no longer needs `world.Obstacle`, updating all callers/tests to adapt their obstacle data when wiring configs.
-    2. [ ] Adjust the callers (effect manager hooks, ability staging, status hooks) to use the relocated helpers, confirming the combat package compiles without referencing `internal/world`.
+    2. [x] Adjust the callers (effect manager hooks, ability staging, status hooks) to use the relocated helpers, confirming the combat package compiles without referencing `internal/world`.
     3. [ ] Once the dependency wall is clean, verify that `internal/world` can import the combat constructors needed for the new gating/effect-hit helpers without reintroducing a cycle.
 
 - [ ] **Port status effect lifecycle wiring** by lifting the registry setup and fallback hooks from `server/status_effects.go`

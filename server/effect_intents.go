@@ -56,18 +56,6 @@ func quantizeWorldCoord(value float64) int {
 	return QuantizeCoord(value / tileSize)
 }
 
-func abilityActorSnapshot(actor *actorState) *combat.AbilityActor {
-	if actor == nil {
-		return nil
-	}
-	return &combat.AbilityActor{
-		ID:     actor.ID,
-		X:      actor.X,
-		Y:      actor.Y,
-		Facing: string(actor.Facing),
-	}
-}
-
 func newMeleeIntent(owner *combat.AbilityActor) (effectcontract.EffectIntent, bool) {
 	ownerRef, ok := combat.NewMeleeIntentOwnerFromActor(owner)
 	if !ok {

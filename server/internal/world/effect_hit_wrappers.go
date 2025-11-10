@@ -3,7 +3,6 @@ package world
 import (
 	"time"
 
-	"mine-and-die/server/internal/combat"
 	statuspkg "mine-and-die/server/internal/world/status"
 )
 
@@ -11,7 +10,7 @@ import (
 // reproduce the legacy player hit wiring while delegating combat staging to the
 // shared dispatcher.
 type WorldPlayerEffectHitCallbackConfig struct {
-	Dispatcher combat.EffectHitCallback
+	Dispatcher EffectHitCallback
 }
 
 // NewWorldPlayerEffectHitCallback constructs a player hit callback that guards
@@ -33,7 +32,7 @@ func NewWorldPlayerEffectHitCallback(cfg WorldPlayerEffectHitCallbackConfig) Eff
 // reproduce the legacy NPC hit wiring while delegating combat staging to the
 // shared dispatcher.
 type WorldNPCEffectHitCallbackConfig struct {
-	Dispatcher   combat.EffectHitCallback
+	Dispatcher   EffectHitCallback
 	SpawnBlood   func(effect any, target any, now time.Time)
 	IsAlive      func(target any) bool
 	HandleDefeat func(target any)
@@ -66,7 +65,7 @@ func NewWorldNPCEffectHitCallback(cfg WorldNPCEffectHitCallbackConfig) EffectHit
 // burning damage through the shared combat dispatcher while preserving the
 // legacy effect construction and telemetry hooks.
 type WorldBurningDamageCallbackConfig struct {
-	Dispatcher combat.EffectHitCallback
+	Dispatcher EffectHitCallback
 	Target     any
 	Now        time.Time
 
