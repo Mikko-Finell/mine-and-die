@@ -773,8 +773,14 @@ func (w *World) maybeSpawnBloodSplatter(eff *effectState, target *npcState, now 
 	}
 }
 
-func (w *World) configureEffectHitAdapter() {
-	if w == nil || w.internalWorld == nil {
+func bindEffectHitAdapters(w *World) {
+	if w == nil {
+		return
+	}
+	if w.internalWorld == nil {
+		w.effectHitAdapter = nil
+		w.playerHitCallback = nil
+		w.npcHitCallback = nil
 		return
 	}
 
@@ -997,8 +1003,6 @@ func (w *World) configureEffectHitAdapter() {
 	}
 
 	w.effectHitAdapter = toCombatCallback(w.internalWorld.EffectHitDispatcher())
-	w.playerHitCallback = w.internalWorld.PlayerEffectHitCallback()
-	w.npcHitCallback = w.internalWorld.NPCEffectHitCallback()
 }
 
 // applyEnvironmentalStatusEffects applies persistent effects triggered by hazards.

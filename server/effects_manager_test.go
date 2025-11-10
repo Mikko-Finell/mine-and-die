@@ -68,7 +68,6 @@ func TestEffectManagerWorldEffectLoadsFromRegistry(t *testing.T) {
 	world := &World{
 		effectsByID: make(map[string]*effectState),
 	}
-	world.configureEffectHitAdapter()
 
 	constructed, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
 	if err != nil {
@@ -103,7 +102,6 @@ func TestEffectManagerProjectileLifecycleUpdatesRegistry(t *testing.T) {
 		effectsByID:         make(map[string]*effectState),
 		projectileTemplates: newProjectileTemplates(),
 	}
-	world.configureEffectHitAdapter()
 
 	constructed, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
 	if err != nil {

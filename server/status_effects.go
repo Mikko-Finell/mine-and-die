@@ -372,8 +372,13 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		return
 	}
 
+	dispatcher := w.combatEffectHitDispatcher()
+	if dispatcher == nil {
+		return
+	}
+
 	callback := combat.NewWorldBurningDamageCallback(combat.WorldBurningDamageCallbackConfig{
-		Dispatcher: w.effectHitAdapter,
+		Dispatcher: dispatcher,
 		Target:     actor,
 		Now:        now,
 		BuildEffect: func(effect statuspkg.BurningDamageEffect) any {
@@ -413,6 +418,28 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		CurrentTick:  w.currentTick,
 		Apply:        callback,
 	})
+}
+
+func (w *World) combatEffectHitDispatcher() combat.EffectHitCallback {
+	if w == nil {
+		return nil
+	}
+	if w.effectHitAdapter != nil {
+		return w.effectHitAdapter
+	}
+	if w.internalWorld == nil {
+		return nil
+	}
+
+	dispatcher := w.internalWorld.EffectHitDispatcher()
+	if dispatcher == nil {
+		return nil
+	}
+
+	w.effectHitAdapter = func(effect any, target any, now time.Time) {
+		dispatcher(effect, target, now)
+	}
+	return w.effectHitAdapter
 }
 
 func (w *World) attachStatusEffectVisual(handle statuspkg.StatusEffectInstanceHandle, actor *actorState, statusType StatusEffectType, sourceID, effectType string, lifetime time.Duration, expiresAt, now time.Time) *effectState {

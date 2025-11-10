@@ -261,7 +261,7 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 		w.abilityOwnerLookup = nil
 	}
 
-	w.configureEffectHitAdapter()
+	bindEffectHitAdapters(w)
 
 	w.meleeAbilityGate = nil
 	w.projectileAbilityGate = nil

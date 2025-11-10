@@ -18,7 +18,6 @@ func newStaticAIWorld() (*World, *npcState) {
 		obstacles: nil,
 		aiLibrary: ai.GlobalLibrary,
 	}
-	w.configureEffectHitAdapter()
 
 	internalWorld, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
 	if err != nil {
@@ -105,7 +104,6 @@ func newRatTestWorld() (*World, *npcState) {
 		obstacles: nil,
 		aiLibrary: ai.GlobalLibrary,
 	}
-	w.configureEffectHitAdapter()
 
 	internalWorld, err := worldpkg.New(worldpkg.Config{}, worldpkg.Deps{})
 	if err != nil {
