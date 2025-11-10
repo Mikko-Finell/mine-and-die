@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
 	worldeffects "mine-and-die/server/internal/world/effects"
 	state "mine-and-die/server/internal/world/state"
@@ -144,6 +145,9 @@ type EffectHitCombatDispatcherConfig struct {
 	ApplyStatusEffect        func(effect *worldeffects.State, actor *state.ActorState, status statuspkg.StatusEffectType, now time.Time)
 
 	BuildLegacyAdapter LegacyEffectHitAdapterBuilder
+
+	IsPlayer func(id string) bool
+	IsNPC    func(id string) bool
 }
 
 // LegacyEffectHitAdapterBuilder constructs a dispatcher using the supplied
@@ -160,6 +164,8 @@ type LegacyEffectHitAdapterConfig struct {
 
 	ExtractEffect func(effect any) (*worldeffects.State, bool)
 	ExtractActor  func(target any) (CombatActorData, bool)
+	IsPlayer      func(id string) bool
+	IsNPC         func(id string) bool
 
 	SetPlayerHealth         func(id string, next float64)
 	SetNPCHealth            func(id string, next float64)
@@ -196,8 +202,9 @@ type CombatActorData struct {
 // state by wiring the provided adapters into the shared combat helper. The
 // returned callback matches the contract used by the effect manager hooks.
 func NewEffectHitCombatDispatcher(cfg EffectHitCombatDispatcherConfig) EffectHitCallback {
-	if cfg.BuildLegacyAdapter == nil {
-		return nil
+	builder := cfg.BuildLegacyAdapter
+	if builder == nil {
+		builder = defaultLegacyEffectHitAdapterBuilder()
 	}
 
 	adapterCfg := LegacyEffectHitAdapterConfig{
@@ -250,9 +257,138 @@ func NewEffectHitCombatDispatcher(cfg EffectHitCombatDispatcherConfig) EffectHit
 			}
 			cfg.ApplyStatusEffect(effect, actor.State, status, now)
 		},
+		IsPlayer: func(id string) bool {
+			if cfg.IsPlayer == nil || id == "" {
+				return false
+			}
+			return cfg.IsPlayer(id)
+		},
+		IsNPC: func(id string) bool {
+			if cfg.IsNPC == nil || id == "" {
+				return false
+			}
+			return cfg.IsNPC(id)
+		},
 	}
 
-	return cfg.BuildLegacyAdapter(adapterCfg)
+	return builder(adapterCfg)
+}
+
+func defaultLegacyEffectHitAdapterBuilder() LegacyEffectHitAdapterBuilder {
+	return func(adapterCfg LegacyEffectHitAdapterConfig) EffectHitCallback {
+		combatCfg := combat.LegacyWorldEffectHitAdapterConfig{
+			HealthEpsilon:           adapterCfg.HealthEpsilon,
+			BaselinePlayerMaxHealth: adapterCfg.BaselinePlayerMaxHealth,
+			ExtractEffect: func(effect any) (*internaleffects.State, bool) {
+				if adapterCfg.ExtractEffect == nil {
+					return nil, false
+				}
+				state, ok := adapterCfg.ExtractEffect(effect)
+				if !ok || state == nil {
+					return nil, false
+				}
+				return (*internaleffects.State)(state), true
+			},
+			ExtractActor: func(target any) (combat.WorldActorAdapter, bool) {
+				if adapterCfg.ExtractActor == nil {
+					return combat.WorldActorAdapter{}, false
+				}
+				data, ok := adapterCfg.ExtractActor(target)
+				if !ok || data.State == nil {
+					return combat.WorldActorAdapter{}, false
+				}
+				kind := combat.ActorKindGeneric
+				switch data.Kind {
+				case CombatActorKindPlayer:
+					kind = combat.ActorKindPlayer
+				case CombatActorKindNPC:
+					kind = combat.ActorKindNPC
+				}
+				return combat.WorldActorAdapter{
+					ID:        data.State.ID,
+					Health:    data.State.Health,
+					MaxHealth: data.State.MaxHealth,
+					KindHint:  kind,
+					Raw:       data,
+				}, true
+			},
+			IsPlayer: func(id string) bool {
+				if adapterCfg.IsPlayer == nil || id == "" {
+					return false
+				}
+				return adapterCfg.IsPlayer(id)
+			},
+			IsNPC: func(id string) bool {
+				if adapterCfg.IsNPC == nil || id == "" {
+					return false
+				}
+				return adapterCfg.IsNPC(id)
+			},
+			SetPlayerHealth: adapterCfg.SetPlayerHealth,
+			SetNPCHealth:    adapterCfg.SetNPCHealth,
+			ApplyGenericHealthDelta: func(adapter combat.WorldActorAdapter, delta float64) (bool, float64, float64) {
+				if adapterCfg.ApplyGenericHealthDelta == nil {
+					return false, 0, adapter.Health
+				}
+				data, _ := adapter.Raw.(CombatActorData)
+				return adapterCfg.ApplyGenericHealthDelta(data, delta)
+			},
+			RecordEffectHitTelemetry: func(effect *internaleffects.State, targetID string, delta float64) {
+				if adapterCfg.RecordEffectHitTelemetry == nil || effect == nil {
+					return
+				}
+				adapterCfg.RecordEffectHitTelemetry((*worldeffects.State)(effect), targetID, delta)
+			},
+			RecordDamageTelemetry: func(effect combat.EffectRef, target combat.ActorRef, damage float64, targetHealth float64, statusEffect string) {
+				if adapterCfg.RecordDamageTelemetry == nil {
+					return
+				}
+				data, _ := target.Raw.(CombatActorData)
+				state, _ := effect.Raw.(*internaleffects.State)
+				if state == nil {
+					return
+				}
+				adapterCfg.RecordDamageTelemetry((*worldeffects.State)(state), data, damage, targetHealth, statusEffect)
+			},
+			RecordDefeatTelemetry: func(effect combat.EffectRef, target combat.ActorRef, statusEffect string) {
+				if adapterCfg.RecordDefeatTelemetry == nil {
+					return
+				}
+				data, _ := target.Raw.(CombatActorData)
+				state, _ := effect.Raw.(*internaleffects.State)
+				if state == nil {
+					return
+				}
+				adapterCfg.RecordDefeatTelemetry((*worldeffects.State)(state), data, statusEffect)
+			},
+			DropAllInventory: func(adapter combat.WorldActorAdapter, reason string) {
+				if adapterCfg.DropAllInventory == nil {
+					return
+				}
+				data, _ := adapter.Raw.(CombatActorData)
+				adapterCfg.DropAllInventory(data, reason)
+			},
+			ApplyStatusEffect: func(effect *internaleffects.State, adapter combat.WorldActorAdapter, status string, now time.Time) {
+				if adapterCfg.ApplyStatusEffect == nil || effect == nil {
+					return
+				}
+				data, _ := adapter.Raw.(CombatActorData)
+				adapterCfg.ApplyStatusEffect((*worldeffects.State)(effect), data, statuspkg.StatusEffectType(status), now)
+			},
+		}
+
+		combatCallback := combat.NewLegacyWorldEffectHitAdapter(combatCfg)
+		return convertCombatCallback(combatCallback)
+	}
+}
+
+func convertCombatCallback(callback combat.EffectHitCallback) EffectHitCallback {
+	if callback == nil {
+		return nil
+	}
+	return func(effect any, target any, now time.Time) {
+		callback(effect, target, now)
+	}
 }
 
 func normalizedHealthEpsilon(epsilon float64) float64 {

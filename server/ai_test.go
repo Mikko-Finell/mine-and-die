@@ -26,10 +26,8 @@ func newStaticAIWorld() (*World, *npcState) {
 	w.internalWorld = internalWorld
 	w.configureAbilityOwnerAdapters()
 
-	if gateOptions, ok := internalWorld.AbilityGateOptions(); ok {
-		if gate, ok := newMeleeAbilityGateFromOptions(gateOptions.Melee); ok {
-			w.meleeAbilityGate = gate
-		}
+	if gates, ok := internalWorld.AbilityGates(); ok {
+		w.meleeAbilityGate = gates.Melee
 	}
 
 	cfg := fullyFeaturedTestWorldConfig()
@@ -112,10 +110,8 @@ func newRatTestWorld() (*World, *npcState) {
 	w.internalWorld = internalWorld
 	w.configureAbilityOwnerAdapters()
 
-	if gateOptions, ok := internalWorld.AbilityGateOptions(); ok {
-		if gate, ok := newMeleeAbilityGateFromOptions(gateOptions.Melee); ok {
-			w.meleeAbilityGate = gate
-		}
+	if gates, ok := internalWorld.AbilityGates(); ok {
+		w.meleeAbilityGate = gates.Melee
 	}
 	cfg := fullyFeaturedTestWorldConfig()
 	cfg.Seed = "ai-test-rat"

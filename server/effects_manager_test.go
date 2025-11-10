@@ -164,7 +164,7 @@ func bindAbilityGatesForTest(t *testing.T, world *World, constructed *worldpkg.W
 		return
 	}
 
-	if gate, ok := newMeleeAbilityGateFromOptions(gateOptions.Melee); ok {
+	if gate, ok := constructed.BindMeleeAbilityGate(gateOptions.Melee); ok {
 		world.meleeAbilityGate = gate
 	}
 
@@ -176,7 +176,7 @@ func bindAbilityGatesForTest(t *testing.T, world *World, constructed *worldpkg.W
 		if tpl.Cooldown > 0 {
 			projectileOpts.Cooldown = tpl.Cooldown
 		}
-		if gate, ok := newProjectileAbilityGateFromOptions(projectileOpts); ok {
+		if gate, ok := constructed.BindProjectileAbilityGate(projectileOpts); ok {
 			world.projectileAbilityGate = gate
 		}
 	}

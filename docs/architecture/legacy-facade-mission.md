@@ -156,6 +156,7 @@ idiomatic ownership rules.
 * All runtime wiring (CLI, tests, tooling) obtains world + engine instances via `internal/world` + `internal/sim` constructors.
 * No new code references `server.NewWorld` or `server.NewHub`; remaining legacy constructors are wrappers that simply delegate then panic if unused.
 * Determinism harness validates the promoted constructors yield unchanged checksums.
+> **Note:** Determinism is expected to drift temporarily while we keep touching the world/effects wiring; defer golden updates until the gating + status tasks settle.
 
 ---
 

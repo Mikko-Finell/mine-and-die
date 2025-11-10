@@ -32,16 +32,11 @@ func TestConfigureMeleeAbilityGatePopulatesIntentOwner(t *testing.T) {
 	world.internalWorld = internalWorld
 	world.configureAbilityOwnerAdapters()
 
-	options, ok := internalWorld.AbilityGateOptions()
+	gates, ok := internalWorld.AbilityGates()
 	if !ok {
-		t.Fatal("expected internal world to expose ability gate options")
+		t.Fatal("expected internal world to expose ability gates")
 	}
-
-	gate, ok := newMeleeAbilityGateFromOptions(options.Melee)
-	if !ok {
-		t.Fatal("expected melee ability gate to bind")
-	}
-	world.meleeAbilityGate = gate
+	world.meleeAbilityGate = gates.Melee
 	if world.meleeAbilityGate == nil {
 		t.Fatal("expected melee ability gate to be configured")
 	}
@@ -88,18 +83,18 @@ func TestConfigureProjectileAbilityGatePopulatesIntentOwner(t *testing.T) {
 	world.internalWorld = internalWorld
 	world.configureAbilityOwnerAdapters()
 
-	options, ok := internalWorld.AbilityGateOptions()
+	gateOptions, ok := internalWorld.AbilityGateOptions()
 	if !ok {
 		t.Fatal("expected internal world to expose ability gate options")
 	}
 
-	projectileOpts := options.Projectile
+	projectileOpts := gateOptions.Projectile
 	if tpl := world.projectileTemplates[effectTypeFireball]; tpl != nil {
 		projectileOpts.AbilityID = tpl.Type
 		projectileOpts.Cooldown = tpl.Cooldown
 	}
 
-	gate, ok := newProjectileAbilityGateFromOptions(projectileOpts)
+	gate, ok := internalWorld.BindProjectileAbilityGate(projectileOpts)
 	if !ok {
 		t.Fatal("expected projectile ability gate to bind")
 	}

@@ -12,6 +12,7 @@ All coordination happens there — phases, order, progress markers, and next tas
 * Open the mission file. Find the phase marked **`[TODO]`** or **`[IN PROGRESS]`**.
 * Take the **top item under "Next task"**. Do not skip ahead unless explicitly stated.
 * Implement the task **without changing behavior**. Golden determinism tests must pass unchanged.
+* When running Go builds/tests in the sandbox, set `GOCACHE` (and optionally `GOMODCACHE`) to a writable path inside the repo such as `GOCACHE=$PWD/.cache/go-build` (create the directory if needed) so `go test ./server/...` can execute normally.
 * When you finish:
 
   * Mark that exact task done.

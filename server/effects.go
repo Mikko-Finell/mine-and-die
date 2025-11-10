@@ -790,114 +790,6 @@ func bindEffectHitAdapters(w *World) {
 		},
 	})
 
-	toWorldCallback := func(cb combat.EffectHitCallback) worldpkg.EffectHitCallback {
-		if cb == nil {
-			return nil
-		}
-		return func(effect any, target any, now time.Time) {
-			cb(effect, target, now)
-		}
-	}
-
-	builder := func(adapterCfg worldpkg.LegacyEffectHitAdapterConfig) worldpkg.EffectHitCallback {
-		return toWorldCallback(combat.NewLegacyWorldEffectHitAdapter(combat.LegacyWorldEffectHitAdapterConfig{
-			HealthEpsilon:           adapterCfg.HealthEpsilon,
-			BaselinePlayerMaxHealth: adapterCfg.BaselinePlayerMaxHealth,
-			ExtractEffect: func(effect any) (*internaleffects.State, bool) {
-				if adapterCfg.ExtractEffect == nil {
-					return nil, false
-				}
-				state, ok := adapterCfg.ExtractEffect(effect)
-				if !ok || state == nil {
-					return nil, false
-				}
-				return (*internaleffects.State)(state), true
-			},
-			ExtractActor: func(target any) (combat.WorldActorAdapter, bool) {
-				if adapterCfg.ExtractActor == nil {
-					return combat.WorldActorAdapter{}, false
-				}
-				data, ok := adapterCfg.ExtractActor(target)
-				if !ok || data.State == nil {
-					return combat.WorldActorAdapter{}, false
-				}
-				kind := combat.ActorKindGeneric
-				switch data.Kind {
-				case worldpkg.CombatActorKindPlayer:
-					kind = combat.ActorKindPlayer
-				case worldpkg.CombatActorKindNPC:
-					kind = combat.ActorKindNPC
-				}
-				return combat.WorldActorAdapter{
-					ID:        data.State.ID,
-					Health:    data.State.Health,
-					MaxHealth: data.State.MaxHealth,
-					KindHint:  kind,
-					Raw:       data,
-				}, true
-			},
-			IsPlayer: func(id string) bool {
-				_, ok := w.players[id]
-				return ok
-			},
-			IsNPC: func(id string) bool {
-				_, ok := w.npcs[id]
-				return ok
-			},
-			SetPlayerHealth: adapterCfg.SetPlayerHealth,
-			SetNPCHealth:    adapterCfg.SetNPCHealth,
-			ApplyGenericHealthDelta: func(adapter combat.WorldActorAdapter, delta float64) (bool, float64, float64) {
-				if adapterCfg.ApplyGenericHealthDelta == nil {
-					return false, 0, adapter.Health
-				}
-				data, _ := adapter.Raw.(worldpkg.CombatActorData)
-				return adapterCfg.ApplyGenericHealthDelta(data, delta)
-			},
-			RecordEffectHitTelemetry: func(effect *internaleffects.State, targetID string, delta float64) {
-				if adapterCfg.RecordEffectHitTelemetry == nil || effect == nil {
-					return
-				}
-				adapterCfg.RecordEffectHitTelemetry((*worldeffects.State)(effect), targetID, delta)
-			},
-			RecordDamageTelemetry: func(effect combat.EffectRef, target combat.ActorRef, damage float64, targetHealth float64, statusEffect string) {
-				if adapterCfg.RecordDamageTelemetry == nil {
-					return
-				}
-				data, _ := target.Raw.(worldpkg.CombatActorData)
-				state, _ := effect.Raw.(*internaleffects.State)
-				if state == nil {
-					return
-				}
-				adapterCfg.RecordDamageTelemetry((*worldeffects.State)(state), data, damage, targetHealth, statusEffect)
-			},
-			RecordDefeatTelemetry: func(effect combat.EffectRef, target combat.ActorRef, statusEffect string) {
-				if adapterCfg.RecordDefeatTelemetry == nil {
-					return
-				}
-				data, _ := target.Raw.(worldpkg.CombatActorData)
-				state, _ := effect.Raw.(*internaleffects.State)
-				if state == nil {
-					return
-				}
-				adapterCfg.RecordDefeatTelemetry((*worldeffects.State)(state), data, statusEffect)
-			},
-			DropAllInventory: func(adapter combat.WorldActorAdapter, reason string) {
-				if adapterCfg.DropAllInventory == nil {
-					return
-				}
-				data, _ := adapter.Raw.(worldpkg.CombatActorData)
-				adapterCfg.DropAllInventory(data, reason)
-			},
-			ApplyStatusEffect: func(effect *internaleffects.State, adapter combat.WorldActorAdapter, status string, now time.Time) {
-				if adapterCfg.ApplyStatusEffect == nil || effect == nil {
-					return
-				}
-				data, _ := adapter.Raw.(worldpkg.CombatActorData)
-				adapterCfg.ApplyStatusEffect((*worldeffects.State)(effect), data, statuspkg.StatusEffectType(status), now)
-			},
-		}))
-	}
-
 	combatCfg := worldpkg.EffectHitCombatDispatcherConfig{
 		HealthEpsilon:           worldpkg.HealthEpsilon,
 		BaselinePlayerMaxHealth: baselinePlayerMaxHealth,
@@ -953,7 +845,14 @@ func bindEffectHitAdapters(w *World) {
 			}
 			w.applyStatusEffect((*actorState)(actor), StatusEffectType(status), ownerID, now)
 		},
-		BuildLegacyAdapter: builder,
+		IsPlayer: func(id string) bool {
+			_, ok := w.players[id]
+			return ok
+		},
+		IsNPC: func(id string) bool {
+			_, ok := w.npcs[id]
+			return ok
+		},
 	}
 
 	npcCfg := worldpkg.EffectHitNPCConfig{
