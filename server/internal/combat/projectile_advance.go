@@ -4,7 +4,6 @@ import (
 	"math"
 
 	internaleffects "mine-and-die/server/internal/effects"
-	worldpkg "mine-and-die/server/internal/world"
 )
 
 // ProjectileAdvanceConfig bundles the adapters required to advance a legacy
@@ -19,8 +18,8 @@ type ProjectileAdvanceConfig struct {
 	WorldWidth  float64
 	WorldHeight float64
 
-	ComputeArea        func() worldpkg.Obstacle
-	AnyObstacleOverlap func(worldpkg.Obstacle) bool
+	ComputeArea        func() Rectangle
+	AnyObstacleOverlap func(Rectangle) bool
 
 	SetPosition       func(x, y float64)
 	SetRemainingRange func(remaining float64)
@@ -117,7 +116,7 @@ func AdvanceProjectile(cfg ProjectileAdvanceConfig) ProjectileAdvanceResult {
 		}
 	}
 
-	var area worldpkg.Obstacle
+	var area Rectangle
 	if cfg.ComputeArea != nil {
 		area = cfg.ComputeArea()
 	}

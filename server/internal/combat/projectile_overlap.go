@@ -2,7 +2,6 @@ package combat
 
 import (
 	internaleffects "mine-and-die/server/internal/effects"
-	worldpkg "mine-and-die/server/internal/world"
 )
 
 // ProjectileImpactRules captures the subset of projectile impact policies needed
@@ -39,7 +38,7 @@ type ProjectileOverlapResolutionConfig struct {
 	Tick     uint64
 	Metadata map[string]any
 
-	Area worldpkg.Obstacle
+	Area Rectangle
 
 	RecordAttackOverlap func(ownerID string, tick uint64, ability string, playerHits []string, npcHits []string, metadata map[string]any)
 
@@ -79,7 +78,7 @@ func ResolveProjectileOverlaps(cfg ProjectileOverlapResolutionConfig) Projectile
 		if !cfg.Impact.AffectsOwner && target.ID == cfg.OwnerID {
 			return true
 		}
-		if !worldpkg.CircleRectOverlap(target.X, target.Y, target.Radius, cfg.Area) {
+		if !CircleRectOverlap(target.X, target.Y, target.Radius, cfg.Area) {
 			return true
 		}
 		if !projectile.MarkHit(target.ID) {

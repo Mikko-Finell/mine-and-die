@@ -578,17 +578,18 @@ func (w *World) advanceProjectile(eff *effectState, now time.Time, dt float64) b
 				Delta:       stepCfg.Delta,
 				WorldWidth:  stepCfg.WorldWidth,
 				WorldHeight: stepCfg.WorldHeight,
-				ComputeArea: func() worldpkg.Obstacle {
+				ComputeArea: func() combat.Rectangle {
 					if stepCfg.ComputeArea == nil {
-						return worldpkg.Obstacle{}
+						return combat.Rectangle{}
 					}
-					return stepCfg.ComputeArea()
+					area := stepCfg.ComputeArea()
+					return combat.Rectangle{X: area.X, Y: area.Y, Width: area.Width, Height: area.Height}
 				},
-				AnyObstacleOverlap: func(obstacle worldpkg.Obstacle) bool {
+				AnyObstacleOverlap: func(rect combat.Rectangle) bool {
 					if stepCfg.AnyObstacleOverlap == nil {
 						return false
 					}
-					return stepCfg.AnyObstacleOverlap(obstacle)
+					return stepCfg.AnyObstacleOverlap(worldpkg.Obstacle{X: rect.X, Y: rect.Y, Width: rect.Width, Height: rect.Height})
 				},
 				SetPosition:       stepCfg.SetPosition,
 				SetRemainingRange: setRemainingRange,

@@ -5,12 +5,11 @@ import (
 	"testing"
 
 	internaleffects "mine-and-die/server/internal/effects"
-	worldpkg "mine-and-die/server/internal/world"
 )
 
 func TestResolveProjectileOverlapsHitsPlayersAndNPCs(t *testing.T) {
 	projectile := &internaleffects.ProjectileState{}
-	area := worldpkg.Obstacle{X: 0, Y: 0, Width: 10, Height: 10}
+	area := Rectangle{X: 0, Y: 0, Width: 10, Height: 10}
 
 	var playerCallbacks []string
 	var npcCallbacks []string
@@ -103,7 +102,7 @@ func TestResolveProjectileOverlapsHitsPlayersAndNPCs(t *testing.T) {
 
 func TestResolveProjectileOverlapsStopOnHitSkipsNPCs(t *testing.T) {
 	projectile := &internaleffects.ProjectileState{}
-	area := worldpkg.Obstacle{X: 0, Y: 0, Width: 10, Height: 10}
+	area := Rectangle{X: 0, Y: 0, Width: 10, Height: 10}
 
 	npcVisited := false
 	cfg := ProjectileOverlapResolutionConfig{
@@ -144,7 +143,7 @@ func TestResolveProjectileOverlapsStopOnHitSkipsNPCs(t *testing.T) {
 
 func TestResolveProjectileOverlapsMaxTargetsEnforced(t *testing.T) {
 	projectile := &internaleffects.ProjectileState{}
-	area := worldpkg.Obstacle{X: 0, Y: 0, Width: 10, Height: 10}
+	area := Rectangle{X: 0, Y: 0, Width: 10, Height: 10}
 
 	cfg := ProjectileOverlapResolutionConfig{
 		Projectile: projectile,
@@ -178,7 +177,7 @@ func TestResolveProjectileOverlapsMaxTargetsEnforced(t *testing.T) {
 func TestResolveProjectileOverlapsSkipsDuplicateHits(t *testing.T) {
 	projectile := &internaleffects.ProjectileState{HitActors: map[string]struct{}{"player-1": {}}}
 	projectile.HitCount = 1
-	area := worldpkg.Obstacle{X: 0, Y: 0, Width: 10, Height: 10}
+	area := Rectangle{X: 0, Y: 0, Width: 10, Height: 10}
 
 	cfg := ProjectileOverlapResolutionConfig{
 		Projectile: projectile,
@@ -207,7 +206,7 @@ func TestResolveProjectileOverlapsSkipsDuplicateHits(t *testing.T) {
 
 func TestResolveProjectileOverlapsAllowsOwnerWhenConfigured(t *testing.T) {
 	projectile := &internaleffects.ProjectileState{}
-	area := worldpkg.Obstacle{X: 0, Y: 0, Width: 10, Height: 10}
+	area := Rectangle{X: 0, Y: 0, Width: 10, Height: 10}
 
 	cfg := ProjectileOverlapResolutionConfig{
 		Projectile: projectile,
@@ -250,7 +249,7 @@ func TestResolveProjectileOverlapsNilProjectile(t *testing.T) {
 
 func TestResolveProjectileOverlapsNoTelemetryWhenNoHits(t *testing.T) {
 	projectile := &internaleffects.ProjectileState{}
-	area := worldpkg.Obstacle{X: 0, Y: 0, Width: 10, Height: 10}
+	area := Rectangle{X: 0, Y: 0, Width: 10, Height: 10}
 
 	recordCount := 0
 	cfg := ProjectileOverlapResolutionConfig{

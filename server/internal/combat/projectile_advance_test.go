@@ -5,7 +5,6 @@ import (
 	"time"
 
 	internaleffects "mine-and-die/server/internal/effects"
-	worldpkg "mine-and-die/server/internal/world"
 )
 
 func TestAdvanceProjectileMovesAndResolvesOverlaps(t *testing.T) {
@@ -45,7 +44,7 @@ func TestAdvanceProjectileMovesAndResolvesOverlaps(t *testing.T) {
 	var remainingValues []float64
 	telemetryStops := 0
 	overlapCount := 0
-	var recordedArea worldpkg.Obstacle
+	var recordedArea Rectangle
 	spawnCount := 0
 	spawnTelemetry := 0
 	var registeredExplosion *internaleffects.State
@@ -79,12 +78,12 @@ func TestAdvanceProjectileMovesAndResolvesOverlaps(t *testing.T) {
 		Delta:       0.5,
 		WorldWidth:  100,
 		WorldHeight: 100,
-		ComputeArea: func() worldpkg.Obstacle {
-			area := worldpkg.Obstacle{X: effect.X, Y: effect.Y, Width: effect.Width, Height: effect.Height}
+		ComputeArea: func() Rectangle {
+			area := Rectangle{X: effect.X, Y: effect.Y, Width: effect.Width, Height: effect.Height}
 			recordedArea = area
 			return area
 		},
-		AnyObstacleOverlap: func(area worldpkg.Obstacle) bool {
+		AnyObstacleOverlap: func(area Rectangle) bool {
 			if area != recordedArea {
 				t.Fatalf("expected obstacle check to use computed area %+v, got %+v", recordedArea, area)
 			}
@@ -233,7 +232,7 @@ func TestAdvanceProjectileStopsOnExpiry(t *testing.T) {
 		Delta:       0.5,
 		WorldWidth:  100,
 		WorldHeight: 100,
-		ComputeArea: func() worldpkg.Obstacle { return worldpkg.Obstacle{} },
+		ComputeArea: func() Rectangle { return Rectangle{} },
 		SetPosition: func(x, y float64) {
 			effect.X = x
 			effect.Y = y
@@ -306,10 +305,10 @@ func TestAdvanceProjectileStopsOnObstacle(t *testing.T) {
 		Delta:       0.1,
 		WorldWidth:  100,
 		WorldHeight: 100,
-		ComputeArea: func() worldpkg.Obstacle {
-			return worldpkg.Obstacle{X: effect.X, Y: effect.Y, Width: effect.Width, Height: effect.Height}
+		ComputeArea: func() Rectangle {
+			return Rectangle{X: effect.X, Y: effect.Y, Width: effect.Width, Height: effect.Height}
 		},
-		AnyObstacleOverlap: func(area worldpkg.Obstacle) bool { return true },
+		AnyObstacleOverlap: func(area Rectangle) bool { return true },
 		SetPosition: func(x, y float64) {
 			effect.X = x
 			effect.Y = y

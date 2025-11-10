@@ -4,8 +4,6 @@ import (
 	"time"
 
 	internaleffects "mine-and-die/server/internal/effects"
-	worldpkg "mine-and-die/server/internal/world"
-	statuspkg "mine-and-die/server/internal/world/status"
 )
 
 // WorldEffectHitDispatcherConfig bundles the adapters required to wire the
@@ -224,94 +222,4 @@ func ApplyEffectHit(callback EffectHitCallback, effect any, target any, now time
 	callback(effect, target, now)
 }
 
-// WorldPlayerEffectHitCallbackConfig bundles the dependencies required to
-// reproduce the legacy player hit wiring while delegating combat staging to the
-// shared dispatcher.
-type WorldPlayerEffectHitCallbackConfig struct {
-	Dispatcher EffectHitCallback
-}
-
-// NewWorldPlayerEffectHitCallback constructs a player hit callback that guards
-// nil inputs through the shared dispatcher while preserving the existing world
-// adapter contract.
-func NewWorldPlayerEffectHitCallback(cfg WorldPlayerEffectHitCallbackConfig) worldpkg.EffectHitCallback {
-	if cfg.Dispatcher == nil {
-		return nil
-	}
-
-	applyActorHit := func(effect any, target any, now time.Time) {
-		ApplyEffectHit(cfg.Dispatcher, effect, target, now)
-	}
-
-	return worldpkg.EffectHitPlayerCallback(worldpkg.EffectHitPlayerConfig{
-		ApplyActorHit: worldpkg.EffectHitCallback(applyActorHit),
-	})
-}
-
-// WorldNPCEffectHitCallbackConfig bundles the dependencies required to
-// reproduce the legacy NPC hit wiring while delegating combat staging to the
-// shared dispatcher.
-type WorldNPCEffectHitCallbackConfig struct {
-	Dispatcher   EffectHitCallback
-	SpawnBlood   func(effect any, target any, now time.Time)
-	IsAlive      func(target any) bool
-	HandleDefeat func(target any)
-}
-
-// NewWorldNPCEffectHitCallback constructs an NPC hit callback that mirrors the
-// legacy flow — spawning blood visuals, applying damage via the shared
-// dispatcher, and invoking defeat handlers when actors transition from alive to
-// defeated.
-func NewWorldNPCEffectHitCallback(cfg WorldNPCEffectHitCallbackConfig) worldpkg.EffectHitCallback {
-	if cfg.Dispatcher == nil {
-		return nil
-	}
-
-	applyActorHit := func(effect any, target any, now time.Time) {
-		ApplyEffectHit(cfg.Dispatcher, effect, target, now)
-	}
-
-	npcCfg := worldpkg.EffectHitNPCConfig{
-		ApplyActorHit: worldpkg.EffectHitCallback(applyActorHit),
-		SpawnBlood:    worldpkg.EffectHitCallback(cfg.SpawnBlood),
-		IsAlive:       cfg.IsAlive,
-		HandleDefeat:  cfg.HandleDefeat,
-	}
-
-	return worldpkg.EffectHitNPCCallback(npcCfg)
-}
-
-// WorldBurningDamageCallbackConfig bundles the adapters required to route world
-// burning damage through the shared combat dispatcher while preserving the
-// legacy effect construction and telemetry hooks.
-type WorldBurningDamageCallbackConfig struct {
-	Dispatcher EffectHitCallback
-	Target     any
-	Now        time.Time
-
-	BuildEffect func(effect statuspkg.BurningDamageEffect) any
-	AfterApply  func(effect any)
-}
-
-// NewWorldBurningDamageCallback constructs a callback compatible with the
-// world burning damage helper that converts the normalized effect payload into
-// the legacy effect state, applies the hit through the dispatcher, and invokes
-// the optional telemetry hook.
-func NewWorldBurningDamageCallback(cfg WorldBurningDamageCallbackConfig) func(statuspkg.BurningDamageEffect) {
-	if cfg.BuildEffect == nil {
-		return nil
-	}
-
-	return func(effect statuspkg.BurningDamageEffect) {
-		built := cfg.BuildEffect(effect)
-		if built == nil {
-			return
-		}
-
-		ApplyEffectHit(cfg.Dispatcher, built, cfg.Target, cfg.Now)
-
-		if cfg.AfterApply != nil {
-			cfg.AfterApply(built)
-		}
-	}
-}
+// World-specific callback helpers live in the world package to avoid import cycles.

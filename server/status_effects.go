@@ -8,6 +8,7 @@ import (
 	effectcontract "mine-and-die/server/effects/contract"
 	combat "mine-and-die/server/internal/combat"
 	internaleffects "mine-and-die/server/internal/effects"
+	worldpkg "mine-and-die/server/internal/world"
 	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 	loggingstatuseffects "mine-and-die/server/logging/status_effects"
@@ -377,7 +378,7 @@ func (w *World) applyBurningDamage(owner string, actor *actorState, status Statu
 		return
 	}
 
-	callback := combat.NewWorldBurningDamageCallback(combat.WorldBurningDamageCallbackConfig{
+	callback := worldpkg.NewWorldBurningDamageCallback(worldpkg.WorldBurningDamageCallbackConfig{
 		Dispatcher: dispatcher,
 		Target:     actor,
 		Now:        now,

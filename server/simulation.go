@@ -323,10 +323,10 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 			}
 		},
 	})
-	w.playerHitCallback = combat.NewWorldPlayerEffectHitCallback(combat.WorldPlayerEffectHitCallbackConfig{
+	w.playerHitCallback = worldpkg.NewWorldPlayerEffectHitCallback(worldpkg.WorldPlayerEffectHitCallbackConfig{
 		Dispatcher: w.effectHitAdapter,
 	})
-	w.npcHitCallback = combat.NewWorldNPCEffectHitCallback(combat.WorldNPCEffectHitCallbackConfig{
+	w.npcHitCallback = worldpkg.NewWorldNPCEffectHitCallback(worldpkg.WorldNPCEffectHitCallbackConfig{
 		Dispatcher: w.effectHitAdapter,
 		SpawnBlood: func(effect any, target any, now time.Time) {
 			eff, _ := effect.(*effectState)
