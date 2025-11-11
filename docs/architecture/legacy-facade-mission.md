@@ -94,7 +94,7 @@ replacements are wired.
     2. [x] Adjust the callers (effect manager hooks, ability staging, status hooks) to use the relocated helpers, confirming the combat package compiles without referencing `internal/world`.
     3. [x] Once the dependency wall is clean, verify that `internal/world` can import the combat constructors needed for the new gating/effect-hit helpers without reintroducing a cycle.
 
-- [ ] **Port status effect lifecycle wiring** by lifting the registry setup and fallback hooks from `server/status_effects.go`
+ - [x] **Port status effect lifecycle wiring** by lifting the registry setup and fallback hooks from `server/status_effects.go`
   into `internal/world/status`, exposing constructors that work entirely on internal state containers.
 
 Once these deliverables land the world constructor can build its dependencies without calling back into the façade; the

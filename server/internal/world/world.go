@@ -120,6 +120,7 @@ func New(cfg Config, deps Deps) (*World, error) {
 	}
 
 	world.effectManager = newEffectManager(world)
+	world.configureStatusEffects()
 
 	if deps.JournalTelemetry != nil {
 		world.journal.AttachTelemetry(deps.JournalTelemetry)
@@ -258,6 +259,20 @@ func (w *World) recordEffectUpdate(effect *worldeffects.State, mutation string) 
 
 func (w *World) recordEffectTrigger(triggerType string) {
 	RecordEffectTriggerTelemetry(w.effectTelemetry, triggerType)
+}
+
+func (w *World) flushEffectTelemetry(effect *worldeffects.State) {
+	if w == nil || effect == nil {
+		return
+	}
+	FlushEffectTelemetry(w.effectTelemetry, effect, effectcontract.Tick(int64(w.currentTick())))
+}
+
+func (w *World) currentTick() uint64 {
+	if w == nil || w.tickSource == nil {
+		return 0
+	}
+	return w.tickSource()
 }
 
 func (w *World) effectOwnerMissing(actorID string) bool {

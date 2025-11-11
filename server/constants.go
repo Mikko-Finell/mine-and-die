@@ -10,14 +10,14 @@ import (
 const (
 	ProtocolVersion       = proto.Version
 	writeWait             = 10 * time.Second
-	tickRate              = 15    // ticks per second (10–20 Hz)
-	moveSpeed             = 160.0 // pixels per second
+	tickRate              = worldpkg.TickRate // ticks per second (10–20 Hz)
+	moveSpeed             = 160.0             // pixels per second
 	worldWidth            = worldpkg.DefaultWidth
 	worldHeight           = worldpkg.DefaultHeight
 	defaultSpawnX         = worldpkg.DefaultSpawnX
 	defaultSpawnY         = worldpkg.DefaultSpawnY
 	playerHalf            = worldpkg.PlayerHalf
-	lavaDamagePerSecond   = 20.0
+	lavaDamagePerSecond   = worldpkg.LavaDamagePerSecond
 	heartbeatInterval     = 2 * time.Second
 	disconnectAfter       = 3 * heartbeatInterval
 	defaultObstacleCount  = 0

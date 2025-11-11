@@ -85,6 +85,10 @@ type StatusEffectDefinition struct {
 	AttachVisual func(AttachStatusEffectVisualConfig)
 }
 
+const (
+	StatusEffectBurning StatusEffectType = "burning"
+)
+
 // StatusEffectType implements state.StatusEffectDefinitionView so shared state
 // can report the registered status effect identifier without importing this
 // package.
@@ -116,6 +120,8 @@ type BurningStatusEffectDefinitionConfig struct {
 	OnExpire func(StatusEffectExpireRuntime)
 
 	FallbackAttachment func(AttachStatusEffectVisualConfig)
+
+	Lifecycle *BurningLifecycleConfig
 }
 
 // NewStatusEffectDefinitions constructs the registered status effect
@@ -134,6 +140,17 @@ func newBurningStatusEffectDefinition(cfg BurningStatusEffectDefinitionConfig) A
 	state := &StatusEffectDefinition{
 		Type:         cfg.Type,
 		TickInterval: cfg.TickInterval,
+	}
+
+	lifecycle := cfg.Lifecycle
+	if lifecycle != nil {
+		normalized := lifecycle.normalized(cfg, state)
+		if cfg.OnApply == nil {
+			cfg.OnApply = newBurningLifecycleApplyHook(normalized, state)
+		}
+		if cfg.OnTick == nil {
+			cfg.OnTick = newBurningLifecycleTickHook(normalized, state)
+		}
 	}
 
 	if cfg.OnTick != nil {

@@ -1,10 +1,10 @@
 # Status effect system
 
-The status effect system powers persistent gameplay states (burning, poison, frozen, etc.) on the server. Status effects are defined in `server/status_effects.go` and integrate with the existing effect pipeline rather than duplicating damage or visuals.
+The status effect system powers persistent gameplay states (burning, poison, frozen, etc.) on the server. Status effects are defined under `server/internal/world/status` and integrate with the existing effect pipeline rather than duplicating damage or visuals.
 
 ## Definitions
-- `StatusEffectDefinition` captures duration, tick interval, and optional handlers for apply/tick/expire events. Handlers receive the owning `World`, the target `actorState`, and the tracked `statusEffectInstance` so they can spawn effects, refresh timers, or perform cleanup.
-- `StatusEffectType` values are registered via `newStatusEffectDefinitions`. Add new entries there when introducing a status effect.
+- `StatusEffectDefinition` captures duration, tick interval, and optional handlers for apply/tick/expire events. Handlers run inside the internal world packages so they can spawn effects, refresh timers, or perform cleanup without reaching back into the façade.
+- `StatusEffectType` values are registered inside the internal registry (`status.NewStatusEffectDefinitions`). Add new entries there when introducing a status effect.
 - `statusEffectInstance` stores per-target state: timestamps, the next scheduled tick, and any attached looping effect.
 
 ## Runtime flow

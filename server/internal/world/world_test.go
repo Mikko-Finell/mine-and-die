@@ -149,8 +149,11 @@ func TestNewInitializesStatusEffectDefinitions(t *testing.T) {
 	if w.statusEffectDefinitions == nil {
 		t.Fatalf("statusEffectDefinitions map not initialized")
 	}
-	if len(w.statusEffectDefinitions) != 0 {
-		t.Fatalf("expected no status effect definitions, got %d", len(w.statusEffectDefinitions))
+	if len(w.statusEffectDefinitions) == 0 {
+		t.Fatalf("expected status effect definitions to be registered")
+	}
+	if _, ok := w.statusEffectDefinitions[string(statuspkg.StatusEffectBurning)]; !ok {
+		t.Fatalf("expected burning definition to be registered")
 	}
 
 	w.statusEffectDefinitions["burning"] = statuspkg.ApplyStatusEffectDefinition{Duration: 1}

@@ -383,7 +383,9 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 			X:  actor.X,
 			Y:  actor.Y,
 			ApplyBurningDamage: func(ownerID string, status statuspkg.StatusEffectType, delta float64, now time.Time) {
-				world.applyBurningDamage(ownerID, actor, StatusEffectType(status), delta, now)
+				if world.internalWorld != nil {
+					world.internalWorld.ApplyBurningDamage(ownerID, actor, status, delta, now)
+				}
 			},
 		}
 		if actor.StatusEffects != nil {
@@ -397,9 +399,9 @@ func defaultEffectHookRegistry(world *World) map[string]internaleffects.HookSet 
 		return contractActor
 	}
 	legacyHooks[effectcontract.HookStatusBurningVisual] = statuspkg.ContractBurningVisualHook(statuspkg.ContractBurningVisualHookConfig{
-		StatusEffect:     statuspkg.StatusEffectType(StatusEffectBurning),
-		DefaultLifetime:  burningStatusEffectDuration,
-		FallbackLifetime: burningTickInterval,
+		StatusEffect:     statuspkg.StatusEffectBurning,
+		DefaultLifetime:  worldpkg.BurningStatusEffectDuration,
+		FallbackLifetime: worldpkg.BurningTickInterval,
 		TileSize:         tileSize,
 		DefaultFootprint: playerHalf * 2,
 		TickRate:         tickRate,
