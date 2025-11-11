@@ -72,7 +72,7 @@ replacements are wired.
   - [x] telemetry helpers moved; cooldown wiring still partially facade-owned; Finish porting cooldown timers + all effect emitters into internal/world; delete leftover façade bookkeeping; keep determinism unchanged.
 - [x] **Switch constructors to the new manager.** Update `internal/world.New` to instantiate the internal manager and delete the
   remaining façade dependency once determinism verifies the wiring.
-- [ ] **Inline ability gating and projectile adapters** by moving the façade helpers from `server/effects.go` into
+- [x] **Inline ability gating and projectile adapters** by moving the façade helpers from `server/effects.go` into
   `internal/world/abilities` and `internal/world/effect_hits`, binding them to the internal state lookups created during
   `New`. Ability gating and the effect-hit adapter are still wired inside the façade: World.configureMeleeAbilityGate, configureProjectileAbilityGate, and configureEffectHitAdapter all live in server/effects.go, while internal/world.New only exposes the ability-owner lookup and the server constructor stitches everything together manually. Inline wiring will require moving these helpers into the internal packages and teaching internal/world to publish the bound adapters.
 
@@ -87,12 +87,12 @@ replacements are wired.
     2. Replace `World.configureEffectHitAdapter` with calls into the new helper, wiring it up during internal world construction and exposing any necessary accessors for legacy consumers.
     3. Update façade call sites (`server/simulation.go`, `server/status_effects.go`, related tests) to fetch the adapter from the internal world instead of invoking the removed configure function.
 
-  - [ ] Subtask 3: Import cycles block internal/world from directly instantiating combat gates or adapters: several files in server/internal/combat still import server/internal/world, so naïvely pulling the helpers inward would introduce a cycle (world → abilities/effect_hits → combat → world). We need to decouple those combat utilities or relocate them before the move.
+  - [x] Subtask 3: Import cycles block internal/world from directly instantiating combat gates or adapters: several files in server/internal/combat still import server/internal/world, so naïvely pulling the helpers inward would introduce a cycle (world → abilities/effect_hits → combat → world). We need to decouple those combat utilities or relocate them before the move.
     1. [x] Identify the world-specific helpers inside `server/internal/combat` (`world_effect_hits.go`, `projectile_advance.go`, related tests) and either migrate them into internal/world packages or introduce interfaces so `combat` no longer imports `internal/world`.
        - Completed by moving the world-owned callback wrappers (player/NPC/burning damage) into `internal/world` so they bind to combat dispatchers without requiring combat → world imports, and by teaching `status_effects.go`/`simulation.go` to call the new world helpers.
        - Added a combat-local `Rectangle` type + `CircleRectOverlap` helper so projectile advance/overlap logic no longer needs `world.Obstacle`, updating all callers/tests to adapt their obstacle data when wiring configs.
     2. [x] Adjust the callers (effect manager hooks, ability staging, status hooks) to use the relocated helpers, confirming the combat package compiles without referencing `internal/world`.
-    3. [ ] Once the dependency wall is clean, verify that `internal/world` can import the combat constructors needed for the new gating/effect-hit helpers without reintroducing a cycle.
+    3. [x] Once the dependency wall is clean, verify that `internal/world` can import the combat constructors needed for the new gating/effect-hit helpers without reintroducing a cycle.
 
 - [ ] **Port status effect lifecycle wiring** by lifting the registry setup and fallback hooks from `server/status_effects.go`
   into `internal/world/status`, exposing constructors that work entirely on internal state containers.
