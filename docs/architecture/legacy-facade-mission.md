@@ -29,26 +29,28 @@ We will **not** introduce new gameplay. This is a **deletion-driven integration 
 
 Progress is tracked exclusively through the checklist below. When every unchecked item is complete, we can delete `server/*` and the mission ends.
 
-### 1. Constructors & State Ownership [BLOCKED]
+### 1. Constructors & State Ownership [IN PROGRESS]
 - [x] Extract shared inventory/equipment/actor state into `internal/state` so both legacy and internal constructors share the same types.
 - [x] Relocate world state files (`inventory.go`, `equipment.go`, `player.go`, `npc.go`, `status_effects.go`, helpers) into a new internal package so `internal/world` owns the canonical structs.
-- [ ] Promote the legacy effect manager wiring (hook registry, telemetry emitters, cooldown bookkeeping) into `internal/world` so `New` can expose the fully configured manager without reaching into `server/effects_manager.go`.
-- [ ] Promote the ability gates, projectile/effect-hit adapters, and burning status lifecycle from `server/effects.go` + `server/status_effects.go` into `internal/world` packages that operate on the internal state containers.
+- [x] Promote the legacy effect manager wiring (hook registry, telemetry emitters, cooldown bookkeeping) into `internal/world` so `New` can expose the fully configured manager without reaching into `server/effects_manager.go`.
+- [ ] **Promote ability gate wiring** so the melee/projectile gate construction happens inside `internal/world`. `server/simulation.go` still pulls `constructed.AbilityGateOptions()` and binds the gates onto the façade-only `World` fields before staging intents. Update `internal/world` to expose fully bound gates (using the existing lookup + templates) and teach the legacy constructor/tests to consume those exports so no gate logic resides in `server/effects.go` or `server/simulation.go`.
+- [ ] **Promote effect-hit adapter configuration** by moving `bindEffectHitAdapters` out of `server/effects.go`. The legacy helper still assembles the combat telemetry/damage adapters, NPC blood hooks, and dispatcher wiring before calling `internal/world.ConfigureEffectHitAdapters`. Relocate those configs into `internal/world` (keeping the same publisher/entity lookups) and expose the callbacks so the legacy world only requests the pre-built dispatcher/callbacks.
+- [ ] **Promote the burning status lifecycle** from `server/status_effects.go` into `internal/world/status`. The façade currently builds burning definitions that capture legacy helpers (`applyStatusEffectDamage`, `pruneEffects`, `effectManager` enqueues) and duplicates `ApplyBurningDamage` glue. Move the lifecycle/definition construction into `internal/world`, reusing the internal status package + effect manager, and have the legacy constructor simply fetch the ready-made definitions from the internal world state.
 - [ ] Hoist RNG seeding, NPC/obstacle generation, and effect registry wiring helpers from legacy paths into `internal/world`.
 - [ ] Publish adapters (`AbilityOwnerLookup`, projectile stop callbacks, journal accessors) straight from the new world state so the engine never reaches through `server.World` internals.
 - [ ] Move `legacyConstructWorld` logic into a concrete type returned by `internal/world.New`, leaving the legacy constructor as a pass-through wrapper once the dependencies above live inside the internal package.
 
-> **Blocked:** `internal/world` still lacks the façade wiring: the effect manager hooks/telemetry live in `server/effects_manager.go`, ability gating + projectile dispatch remain in `server/effects.go`, and the burning/status registries plus NPC/obstacle seeding are still built in `server/simulation.go`. Constructors cannot be moved until those systems run inside the internal package.
+> **Status:** The remediation plan fully promoted the effect manager wiring into `internal/world`, so constructors can proceed with the remaining tasks without façade dependencies.
 
 #### Blocker remediation phase — deliverables
 
-Effect wiring still cannot move because `server/internal/effects` reaches back into world packages in several places: `adapters.go`
-wraps `internal/world` mutation helpers, `burning_tick_intent.go` leans on `internal/world.ApplyBurningDamage`,
-`contract_burning_hook.go` imports `internal/world/status`, and the package exposes the world-owned manager alias in
-`manager.go`. Pulling those hooks into `internal/world` would immediately create a cycle unless we first relocate the world
-affine pieces. The remediation work below keeps the effort aligned with the idiomaticity mandates by moving each dependency into
-focused internal packages, keeping state ownership inside `internal/world`, and deleting façade reach-ins once the internal
-replacements are wired.
+Effect wiring initially could not move because `server/internal/effects` reached back into world packages in several places:
+`adapters.go` wrapped `internal/world` mutation helpers, `burning_tick_intent.go` leaned on `internal/world.ApplyBurningDamage`,
+`contract_burning_hook.go` imported `internal/world/status`, and the package exposed the world-owned manager alias in
+`manager.go`. Pulling those hooks into `internal/world` would have created a cycle unless we first relocated the world affine
+pieces. The remediation work below kept the effort aligned with the idiomaticity mandates by moving each dependency into focused
+internal packages, keeping state ownership inside `internal/world`, and deleting façade reach-ins once the internal replacements
+were wired. With every subtask complete, the effect manager deliverable is satisfied and constructors can continue.
 
 - [x] **Break the world ↔ effects import cycle** by re-homing the world-owned helpers that live under `server/internal/effects`.
   - Move the position/parameter mutators from `server/internal/effects/adapters.go` into an `internal/world/effects` subpackage
