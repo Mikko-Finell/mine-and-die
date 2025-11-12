@@ -263,23 +263,9 @@ func legacyConstructWorld(cfg worldConfig, publisher logging.Publisher, deps wor
 
 	w.meleeAbilityGate = nil
 	w.projectileAbilityGate = nil
-	if gateOptions, ok := constructed.AbilityGateOptions(); ok {
-		if gate, ok := constructed.BindMeleeAbilityGate(gateOptions.Melee); ok {
-			w.meleeAbilityGate = gate
-		}
-
-		if tpl := w.projectileTemplates[effectTypeFireball]; tpl != nil {
-			projectileOpts := gateOptions.Projectile
-			if tpl.Type != "" {
-				projectileOpts.AbilityID = tpl.Type
-			}
-			if tpl.Cooldown > 0 {
-				projectileOpts.Cooldown = tpl.Cooldown
-			}
-			if gate, ok := constructed.BindProjectileAbilityGate(projectileOpts); ok {
-				w.projectileAbilityGate = gate
-			}
-		}
+	if gates, ok := constructed.AbilityGates(); ok {
+		w.meleeAbilityGate = gates.Melee
+		w.projectileAbilityGate = gates.Projectile
 	}
 	w.projectileStopAdapter = worldpkg.NewProjectileStopAdapter(worldpkg.ProjectileStopAdapterConfig{
 		AllocateID: func() string {

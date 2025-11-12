@@ -159,25 +159,11 @@ func bindAbilityGatesForTest(t *testing.T, world *World, constructed *worldpkg.W
 	world.internalWorld = constructed
 	world.configureAbilityOwnerAdapters()
 
-	gateOptions, ok := constructed.AbilityGateOptions()
+	gates, ok := constructed.AbilityGates()
 	if !ok {
 		return
 	}
 
-	if gate, ok := constructed.BindMeleeAbilityGate(gateOptions.Melee); ok {
-		world.meleeAbilityGate = gate
-	}
-
-	if tpl := world.projectileTemplates[effectTypeFireball]; tpl != nil {
-		projectileOpts := gateOptions.Projectile
-		if tpl.Type != "" {
-			projectileOpts.AbilityID = tpl.Type
-		}
-		if tpl.Cooldown > 0 {
-			projectileOpts.Cooldown = tpl.Cooldown
-		}
-		if gate, ok := constructed.BindProjectileAbilityGate(projectileOpts); ok {
-			world.projectileAbilityGate = gate
-		}
-	}
+	world.meleeAbilityGate = gates.Melee
+	world.projectileAbilityGate = gates.Projectile
 }
