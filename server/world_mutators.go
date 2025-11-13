@@ -3,8 +3,7 @@ package server
 import (
 	"math"
 
-	items "mine-and-die/server/internal/items"
-	"mine-and-die/server/internal/sim"
+	journalpkg "mine-and-die/server/internal/journal"
 	worldpkg "mine-and-die/server/internal/world"
 	worldeffects "mine-and-die/server/internal/world/effects"
 	stats "mine-and-die/server/stats"
@@ -89,16 +88,10 @@ func (w *World) setActorHealth(actor *actorState, version *uint64, entityID stri
 		return
 	}
 
-	state := worldpkg.HealthState{Health: actor.Health, MaxHealth: actor.MaxHealth}
-	if !worldpkg.SetActorHealth(&state, computedMax, health) {
-		return
+	emit := func(pk journalpkg.PatchKind, id string, payload any) {
+		w.appendPatch(PatchKind(pk), id, payload)
 	}
-
-	actor.Health = state.Health
-	actor.MaxHealth = state.MaxHealth
-	incrementVersion(version)
-
-	w.appendPatch(kind, entityID, HealthPayload{Health: state.Health, MaxHealth: state.MaxHealth})
+	_ = worldpkg.ApplyActorHealth(actor, version, entityID, journalpkg.PatchKind(kind), computedMax, health, emit)
 }
 
 func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityID string, kind PatchKind, mutate func(inv *Inventory) error) error {
@@ -106,17 +99,10 @@ func (w *World) mutateActorInventory(actor *actorState, version *uint64, entityI
 		return nil
 	}
 
-	return items.MutateActorInventory(
-		&actor.Inventory,
-		version,
-		mutate,
-		func(inv Inventory) Inventory { return inv.Clone() },
-		inventoriesEqual,
-		func(inv Inventory) {
-			slots := items.SimInventorySlotsFromAny(cloneInventorySlots(inv.Slots))
-			w.appendPatch(kind, entityID, items.SimInventoryPayloadFromSlots[sim.InventorySlot, InventoryPayload](slots))
-		},
-	)
+	emit := func(pk journalpkg.PatchKind, id string, payload any) {
+		w.appendPatch(PatchKind(pk), id, payload)
+	}
+	return worldpkg.MutateActorInventory(actor, version, entityID, journalpkg.PatchKind(kind), mutate, emit)
 }
 
 func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityID string, kind PatchKind, mutate func(eq *Equipment) error) error {
@@ -124,17 +110,10 @@ func (w *World) mutateActorEquipment(actor *actorState, version *uint64, entityI
 		return nil
 	}
 
-	return items.MutateActorEquipment(
-		&actor.Equipment,
-		version,
-		mutate,
-		func(eq Equipment) Equipment { return eq.Clone() },
-		equipmentsEqual,
-		func(eq Equipment) {
-			slots := items.SimEquippedItemsFromAny(cloneEquipmentSlots(eq.Slots))
-			w.appendPatch(kind, entityID, items.SimEquipmentPayloadFromSlots[sim.EquippedItem, EquipmentPayload](slots))
-		},
-	)
+	emit := func(pk journalpkg.PatchKind, id string, payload any) {
+		w.appendPatch(PatchKind(pk), id, payload)
+	}
+	return worldpkg.MutateActorEquipment(actor, version, entityID, journalpkg.PatchKind(kind), mutate, emit)
 }
 
 // SetPosition updates a player's position, bumps the version, and records a patch.
@@ -356,37 +335,5 @@ func cloneEffectParams(params map[string]float64) map[string]float64 {
 	for k, v := range params {
 		cloned[k] = v
 	}
-	return cloned
-}
-
-func inventoriesEqual(a, b Inventory) bool {
-	if len(a.Slots) != len(b.Slots) {
-		return false
-	}
-	for i := range a.Slots {
-		as := a.Slots[i]
-		bs := b.Slots[i]
-		if as.Slot != bs.Slot {
-			return false
-		}
-		if as.Item.Type != bs.Item.Type {
-			return false
-		}
-		if as.Item.FungibilityKey != bs.Item.FungibilityKey {
-			return false
-		}
-		if as.Item.Quantity != bs.Item.Quantity {
-			return false
-		}
-	}
-	return true
-}
-
-func cloneInventorySlots(slots []InventorySlot) []InventorySlot {
-	if len(slots) == 0 {
-		return nil
-	}
-	cloned := make([]InventorySlot, len(slots))
-	copy(cloned, slots)
 	return cloned
 }

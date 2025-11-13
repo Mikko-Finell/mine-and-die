@@ -65,6 +65,7 @@ type World struct {
 
 	groundItems       map[string]*itemspkg.GroundItemState
 	groundItemsByTile map[itemspkg.GroundTileKey]map[string]*itemspkg.GroundItemState
+	nextGroundItemID  uint64
 
 	statusEffectDefinitions map[string]statuspkg.ApplyStatusEffectDefinition
 

@@ -79,6 +79,14 @@ func RecordEffectHitTelemetry(effect *worldeffects.State, targetID string, delta
 	}
 }
 
+// RecordEffectHitTelemetry updates telemetry counters for the provided effect.
+func (w *World) RecordEffectHitTelemetry(effect *worldeffects.State, targetID string, delta float64) {
+	if w == nil {
+		return
+	}
+	RecordEffectHitTelemetry(effect, targetID, delta, effectcontract.Tick(int64(w.currentTick())))
+}
+
 // FlushEffectTelemetry emits the accumulated parity counters for the provided
 // effect and resets its bookkeeping to mirror the legacy lifecycle handling.
 func FlushEffectTelemetry(telemetry EffectTelemetry, effect *worldeffects.State, tick effectcontract.Tick) {
