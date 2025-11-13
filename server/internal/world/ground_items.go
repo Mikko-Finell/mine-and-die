@@ -30,6 +30,32 @@ func (w *World) ensureGroundItemStorage() {
 	}
 }
 
+// DropAllGold drains every stack of gold from the actor's inventory and spawns it on the ground.
+func (w *World) DropAllGold(actor *state.ActorState, reason string) int {
+	if w == nil || actor == nil {
+		return 0
+	}
+
+	actorCfg, ok := w.groundDropActorConfig(actor)
+	if !ok {
+		return 0
+	}
+
+	remover := itemspkg.GroundDropRemoveStacksFunc(actorCfg)
+	if remover == nil {
+		return 0
+	}
+
+	cfg, ok := w.groundDropConfig(actor)
+	if !ok {
+		return 0
+	}
+
+	return itemspkg.InvokeGroundDrop(cfg, func(d itemspkg.GroundDropDelegates) int {
+		return itemspkg.DropAllGold(d, reason, remover)
+	})
+}
+
 // DropAllInventory drains the actor's inventory and equipment, spawning items on the ground.
 func (w *World) DropAllInventory(actor *state.ActorState, reason string) int {
 	if w == nil || actor == nil {
@@ -215,6 +241,32 @@ func (w *World) groundDropActorConfig(actor *state.ActorState) (itemspkg.GroundD
 	}
 
 	return cfg, true
+}
+
+// DropAllItemsOfType drains every stack of the requested item type from the actor and spawns it on the ground.
+func (w *World) DropAllItemsOfType(actor *state.ActorState, itemType state.ItemType, reason string) int {
+	if w == nil || actor == nil || itemType == "" {
+		return 0
+	}
+
+	actorCfg, ok := w.groundDropActorConfig(actor)
+	if !ok {
+		return 0
+	}
+
+	remover := itemspkg.GroundDropRemoveStacksFunc(actorCfg)
+	if remover == nil {
+		return 0
+	}
+
+	cfg, ok := w.groundDropConfig(actor)
+	if !ok {
+		return 0
+	}
+
+	return itemspkg.InvokeGroundDrop(cfg, func(d itemspkg.GroundDropDelegates) int {
+		return itemspkg.DropAllItemsOfType(d, string(itemType), reason, remover)
+	})
 }
 
 func (w *World) logGoldDrop(actor *state.ActorState, stack state.ItemStack, reason, stackID string) {

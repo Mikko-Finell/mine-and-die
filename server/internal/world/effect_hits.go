@@ -104,6 +104,26 @@ func (w *World) ConfigureEffectHitAdapters(cfg EffectHitAdaptersConfig) bool {
 		return false
 	}
 
+	combatCfg := cfg.Combat
+	if combatCfg.DropAllInventory == nil {
+		combatCfg.DropAllInventory = func(actor *state.ActorState, reason string) {
+			w.DropAllInventory(actor, reason)
+		}
+	}
+	if combatCfg.ApplyStatusEffect == nil {
+		combatCfg.ApplyStatusEffect = func(effect *worldeffects.State, actor *state.ActorState, status statuspkg.StatusEffectType, now time.Time) {
+			if actor == nil || status == "" {
+				return
+			}
+			owner := ""
+			if effect != nil {
+				owner = effect.Owner
+			}
+			w.ApplyStatusEffect(actor, status, owner, now)
+		}
+	}
+	cfg.Combat = combatCfg
+
 	dispatcher := NewEffectHitCombatDispatcher(cfg.Combat)
 	if dispatcher == nil {
 		w.effectHitDispatcher = nil
@@ -118,6 +138,35 @@ func (w *World) ConfigureEffectHitAdapters(cfg EffectHitAdaptersConfig) bool {
 	})
 
 	npcCfg := cfg.NPC
+	if npcCfg.SpawnBlood == nil {
+		npcCfg.SpawnBlood = func(effect any, target any, now time.Time) {
+			eff, _ := effect.(*worldeffects.State)
+			npc, _ := target.(*state.NPCState)
+			if eff == nil || npc == nil {
+				return
+			}
+			w.MaybeSpawnBloodSplatter(eff, npc, now)
+		}
+	}
+	if npcCfg.IsAlive == nil {
+		npcCfg.IsAlive = func(target any) bool {
+			npc, _ := target.(*state.NPCState)
+			if npc == nil {
+				return false
+			}
+			return npc.Health > 0
+		}
+	}
+	if npcCfg.HandleDefeat == nil {
+		npcCfg.HandleDefeat = func(target any) {
+			npc, _ := target.(*state.NPCState)
+			if npc == nil {
+				return
+			}
+			w.DropAllGold(&npc.ActorState, "death")
+			w.HandleNPCDefeat(npc)
+		}
+	}
 	npcCfg.ApplyActorHit = dispatcher
 	w.npcEffectHitCallback = EffectHitNPCCallback(npcCfg)
 	return true
