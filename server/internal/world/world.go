@@ -122,6 +122,7 @@ func New(cfg Config, deps Deps) (*World, error) {
 
 	world.effectManager = newEffectManager(world)
 	world.configureStatusEffects()
+	world.configureEffectHitAdapters()
 
 	if deps.JournalTelemetry != nil {
 		world.journal.AttachTelemetry(deps.JournalTelemetry)

@@ -162,6 +162,23 @@ func TestNewInitializesStatusEffectDefinitions(t *testing.T) {
 	}
 }
 
+func TestNewConfiguresEffectHitAdapters(t *testing.T) {
+	w, err := New(Config{}, Deps{})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	if w.EffectHitDispatcher() == nil {
+		t.Fatalf("expected EffectHitDispatcher to be configured")
+	}
+	if w.PlayerEffectHitCallback() == nil {
+		t.Fatalf("expected PlayerEffectHitCallback to be configured")
+	}
+	if w.NPCEffectHitCallback() == nil {
+		t.Fatalf("expected NPCEffectHitCallback to be configured")
+	}
+}
+
 func TestNewInitializesJournalWithDefaults(t *testing.T) {
 	t.Setenv(envJournalCapacity, "")
 	t.Setenv(envJournalMaxAgeMS, "")

@@ -11,6 +11,7 @@ import (
 	statuspkg "mine-and-die/server/internal/world/status"
 	"mine-and-die/server/logging"
 	loggingcombat "mine-and-die/server/logging/combat"
+	stats "mine-and-die/server/stats"
 )
 
 // EffectHitCallback applies an effect's hit to a target actor. The effect and
@@ -94,6 +95,125 @@ func EffectHitNPCCallback(cfg EffectHitNPCConfig) EffectHitCallback {
 type EffectHitAdaptersConfig struct {
 	Combat EffectHitCombatDispatcherConfig
 	NPC    EffectHitNPCConfig
+}
+
+func (w *World) configureEffectHitAdapters() {
+	if w == nil {
+		return
+	}
+
+	combatCfg := EffectHitCombatDispatcherConfig{
+		HealthEpsilon:           HealthEpsilon,
+		BaselinePlayerMaxHealth: stats.DefaultMaxHealth(stats.ArchetypePlayer),
+		Publisher:               w.publisher,
+		LookupEntity: func(id string) logging.EntityRef {
+			if w == nil {
+				return logging.EntityRef{}
+			}
+			return w.entityRef(id)
+		},
+		CurrentTick: func() uint64 {
+			if w == nil {
+				return 0
+			}
+			return w.currentTick()
+		},
+		SetPlayerHealth: func(id string, next float64) {
+			if w == nil || id == "" {
+				return
+			}
+			w.SetPlayerHealth(id, next)
+		},
+		SetNPCHealth: func(id string, next float64) {
+			if w == nil || id == "" {
+				return
+			}
+			w.SetNPCHealth(id, next)
+		},
+		ApplyGenericHealthDelta: func(actor *state.ActorState, delta float64) (bool, float64, float64) {
+			if actor == nil {
+				return false, 0, 0
+			}
+			before := actor.Health
+			if !actor.ApplyHealthDelta(delta) {
+				return false, 0, before
+			}
+			return true, actor.Health - before, actor.Health
+		},
+		RecordEffectHitTelemetry: func(effect *worldeffects.State, targetID string, actualDelta float64) {
+			if w == nil {
+				return
+			}
+			w.RecordEffectHitTelemetry(effect, targetID, actualDelta)
+		},
+		DropAllInventory: func(actor *state.ActorState, reason string) {
+			if w == nil {
+				return
+			}
+			w.DropAllInventory(actor, reason)
+		},
+		ApplyStatusEffect: func(effect *worldeffects.State, actor *state.ActorState, status statuspkg.StatusEffectType, now time.Time) {
+			if w == nil || actor == nil || status == "" {
+				return
+			}
+			ownerID := ""
+			if effect != nil {
+				ownerID = effect.Owner
+			}
+			w.ApplyStatusEffect(actor, status, ownerID, now)
+		},
+		IsPlayer: func(id string) bool {
+			if w == nil || id == "" {
+				return false
+			}
+			_, ok := w.players[id]
+			return ok
+		},
+		IsNPC: func(id string) bool {
+			if w == nil || id == "" {
+				return false
+			}
+			_, ok := w.npcs[id]
+			return ok
+		},
+	}
+
+	npcCfg := EffectHitNPCConfig{
+		SpawnBlood: func(effect any, target any, now time.Time) {
+			if w == nil {
+				return
+			}
+			eff, _ := effect.(*worldeffects.State)
+			npc, _ := target.(*state.NPCState)
+			if eff == nil || npc == nil {
+				return
+			}
+			w.MaybeSpawnBloodSplatter(eff, npc, now)
+		},
+		IsAlive: func(target any) bool {
+			npc, _ := target.(*state.NPCState)
+			if npc == nil {
+				return false
+			}
+			return npc.Health > 0
+		},
+		HandleDefeat: func(target any) {
+			if w == nil {
+				return
+			}
+			npc, _ := target.(*state.NPCState)
+			if npc == nil {
+				return
+			}
+			w.DropAllGold(&npc.ActorState, "death")
+			w.HandleNPCDefeat(npc)
+		},
+	}
+
+	_ = w.ConfigureEffectHitAdapters(EffectHitAdaptersConfig{
+		Combat: combatCfg,
+		NPC:    npcCfg,
+	})
 }
 
 // ConfigureEffectHitAdapters wires the effect hit dispatcher and NPC/player
